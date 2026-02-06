@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 import "../index.css";
 
+// biome-ignore lint/complexity/noBannedTypes: empty context placeholder for TanStack Router
 export type RouterAppContext = {};
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({

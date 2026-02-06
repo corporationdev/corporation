@@ -6,7 +6,10 @@ import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 
-const siteUrl = process.env.SITE_URL!;
+const siteUrl = process.env.SITE_URL;
+if (!siteUrl) {
+	throw new Error("SITE_URL environment variable is not set");
+}
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
