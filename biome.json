@@ -85,5 +85,17 @@
       "tailwindDirectives": true
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/convex/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
+    }
+  ],
   "extends": ["ultracite/biome/core", "ultracite/biome/react"]
 }
