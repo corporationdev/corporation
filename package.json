@@ -17,7 +17,8 @@
       "hono": "^4.8.2",
       "agents": "^0.3.9",
       "sandbox-agent": "^0.1.5",
-      "alchemy": "^0.82.1"
+      "alchemy": "^0.82.1",
+      "convex-helpers": "^0.1.111"
     }
   },
   "type": "module",

@@ -1,17 +1,18 @@
 import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
-import { authComponent } from "./auth";
+import type { MutationCtx } from "./_generated/server";
+import { authedMutation, authedQuery } from "./functions";
 
-async function requireUserId(ctx: QueryCtx | MutationCtx): Promise<string> {
-	const authUser = await authComponent.safeGetAuthUser(ctx);
-	if (!authUser) {
-		throw new ConvexError("Unauthenticated");
-	}
-	return authUser._id;
-}
+const agentSessionValidator = v.object({
+	_id: v.id("agentSessions"),
+	_creationTime: v.number(),
+	title: v.string(),
+	userId: v.string(),
+	createdAt: v.number(),
+	updatedAt: v.number(),
+	archivedAt: v.union(v.number(), v.null()),
+});
 
 async function requireOwnedSession(
 	ctx: MutationCtx,
@@ -25,29 +26,29 @@ async function requireOwnedSession(
 	return session;
 }
 
-export const list = query({
+export const list = authedQuery({
 	args: {},
+	returns: v.array(agentSessionValidator),
 	handler: async (ctx) => {
-		const userId = await requireUserId(ctx);
 		return await ctx.db
 			.query("agentSessions")
-			.withIndex("by_user_and_updated", (q) => q.eq("userId", userId))
+			.withIndex("by_user_and_updated", (q) => q.eq("userId", ctx.userId))
 			.order("desc")
 			.collect();
 	},
 });
 
-export const create = mutation({
+export const create = authedMutation({
 	args: {
 		title: v.string(),
 	},
+	returns: v.id("agentSessions"),
 	handler: async (ctx, args) => {
-		const userId = await requireUserId(ctx);
 		const now = Date.now();
 
 		return await ctx.db.insert("agentSessions", {
 			title: args.title,
-			userId,
+			userId: ctx.userId,
 			createdAt: now,
 			updatedAt: now,
 			archivedAt: null,
@@ -55,59 +56,54 @@ export const create = mutation({
 	},
 });
 
-export const update = mutation({
+export const update = authedMutation({
 	args: {
 		id: v.id("agentSessions"),
 		title: v.optional(v.string()),
 		archivedAt: v.optional(v.union(v.number(), v.null())),
 	},
+	returns: v.null(),
 	handler: async (ctx, args) => {
-		const userId = await requireUserId(ctx);
-		await requireOwnedSession(ctx, userId, args.id);
+		await requireOwnedSession(ctx, ctx.userId, args.id);
 
-		const patch: Partial<Doc<"agentSessions">> = {
-			updatedAt: Date.now(),
-		};
+		const { id, ...fields } = args;
+		const patch = Object.fromEntries(
+			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
+				([, v]) => v !== undefined
+			)
+		);
 
-		if (args.title !== undefined) {
-			patch.title = args.title;
-		}
-
-		if (args.archivedAt !== undefined) {
-			patch.archivedAt = args.archivedAt;
-		}
-
-		await ctx.db.patch(args.id, patch);
-		return await ctx.db.get(args.id);
+		await ctx.db.patch(id, patch);
+		return null;
 	},
 });
 
-export const touch = mutation({
+export const touch = authedMutation({
 	args: {
 		id: v.id("agentSessions"),
 	},
+	returns: v.null(),
 	handler: async (ctx, args) => {
-		const userId = await requireUserId(ctx);
-		await requireOwnedSession(ctx, userId, args.id);
+		await requireOwnedSession(ctx, ctx.userId, args.id);
 
 		await ctx.db.patch(args.id, {
 			updatedAt: Date.now(),
 			archivedAt: null,
 		});
 
-		return { success: true };
+		return null;
 	},
 });
 
-export const remove = mutation({
+export const remove = authedMutation({
 	args: {
 		id: v.id("agentSessions"),
 	},
+	returns: v.null(),
 	handler: async (ctx, args) => {
-		const userId = await requireUserId(ctx);
-		await requireOwnedSession(ctx, userId, args.id);
+		await requireOwnedSession(ctx, ctx.userId, args.id);
 
 		await ctx.db.delete(args.id);
-		return { success: true };
+		return null;
 	},
 });
