@@ -1,4 +1,5 @@
-import { ExternalLinkIcon } from "lucide-react";
+import { CheckIcon, ClipboardIcon } from "lucide-react";
+import { useCallback, useState } from "react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,14 @@ import { useSandboxStore } from "@/stores/sandbox-store";
 export function ChatLayout() {
 	const previewUrl = useSandboxStore((s) => s.previewUrl);
 	const inspectorUrl = previewUrl ? `${previewUrl}/ui/` : null;
+	const [copied, setCopied] = useState(false);
+
+	const copyInspectorUrl = useCallback(() => {
+		if (!inspectorUrl) return;
+		navigator.clipboard.writeText(inspectorUrl);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	}, [inspectorUrl]);
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -23,15 +32,17 @@ export function ChatLayout() {
 					{inspectorUrl && (
 						<Tooltip>
 							<Button
-								onClick={() => window.open(inspectorUrl, "_blank")}
+								onClick={copyInspectorUrl}
 								render={<TooltipTrigger />}
 								size="icon-sm"
 								variant="ghost"
 							>
-								<ExternalLinkIcon />
-								<span className="sr-only">Open Inspector</span>
+								{copied ? <CheckIcon /> : <ClipboardIcon />}
+								<span className="sr-only">Copy Inspector URL</span>
 							</Button>
-							<TooltipContent side="bottom">Open Inspector</TooltipContent>
+							<TooltipContent side="bottom">
+								{copied ? "Copied!" : "Copy Inspector URL"}
+							</TooltipContent>
 						</Tooltip>
 					)}
 				</header>

@@ -13,8 +13,6 @@ const PREVIEW_URL_EXPIRY_SECONDS = 4 * 60 * 60;
 const log = createLogger("sandbox-agent");
 
 export class SandboxAgent extends Agent<Env, SandboxState> {
-	observability = null;
-
 	initialState: SandboxState = {
 		sandbox: null,
 		previewUrl: null,
@@ -217,6 +215,25 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 
 		try {
 			const daySandbox = await this.daytona.get(sandbox.sandboxId);
+			await daySandbox.refreshData();
+
+			if (daySandbox.state !== "started") {
+				log.info(
+					{
+						sessionId: this.sessionId,
+						sandboxId: sandbox.sandboxId,
+						sandboxState: daySandbox.state,
+					},
+					"sandbox no longer running, re-initializing"
+				);
+				this.setState({
+					...this.state,
+					sandbox: null,
+					previewUrl: null,
+				});
+				await this.initSandbox();
+				return;
+			}
 
 			const previewUrl = await daySandbox.getSignedPreviewUrl(
 				PORT,
