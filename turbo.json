@@ -20,6 +20,12 @@
     "dev:setup": {
       "cache": false,
       "persistent": true
+    },
+    "deploy": {
+      "cache": false
+    },
+    "destroy": {
+      "cache": false
     }
   }
 }

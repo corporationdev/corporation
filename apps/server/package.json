@@ -1,0 +1,19 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "check-types": "tsc -b"
+  },
+  "dependencies": {
+    "agents": "catalog:",
+    "hono": "catalog:",
+    "sandbox-agent": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@corporation/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

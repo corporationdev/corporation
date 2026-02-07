@@ -8,11 +8,10 @@
  * @module
  */
 
+import type * as agentSessions from "../agentSessions.js";
 import type * as auth from "../auth.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
-import type * as privateData from "../privateData.js";
-import type * as todos from "../todos.js";
 
 import type {
   ApiFromModules,
@@ -21,11 +20,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentSessions: typeof agentSessions;
   auth: typeof auth;
   healthCheck: typeof healthCheck;
   http: typeof http;
-  privateData: typeof privateData;
-  todos: typeof todos;
 }>;
 
 /**
