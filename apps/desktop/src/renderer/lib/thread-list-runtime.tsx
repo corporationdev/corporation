@@ -52,7 +52,7 @@ function ThreadRuntime({
 			await touchThread({
 				id: threadId as Id<"agentSessions">,
 			});
-      agent?.send(JSON.stringify({ type: "send_message", content }));
+			agent?.send(JSON.stringify({ type: "send_message", content }));
 		},
 		[agent, threadId, touchThread]
 	);

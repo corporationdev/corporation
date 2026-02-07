@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { Thread } from "@/components/assistant-ui/thread";
 import { ChatLayout } from "@/components/chat-layout";
 
 export const Route = createFileRoute("/_authenticated/chat")({
@@ -8,7 +7,5 @@ export const Route = createFileRoute("/_authenticated/chat")({
 });
 
 function ChatRoute() {
-	return (
-		<ChatLayout />
-	);
+	return <ChatLayout />;
 }

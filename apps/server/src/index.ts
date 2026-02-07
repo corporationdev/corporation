@@ -1,6 +1,7 @@
 import { routeAgentRequest } from "agents";
 import { Hono } from "hono";
 
+// biome-ignore lint/performance/noBarrelFile: Cloudflare requires DO classes exported from the entry point
 export { SandboxAgent } from "./sandbox-agent";
 
 type Env = {

@@ -1,9 +1,6 @@
-import type { ReactNode } from "react";
-
+import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { Thread } from "@/components/assistant-ui/thread";
-
 
 export function ChatLayout() {
 	return (
