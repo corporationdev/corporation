@@ -8,14 +8,13 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { env } from "@corporation/env/web";
 import type {
 	SandboxAgentMethods,
-	ServerMessage,
+	SandboxState,
 } from "@corporation/server/agent-types";
 import { useMatch } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { useMutation } from "convex/react";
 import type { ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
-import type { UniversalEvent } from "sandbox-agent";
 
 import { convertEventsToMessages } from "./convert-events";
 
@@ -29,22 +28,18 @@ function ThreadRuntime({
 	threadId: string;
 	children: ReactNode;
 }) {
-	const [events, setEvents] = useState<UniversalEvent[]>([]);
+	const [sandboxState, setSandboxState] = useState<SandboxState>({
+		sandbox: null,
+		events: [],
+	});
 	const touchThread = useMutation(api.agentSessions.touch);
 
-	const agent = useAgent<SandboxAgentMethods, unknown>({
+	const agent = useAgent<SandboxAgentMethods, SandboxState>({
 		agent: "sandbox-agent",
 		name: threadId,
 		host: SERVER_URL,
-		onMessage: (event) => {
-			try {
-				const data: ServerMessage = JSON.parse(event.data);
-				if (data.type === "event") {
-					setEvents((prev) => [...prev, data.data]);
-				}
-			} catch {
-				// Ignore parse errors
-			}
+		onStateUpdate: (state) => {
+			setSandboxState(state);
 		},
 	});
 
@@ -62,8 +57,8 @@ function ThreadRuntime({
 	);
 
 	const { messages, isRunning } = useMemo(
-		() => convertEventsToMessages(events),
-		[events]
+		() => convertEventsToMessages(sandboxState.events),
+		[sandboxState.events]
 	);
 
 	const runtime = useExternalStoreRuntime({

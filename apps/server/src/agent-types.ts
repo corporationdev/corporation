@@ -1,11 +1,17 @@
 import type { UniversalEvent } from "sandbox-agent";
 
-export type SandboxAgentMethods = {
-	get state(): unknown;
-	sendMessage(content: string): Promise<void>;
+export type SandboxInfo = {
+	sandboxId: string;
+	status: "creating" | "ready" | "error";
+	createdAt: string;
 };
 
-export type ServerMessage = {
-	type: "event";
-	data: UniversalEvent;
+export type SandboxState = {
+	sandbox: SandboxInfo | null;
+	events: UniversalEvent[];
+};
+
+export type SandboxAgentMethods = {
+	get state(): SandboxState;
+	sendMessage(content: string): Promise<void>;
 };

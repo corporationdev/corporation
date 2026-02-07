@@ -1,8 +1,7 @@
 import { Daytona, Image } from "@daytonaio/sdk";
-import  { type Connection, Agent, callable } from "agents";
-import { SandboxAgent as SandboxAgentClient, type UniversalEvent } from "sandbox-agent";
-import { type ServerMessage } from "./agent-types";
-
+import { Agent, type Connection, callable } from "agents";
+import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
+import type { SandboxInfo, SandboxState } from "./agent-types";
 
 const PORT = 3000;
 const SNAPSHOT_NAME = "sandbox-agent-ready";
@@ -10,50 +9,29 @@ const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 const PREVIEW_URL_EXPIRY_SECONDS = 4 * 60 * 60;
 
+export class SandboxAgent extends Agent<Env, SandboxState> {
+	initialState: SandboxState = {
+		sandbox: null,
+		events: [],
+	};
 
-
-type SandboxInfo = {
-	sandboxId: string;
-	status: "creating" | "ready" | "error";
-	createdAt: string;
-};
-
-export class SandboxAgent extends Agent<Env> {
-	private events: UniversalEvent[] = [];
-	private sandboxInfo: SandboxInfo | null = null;
+	private readonly daytona = new Daytona({ apiKey: this.env.DAYTONA_API_KEY });
 	private sandboxClient: SandboxAgentClient | null = null;
 	private sseAbortController: AbortController | null = null;
 
-	async onConnect(connection: Connection) {
-		const [storedEvents, storedSandbox] = await Promise.all([
-			this.ctx.storage.get<UniversalEvent[]>("events"),
-			this.ctx.storage.get<SandboxInfo>("sandbox"),
-		]);
-
-		if (storedEvents) {
-			this.events = storedEvents;
-		}
-		if (storedSandbox) {
-			this.sandboxInfo = storedSandbox;
-		}
-
-		for (const event of this.events) {
-			const message: ServerMessage = { type: "event", data: event };
-			connection.send(JSON.stringify(message));
-		}
-
-		if (this.sandboxInfo?.status === "ready" && !this.sseAbortController) {
+	async onConnect(_connection: Connection) {
+		if (this.state.sandbox?.status === "ready" && !this.sseAbortController) {
 			await this.reconnectToSession();
 		}
 	}
 
 	@callable()
 	async sendMessage(content: string) {
-		if (this.sandboxInfo?.status === "error") {
+		if (this.state.sandbox?.status === "error") {
 			throw new Error("Sandbox is in error state");
 		}
 
-		if (!this.sandboxInfo || this.sandboxInfo.status !== "ready") {
+		if (!this.state.sandbox || this.state.sandbox.status !== "ready") {
 			await this.initSandbox();
 		}
 
@@ -70,62 +48,66 @@ export class SandboxAgent extends Agent<Env> {
 		return this.ctx.id.toString();
 	}
 
-	private async initSandbox() {
-		this.sandboxInfo = {
+	private initPromise: Promise<void> | null = null;
+
+	private initSandbox() {
+		this.initPromise ??= this.doInitSandbox().finally(() => {
+			this.initPromise = null;
+		});
+		return this.initPromise;
+	}
+
+	private async doInitSandbox() {
+		const info: SandboxInfo = {
 			sandboxId: "",
 			status: "creating",
 			createdAt: new Date().toISOString(),
 		};
-		await this.ctx.storage.put("sandbox", this.sandboxInfo);
+		this.setState({ ...this.state, sandbox: info });
 
-		const daytona = new Daytona({
-			apiKey: this.env.DAYTONA_API_KEY,
-		});
+		try {
+			await this.ensureSnapshot();
 
-		await this.ensureSnapshot(daytona);
+			const envVars: Record<string, string> = {
+				ANTHROPIC_API_KEY: this.env.ANTHROPIC_API_KEY,
+			};
 
-		const envVars: Record<string, string> = {};
-		if (this.env.ANTHROPIC_API_KEY) {
-			envVars.ANTHROPIC_API_KEY = this.env.ANTHROPIC_API_KEY;
+			const sandbox = await this.daytona.create({
+				snapshot: SNAPSHOT_NAME,
+				envVars,
+			});
+
+			info.sandboxId = sandbox.id;
+			this.setState({ ...this.state, sandbox: info });
+
+			await sandbox.process.executeCommand(
+				`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
+			);
+
+			await this.waitForServerReady(sandbox);
+
+			const previewUrl = await sandbox.getSignedPreviewUrl(
+				PORT,
+				PREVIEW_URL_EXPIRY_SECONDS
+			);
+
+			this.sandboxClient = await SandboxAgentClient.connect({
+				baseUrl: previewUrl.url,
+			});
+
+			await this.sandboxClient.createSession(this.sessionId, {
+				agent: "claude",
+			});
+
+			info.status = "ready";
+			this.setState({ ...this.state, sandbox: info });
+
+			this.startEventStream();
+		} catch (error) {
+			info.status = "error";
+			this.setState({ ...this.state, sandbox: info });
+			throw error;
 		}
-
-		const sandbox = await daytona.create({
-			snapshot: SNAPSHOT_NAME,
-			envVars,
-		});
-
-		this.sandboxInfo.sandboxId = sandbox.id;
-		await this.ctx.storage.put("sandbox", this.sandboxInfo);
-
-		// Start sandbox-agent server in the background
-		await sandbox.process.executeCommand(
-			`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
-		);
-
-		// Wait for server to be ready
-		await this.waitForServerReady(sandbox);
-
-		// Get public URL for the sandbox-agent server
-		const previewUrl = await sandbox.getSignedPreviewUrl(
-			PORT,
-			PREVIEW_URL_EXPIRY_SECONDS
-		);
-
-		// Connect the sandbox-agent SDK client
-		this.sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: previewUrl.url,
-		});
-
-		// Create a Claude coding session
-		await this.sandboxClient.createSession(this.sessionId, {
-			agent: "claude",
-		});
-
-		this.sandboxInfo.status = "ready";
-		await this.ctx.storage.put("sandbox", this.sandboxInfo);
-
-		// Start streaming events from the session
-		this.startEventStream();
 	}
 
 	private async waitForServerReady(
@@ -152,14 +134,16 @@ export class SandboxAgent extends Agent<Env> {
 		throw new Error("sandbox-agent server failed to start within timeout");
 	}
 
-	private async ensureSnapshot(daytona: Daytona) {
-		const exists = await daytona.snapshot.get(SNAPSHOT_NAME).then(
-			() => true,
-			() => false
-		);
+	private async ensureSnapshot() {
+		let exists = true;
+		try {
+			await this.daytona.snapshot.get(SNAPSHOT_NAME);
+		} catch {
+			exists = false;
+		}
 
 		if (!exists) {
-			await daytona.snapshot.create({
+			await this.daytona.snapshot.create({
 				name: SNAPSHOT_NAME,
 				image: Image.base("ubuntu:22.04").runCommands(
 					"apt-get update && apt-get install -y curl ca-certificates",
@@ -171,30 +155,35 @@ export class SandboxAgent extends Agent<Env> {
 	}
 
 	private async reconnectToSession() {
-		if (!this.sandboxInfo || this.sandboxInfo.status !== "ready") {
+		const { sandbox } = this.state;
+		if (!sandbox || sandbox.status !== "ready") {
 			return;
 		}
 
-		const daytona = new Daytona({
-			apiKey: this.env.DAYTONA_API_KEY,
-		});
+		try {
+			const daySandbox = await this.daytona.get(sandbox.sandboxId);
 
-		const sandbox = await daytona.get(this.sandboxInfo.sandboxId);
+			const previewUrl = await daySandbox.getSignedPreviewUrl(
+				PORT,
+				PREVIEW_URL_EXPIRY_SECONDS
+			);
 
-		const previewUrl = await sandbox.getSignedPreviewUrl(
-			PORT,
-			PREVIEW_URL_EXPIRY_SECONDS
-		);
+			this.sandboxClient = await SandboxAgentClient.connect({
+				baseUrl: previewUrl.url,
+			});
 
-		this.sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: previewUrl.url,
-		});
-
-		this.startEventStream();
+			this.startEventStream();
+		} catch (error) {
+			console.error("Failed to reconnect to session:", error);
+			this.setState({
+				...this.state,
+				sandbox: { ...sandbox, status: "error" },
+			});
+		}
 	}
 
 	private startEventStream() {
-		if (!(this.sandboxClient && this.sandboxInfo)) {
+		if (!(this.sandboxClient && this.state.sandbox)) {
 			return;
 		}
 		if (this.sseAbortController) {
@@ -203,7 +192,7 @@ export class SandboxAgent extends Agent<Env> {
 
 		this.sseAbortController = new AbortController();
 
-		const lastEvent = this.events.at(-1);
+		const lastEvent = this.state.events.at(-1);
 		const lastSequence = lastEvent?.sequence ?? 0;
 		const client = this.sandboxClient;
 
@@ -215,7 +204,10 @@ export class SandboxAgent extends Agent<Env> {
 					if (this.sseAbortController?.signal.aborted) {
 						break;
 					}
-					await this.storeAndBroadcastEvent(event);
+					this.setState({
+						...this.state,
+						events: [...this.state.events, event],
+					});
 				}
 			} catch (error) {
 				if (!this.sseAbortController?.signal.aborted) {
@@ -227,13 +219,5 @@ export class SandboxAgent extends Agent<Env> {
 		};
 
 		stream();
-	}
-
-	private async storeAndBroadcastEvent(event: UniversalEvent) {
-		this.events.push(event);
-		await this.ctx.storage.put("events", this.events);
-
-		const message: ServerMessage = { type: "event", data: event };
-		this.broadcast(JSON.stringify(message));
 	}
 }
