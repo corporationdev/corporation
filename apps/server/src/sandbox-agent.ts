@@ -17,6 +17,7 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 
 	initialState: SandboxState = {
 		sandbox: null,
+		previewUrl: null,
 		events: [],
 	};
 
@@ -125,7 +126,11 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 			});
 
 			info.status = "ready";
-			this.setState({ ...this.state, sandbox: info });
+			this.setState({
+				...this.state,
+				sandbox: info,
+				previewUrl: previewUrl.url,
+			});
 
 			log.info(
 				{
@@ -222,6 +227,7 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 				baseUrl: previewUrl.url,
 			});
 
+			this.setState({ ...this.state, previewUrl: previewUrl.url });
 			this.startEventStream();
 		} catch (error) {
 			log.error(

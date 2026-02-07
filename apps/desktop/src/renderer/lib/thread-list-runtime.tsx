@@ -13,8 +13,9 @@ import type {
 import { useMatch } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { useMutation } from "convex/react";
-import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo } from "react";
+
+import { useSandboxStore } from "@/stores/sandbox-store";
 
 import { convertEventsToMessages } from "./convert-events";
 
@@ -28,19 +29,20 @@ function ThreadRuntime({
 	threadId: string;
 	children: ReactNode;
 }) {
-	const [sandboxState, setSandboxState] = useState<SandboxState>({
-		sandbox: null,
-		events: [],
-	});
+	const events = useSandboxStore((s) => s.events);
+	const setSandboxState = useSandboxStore((s) => s.setSandboxState);
+	const reset = useSandboxStore((s) => s.reset);
 	const touchThread = useMutation(api.agentSessions.touch);
+
+	useEffect(() => {
+		return () => reset();
+	}, [reset]);
 
 	const agent = useAgent<SandboxAgentMethods, SandboxState>({
 		agent: "sandbox-agent",
 		name: threadId,
 		host: SERVER_URL,
-		onStateUpdate: (state) => {
-			setSandboxState(state);
-		},
+		onStateUpdate: setSandboxState,
 	});
 
 	const sendMessage = useCallback(
@@ -58,8 +60,8 @@ function ThreadRuntime({
 	);
 
 	const { messages, isRunning } = useMemo(
-		() => convertEventsToMessages(sandboxState.events),
-		[sandboxState.events]
+		() => convertEventsToMessages(events),
+		[events]
 	);
 
 	const runtime = useExternalStoreRuntime({

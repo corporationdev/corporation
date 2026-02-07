@@ -8,6 +8,7 @@ export type SandboxInfo = {
 
 export type SandboxState = {
 	sandbox: SandboxInfo | null;
+	previewUrl: string | null;
 	events: UniversalEvent[];
 };
 
