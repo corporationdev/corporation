@@ -10,7 +10,7 @@ import { useMatch } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { useMutation } from "convex/react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { UniversalEvent } from "sandbox-agent";
 
 import { convertEventsToMessages } from "./convert-events";
@@ -27,40 +27,22 @@ function ThreadRuntime({
 }) {
 	const [events, setEvents] = useState<UniversalEvent[]>([]);
 	const touchThread = useMutation(api.agentSessions.touch);
-	const runtimeThreadId = threadId;
 
 	const agent = useAgent({
 		agent: "sandbox-agent",
-		name: runtimeThreadId,
+		name: threadId,
 		host: SERVER_URL,
-	});
-
-	const appendEvents = useCallback((incoming: UniversalEvent[]) => {
-		if (!incoming.length) {
-			return;
-		}
-		setEvents((prev) => [...prev, ...incoming]);
-	}, []);
-
-	useEffect(() => {
-		if (!agent) {
-			return;
-		}
-
-		const handleMessage = (event: MessageEvent) => {
+		onMessage: (event) => {
 			try {
 				const data = JSON.parse(event.data);
 				if (data.type === "event") {
-					appendEvents([data.data as UniversalEvent]);
+					setEvents((prev) => [...prev, data.data as UniversalEvent]);
 				}
 			} catch {
 				// Ignore parse errors
 			}
-		};
-
-		agent.addEventListener("message", handleMessage);
-		return () => agent.removeEventListener("message", handleMessage);
-	}, [agent, appendEvents]);
+		},
+	});
 
 	const sendMessage = useCallback(
 		async (content: string) => {
@@ -70,7 +52,7 @@ function ThreadRuntime({
 			await touchThread({
 				id: threadId as Id<"agentSessions">,
 			});
-			agent?.send(JSON.stringify({ type: "send_message", content }));
+      agent?.send(JSON.stringify({ type: "send_message", content }));
 		},
 		[agent, threadId, touchThread]
 	);
