@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@corporation/config": "workspace:*",
+    "@corporation/server": "workspace:*",
     "@tanstack/react-router-devtools": "^1.141.1",
     "@tanstack/router-plugin": "^1.141.1",
     "@types/node": "^22.13.14",

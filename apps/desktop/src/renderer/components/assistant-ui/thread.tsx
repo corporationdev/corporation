@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 export const Thread: FC = () => {
 	return (
 		<ThreadPrimitive.Root
-			className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
+			className="aui-root aui-thread-root @container flex min-h-0 flex-1 flex-col bg-background"
 			style={{
 				["--thread-max-width" as string]: "44rem",
 			}}

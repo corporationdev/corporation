@@ -6,6 +6,10 @@ import {
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { env } from "@corporation/env/web";
+import type {
+	SandboxAgentMethods,
+	ServerMessage,
+} from "@corporation/server/agent-types";
 import { useMatch } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { useMutation } from "convex/react";
@@ -28,15 +32,15 @@ function ThreadRuntime({
 	const [events, setEvents] = useState<UniversalEvent[]>([]);
 	const touchThread = useMutation(api.agentSessions.touch);
 
-	const agent = useAgent({
+	const agent = useAgent<SandboxAgentMethods, unknown>({
 		agent: "sandbox-agent",
 		name: threadId,
 		host: SERVER_URL,
 		onMessage: (event) => {
 			try {
-				const data = JSON.parse(event.data);
+				const data: ServerMessage = JSON.parse(event.data);
 				if (data.type === "event") {
-					setEvents((prev) => [...prev, data.data as UniversalEvent]);
+					setEvents((prev) => [...prev, data.data]);
 				}
 			} catch {
 				// Ignore parse errors
@@ -52,7 +56,7 @@ function ThreadRuntime({
 			await touchThread({
 				id: threadId as Id<"agentSessions">,
 			});
-			agent?.send(JSON.stringify({ type: "send_message", content }));
+			await agent?.stub.sendMessage(content);
 		},
 		[agent, threadId, touchThread]
 	);
