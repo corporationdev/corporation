@@ -1,13 +1,13 @@
 {
-  "name": "web",
+  "name": "desktop",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "./out/main/index.js",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "serve": "vite preview",
-    "start": "vite",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "clsx": "^2.1.1",
     "convex": "catalog:",
     "dotenv": "catalog:",
+    "electron": "^40.1.0",
     "lucide-react": "^0.473.0",
     "next-themes": "^0.4.6",
     "react": "19.2.3",
@@ -42,6 +43,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron-vite": "^5.0.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.0.15",
     "typescript": "catalog:",
