@@ -10,8 +10,6 @@ export const Route = createFileRoute("/_authenticated/chat/$threadId")({
 
 function ChatThreadRoute() {
 	return (
-		<ChatLayout>
-			<Thread />
-		</ChatLayout>
+		<ChatLayout />
 	);
 }

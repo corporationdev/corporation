@@ -9,8 +9,6 @@ export const Route = createFileRoute("/_authenticated/chat")({
 
 function ChatRoute() {
 	return (
-		<ChatLayout>
-			<Thread />
-		</ChatLayout>
+		<ChatLayout />
 	);
 }
