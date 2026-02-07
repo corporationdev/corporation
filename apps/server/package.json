@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@corporation/env": "workspace:*",
+    "@corporation/logger": "workspace:*",
     "@daytonaio/sdk": "catalog:",
     "agents": "catalog:",
     "effect": "catalog:",
