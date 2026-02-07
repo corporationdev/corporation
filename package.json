@@ -12,7 +12,13 @@
       "typescript": "^5",
       "convex": "^1.31.2",
       "better-auth": "1.4.9",
-      "@convex-dev/better-auth": "^0.10.9"
+      "@convex-dev/better-auth": "^0.10.9",
+      "@cloudflare/workers-types": "^4.20251213.0",
+      "hono": "^4.8.2",
+      "agents": "^0.3.9",
+      "sandbox-agent": "^0.1.5",
+      "alchemy": "^0.82.1",
+      "convex-helpers": "^0.1.111"
     }
   },
   "type": "module",
@@ -23,7 +29,10 @@
     "dev:native": "turbo -F native dev",
     "dev:desktop": "turbo -F desktop dev",
     "dev:server": "turbo -F @corporation/backend dev",
+    "dev:agent": "turbo -F @corporation/infra dev",
     "dev:setup": "turbo -F @corporation/backend dev:setup",
+    "deploy": "turbo -F @corporation/infra deploy",
+    "destroy": "turbo -F @corporation/infra destroy",
     "check": "ultracite check",
     "fix": "ultracite fix"
   },

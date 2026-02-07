@@ -1,5 +1,5 @@
 import { useForm } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
 
@@ -9,14 +9,8 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
-export default function SignInForm({
-	onSwitchToSignUp,
-}: {
-	onSwitchToSignUp: () => void;
-}) {
-	const navigate = useNavigate({
-		from: "/",
-	});
+export default function SignInForm() {
+	const navigate = useNavigate();
 
 	const form = useForm({
 		defaultValues: {
@@ -32,7 +26,7 @@ export default function SignInForm({
 				{
 					onSuccess: () => {
 						navigate({
-							to: "/dashboard",
+							to: "/",
 						});
 						toast.success("Sign in successful");
 					},
@@ -122,13 +116,9 @@ export default function SignInForm({
 			</form>
 
 			<div className="mt-4 text-center">
-				<Button
-					className="text-indigo-600 hover:text-indigo-800"
-					onClick={onSwitchToSignUp}
-					variant="link"
-				>
+				<Link className="text-indigo-600 hover:text-indigo-800" to="/signup">
 					Need an account? Sign Up
-				</Button>
+				</Link>
 			</div>
 		</div>
 	);

@@ -1,0 +1,20 @@
+{
+  "name": "@corporation/infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "alchemy dev",
+    "check-types": "tsc --noEmit",
+    "deploy": "alchemy deploy",
+    "destroy": "alchemy destroy"
+  },
+  "dependencies": {
+    "dotenv": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@corporation/config": "workspace:*",
+    "alchemy": "catalog:",
+    "typescript": "catalog:"
+  }
+}
