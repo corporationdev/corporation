@@ -1,3 +1,4 @@
+import { createLogger } from "@corporation/logger";
 import { Daytona, Image } from "@daytonaio/sdk";
 import { Agent, type Connection, callable } from "agents";
 import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
@@ -9,7 +10,11 @@ const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 const PREVIEW_URL_EXPIRY_SECONDS = 4 * 60 * 60;
 
+const log = createLogger("sandbox-agent");
+
 export class SandboxAgent extends Agent<Env, SandboxState> {
+	observability = null;
+
 	initialState: SandboxState = {
 		sandbox: null,
 		events: [],
@@ -27,11 +32,15 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 
 	@callable()
 	async sendMessage(content: string) {
+		const startTime = Date.now();
+		const needsInit =
+			!this.state.sandbox || this.state.sandbox.status !== "ready";
+
 		if (this.state.sandbox?.status === "error") {
 			throw new Error("Sandbox is in error state");
 		}
 
-		if (!this.state.sandbox || this.state.sandbox.status !== "ready") {
+		if (needsInit) {
 			await this.initSandbox();
 		}
 
@@ -42,6 +51,16 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 		await this.sandboxClient.postMessage(this.sessionId, {
 			message: content,
 		});
+
+		log.info(
+			{
+				sessionId: this.sessionId,
+				sandboxId: this.state.sandbox?.sandboxId,
+				needsInit,
+				durationMs: Date.now() - startTime,
+			},
+			"message sent"
+		);
 	}
 
 	private get sessionId(): string {
@@ -58,6 +77,7 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 	}
 
 	private async doInitSandbox() {
+		const startTime = Date.now();
 		const info: SandboxInfo = {
 			sandboxId: "",
 			status: "creating",
@@ -79,12 +99,17 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 
 			info.sandboxId = sandbox.id;
 			this.setState({ ...this.state, sandbox: info });
+			log.debug(
+				{ sandboxId: sandbox.id, sessionId: this.sessionId },
+				"sandbox created"
+			);
 
 			await sandbox.process.executeCommand(
 				`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
 			);
 
 			await this.waitForServerReady(sandbox);
+			log.debug({ sandboxId: sandbox.id }, "sandbox server ready");
 
 			const previewUrl = await sandbox.getSignedPreviewUrl(
 				PORT,
@@ -102,10 +127,28 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 			info.status = "ready";
 			this.setState({ ...this.state, sandbox: info });
 
+			log.info(
+				{
+					sessionId: this.sessionId,
+					sandboxId: sandbox.id,
+					durationMs: Date.now() - startTime,
+				},
+				"sandbox initialized"
+			);
+
 			this.startEventStream();
 		} catch (error) {
 			info.status = "error";
 			this.setState({ ...this.state, sandbox: info });
+			log.error(
+				{
+					sessionId: this.sessionId,
+					sandboxId: info.sandboxId || undefined,
+					durationMs: Date.now() - startTime,
+					err: error,
+				},
+				"sandbox init failed"
+			);
 			throw error;
 		}
 	}
@@ -143,6 +186,7 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 		}
 
 		if (!exists) {
+			log.info("creating snapshot, this may take a while");
 			await this.daytona.snapshot.create({
 				name: SNAPSHOT_NAME,
 				image: Image.base("ubuntu:22.04").runCommands(
@@ -151,6 +195,7 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 					"sandbox-agent install-agent claude"
 				),
 			});
+			log.info("snapshot created");
 		}
 	}
 
@@ -159,6 +204,11 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 		if (!sandbox || sandbox.status !== "ready") {
 			return;
 		}
+
+		log.debug(
+			{ sessionId: this.sessionId, sandboxId: sandbox.sandboxId },
+			"reconnecting"
+		);
 
 		try {
 			const daySandbox = await this.daytona.get(sandbox.sandboxId);
@@ -174,7 +224,10 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 
 			this.startEventStream();
 		} catch (error) {
-			console.error("Failed to reconnect to session:", error);
+			log.error(
+				{ sessionId: this.sessionId, sandboxId: sandbox.sandboxId, err: error },
+				"reconnect failed"
+			);
 			this.setState({
 				...this.state,
 				sandbox: { ...sandbox, status: "error" },
@@ -196,6 +249,11 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 		const lastSequence = lastEvent?.sequence ?? 0;
 		const client = this.sandboxClient;
 
+		log.debug(
+			{ sessionId: this.sessionId, offset: lastSequence },
+			"sse stream starting"
+		);
+
 		const stream = async () => {
 			try {
 				for await (const event of client.streamEvents(this.sessionId, {
@@ -211,7 +269,10 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 				}
 			} catch (error) {
 				if (!this.sseAbortController?.signal.aborted) {
-					console.error("SSE stream error:", error);
+					log.error(
+						{ sessionId: this.sessionId, offset: lastSequence, err: error },
+						"sse stream error"
+					);
 				}
 			} finally {
 				this.sseAbortController = null;

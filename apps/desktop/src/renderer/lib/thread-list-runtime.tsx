@@ -45,6 +45,7 @@ function ThreadRuntime({
 
 	const sendMessage = useCallback(
 		async (content: string) => {
+			console.log("sending message", { content, threadId });
 			if (threadId === NEW_CHAT_ID) {
 				return;
 			}
