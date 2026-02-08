@@ -38,7 +38,8 @@
     "deploy": "turbo -F @corporation/infra deploy",
     "destroy": "turbo -F @corporation/infra destroy",
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "fix:force": "ultracite fix --unsafe"
   },
   "dependencies": {
     "@corporation/env": "workspace:*",

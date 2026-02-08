@@ -17,7 +17,9 @@ export function ChatLayout() {
 	const [copied, setCopied] = useState(false);
 
 	const copyInspectorUrl = useCallback(() => {
-		if (!inspectorUrl) return;
+		if (!inspectorUrl) {
+			return;
+		}
 		navigator.clipboard.writeText(inspectorUrl);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2000);
