@@ -4,11 +4,12 @@ export type SandboxInfo = {
 	sandboxId: string;
 	status: "creating" | "ready" | "error";
 	createdAt: string;
+	previewUrl?: string;
+	errorMessage?: string;
 };
 
 export type SandboxState = {
 	sandbox: SandboxInfo | null;
-	previewUrl: string | null;
 	events: UniversalEvent[];
 };
 

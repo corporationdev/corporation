@@ -8,7 +8,6 @@ type SandboxStore = SandboxState & {
 
 const initialState: SandboxState = {
 	sandbox: null,
-	previewUrl: null,
 	events: [],
 };
 

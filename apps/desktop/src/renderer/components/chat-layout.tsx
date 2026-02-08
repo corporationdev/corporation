@@ -12,7 +12,7 @@ import {
 import { useSandboxStore } from "@/stores/sandbox-store";
 
 export function ChatLayout() {
-	const previewUrl = useSandboxStore((s) => s.previewUrl);
+	const previewUrl = useSandboxStore((s) => s.sandbox?.previewUrl);
 	const inspectorUrl = previewUrl ? `${previewUrl}/ui/` : null;
 	const [copied, setCopied] = useState(false);
 
