@@ -1,19 +1,30 @@
 import {
 	type AppendMessage,
 	AssistantRuntimeProvider,
+	type ThreadMessageLike,
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { env } from "@corporation/env/web";
+import type {
+	SandboxAgentMethods,
+	SandboxState,
+} from "@corporation/server/agent-types";
 import { useMatch } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { useMutation } from "convex/react";
-import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
-import type { UniversalEvent } from "sandbox-agent";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
+import { usePermissionStore } from "@/stores/permission-store";
+import { useSandboxStore } from "@/stores/sandbox-store";
 
-import { convertEventsToMessages } from "./convert-events";
+import { type ItemState, processEvents } from "./convert-events";
 
 const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
@@ -25,24 +36,57 @@ function ThreadRuntime({
 	threadId: string;
 	children: ReactNode;
 }) {
-	const [events, setEvents] = useState<UniversalEvent[]>([]);
+	const setSandboxState = useSandboxStore((s) => s.setSandboxState);
+	const resetSandbox = useSandboxStore((s) => s.reset);
+	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
+	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
+	const resetPermissions = usePermissionStore((s) => s.reset);
 	const touchThread = useMutation(api.agentSessions.touch);
 
-	const agent = useAgent({
+	const itemStatesRef = useRef(new Map<string, ItemState>());
+	const offsetRef = useRef(0);
+	const [threadState, setThreadState] = useState<{
+		messages: ThreadMessageLike[];
+		isRunning: boolean;
+	}>({ messages: [], isRunning: false });
+
+	const handleStateUpdate = useCallback(
+		(state: SandboxState) => {
+			const result = processEvents(
+				state.events,
+				itemStatesRef.current,
+				offsetRef.current,
+				onPermissionEvent
+			);
+			console.log("messages", result.messages);
+			offsetRef.current = result.offset;
+			setThreadState(result);
+			setSandboxState(state);
+		},
+		[setSandboxState, onPermissionEvent]
+	);
+
+	const agent = useAgent<SandboxAgentMethods, SandboxState>({
 		agent: "sandbox-agent",
 		name: threadId,
 		host: SERVER_URL,
-		onMessage: (event) => {
-			try {
-				const data = JSON.parse(event.data);
-				if (data.type === "event") {
-					setEvents((prev) => [...prev, data.data as UniversalEvent]);
-				}
-			} catch {
-				// Ignore parse errors
-			}
-		},
+		onStateUpdate: handleStateUpdate,
 	});
+
+	useEffect(() => {
+		if (agent) {
+			setReplyPermission((permissionId, reply) =>
+				agent.stub.replyPermission(permissionId, reply)
+			);
+		}
+		return () => {
+			setReplyPermission(null);
+			resetSandbox();
+			resetPermissions();
+			itemStatesRef.current = new Map();
+			offsetRef.current = 0;
+		};
+	}, [agent, setReplyPermission, resetSandbox, resetPermissions]);
 
 	const sendMessage = useCallback(
 		async (content: string) => {
@@ -52,19 +96,14 @@ function ThreadRuntime({
 			await touchThread({
 				id: threadId as Id<"agentSessions">,
 			});
-			agent?.send(JSON.stringify({ type: "send_message", content }));
+			await agent?.stub.sendMessage(content);
 		},
 		[agent, threadId, touchThread]
 	);
 
-	const { messages, isRunning } = useMemo(
-		() => convertEventsToMessages(events),
-		[events]
-	);
-
 	const runtime = useExternalStoreRuntime({
-		isRunning,
-		messages,
+		isRunning: threadState.isRunning,
+		messages: threadState.messages,
 		convertMessage: (message) => message,
 		onNew: async (message: AppendMessage) => {
 			if (threadId === NEW_CHAT_ID) {

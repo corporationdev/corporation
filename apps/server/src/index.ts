@@ -4,10 +4,6 @@ import { Hono } from "hono";
 // biome-ignore lint/performance/noBarrelFile: Cloudflare requires DO classes exported from the entry point
 export { SandboxAgent } from "./sandbox-agent";
 
-type Env = {
-	SandboxAgent: DurableObjectNamespace;
-};
-
 const app = new Hono<{ Bindings: Env }>();
 
 app.get("/", (c) => c.text("OK"));

@@ -1,0 +1,17 @@
+{
+  "name": "@corporation/logger",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "pino": "catalog:",
+    "pino-pretty": "catalog:"
+  },
+  "devDependencies": {
+    "@corporation/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
