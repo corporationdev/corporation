@@ -11,7 +11,7 @@ import type {
 	SandboxAgentMethods,
 	SandboxState,
 } from "@corporation/server/agent-types";
-import { useMatch } from "@tanstack/react-router";
+import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { useMutation } from "convex/react";
 import {
@@ -21,6 +21,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
 import { useSandboxStore } from "@/stores/sandbox-store";
 
@@ -36,12 +37,20 @@ function ThreadRuntime({
 	threadId: string;
 	children: ReactNode;
 }) {
+	const isNewThread = threadId === NEW_CHAT_ID;
+
 	const setSandboxState = useSandboxStore((s) => s.setSandboxState);
 	const resetSandbox = useSandboxStore((s) => s.reset);
 	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
 	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
 	const resetPermissions = usePermissionStore((s) => s.reset);
 	const touchThread = useMutation(api.agentSessions.touch);
+	const createThread = useMutation(api.agentSessions.create);
+	const navigate = useNavigate();
+	const setPendingMessage = usePendingMessageStore((s) => s.setPendingMessage);
+	const consumePendingMessage = usePendingMessageStore(
+		(s) => s.consumePendingMessage
+	);
 
 	const itemStatesRef = useRef(new Map<string, ItemState>());
 	const offsetRef = useRef(0);
@@ -71,10 +80,11 @@ function ThreadRuntime({
 		name: threadId,
 		host: SERVER_URL,
 		onStateUpdate: handleStateUpdate,
+		enabled: !isNewThread,
 	});
 
 	useEffect(() => {
-		if (agent) {
+		if (agent && !isNewThread) {
 			setReplyPermission((permissionId, reply) =>
 				agent.stub.replyPermission(permissionId, reply)
 			);
@@ -86,36 +96,49 @@ function ThreadRuntime({
 			itemStatesRef.current = new Map();
 			offsetRef.current = 0;
 		};
-	}, [agent, setReplyPermission, resetSandbox, resetPermissions]);
+	}, [agent, isNewThread, setReplyPermission, resetSandbox, resetPermissions]);
 
-	const sendMessage = useCallback(
-		async (content: string) => {
-			if (threadId === NEW_CHAT_ID) {
-				return;
-			}
-			await touchThread({
-				id: threadId as Id<"agentSessions">,
-			});
-			await agent?.stub.sendMessage(content);
-		},
-		[agent, threadId, touchThread]
-	);
+	// Drain pending message after navigating to a real thread
+	useEffect(() => {
+		if (isNewThread || !agent) {
+			return;
+		}
+
+		const pending = consumePendingMessage();
+		if (!pending) {
+			return;
+		}
+
+		agent.ready.then(async () => {
+			await touchThread({ id: threadId as Id<"agentSessions"> });
+			await agent.stub.sendMessage(pending);
+		});
+	}, [agent, isNewThread, threadId, touchThread, consumePendingMessage]);
 
 	const runtime = useExternalStoreRuntime({
 		isRunning: threadState.isRunning,
 		messages: threadState.messages,
 		convertMessage: (message) => message,
 		onNew: async (message: AppendMessage) => {
-			if (threadId === NEW_CHAT_ID) {
-				return;
-			}
 			const text = message.content
 				.filter(
 					(part): part is { type: "text"; text: string } => part.type === "text"
 				)
 				.map((part) => part.text)
 				.join("");
-			await sendMessage(text);
+
+			if (isNewThread) {
+				const newThreadId = await createThread({ title: "New Chat" });
+				setPendingMessage(text);
+				navigate({
+					to: "/chat/$threadId",
+					params: { threadId: newThreadId },
+				});
+				return;
+			}
+
+			await touchThread({ id: threadId as Id<"agentSessions"> });
+			await agent?.stub.sendMessage(text);
 		},
 	});
 

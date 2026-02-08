@@ -48,20 +48,11 @@ export const ThreadList: FC = () => {
 
 const ThreadListNew: FC = () => {
 	const navigate = useNavigate();
-	const createThread = useMutation(api.agentSessions.create);
-
-	const handleNewThread = async () => {
-		const threadId = await createThread({ title: "New Chat" });
-		navigate({
-			to: "/chat/$threadId",
-			params: { threadId },
-		});
-	};
 
 	return (
 		<Button
 			className="h-9 justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted"
-			onClick={handleNewThread}
+			onClick={() => navigate({ to: "/chat" })}
 			variant="outline"
 		>
 			<PlusIcon className="size-4" />
