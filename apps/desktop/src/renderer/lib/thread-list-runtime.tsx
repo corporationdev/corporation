@@ -13,14 +13,35 @@ import type {
 import { useMatch } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { useMutation } from "convex/react";
-import { type ReactNode, useCallback, useEffect, useMemo } from "react";
-
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import type { PermissionEventData, UniversalEvent } from "sandbox-agent";
+import { usePermissionStore } from "@/stores/permission-store";
 import { useSandboxStore } from "@/stores/sandbox-store";
 
 import { convertEventsToMessages } from "./convert-events";
 
 const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
+
+function processPermissionEvents(
+	events: UniversalEvent[],
+	offset: number,
+	onPermissionEvent: (
+		type: "permission.requested" | "permission.resolved",
+		data: PermissionEventData
+	) => void
+): number {
+	for (let i = offset; i < events.length; i++) {
+		const event = events[i];
+		if (
+			event.type === "permission.requested" ||
+			event.type === "permission.resolved"
+		) {
+			onPermissionEvent(event.type, event.data as PermissionEventData);
+		}
+	}
+	return events.length;
+}
 
 function ThreadRuntime({
 	threadId,
@@ -31,23 +52,47 @@ function ThreadRuntime({
 }) {
 	const events = useSandboxStore((s) => s.events);
 	const setSandboxState = useSandboxStore((s) => s.setSandboxState);
-	const reset = useSandboxStore((s) => s.reset);
+	const resetSandbox = useSandboxStore((s) => s.reset);
+	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
+	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
+	const resetPermissions = usePermissionStore((s) => s.reset);
 	const touchThread = useMutation(api.agentSessions.touch);
+	const eventOffsetRef = useRef(0);
 
-	useEffect(() => {
-		return () => reset();
-	}, [reset]);
+	const handleStateUpdate = useCallback(
+		(state: SandboxState) => {
+			eventOffsetRef.current = processPermissionEvents(
+				state.events,
+				eventOffsetRef.current,
+				onPermissionEvent
+			);
+			setSandboxState(state);
+		},
+		[setSandboxState, onPermissionEvent]
+	);
 
 	const agent = useAgent<SandboxAgentMethods, SandboxState>({
 		agent: "sandbox-agent",
 		name: threadId,
 		host: SERVER_URL,
-		onStateUpdate: setSandboxState,
+		onStateUpdate: handleStateUpdate,
 	});
+
+	useEffect(() => {
+		if (agent) {
+			setReplyPermission((permissionId, reply) =>
+				agent.stub.replyPermission(permissionId, reply)
+			);
+		}
+		return () => {
+			setReplyPermission(null);
+			resetSandbox();
+			resetPermissions();
+		};
+	}, [agent, setReplyPermission, resetSandbox, resetPermissions]);
 
 	const sendMessage = useCallback(
 		async (content: string) => {
-			console.log("sending message", { content, threadId });
 			if (threadId === NEW_CHAT_ID) {
 				return;
 			}

@@ -15,4 +15,8 @@ export type SandboxState = {
 export type SandboxAgentMethods = {
 	get state(): SandboxState;
 	sendMessage(content: string): Promise<void>;
+	replyPermission(
+		permissionId: string,
+		reply: "once" | "always" | "reject"
+	): Promise<void>;
 };

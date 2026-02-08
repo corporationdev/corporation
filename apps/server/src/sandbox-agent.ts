@@ -30,6 +30,23 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 	}
 
 	@callable()
+	async replyPermission(
+		permissionId: string,
+		reply: "once" | "always" | "reject"
+	) {
+		if (!this.sandboxClient) {
+			throw new Error("Sandbox client not initialized");
+		}
+		await this.sandboxClient.replyPermission(this.sessionId, permissionId, {
+			reply,
+		});
+		log.info(
+			{ sessionId: this.sessionId, permissionId, reply },
+			"permission reply sent"
+		);
+	}
+
+	@callable()
 	async sendMessage(content: string) {
 		const startTime = Date.now();
 		const needsInit =

@@ -31,6 +31,7 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { PermissionOverlay } from "@/components/permission-request";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +61,7 @@ export const Thread: FC = () => {
 
 				<ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4 md:pb-6">
 					<ThreadScrollToBottom />
+					<PermissionOverlay />
 					<Composer />
 				</ThreadPrimitive.ViewportFooter>
 			</ThreadPrimitive.Viewport>
