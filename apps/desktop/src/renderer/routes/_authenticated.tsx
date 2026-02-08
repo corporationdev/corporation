@@ -9,12 +9,18 @@ export type AuthenticatedContext = {
 	session: { user: User; session: Session };
 };
 
+let cachedSession: AuthenticatedContext["session"] | null = null;
+
 export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async (): Promise<AuthenticatedContext> => {
+		if (cachedSession) {
+			return { session: cachedSession };
+		}
 		const session = await authClient.getSession();
 		if (!session.data) {
 			throw redirect({ to: "/login" });
 		}
+		cachedSession = session.data;
 		return { session: session.data };
 	},
 	component: AuthenticatedLayout,

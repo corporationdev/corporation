@@ -9,7 +9,7 @@ import {
 	RotateCcwIcon,
 	Trash2Icon,
 } from "lucide-react";
-import type { FC } from "react";
+import { type FC, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,29 +18,39 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
+import { convexSessionToLocal } from "@/lib/cache/mappers";
+import { useCachedQuery } from "@/lib/cache/use-cached-query";
 import { cn } from "@/lib/utils";
 
 export const ThreadList: FC = () => {
-	const threads = useQuery(api.agentSessions.list, {});
-	const regularThreads = (threads ?? []).filter(
-		(thread) => thread.archivedAt === null
+	const remoteThreads = useQuery(api.agentSessions.list, {});
+
+	const readCache = useCallback(() => window.localCache.sessions.getAll(), []);
+	const writeCache = useCallback(
+		(remote: NonNullable<typeof remoteThreads>) => {
+			window.localCache.sessions.replaceAll(remote.map(convexSessionToLocal));
+		},
+		[]
 	);
+
+	const { data: threads } = useCachedQuery({
+		readCache,
+		writeCache,
+		remoteData: remoteThreads,
+	});
+
+	const regularThreads = threads.filter((thread) => thread.archivedAt === null);
 
 	return (
 		<div className="flex flex-col gap-1">
 			<ThreadListNew />
-			{threads === undefined ? (
-				<ThreadListSkeleton />
-			) : (
-				regularThreads.map((thread) => (
-					<ThreadListItem
-						id={thread._id}
-						key={thread._id}
-						title={thread.title || "New Chat"}
-					/>
-				))
-			)}
+			{regularThreads.map((thread) => (
+				<ThreadListItem
+					id={thread.id as Id<"agentSessions">}
+					key={thread.id}
+					title={thread.title || "New Chat"}
+				/>
+			))}
 			<ArchivedThreadList />
 		</div>
 	);
@@ -58,26 +68,6 @@ const ThreadListNew: FC = () => {
 			<PlusIcon className="size-4" />
 			New Thread
 		</Button>
-	);
-};
-
-const ThreadListSkeleton: FC = () => {
-	const skeletonKeys = [
-		"skeleton-0",
-		"skeleton-1",
-		"skeleton-2",
-		"skeleton-3",
-		"skeleton-4",
-	] as const;
-
-	return (
-		<div className="flex flex-col gap-1">
-			{skeletonKeys.map((key) => (
-				<div className="flex h-9 items-center px-3" key={key}>
-					<Skeleton className="h-4 w-full" />
-				</div>
-			))}
-		</div>
 	);
 };
 
@@ -171,10 +161,24 @@ const ThreadListItemMore: FC<{
 
 export const ArchivedThreadList: FC = () => {
 	const navigate = useNavigate();
-	const threads = useQuery(api.agentSessions.list, {});
+	const remoteThreads = useQuery(api.agentSessions.list, {});
 	const updateThread = useMutation(api.agentSessions.update);
 
-	const archivedThreads = (threads ?? []).filter(
+	const readCache = useCallback(() => window.localCache.sessions.getAll(), []);
+	const writeCache = useCallback(
+		(remote: NonNullable<typeof remoteThreads>) => {
+			window.localCache.sessions.replaceAll(remote.map(convexSessionToLocal));
+		},
+		[]
+	);
+
+	const { data: threads } = useCachedQuery({
+		readCache,
+		writeCache,
+		remoteData: remoteThreads,
+	});
+
+	const archivedThreads = threads.filter(
 		(thread) => thread.archivedAt !== null
 	);
 
@@ -194,14 +198,14 @@ export const ArchivedThreadList: FC = () => {
 			{archivedThreads.map((thread) => (
 				<div
 					className="group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted"
-					key={thread._id}
+					key={thread.id}
 				>
 					<button
 						className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-muted-foreground text-sm"
 						onClick={() =>
 							navigate({
 								to: "/chat/$threadId",
-								params: { threadId: thread._id },
+								params: { threadId: thread.id },
 							})
 						}
 						type="button"
@@ -210,7 +214,7 @@ export const ArchivedThreadList: FC = () => {
 					</button>
 					<Button
 						className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
-						onClick={() => handleUnarchive(thread._id)}
+						onClick={() => handleUnarchive(thread.id as Id<"agentSessions">)}
 						size="icon"
 						variant="ghost"
 					>

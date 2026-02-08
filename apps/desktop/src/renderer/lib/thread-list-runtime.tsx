@@ -24,7 +24,7 @@ import {
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
 import { useSandboxStore } from "@/stores/sandbox-store";
-
+import { useCachedEvents } from "./cache/use-cached-events";
 import { type ItemState, processEvents } from "./convert-events";
 
 const SERVER_URL = env.VITE_SERVER_URL;
@@ -52,12 +52,26 @@ function ThreadRuntime({
 		(s) => s.consumePendingMessage
 	);
 
+	const { cachedEvents, persistNewEvents } = useCachedEvents(threadId);
+
 	const itemStatesRef = useRef(new Map<string, ItemState>());
 	const offsetRef = useRef(0);
 	const [threadState, setThreadState] = useState<{
 		messages: ThreadMessageLike[];
 		isRunning: boolean;
-	}>({ messages: [], isRunning: false });
+	}>(() => {
+		if (cachedEvents.length === 0) {
+			return { messages: [], isRunning: false };
+		}
+		const result = processEvents(
+			cachedEvents,
+			itemStatesRef.current,
+			0,
+			onPermissionEvent
+		);
+		offsetRef.current = result.offset;
+		return { messages: result.messages, isRunning: false };
+	});
 
 	const handleStateUpdate = useCallback(
 		(state: SandboxState) => {
@@ -67,12 +81,12 @@ function ThreadRuntime({
 				offsetRef.current,
 				onPermissionEvent
 			);
-			console.log("messages", result.messages);
 			offsetRef.current = result.offset;
 			setThreadState(result);
 			setSandboxState(state);
+			persistNewEvents(state.events);
 		},
-		[setSandboxState, onPermissionEvent]
+		[setSandboxState, onPermissionEvent, persistNewEvents]
 	);
 
 	const agent = useAgent<SandboxAgentMethods, SandboxState>({
