@@ -17,6 +17,8 @@
     "agents": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:",
+    "rivetkit": "catalog:",
+    "@rivetkit/cloudflare-workers": "catalog:",
     "sandbox-agent": "catalog:"
   },
   "devDependencies": {
