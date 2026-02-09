@@ -1,17 +1,15 @@
-import { routeAgentRequest } from "agents";
+import { createHandler } from "@rivetkit/cloudflare-workers";
 import { Hono } from "hono";
+import { registry } from "./registry";
 
-// biome-ignore lint/performance/noBarrelFile: Cloudflare requires DO classes exported from the entry point
-export { SandboxAgent } from "./sandbox-agent";
-
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono();
 
 app.get("/", (c) => c.text("OK"));
 app.get("/health", (c) => c.text("OK"));
 
-app.all("/agents/*", async (c) => {
-	const response = await routeAgentRequest(c.req.raw, c.env);
-	return response ?? c.text("Agent not found", 404);
+const { handler, ActorHandler } = createHandler(registry, {
+	fetch: app.fetch,
 });
 
-export default app;
+export { ActorHandler };
+export default handler;

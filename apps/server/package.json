@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./agent-types": "./src/agent-types.ts"
+    "./registry": "./src/registry.ts"
   },
   "scripts": {
     "check-types": "tsc -b"
@@ -14,9 +14,10 @@
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
     "@daytonaio/sdk": "catalog:",
-    "agents": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:",
+    "rivetkit": "catalog:",
+    "@rivetkit/cloudflare-workers": "catalog:",
     "sandbox-agent": "catalog:"
   },
   "devDependencies": {

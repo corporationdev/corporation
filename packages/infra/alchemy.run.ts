@@ -1,15 +1,21 @@
 import alchemy from "alchemy";
-import { DurableObjectNamespace, Worker } from "alchemy/cloudflare";
+import {
+	DurableObjectNamespace,
+	KVNamespace,
+	Worker,
+} from "alchemy/cloudflare";
 import { config } from "dotenv";
 
 config({ path: "../../apps/server/.env" });
 
 const app = await alchemy("corporation");
 
-const sandboxAgent = DurableObjectNamespace("sandbox-agent", {
-	className: "SandboxAgent",
+const actorDO = DurableObjectNamespace("actor-do", {
+	className: "ActorHandler",
 	sqlite: true,
 });
+
+const actorKV = await KVNamespace("actor-kv");
 
 export const server = await Worker("agent-server", {
 	cwd: "../../apps/server",
@@ -18,7 +24,8 @@ export const server = await Worker("agent-server", {
 	bindings: {
 		DAYTONA_API_KEY: alchemy.secret(process.env.DAYTONA_API_KEY),
 		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
-		SandboxAgent: sandboxAgent,
+		ACTOR_DO: actorDO,
+		ACTOR_KV: actorKV,
 	},
 	dev: {
 		port: 3000,

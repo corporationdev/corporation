@@ -1,241 +1,135 @@
+import { env } from "cloudflare:workers";
 import { createLogger } from "@corporation/logger";
 import { Daytona, Image, type Sandbox } from "@daytonaio/sdk";
-import { Agent, callable } from "agents";
+import { actor } from "rivetkit";
+import type { UniversalEvent } from "sandbox-agent";
 import {
 	SandboxAgent as SandboxAgentClient,
 	SandboxAgentError,
 } from "sandbox-agent";
-import type { SandboxInfo, SandboxState } from "./agent-types";
 
 const PORT = 3000;
 const SNAPSHOT_NAME = "sandbox-agent-ready";
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
-const SANDBOX_START_TIMEOUT = 120;
 
 const log = createLogger("sandbox-agent");
 
-export class SandboxAgent extends Agent<Env, SandboxState> {
-	initialState: SandboxState = {
-		sandbox: null,
-		events: [],
-	};
+// ---------------------------------------------------------------------------
+// State & Vars types
+// ---------------------------------------------------------------------------
 
-	private readonly daytona = new Daytona({ apiKey: this.env.DAYTONA_API_KEY });
-	private sandboxClient: SandboxAgentClient | null = null;
-	private sseAbortController: AbortController | null = null;
-	private ensureReadyPromise: Promise<SandboxAgentClient> | null = null;
+export type SessionState = {
+	sandboxId: string;
+	baseUrl: string;
+	sessionId: string;
+	events: UniversalEvent[];
+};
 
-	private get isStreaming(): boolean {
-		return (
-			this.sseAbortController !== null &&
-			!this.sseAbortController.signal.aborted
-		);
+export type SessionVars = {
+	client: SandboxAgentClient;
+};
+
+// ---------------------------------------------------------------------------
+// Module-scope helpers (no actor context needed)
+// ---------------------------------------------------------------------------
+
+async function ensureSnapshot(daytona: Daytona): Promise<void> {
+	let exists = true;
+	try {
+		await daytona.snapshot.get(SNAPSHOT_NAME);
+	} catch {
+		exists = false;
 	}
 
-	private get sessionId(): string {
-		return this.ctx.id.toString();
-	}
-
-	// ---------------------------------------------------------------------------
-	// Callable RPC methods
-	// ---------------------------------------------------------------------------
-
-	@callable()
-	async sendMessage(content: string) {
-		const startTime = Date.now();
-		const client = await this.ensureSandboxReady();
-
-		await client.postMessage(this.sessionId, {
-			message: content,
+	if (!exists) {
+		log.info("creating snapshot, this may take a while");
+		await daytona.snapshot.create({
+			name: SNAPSHOT_NAME,
+			image: Image.base("ubuntu:22.04").runCommands(
+				"apt-get update && apt-get install -y curl ca-certificates",
+				"curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
+				"sandbox-agent install-agent claude"
+			),
 		});
-
-		log.info(
-			{
-				sessionId: this.sessionId,
-				sandboxId: this.state.sandbox?.sandboxId,
-				durationMs: Date.now() - startTime,
-			},
-			"message sent"
-		);
+		log.info("snapshot created");
 	}
+}
 
-	@callable()
-	async replyPermission(
-		permissionId: string,
-		reply: "once" | "always" | "reject"
-	) {
-		const client = await this.ensureSandboxReady();
+async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
+	await sandbox.process.executeCommand(
+		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
+	);
+	await waitForServerReady(sandbox);
+	log.debug({ sandboxId: sandbox.id }, "sandbox-agent server ready");
+}
 
-		await client.replyPermission(this.sessionId, permissionId, {
-			reply,
-		});
-		log.info(
-			{ sessionId: this.sessionId, permissionId, reply },
-			"permission reply sent"
-		);
-	}
+async function waitForServerReady(sandbox: Sandbox): Promise<void> {
+	const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
 
-	// ---------------------------------------------------------------------------
-	// Core lifecycle: ensureSandboxReady
-	// ---------------------------------------------------------------------------
-
-	private ensureSandboxReady(): Promise<SandboxAgentClient> {
-		this.ensureReadyPromise ??= this.doEnsureSandboxReady().finally(() => {
-			this.ensureReadyPromise = null;
-		});
-		return this.ensureReadyPromise;
-	}
-
-	private async doEnsureSandboxReady(): Promise<SandboxAgentClient> {
-		const sandbox = this.state.sandbox;
-
-		// Already fully ready and streaming
-		if (this.isStreaming && this.sandboxClient) {
-			return this.sandboxClient;
-		}
-
-		// No sandbox ever created
-		if (!sandbox) {
-			return this.createSandboxFromScratch();
-		}
-
-		// Sandbox in error state — clean up and start fresh
-		if (sandbox.status === "error") {
-			log.info(
-				{ sandboxId: sandbox.sandboxId },
-				"sandbox in error, recreating"
-			);
-			await this.cleanupSandbox(sandbox.sandboxId);
-			return this.createSandboxFromScratch();
-		}
-
-		// Sandbox exists but not connected — check Daytona state and recover
-		const daySandbox = await this.daytona.get(sandbox.sandboxId);
-		await daySandbox.refreshData();
-		const daytonaState = daySandbox.state;
-
-		if (
-			daytonaState === "destroyed" ||
-			daytonaState === "destroying" ||
-			daytonaState === "error" ||
-			daytonaState === "build_failed"
-		) {
-			log.info(
-				{ sandboxId: sandbox.sandboxId, daytonaState },
-				"sandbox gone, creating fresh"
-			);
-			await this.cleanupSandbox(sandbox.sandboxId);
-			return this.createSandboxFromScratch();
-		}
-
-		if (daytonaState === "stopped" || daytonaState === "archived") {
-			return this.wakeSandbox(sandbox);
-		}
-
-		if (daytonaState !== "started") {
-			await daySandbox.waitUntilStarted(SANDBOX_START_TIMEOUT);
-		}
-
-		return this.connectAndStream(daySandbox, sandbox);
-	}
-
-	// ---------------------------------------------------------------------------
-	// Lifecycle paths
-	// ---------------------------------------------------------------------------
-
-	private async createSandboxFromScratch(): Promise<SandboxAgentClient> {
-		const startTime = Date.now();
-		const info: SandboxInfo = {
-			sandboxId: "",
-			status: "creating",
-			createdAt: new Date().toISOString(),
-		};
-		this.updateSandboxInfo(info);
-
+	while (Date.now() < deadline) {
 		try {
-			await this.ensureSnapshot();
-
-			const sandbox = await this.daytona.create({
-				snapshot: SNAPSHOT_NAME,
-				envVars: { ANTHROPIC_API_KEY: this.env.ANTHROPIC_API_KEY },
-			});
-
-			info.sandboxId = sandbox.id;
-			this.updateSandboxInfo(info);
-			log.debug({ sandboxId: sandbox.id }, "sandbox created");
-
-			await this.bootSandboxAgent(sandbox);
-			const client = await this.connectAndStream(sandbox, info);
-
-			log.info(
-				{
-					sessionId: this.sessionId,
-					sandboxId: sandbox.id,
-					durationMs: Date.now() - startTime,
-				},
-				"sandbox created and ready"
+			const result = await sandbox.process.executeCommand(
+				`curl -sf http://localhost:${PORT}/v1/health`
 			);
-
-			return client;
-		} catch (error) {
-			info.status = "error";
-			info.errorMessage =
-				error instanceof Error ? error.message : String(error);
-			this.updateSandboxInfo(info);
-			log.error(
-				{ err: error, sandboxId: info.sandboxId || undefined },
-				"sandbox creation failed"
-			);
-			throw error;
+			if (result.exitCode === 0) {
+				return;
+			}
+		} catch {
+			// Server not ready yet
 		}
-	}
-
-	private async wakeSandbox(info: SandboxInfo): Promise<SandboxAgentClient> {
-		const startTime = Date.now();
-		const sandbox = await this.daytona.get(info.sandboxId);
-		await sandbox.start(SANDBOX_START_TIMEOUT);
-		log.debug({ sandboxId: info.sandboxId }, "sandbox started");
-
-		// Sandbox-agent process dies when sandbox stops — re-boot it
-		await this.bootSandboxAgent(sandbox);
-		const client = await this.connectAndStream(sandbox, info);
-
-		log.info(
-			{
-				sessionId: this.sessionId,
-				sandboxId: info.sandboxId,
-				durationMs: Date.now() - startTime,
-			},
-			"sandbox woken and ready"
+		await new Promise((resolve) =>
+			setTimeout(resolve, SERVER_POLL_INTERVAL_MS)
 		);
-
-		return client;
 	}
 
-	// ---------------------------------------------------------------------------
-	// Shared helpers
-	// ---------------------------------------------------------------------------
+	throw new Error("sandbox-agent server failed to start within timeout");
+}
 
-	private async connectAndStream(
-		sandbox: Sandbox,
-		info: SandboxInfo
-	): Promise<SandboxAgentClient> {
-		const previewUrl = await sandbox.getSignedPreviewUrl(PORT);
+// ---------------------------------------------------------------------------
+// Actor definition
+// ---------------------------------------------------------------------------
 
-		this.sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: previewUrl.url,
+export const sandboxAgent = actor({
+	// Runs once on actor creation — provisions the Daytona sandbox
+	createState: async (c): Promise<SessionState> => {
+		const daytona = new Daytona({ apiKey: env.DAYTONA_API_KEY });
+		await ensureSnapshot(daytona);
+
+		const sandbox = await daytona.create({
+			snapshot: SNAPSHOT_NAME,
+			envVars: { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY },
+			autoStopInterval: 0,
+		});
+
+		log.debug({ sandboxId: sandbox.id }, "sandbox created");
+
+		await bootSandboxAgent(sandbox);
+
+		const baseUrl = (await sandbox.getSignedPreviewUrl(PORT)).url;
+		const sessionId = c.key[0];
+		if (!sessionId) {
+			throw new Error("Actor key must contain a threadId");
+		}
+
+		log.info({ sandboxId: sandbox.id, sessionId }, "sandbox created and ready");
+
+		return { sandboxId: sandbox.id, baseUrl, sessionId, events: [] };
+	},
+
+	// Runs on every wake (including first creation) — reconnects HTTP client
+	createVars: async (c): Promise<SessionVars> => {
+		const client = await SandboxAgentClient.connect({
+			baseUrl: c.state.baseUrl,
 		});
 
 		// Create session — catch 409 if it already exists (reconnect case)
 		try {
-			await this.sandboxClient.createSession(this.sessionId, {
-				agent: "claude",
-			});
+			await client.createSession(c.state.sessionId, { agent: "claude" });
 		} catch (error) {
 			if (error instanceof SandboxAgentError && error.status === 409) {
 				log.debug(
-					{ sessionId: this.sessionId },
+					{ sessionId: c.state.sessionId },
 					"session already exists, reusing"
 				);
 			} else {
@@ -243,156 +137,95 @@ export class SandboxAgent extends Agent<Env, SandboxState> {
 			}
 		}
 
-		this.setState({
-			...this.state,
-			sandbox: {
-				...info,
-				status: "ready",
-				previewUrl: previewUrl.url,
-			},
-		});
+		return { client };
+	},
 
-		this.startEventStream(this.sandboxClient);
+	// Start the SSE event stream when the actor wakes.
+	// TODO: Migrate to `run` handler when available in rivetkit. `run` executes
+	// after the actor is fully ready and keeps it alive without waitUntil.
+	// Deferred with setTimeout because onWake runs before the actor is marked
+	// ready, and c.waitUntil / c.broadcast require the actor to be ready.
+	onWake: (c) => {
+		setTimeout(() => {
+			const lastSequence = c.state.events.at(-1)?.sequence ?? 0;
 
-		return this.sandboxClient;
-	}
+			log.debug(
+				{ sessionId: c.state.sessionId, offset: lastSequence },
+				"sse stream starting"
+			);
 
-	private async bootSandboxAgent(sandbox: Sandbox): Promise<void> {
-		await sandbox.process.executeCommand(
-			`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
-		);
-		await this.waitForServerReady(sandbox);
-		log.debug({ sandboxId: sandbox.id }, "sandbox-agent server ready");
-	}
-
-	private startEventStream(client: SandboxAgentClient): void {
-		// Abort any existing stream before starting a new one
-		this.stopStreaming();
-
-		this.sseAbortController = new AbortController();
-		const { signal } = this.sseAbortController;
-
-		const lastEvent = this.state.events.at(-1);
-		const lastSequence = lastEvent?.sequence ?? 0;
-
-		log.debug(
-			{ sessionId: this.sessionId, offset: lastSequence },
-			"sse stream starting"
-		);
-
-		const stream = async () => {
-			try {
-				for await (const event of client.streamEvents(
-					this.sessionId,
-					{ offset: lastSequence },
-					signal
-				)) {
-					if (signal.aborted) {
-						break;
+			c.waitUntil(
+				(async () => {
+					try {
+						for await (const event of c.vars.client.streamEvents(
+							c.state.sessionId,
+							{ offset: lastSequence }
+						)) {
+							c.state.events.push(event);
+							c.broadcast("agentEvent", event);
+						}
+						log.debug(
+							{ sessionId: c.state.sessionId },
+							"sse stream ended normally"
+						);
+					} catch (error) {
+						log.error(
+							{ sessionId: c.state.sessionId, err: error },
+							"sse stream error"
+						);
 					}
-					this.setState({
-						...this.state,
-						events: [...this.state.events, event],
-					});
-				}
-				log.debug({ sessionId: this.sessionId }, "sse stream ended normally");
-			} catch (error) {
-				if (!signal.aborted) {
-					log.error(
-						{ sessionId: this.sessionId, err: error },
-						"sse stream error"
-					);
-				}
-			} finally {
-				// Clean up — next sendMessage will detect !isStreaming and reconnect
-				if (this.sseAbortController?.signal === signal) {
-					this.sseAbortController = null;
-				}
-			}
-		};
+				})()
+			);
+		}, 0);
+	},
 
-		stream();
-	}
-
-	private async waitForServerReady(sandbox: Sandbox): Promise<void> {
-		const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
-
-		while (Date.now() < deadline) {
-			try {
-				const result = await sandbox.process.executeCommand(
-					`curl -sf http://localhost:${PORT}/v1/health`
-				);
-				if (result.exitCode === 0) {
-					return;
-				}
-			} catch {
-				// Server not ready yet
-			}
-			await new Promise((resolve) =>
-				setTimeout(resolve, SERVER_POLL_INTERVAL_MS)
+	// Cleanup sandbox on actor destruction
+	onDestroy: async (c) => {
+		try {
+			const daytona = new Daytona({ apiKey: env.DAYTONA_API_KEY });
+			const sandbox = await daytona.get(c.state.sandboxId);
+			await sandbox.delete(30);
+			log.info({ sandboxId: c.state.sandboxId }, "sandbox deleted");
+		} catch (error) {
+			log.warn(
+				{ err: error, sandboxId: c.state.sandboxId },
+				"cleanup delete failed (may already be gone)"
 			);
 		}
+	},
 
-		throw new Error("sandbox-agent server failed to start within timeout");
-	}
+	options: {
+		noSleep: true,
+	},
 
-	private async ensureSnapshot(): Promise<void> {
-		let exists = true;
-		try {
-			await this.daytona.snapshot.get(SNAPSHOT_NAME);
-		} catch {
-			exists = false;
-		}
-
-		if (!exists) {
-			log.info("creating snapshot, this may take a while");
-			await this.daytona.snapshot.create({
-				name: SNAPSHOT_NAME,
-				image: Image.base("ubuntu:22.04").runCommands(
-					"apt-get update && apt-get install -y curl ca-certificates",
-					"curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
-					"sandbox-agent install-agent claude"
-				),
+	actions: {
+		postMessage: async (c, content: string) => {
+			await c.vars.client.postMessage(c.state.sessionId, {
+				message: content,
 			});
-			log.info("snapshot created");
-		}
-	}
+			log.info({ sessionId: c.state.sessionId }, "message sent");
+		},
 
-	// ---------------------------------------------------------------------------
-	// State management helpers
-	// ---------------------------------------------------------------------------
+		replyPermission: async (
+			c,
+			permissionId: string,
+			reply: "once" | "always" | "reject"
+		) => {
+			await c.vars.client.replyPermission(c.state.sessionId, permissionId, {
+				reply,
+			});
+			log.info(
+				{ sessionId: c.state.sessionId, permissionId, reply },
+				"permission reply sent"
+			);
+		},
 
-	private updateSandboxInfo(info: SandboxInfo): void {
-		this.setState({ ...this.state, sandbox: info });
-	}
+		// Client calls this on connect to catch up on missed events.
+		// Returns events with sequence > offset (matching sandbox-agent API semantics).
+		getTranscript: (c, offset: number) =>
+			c.state.events.filter((e) => (e.sequence ?? 0) > offset),
 
-	private resetState(): void {
-		this.stopStreaming();
-		this.sandboxClient = null;
-		this.setState({ sandbox: null, events: [] });
-	}
-
-	private stopStreaming(): void {
-		if (this.sseAbortController) {
-			this.sseAbortController.abort();
-			this.sseAbortController = null;
-		}
-	}
-
-	private async cleanupSandbox(sandboxId: string): Promise<void> {
-		this.stopStreaming();
-		this.sandboxClient = null;
-		if (sandboxId) {
-			try {
-				const sandbox = await this.daytona.get(sandboxId);
-				await sandbox.delete(30);
-			} catch (error) {
-				log.warn(
-					{ err: error, sandboxId },
-					"cleanup delete failed (may already be gone)"
-				);
-			}
-		}
-		this.resetState();
-	}
-}
+		// Expose preview URL for inspector button
+		getPreviewUrl: (c) => c.state.baseUrl,
+	},
+});
