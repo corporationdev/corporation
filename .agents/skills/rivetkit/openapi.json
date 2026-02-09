@@ -99,9 +99,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "actors"
-                  ]
+                  "required": ["actors"]
                 }
               }
             }
@@ -214,10 +212,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "actor",
-                    "created"
-                  ]
+                  "required": ["actor", "created"]
                 }
               }
             }
@@ -259,11 +254,7 @@
                     "nullable": true
                   }
                 },
-                "required": [
-                  "name",
-                  "runner_name_selector",
-                  "crash_policy"
-                ]
+                "required": ["name", "runner_name_selector", "crash_policy"]
               }
             }
           }
@@ -327,9 +318,7 @@
                       ]
                     }
                   },
-                  "required": [
-                    "actor"
-                  ]
+                  "required": ["actor"]
                 }
               }
             }
@@ -375,15 +364,11 @@
                             }
                           }
                         },
-                        "required": [
-                          "metadata"
-                        ]
+                        "required": ["metadata"]
                       }
                     }
                   },
-                  "required": [
-                    "names"
-                  ]
+                  "required": ["names"]
                 }
               }
             }
@@ -430,9 +415,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "value"
-                  ]
+                  "required": ["value"]
                 }
               }
             }
@@ -503,9 +486,7 @@
                 "properties": {
                   "args": {}
                 },
-                "required": [
-                  "args"
-                ],
+                "required": ["args"],
                 "additionalProperties": false
               }
             }
@@ -521,9 +502,7 @@
                   "properties": {
                     "output": {}
                   },
-                  "required": [
-                    "output"
-                  ],
+                  "required": ["output"],
                   "additionalProperties": false
                 }
               }

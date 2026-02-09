@@ -26,61 +26,52 @@ export type ItemState = {
 type ProcessResult = {
 	messages: ThreadMessageLike[];
 	isRunning: boolean;
-	offset: number;
 };
 
 /**
- * Incrementally process universal events into assistant-ui messages.
- *
- * Applies events from `offset` onward to the `itemStates` map, invokes
- * `onPermission` for permission events, then derives messages from the
- * full map. Returns the new offset for the next call.
+ * Apply a single event to the item states map and derive messages.
  */
-export function processEvents(
-	events: UniversalEvent[],
+export function processEvent(
+	event: UniversalEvent,
 	itemStates: Map<string, ItemState>,
-	offset: number,
 	onPermission?: (
 		type: "permission.requested" | "permission.resolved",
 		data: PermissionEventData
 	) => void
 ): ProcessResult {
-	for (let i = offset; i < events.length; i++) {
-		const event = events[i];
-		switch (event.type) {
-			case "item.started": {
-				const { item } = event.data as ItemEventData;
-				itemStates.set(item.item_id, { item, pendingDeltas: [] });
-				break;
-			}
-			case "item.delta": {
-				const { item_id, delta } = event.data as ItemDeltaData;
-				const state = itemStates.get(item_id);
-				if (state) {
-					state.pendingDeltas.push(delta);
-				}
-				break;
-			}
-			case "item.completed": {
-				const { item } = event.data as ItemEventData;
-				const state = itemStates.get(item.item_id);
-				if (state) {
-					state.item = item;
-					state.pendingDeltas = [];
-				}
-				break;
-			}
-			case "permission.requested":
-			case "permission.resolved": {
-				onPermission?.(event.type, event.data as PermissionEventData);
-				break;
-			}
-			default:
-				break;
+	switch (event.type) {
+		case "item.started": {
+			const { item } = event.data as ItemEventData;
+			itemStates.set(item.item_id, { item, pendingDeltas: [] });
+			break;
 		}
+		case "item.delta": {
+			const { item_id, delta } = event.data as ItemDeltaData;
+			const state = itemStates.get(item_id);
+			if (state) {
+				state.pendingDeltas.push(delta);
+			}
+			break;
+		}
+		case "item.completed": {
+			const { item } = event.data as ItemEventData;
+			const state = itemStates.get(item.item_id);
+			if (state) {
+				state.item = item;
+				state.pendingDeltas = [];
+			}
+			break;
+		}
+		case "permission.requested":
+		case "permission.resolved": {
+			onPermission?.(event.type, event.data as PermissionEventData);
+			break;
+		}
+		default:
+			break;
 	}
 
-	return { ...deriveMessages(itemStates), offset: events.length };
+	return deriveMessages(itemStates);
 }
 
 function addToolCallItem(
@@ -185,9 +176,7 @@ function convertItemToMessage(
 	return { id: item.item_id, role, content };
 }
 
-function deriveMessages(
-	itemStates: Map<string, ItemState>
-): Omit<ProcessResult, "offset"> {
+function deriveMessages(itemStates: Map<string, ItemState>): ProcessResult {
 	const { byMessageId } = collectToolParts(itemStates);
 	const messages: ThreadMessageLike[] = [];
 	let isRunning = false;

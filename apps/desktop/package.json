@@ -23,7 +23,7 @@
     "@tailwindcss/vite": "^4.0.15",
     "@tanstack/react-form": "^1.12.3",
     "@tanstack/react-router": "^1.141.1",
-    "agents": "catalog:",
+    "@rivetkit/react": "catalog:",
     "better-auth": "catalog:",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -44,6 +44,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
     "@corporation/config": "workspace:*",
     "@corporation/server": "workspace:*",
     "@tanstack/react-router-devtools": "^1.141.1",
