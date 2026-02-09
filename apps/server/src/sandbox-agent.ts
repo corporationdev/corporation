@@ -107,7 +107,10 @@ export const sandboxAgent = actor({
 		await bootSandboxAgent(sandbox);
 
 		const baseUrl = (await sandbox.getSignedPreviewUrl(PORT)).url;
-		const sessionId = c.key[0] ?? crypto.randomUUID();
+		const sessionId = c.key[0];
+		if (!sessionId) {
+			throw new Error("Actor key must contain a threadId");
+		}
 
 		log.info({ sandboxId: sandbox.id, sessionId }, "sandbox created and ready");
 
@@ -138,7 +141,9 @@ export const sandboxAgent = actor({
 	},
 
 	// Start the SSE event stream when the actor wakes.
-	// We defer with setTimeout because onWake runs before the actor is marked
+	// TODO: Migrate to `run` handler when available in rivetkit. `run` executes
+	// after the actor is fully ready and keeps it alive without waitUntil.
+	// Deferred with setTimeout because onWake runs before the actor is marked
 	// ready, and c.waitUntil / c.broadcast require the actor to be ready.
 	onWake: (c) => {
 		setTimeout(() => {
