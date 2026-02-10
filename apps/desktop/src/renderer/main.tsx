@@ -1,5 +1,6 @@
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { env } from "@corporation/env/web";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { ConvexReactClient } from "convex/react";
 import ReactDOM from "react-dom/client";
@@ -10,6 +11,7 @@ import Loader from "./components/loader";
 import { routeTree } from "./routeTree.gen";
 
 const convex = new ConvexReactClient(env.VITE_CONVEX_URL);
+const queryClient = new QueryClient();
 
 const router = createRouter({
 	routeTree,
@@ -18,9 +20,11 @@ const router = createRouter({
 	context: {},
 	Wrap({ children }: { children: React.ReactNode }) {
 		return (
-			<ConvexBetterAuthProvider authClient={authClient} client={convex}>
-				{children}
-			</ConvexBetterAuthProvider>
+			<QueryClientProvider client={queryClient}>
+				<ConvexBetterAuthProvider authClient={authClient} client={convex}>
+					{children}
+				</ConvexBetterAuthProvider>
+			</QueryClientProvider>
 		);
 	},
 });

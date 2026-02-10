@@ -38,6 +38,7 @@
     "dev:server": "turbo -F @corporation/backend dev",
     "dev:agent": "turbo -F @corporation/infra dev",
     "dev:setup": "turbo -F @corporation/backend dev:setup",
+    "desktop:generate": "bun run --cwd apps/desktop db:generate",
     "deploy": "turbo -F @corporation/infra deploy",
     "destroy": "turbo -F @corporation/infra destroy",
     "check": "ultracite check",

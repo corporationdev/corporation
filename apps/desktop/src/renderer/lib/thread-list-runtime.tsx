@@ -19,6 +19,11 @@ import {
 	useState,
 } from "react";
 import type { UniversalEvent } from "sandbox-agent";
+import { useOptimisticTouchThreadMutation } from "@/lib/agent-session-mutations";
+import {
+	appendEventsToCache,
+	getCachedEvents,
+} from "@/lib/cache/cached-events";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
 
@@ -76,7 +81,7 @@ function ConnectedThreadRuntime({
 	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
 	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
 	const resetPermissions = usePermissionStore((s) => s.reset);
-	const touchThread = useMutation(api.agentSessions.touch);
+	const touchThread = useOptimisticTouchThreadMutation();
 	const consumePendingMessage = usePendingMessageStore(
 		(s) => s.consumePendingMessage
 	);
@@ -85,22 +90,45 @@ function ConnectedThreadRuntime({
 	const lastSequenceRef = useRef(0);
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<UniversalEvent[]>([]);
+	const [cacheHydrated, setCacheHydrated] = useState(false);
 	const [threadState, setThreadState] = useState<{
 		messages: ThreadMessageLike[];
 		isRunning: boolean;
 	}>({ messages: [], isRunning: false });
 
-	const handleEvent = useCallback(
-		(event: UniversalEvent) => {
-			const result = processEvent(
-				event,
-				itemStatesRef.current,
-				onPermissionEvent
-			);
-			lastSequenceRef.current = event.sequence;
-			setThreadState(result);
+	const applyEvents = useCallback(
+		(events: UniversalEvent[], persist: boolean) => {
+			const newEvents: UniversalEvent[] = [];
+			let lastResult: {
+				messages: ThreadMessageLike[];
+				isRunning: boolean;
+			} | null = null;
+
+			for (const event of events) {
+				if (event.sequence <= lastSequenceRef.current) {
+					continue;
+				}
+
+				lastResult = processEvent(
+					event,
+					itemStatesRef.current,
+					onPermissionEvent
+				);
+				lastSequenceRef.current = event.sequence;
+				newEvents.push(event);
+			}
+
+			if (lastResult) {
+				setThreadState(lastResult);
+			}
+
+			if (persist && newEvents.length > 0) {
+				appendEventsToCache(threadId, newEvents).catch(() => {
+					// Ignore write failures; cache will be refreshed on next transcript sync.
+				});
+			}
 		},
-		[onPermissionEvent]
+		[onPermissionEvent, threadId]
 	);
 
 	const actor = useActor({
@@ -108,9 +136,35 @@ function ConnectedThreadRuntime({
 		key: [threadId],
 	});
 
+	useEffect(() => {
+		let cancelled = false;
+		setCacheHydrated(false);
+
+		getCachedEvents(threadId)
+			.then((cachedEvents) => {
+				if (cancelled) {
+					return;
+				}
+				applyEvents(cachedEvents, false);
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setCacheHydrated(true);
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [threadId, applyEvents]);
+
 	// On connect, fetch missed events then flush any buffered real-time events
 	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
+		if (
+			!cacheHydrated ||
+			actor.connStatus !== "connected" ||
+			!actor.connection
+		) {
 			return;
 		}
 
@@ -120,20 +174,13 @@ function ConnectedThreadRuntime({
 		actor.connection
 			.getTranscript(lastSequenceRef.current)
 			.then((missedEvents) => {
-				for (const event of missedEvents as UniversalEvent[]) {
-					handleEvent(event);
-				}
-
+				applyEvents(missedEvents as UniversalEvent[], true);
 				// Flush buffered real-time events, skipping duplicates
-				for (const event of bufferRef.current) {
-					if (event.sequence > lastSequenceRef.current) {
-						handleEvent(event);
-					}
-				}
+				applyEvents(bufferRef.current, true);
 				bufferRef.current = [];
 				caughtUpRef.current = true;
 			});
-	}, [actor.connStatus, actor.connection, handleEvent]);
+	}, [actor.connStatus, actor.connection, applyEvents, cacheHydrated]);
 
 	// Real-time events — buffer during catch-up, process directly after
 	actor.useEvent("agentEvent", (event) => {
@@ -142,7 +189,7 @@ function ConnectedThreadRuntime({
 			bufferRef.current.push(typed);
 			return;
 		}
-		handleEvent(typed);
+		applyEvents([typed], true);
 	});
 
 	// Wire up permission replies
@@ -181,8 +228,12 @@ function ConnectedThreadRuntime({
 			return;
 		}
 
-		touchThread({ id: threadId as Id<"agentSessions"> });
-		actor.connection.postMessage(pending);
+		touchThread({ id: threadId as Id<"agentSessions"> }).catch(() => {
+			// Pending messages are best-effort and can be retried by the user on failure.
+		});
+		actor.connection.postMessage(pending).catch(() => {
+			// Runtime stream stays connected; user can resend manually if needed.
+		});
 	}, [
 		actor.connStatus,
 		actor.connection,

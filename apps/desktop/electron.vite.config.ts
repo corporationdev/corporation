@@ -8,11 +8,20 @@ export default defineConfig({
 	main: {
 		build: {
 			outDir: "out/main",
+			rollupOptions: {
+				external: ["better-sqlite3"],
+			},
 		},
 	},
 	preload: {
 		build: {
 			outDir: "out/preload",
+			rollupOptions: {
+				output: {
+					format: "cjs",
+					entryFileNames: "[name].cjs",
+				},
+			},
 		},
 	},
 	renderer: {

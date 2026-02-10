@@ -3,6 +3,10 @@ import type { Session, User } from "better-auth";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
+import {
+	getCachedAuthSession,
+	setCachedAuthSession,
+} from "@/lib/auth-session-cache";
 import { ThreadListRuntimeProvider } from "@/lib/thread-list-runtime";
 
 export type AuthenticatedContext = {
@@ -11,10 +15,17 @@ export type AuthenticatedContext = {
 
 export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async (): Promise<AuthenticatedContext> => {
+		const cachedSession = getCachedAuthSession();
+		if (cachedSession) {
+			return { session: cachedSession };
+		}
+
 		const session = await authClient.getSession();
 		if (!session.data) {
 			throw redirect({ to: "/login" });
 		}
+
+		setCachedAuthSession(session.data);
 		return { session: session.data };
 	},
 	component: AuthenticatedLayout,

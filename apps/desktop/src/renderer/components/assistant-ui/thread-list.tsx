@@ -1,7 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMatch, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
 import {
 	ArchiveIcon,
 	MoreHorizontalIcon,
@@ -19,29 +18,69 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	AGENT_SESSIONS_CACHE_KEY,
+	type ConvexAgentSession,
+	readCachedAgentSessions,
+	writeCachedAgentSessions,
+} from "@/lib/cache/agent-sessions-adapter";
+import { useCachedConvexQuery } from "@/lib/cache/use-cached-convex-query";
+import {
+	useOptimisticDeleteThreadMutation,
+	useOptimisticUpdateThreadMutation,
+} from "@/lib/agent-session-mutations";
 import { cn } from "@/lib/utils";
 
 export const ThreadList: FC = () => {
-	const threads = useQuery(api.agentSessions.list, {});
-	const regularThreads = (threads ?? []).filter(
-		(thread) => thread.archivedAt === null
-	);
+	const cachedThreadsQuery = useCachedConvexQuery({
+		query: api.agentSessions.list,
+		args: {},
+		cacheKey: AGENT_SESSIONS_CACHE_KEY,
+		readCache: readCachedAgentSessions,
+		writeCache: writeCachedAgentSessions,
+	});
+	const updateThread = useOptimisticUpdateThreadMutation();
+	const deleteThread = useOptimisticDeleteThreadMutation();
+
+	if (cachedThreadsQuery.isLoading) {
+		return (
+			<div className="flex flex-col gap-1">
+				<ThreadListNew />
+				<ThreadListSkeleton />
+			</div>
+		);
+	}
+
+	const threads = cachedThreadsQuery.data;
+	const regularThreads = threads.filter((thread) => thread.archivedAt === null);
 
 	return (
 		<div className="flex flex-col gap-1">
 			<ThreadListNew />
-			{threads === undefined ? (
-				<ThreadListSkeleton />
-			) : (
-				regularThreads.map((thread) => (
-					<ThreadListItem
-						id={thread._id}
-						key={thread._id}
-						title={thread.title || "New Chat"}
-					/>
-				))
-			)}
-			<ArchivedThreadList />
+			{regularThreads.map((thread) => (
+				<ThreadListItem
+					id={thread._id}
+					key={thread._id}
+					onArchive={async () => {
+						await updateThread({
+							id: thread._id,
+							archivedAt: Date.now(),
+						});
+					}}
+					onDelete={async () => {
+						await deleteThread({
+							id: thread._id,
+						});
+					}}
+					title={thread.title || "New Chat"}
+				/>
+			))}
+			<ArchivedThreadList
+				onUnarchive={async (id) => {
+					await updateThread({ id, archivedAt: null });
+				}}
+				threads={threads}
+			/>
 		</div>
 	);
 };
@@ -81,17 +120,17 @@ const ThreadListSkeleton: FC = () => {
 	);
 };
 
-const ThreadListItem: FC<{ id: Id<"agentSessions">; title: string }> = ({
-	id,
-	title,
-}) => {
+const ThreadListItem: FC<{
+	id: Id<"agentSessions">;
+	title: string;
+	onArchive: () => Promise<void>;
+	onDelete: () => Promise<void>;
+}> = ({ id, title, onArchive, onDelete }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
 		from: "/_authenticated/chat/$threadId",
 		shouldThrow: false,
 	});
-	const updateThread = useMutation(api.agentSessions.update);
-	const deleteThread = useMutation(api.agentSessions.remove);
 	const currentThreadId = match?.params.threadId;
 
 	const isActive = currentThreadId === id;
@@ -104,7 +143,7 @@ const ThreadListItem: FC<{ id: Id<"agentSessions">; title: string }> = ({
 	};
 
 	const handleArchive = async () => {
-		await updateThread({ id, archivedAt: Date.now() });
+		await onArchive();
 		if (isActive) {
 			navigate({
 				to: "/chat",
@@ -113,7 +152,7 @@ const ThreadListItem: FC<{ id: Id<"agentSessions">; title: string }> = ({
 	};
 
 	const handleDelete = async () => {
-		await deleteThread({ id });
+		await onDelete();
 		if (isActive) {
 			navigate({
 				to: "/chat",
@@ -169,18 +208,14 @@ const ThreadListItemMore: FC<{
 	);
 };
 
-export const ArchivedThreadList: FC = () => {
+const ArchivedThreadList: FC<{
+	threads: ConvexAgentSession[];
+	onUnarchive: (id: Id<"agentSessions">) => Promise<void>;
+}> = ({ threads, onUnarchive }) => {
 	const navigate = useNavigate();
-	const threads = useQuery(api.agentSessions.list, {});
-	const updateThread = useMutation(api.agentSessions.update);
-
-	const archivedThreads = (threads ?? []).filter(
+	const archivedThreads = threads.filter(
 		(thread) => thread.archivedAt !== null
 	);
-
-	const handleUnarchive = async (id: Id<"agentSessions">) => {
-		await updateThread({ id, archivedAt: null });
-	};
 
 	if (archivedThreads.length === 0) {
 		return null;
@@ -191,29 +226,29 @@ export const ArchivedThreadList: FC = () => {
 			<div className="px-3 font-medium text-muted-foreground text-xs">
 				Archived
 			</div>
-			{archivedThreads.map((thread) => (
-				<div
-					className="group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted"
-					key={thread._id}
-				>
-					<button
-						className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-muted-foreground text-sm"
-						onClick={() =>
-							navigate({
-								to: "/chat/$threadId",
-								params: { threadId: thread._id },
-							})
-						}
-						type="button"
+				{archivedThreads.map((thread) => (
+					<div
+						className="group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted"
+						key={thread._id}
+					>
+						<button
+							className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-muted-foreground text-sm"
+							onClick={() =>
+								navigate({
+									to: "/chat/$threadId",
+									params: { threadId: thread._id },
+								})
+							}
+							type="button"
 					>
 						{thread.title || "New Chat"}
 					</button>
-					<Button
-						className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
-						onClick={() => handleUnarchive(thread._id)}
-						size="icon"
-						variant="ghost"
-					>
+						<Button
+							className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+							onClick={() => onUnarchive(thread._id)}
+							size="icon"
+							variant="ghost"
+						>
 						<RotateCcwIcon className="size-4" />
 						<span className="sr-only">Unarchive</span>
 					</Button>
