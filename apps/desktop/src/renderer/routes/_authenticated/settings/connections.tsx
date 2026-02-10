@@ -1,4 +1,3 @@
-import Nango from "@nangohq/frontend";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
@@ -43,7 +42,6 @@ function ConnectionsPage() {
 			const res = await apiClient.integrations.connect.$post(
 				{
 					json: {
-						end_user: {},
 						allowed_integrations: [uniqueKey],
 					},
 				},
@@ -54,12 +52,10 @@ function ConnectionsPage() {
 				throw new Error("Failed to create connect session");
 			}
 
-			const { token } = await res.json();
-
-			const nango = new Nango({ connectSessionToken: token });
-			nango.openConnectUI({
-				sessionToken: token,
-			});
+			const { connect_link } = await res.json();
+			if (connect_link) {
+				window.open(connect_link, "_blank");
+			}
 		},
 	});
 

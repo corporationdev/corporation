@@ -2,62 +2,18 @@ import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { Nango } from "@nangohq/node";
 import { authMiddleware } from "./auth";
 
-const EndUserSchema = z.object({
-	email: z
-		.email()
-		.optional()
-		.openapi({ description: "End user email", example: "user@example.com" }),
-	display_name: z
-		.string()
-		.optional()
-		.openapi({ description: "Display name", example: "Jane Doe" }),
-});
-
-const CreateConnectSessionRequestSchema = z.object({
-	end_user: EndUserSchema,
-	allowed_integrations: z
-		.array(z.string())
-		.optional()
-		.openapi({
-			description: "Filter which integrations are available",
-			example: ["github"],
-		}),
-	integrations_config_defaults: z
-		.record(z.string(), z.record(z.string(), z.unknown()))
-		.optional()
-		.openapi({ description: "Per-integration config defaults" }),
-});
-
-const CreateConnectSessionResponseSchema = z.object({
-	token: z.string().openapi({
-		description: "Session token for Nango Connect",
-		example: "nango_connect_session_abc123",
-	}),
-	connect_link: z
-		.string()
-		.optional()
-		.openapi({ description: "Direct connection URL" }),
-	expires_at: z.string().openapi({
-		description: "ISO 8601 expiration timestamp",
-		example: "2025-01-01T00:30:00.000Z",
-	}),
-});
-
-const IntegrationSchema = z.object({
-	unique_key: z.string().openapi({ description: "Integration unique key" }),
-	provider: z.string().openapi({ description: "Provider name" }),
-	logo: z.string().optional().openapi({ description: "Logo URL" }),
-	created_at: z.string().openapi({ description: "ISO 8601 timestamp" }),
-	updated_at: z.string().openapi({ description: "ISO 8601 timestamp" }),
-});
-
-const ListIntegrationsResponseSchema = z.object({
-	configs: z.array(IntegrationSchema),
-});
-
 const ErrorResponseSchema = z.object({
 	error: z.string().openapi({ description: "Error message" }),
 });
+
+type IntegrationsEnv = {
+	Bindings: Env;
+	Variables: { jwtPayload: import("jose").JWTPayload };
+};
+
+// ---------------------------------------------------------------------------
+// GET / - List integrations
+// ---------------------------------------------------------------------------
 
 const listIntegrationsRoute = createRoute({
 	method: "get",
@@ -67,21 +23,42 @@ const listIntegrationsRoute = createRoute({
 		200: {
 			content: {
 				"application/json": {
-					schema: ListIntegrationsResponseSchema,
+					schema: z.object({
+						configs: z.array(
+							z.object({
+								unique_key: z
+									.string()
+									.openapi({ description: "Integration unique key" }),
+								provider: z.string().openapi({ description: "Provider name" }),
+								logo: z
+									.string()
+									.optional()
+									.openapi({ description: "Logo URL" }),
+								created_at: z
+									.string()
+									.openapi({ description: "ISO 8601 timestamp" }),
+								updated_at: z
+									.string()
+									.openapi({ description: "ISO 8601 timestamp" }),
+							})
+						),
+					}),
 				},
 			},
 			description: "List of available integrations",
 		},
 		500: {
 			content: {
-				"application/json": {
-					schema: ErrorResponseSchema,
-				},
+				"application/json": { schema: ErrorResponseSchema },
 			},
 			description: "Failed to list integrations",
 		},
 	},
 });
+
+// ---------------------------------------------------------------------------
+// POST /connect - Create a Nango connect session
+// ---------------------------------------------------------------------------
 
 const createConnectSessionRoute = createRoute({
 	method: "post",
@@ -91,7 +68,15 @@ const createConnectSessionRoute = createRoute({
 		body: {
 			content: {
 				"application/json": {
-					schema: CreateConnectSessionRequestSchema,
+					schema: z.object({
+						allowed_integrations: z
+							.array(z.string())
+							.optional()
+							.openapi({
+								description: "Filter which integrations are available",
+								example: ["github"],
+							}),
+					}),
 				},
 			},
 			required: true,
@@ -102,26 +87,36 @@ const createConnectSessionRoute = createRoute({
 		200: {
 			content: {
 				"application/json": {
-					schema: CreateConnectSessionResponseSchema,
+					schema: z.object({
+						token: z.string().openapi({
+							description: "Session token for Nango Connect",
+							example: "nango_connect_session_abc123",
+						}),
+						connect_link: z
+							.string()
+							.optional()
+							.openapi({ description: "Direct connection URL" }),
+						expires_at: z.string().openapi({
+							description: "ISO 8601 expiration timestamp",
+							example: "2025-01-01T00:30:00.000Z",
+						}),
+					}),
 				},
 			},
 			description: "Connect session created successfully",
 		},
 		500: {
 			content: {
-				"application/json": {
-					schema: ErrorResponseSchema,
-				},
+				"application/json": { schema: ErrorResponseSchema },
 			},
 			description: "Failed to create connect session",
 		},
 	},
 });
 
-type IntegrationsEnv = {
-	Bindings: Env;
-	Variables: { jwtPayload: import("jose").JWTPayload };
-};
+// ---------------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------------
 
 export const integrationsApp = $(
 	new OpenAPIHono<IntegrationsEnv>()
@@ -150,9 +145,8 @@ export const integrationsApp = $(
 
 			try {
 				const { data } = await nango.createConnectSession({
-					end_user: { ...body.end_user, id: userId },
+					end_user: { id: userId },
 					allowed_integrations: body.allowed_integrations,
-					integrations_config_defaults: body.integrations_config_defaults,
 				});
 
 				return c.json(
