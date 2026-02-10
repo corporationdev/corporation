@@ -3,7 +3,18 @@ import type { AppType } from "@corporation/server/app";
 import { hc } from "hono/client";
 import { authClient } from "./auth-client";
 
-export const apiClient = hc<AppType>(env.VITE_SERVER_URL);
+export const apiClient = hc<AppType>(env.VITE_SERVER_URL, {
+	fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+		const headers = await getAuthHeaders();
+		return fetch(input, {
+			...init,
+			headers: {
+				...init?.headers,
+				...headers,
+			},
+		});
+	},
+});
 
 const CONVEX_TOKEN_URL = `${env.VITE_CONVEX_SITE_URL}/api/auth/convex/token`;
 const TOKEN_REFRESH_BUFFER_MS = 30_000;
@@ -35,7 +46,7 @@ export function clearTokenCache() {
 	cachedTokenExp = null;
 }
 
-export async function getAuthHeaders() {
+async function getAuthHeaders() {
 	const token = await getToken();
 	return {
 		Authorization: `Bearer ${token}`,

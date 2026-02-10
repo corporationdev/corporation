@@ -1,5 +1,6 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import type { InferResponseType } from "hono/client";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,25 +11,95 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiClient, getAuthHeaders } from "@/lib/api-client";
+import { apiClient } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/connections")({
 	component: ConnectionsPage,
 });
 
+type IntegrationsResponse = InferResponseType<
+	typeof apiClient.integrations.$get,
+	200
+>;
+type Integration = IntegrationsResponse["integrations"][number];
+
 async function fetchIntegrations() {
-	const res = await apiClient.integrations.$get(
-		{},
-		{ headers: await getAuthHeaders() }
-	);
+	const res = await apiClient.integrations.$get({});
 	if (!res.ok) {
 		throw new Error("Failed to fetch integrations");
 	}
 	const data = await res.json();
-	return data.configs;
+	return data.integrations;
+}
+
+function IntegrationCard({
+	integration,
+	onConnect,
+	onDisconnect,
+	isConnecting,
+	isDisconnecting,
+}: {
+	integration: Integration;
+	onConnect: (uniqueKey: string) => void;
+	onDisconnect: (connectionId: string, providerConfigKey: string) => void;
+	isConnecting: boolean;
+	isDisconnecting: boolean;
+}) {
+	const { connection } = integration;
+
+	return (
+		<Card size="sm">
+			<CardHeader>
+				<div className="flex items-center gap-2">
+					{integration.logo && (
+						<img
+							alt={`${integration.provider} logo`}
+							className="size-5"
+							height={20}
+							src={integration.logo}
+							width={20}
+						/>
+					)}
+					<div>
+						<CardTitle>{integration.provider}</CardTitle>
+						<CardDescription>
+							{connection
+								? `Connected${connection.end_user?.email ? ` as ${connection.end_user.email}` : ""}`
+								: "Not connected"}
+						</CardDescription>
+					</div>
+				</div>
+				<CardAction>
+					{connection ? (
+						<Button
+							disabled={isDisconnecting}
+							onClick={() =>
+								onDisconnect(connection.connection_id, integration.unique_key)
+							}
+							size="sm"
+							variant="destructive"
+						>
+							{isDisconnecting ? "Disconnecting..." : "Disconnect"}
+						</Button>
+					) : (
+						<Button
+							disabled={isConnecting}
+							onClick={() => onConnect(integration.unique_key)}
+							size="sm"
+							variant="outline"
+						>
+							{isConnecting ? "Connecting..." : "Connect"}
+						</Button>
+					)}
+				</CardAction>
+			</CardHeader>
+		</Card>
+	);
 }
 
 function ConnectionsPage() {
+	const queryClient = useQueryClient();
+
 	const {
 		data: integrations,
 		isLoading,
@@ -37,16 +108,38 @@ function ConnectionsPage() {
 		queryKey: ["integrations"],
 		queryFn: fetchIntegrations,
 	});
+
+	const disconnectMutation = useMutation({
+		mutationFn: async ({
+			connectionId,
+			providerConfigKey,
+		}: {
+			connectionId: string;
+			providerConfigKey: string;
+		}) => {
+			const res = await apiClient.integrations.connections[
+				":connectionId"
+			].$delete({
+				param: { connectionId },
+				query: { provider_config_key: providerConfigKey },
+			});
+
+			if (!res.ok) {
+				throw new Error("Failed to disconnect");
+			}
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["integrations"] });
+		},
+	});
+
 	const connectMutation = useMutation({
 		mutationFn: async (uniqueKey: string) => {
-			const res = await apiClient.integrations.connect.$post(
-				{
-					json: {
-						allowed_integrations: [uniqueKey],
-					},
+			const res = await apiClient.integrations.connect.$post({
+				json: {
+					allowed_integrations: [uniqueKey],
 				},
-				{ headers: await getAuthHeaders() }
-			);
+			});
 
 			if (!res.ok) {
 				throw new Error("Failed to create connect session");
@@ -56,6 +149,9 @@ function ConnectionsPage() {
 			if (connect_link) {
 				window.open(connect_link, "_blank");
 			}
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["integrations"] });
 		},
 	});
 
@@ -78,40 +174,23 @@ function ConnectionsPage() {
 			) : integrations?.length ? (
 				<div className="flex flex-col gap-3">
 					{integrations.map((integration) => (
-						<Card key={integration.unique_key} size="sm">
-							<CardHeader>
-								<div className="flex items-center gap-2">
-									{integration.logo && (
-										<img
-											alt={`${integration.provider} logo`}
-											className="size-5"
-											height={20}
-											src={integration.logo}
-											width={20}
-										/>
-									)}
-									<div>
-										<CardTitle>{integration.provider}</CardTitle>
-										<CardDescription>{integration.unique_key}</CardDescription>
-									</div>
-								</div>
-								<CardAction>
-									<Button
-										disabled={connectMutation.isPending}
-										onClick={() =>
-											connectMutation.mutate(integration.unique_key)
-										}
-										size="sm"
-										variant="outline"
-									>
-										{connectMutation.isPending &&
-										connectMutation.variables === integration.unique_key
-											? "Connecting..."
-											: "Connect"}
-									</Button>
-								</CardAction>
-							</CardHeader>
-						</Card>
+						<IntegrationCard
+							integration={integration}
+							isConnecting={
+								connectMutation.isPending &&
+								connectMutation.variables === integration.unique_key
+							}
+							isDisconnecting={
+								disconnectMutation.isPending &&
+								disconnectMutation.variables?.providerConfigKey ===
+									integration.unique_key
+							}
+							key={integration.unique_key}
+							onConnect={(uniqueKey) => connectMutation.mutate(uniqueKey)}
+							onDisconnect={(connectionId, providerConfigKey) =>
+								disconnectMutation.mutate({ connectionId, providerConfigKey })
+							}
+						/>
 					))}
 				</div>
 			) : (
