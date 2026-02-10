@@ -3,7 +3,6 @@ import { Nango } from "@nangohq/node";
 import { authMiddleware } from "./auth";
 
 const EndUserSchema = z.object({
-	id: z.string().openapi({ description: "End user ID", example: "user_123" }),
 	email: z
 		.email()
 		.optional()
@@ -44,8 +43,44 @@ const CreateConnectSessionResponseSchema = z.object({
 	}),
 });
 
+const IntegrationSchema = z.object({
+	unique_key: z.string().openapi({ description: "Integration unique key" }),
+	provider: z.string().openapi({ description: "Provider name" }),
+	logo: z.string().optional().openapi({ description: "Logo URL" }),
+	created_at: z.string().openapi({ description: "ISO 8601 timestamp" }),
+	updated_at: z.string().openapi({ description: "ISO 8601 timestamp" }),
+});
+
+const ListIntegrationsResponseSchema = z.object({
+	configs: z.array(IntegrationSchema),
+});
+
 const ErrorResponseSchema = z.object({
 	error: z.string().openapi({ description: "Error message" }),
+});
+
+const listIntegrationsRoute = createRoute({
+	method: "get",
+	path: "/",
+	middleware: [authMiddleware],
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: ListIntegrationsResponseSchema,
+				},
+			},
+			description: "List of available integrations",
+		},
+		500: {
+			content: {
+				"application/json": {
+					schema: ErrorResponseSchema,
+				},
+			},
+			description: "Failed to list integrations",
+		},
+	},
 });
 
 const createConnectSessionRoute = createRoute({
@@ -89,15 +124,33 @@ type IntegrationsEnv = {
 };
 
 export const integrationsApp = $(
-	new OpenAPIHono<IntegrationsEnv>().openapi(
-		createConnectSessionRoute,
-		async (c) => {
+	new OpenAPIHono<IntegrationsEnv>()
+		.openapi(listIntegrationsRoute, async (c) => {
+			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
+
+			try {
+				const response = await nango.listIntegrations();
+				return c.json({ configs: response.configs }, 200);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
+				return c.json({ error: `Nango API error: ${message}` }, 500);
+			}
+		})
+		.openapi(createConnectSessionRoute, async (c) => {
 			const body = c.req.valid("json");
+			const jwtPayload = c.get("jwtPayload");
+			const userId = jwtPayload.sub;
+
+			if (!userId) {
+				return c.json({ error: "User ID not found in token" }, 500);
+			}
+
 			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 
 			try {
 				const { data } = await nango.createConnectSession({
-					end_user: body.end_user,
+					end_user: { ...body.end_user, id: userId },
 					allowed_integrations: body.allowed_integrations,
 					integrations_config_defaults: body.integrations_config_defaults,
 				});
@@ -115,6 +168,5 @@ export const integrationsApp = $(
 					error instanceof Error ? error.message : "Unknown error";
 				return c.json({ error: `Nango API error: ${message}` }, 500);
 			}
-		}
-	)
+		})
 );
