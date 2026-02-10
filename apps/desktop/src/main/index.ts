@@ -1,5 +1,6 @@
 import path from "node:path";
 import { app, BrowserWindow } from "electron";
+import { registerIpcHandlers } from "./ipc-handlers";
 
 function createWindow() {
 	const win = new BrowserWindow({
@@ -7,7 +8,7 @@ function createWindow() {
 		height: 800,
 		show: false,
 		webPreferences: {
-			preload: path.join(__dirname, "../preload/index.mjs"),
+			preload: path.join(__dirname, "../preload/index.cjs"),
 		},
 	});
 
@@ -21,7 +22,10 @@ function createWindow() {
 	}
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+	registerIpcHandlers();
+	createWindow();
+});
 
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") {

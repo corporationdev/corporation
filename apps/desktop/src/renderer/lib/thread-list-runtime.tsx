@@ -11,18 +11,11 @@ import type { registry } from "@corporation/server/registry";
 import { createRivetKit } from "@rivetkit/react";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
-import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
-import type { UniversalEvent } from "sandbox-agent";
+import { type ReactNode, useEffect } from "react";
+import { useOptimisticTouchThreadMutation } from "@/lib/agent-session-mutations";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
-
-import { type ItemState, processEvent } from "./convert-events";
+import { useThreadEventState } from "./use-thread-event-state";
 
 const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
@@ -76,31 +69,9 @@ function ConnectedThreadRuntime({
 	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
 	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
 	const resetPermissions = usePermissionStore((s) => s.reset);
-	const touchThread = useMutation(api.agentSessions.touch);
+	const touchThread = useOptimisticTouchThreadMutation();
 	const consumePendingMessage = usePendingMessageStore(
 		(s) => s.consumePendingMessage
-	);
-
-	const itemStatesRef = useRef(new Map<string, ItemState>());
-	const lastSequenceRef = useRef(0);
-	const caughtUpRef = useRef(false);
-	const bufferRef = useRef<UniversalEvent[]>([]);
-	const [threadState, setThreadState] = useState<{
-		messages: ThreadMessageLike[];
-		isRunning: boolean;
-	}>({ messages: [], isRunning: false });
-
-	const handleEvent = useCallback(
-		(event: UniversalEvent) => {
-			const result = processEvent(
-				event,
-				itemStatesRef.current,
-				onPermissionEvent
-			);
-			lastSequenceRef.current = event.sequence;
-			setThreadState(result);
-		},
-		[onPermissionEvent]
 	);
 
 	const actor = useActor({
@@ -108,41 +79,10 @@ function ConnectedThreadRuntime({
 		key: [threadId],
 	});
 
-	// On connect, fetch missed events then flush any buffered real-time events
-	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
-			return;
-		}
-
-		caughtUpRef.current = false;
-		bufferRef.current = [];
-
-		actor.connection
-			.getTranscript(lastSequenceRef.current)
-			.then((missedEvents) => {
-				for (const event of missedEvents as UniversalEvent[]) {
-					handleEvent(event);
-				}
-
-				// Flush buffered real-time events, skipping duplicates
-				for (const event of bufferRef.current) {
-					if (event.sequence > lastSequenceRef.current) {
-						handleEvent(event);
-					}
-				}
-				bufferRef.current = [];
-				caughtUpRef.current = true;
-			});
-	}, [actor.connStatus, actor.connection, handleEvent]);
-
-	// Real-time events — buffer during catch-up, process directly after
-	actor.useEvent("agentEvent", (event) => {
-		const typed = event as UniversalEvent;
-		if (!caughtUpRef.current) {
-			bufferRef.current.push(typed);
-			return;
-		}
-		handleEvent(typed);
+	const threadState = useThreadEventState({
+		threadId,
+		actor,
+		onPermissionEvent,
 	});
 
 	// Wire up permission replies
@@ -158,10 +98,6 @@ function ConnectedThreadRuntime({
 		return () => {
 			setReplyPermission(null);
 			resetPermissions();
-			itemStatesRef.current = new Map();
-			lastSequenceRef.current = 0;
-			caughtUpRef.current = false;
-			bufferRef.current = [];
 		};
 	}, [
 		actor.connStatus,
@@ -181,8 +117,12 @@ function ConnectedThreadRuntime({
 			return;
 		}
 
-		touchThread({ id: threadId as Id<"agentSessions"> });
-		actor.connection.postMessage(pending);
+		touchThread({ id: threadId as Id<"agentSessions"> }).catch(() => {
+			// Pending messages are best-effort and can be retried by the user on failure.
+		});
+		actor.connection.postMessage(pending).catch(() => {
+			// Runtime stream stays connected; user can resend manually if needed.
+		});
 	}, [
 		actor.connStatus,
 		actor.connection,
