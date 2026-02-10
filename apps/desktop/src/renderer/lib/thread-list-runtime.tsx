@@ -11,23 +11,11 @@ import type { registry } from "@corporation/server/registry";
 import { createRivetKit } from "@rivetkit/react";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
-import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
-import type { UniversalEvent } from "sandbox-agent";
+import { type ReactNode, useEffect } from "react";
 import { useOptimisticTouchThreadMutation } from "@/lib/agent-session-mutations";
-import {
-	appendEventsToCache,
-	getCachedEvents,
-} from "@/lib/cache/cached-events";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
-
-import { type ItemState, processEvent } from "./convert-events";
+import { useThreadEventState } from "./use-thread-event-state";
 
 const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
@@ -86,110 +74,15 @@ function ConnectedThreadRuntime({
 		(s) => s.consumePendingMessage
 	);
 
-	const itemStatesRef = useRef(new Map<string, ItemState>());
-	const lastSequenceRef = useRef(0);
-	const caughtUpRef = useRef(false);
-	const bufferRef = useRef<UniversalEvent[]>([]);
-	const [cacheHydrated, setCacheHydrated] = useState(false);
-	const [threadState, setThreadState] = useState<{
-		messages: ThreadMessageLike[];
-		isRunning: boolean;
-	}>({ messages: [], isRunning: false });
-
-	const applyEvents = useCallback(
-		(events: UniversalEvent[], persist: boolean) => {
-			const newEvents: UniversalEvent[] = [];
-			let lastResult: {
-				messages: ThreadMessageLike[];
-				isRunning: boolean;
-			} | null = null;
-
-			for (const event of events) {
-				if (event.sequence <= lastSequenceRef.current) {
-					continue;
-				}
-
-				lastResult = processEvent(
-					event,
-					itemStatesRef.current,
-					onPermissionEvent
-				);
-				lastSequenceRef.current = event.sequence;
-				newEvents.push(event);
-			}
-
-			if (lastResult) {
-				setThreadState(lastResult);
-			}
-
-			if (persist && newEvents.length > 0) {
-				appendEventsToCache(threadId, newEvents).catch(() => {
-					// Ignore write failures; cache will be refreshed on next transcript sync.
-				});
-			}
-		},
-		[onPermissionEvent, threadId]
-	);
-
 	const actor = useActor({
 		name: "sandboxAgent",
 		key: [threadId],
 	});
 
-	useEffect(() => {
-		let cancelled = false;
-		setCacheHydrated(false);
-
-		getCachedEvents(threadId)
-			.then((cachedEvents) => {
-				if (cancelled) {
-					return;
-				}
-				applyEvents(cachedEvents, false);
-			})
-			.finally(() => {
-				if (!cancelled) {
-					setCacheHydrated(true);
-				}
-			});
-
-		return () => {
-			cancelled = true;
-		};
-	}, [threadId, applyEvents]);
-
-	// On connect, fetch missed events then flush any buffered real-time events
-	useEffect(() => {
-		if (
-			!cacheHydrated ||
-			actor.connStatus !== "connected" ||
-			!actor.connection
-		) {
-			return;
-		}
-
-		caughtUpRef.current = false;
-		bufferRef.current = [];
-
-		actor.connection
-			.getTranscript(lastSequenceRef.current)
-			.then((missedEvents) => {
-				applyEvents(missedEvents as UniversalEvent[], true);
-				// Flush buffered real-time events, skipping duplicates
-				applyEvents(bufferRef.current, true);
-				bufferRef.current = [];
-				caughtUpRef.current = true;
-			});
-	}, [actor.connStatus, actor.connection, applyEvents, cacheHydrated]);
-
-	// Real-time events — buffer during catch-up, process directly after
-	actor.useEvent("agentEvent", (event) => {
-		const typed = event as UniversalEvent;
-		if (!caughtUpRef.current) {
-			bufferRef.current.push(typed);
-			return;
-		}
-		applyEvents([typed], true);
+	const threadState = useThreadEventState({
+		threadId,
+		actor,
+		onPermissionEvent,
 	});
 
 	// Wire up permission replies
@@ -205,10 +98,6 @@ function ConnectedThreadRuntime({
 		return () => {
 			setReplyPermission(null);
 			resetPermissions();
-			itemStatesRef.current = new Map();
-			lastSequenceRef.current = 0;
-			caughtUpRef.current = false;
-			bufferRef.current = [];
 		};
 	}, [
 		actor.connStatus,
