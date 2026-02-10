@@ -71,16 +71,16 @@ export function useCachedConvexQuery<Query extends FunctionReference<"query">>({
 
 		let cancelled = false;
 
-			const syncRemoteData = async () => {
-				try {
-					await writeCache(remoteData);
-				} finally {
-					if (!cancelled) {
-						setHotCache<Query>(cacheKey, remoteData);
-						queryClient.setQueryData(["convex-cache", cacheKey], remoteData);
-					}
+		const syncRemoteData = async () => {
+			try {
+				await writeCache(remoteData);
+			} finally {
+				if (!cancelled) {
+					setHotCache<Query>(cacheKey, remoteData);
+					queryClient.setQueryData(["convex-cache", cacheKey], remoteData);
 				}
-			};
+			}
+		};
 
 		syncRemoteData().catch(() => {
 			// Keep current UI state if remote sync fails unexpectedly.

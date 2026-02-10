@@ -2,7 +2,10 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PermissionEventData, UniversalEvent } from "sandbox-agent";
-import { appendEventsToCache, getCachedEvents } from "@/lib/cache/cached-events";
+import {
+	appendEventsToCache,
+	getCachedEvents,
+} from "@/lib/cache/cached-events";
 import { type ItemState, processEvent } from "./convert-events";
 
 type ThreadState = {
@@ -103,14 +106,21 @@ export function useThreadEventState({
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 
-		actor.connection.getTranscript(lastSequenceRef.current).then((missedEvents) => {
-			applyEvents(missedEvents as UniversalEvent[], true);
-			// Flush buffered real-time events, skipping duplicates
-			applyEvents(bufferRef.current, true);
-			bufferRef.current = [];
-			caughtUpRef.current = true;
-		});
-	}, [actor.connStatus, actor.connection, applyEvents, cachedEventsQuery.isFetched]);
+		actor.connection
+			.getTranscript(lastSequenceRef.current)
+			.then((missedEvents) => {
+				applyEvents(missedEvents as UniversalEvent[], true);
+				// Flush buffered real-time events, skipping duplicates
+				applyEvents(bufferRef.current, true);
+				bufferRef.current = [];
+				caughtUpRef.current = true;
+			});
+	}, [
+		actor.connStatus,
+		actor.connection,
+		applyEvents,
+		cachedEventsQuery.isFetched,
+	]);
 
 	// Real-time events — buffer during catch-up, process directly after
 	actor.useEvent("agentEvent", (event) => {

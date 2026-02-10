@@ -53,9 +53,7 @@
       "indexes": {
         "idx_agent_sessions_updated_at": {
           "name": "idx_agent_sessions_updated_at",
-          "columns": [
-            "updated_at"
-          ],
+          "columns": ["updated_at"],
           "isUnique": false
         }
       },
@@ -100,10 +98,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "session_events_session_id_sequence_pk": {
-          "columns": [
-            "session_id",
-            "sequence"
-          ],
+          "columns": ["session_id", "sequence"],
           "name": "session_events_session_id_sequence_pk"
         }
       },

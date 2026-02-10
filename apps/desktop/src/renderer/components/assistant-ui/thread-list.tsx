@@ -19,16 +19,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+	useOptimisticDeleteThreadMutation,
+	useOptimisticUpdateThreadMutation,
+} from "@/lib/agent-session-mutations";
+import {
 	AGENT_SESSIONS_CACHE_KEY,
 	type ConvexAgentSession,
 	readCachedAgentSessions,
 	writeCachedAgentSessions,
 } from "@/lib/cache/agent-sessions-adapter";
 import { useCachedConvexQuery } from "@/lib/cache/use-cached-convex-query";
-import {
-	useOptimisticDeleteThreadMutation,
-	useOptimisticUpdateThreadMutation,
-} from "@/lib/agent-session-mutations";
 import { cn } from "@/lib/utils";
 
 export const ThreadList: FC = () => {
@@ -226,29 +226,29 @@ const ArchivedThreadList: FC<{
 			<div className="px-3 font-medium text-muted-foreground text-xs">
 				Archived
 			</div>
-				{archivedThreads.map((thread) => (
-					<div
-						className="group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted"
-						key={thread._id}
-					>
-						<button
-							className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-muted-foreground text-sm"
-							onClick={() =>
-								navigate({
-									to: "/chat/$threadId",
-									params: { threadId: thread._id },
-								})
-							}
-							type="button"
+			{archivedThreads.map((thread) => (
+				<div
+					className="group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted"
+					key={thread._id}
+				>
+					<button
+						className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-muted-foreground text-sm"
+						onClick={() =>
+							navigate({
+								to: "/chat/$threadId",
+								params: { threadId: thread._id },
+							})
+						}
+						type="button"
 					>
 						{thread.title || "New Chat"}
 					</button>
-						<Button
-							className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
-							onClick={() => onUnarchive(thread._id)}
-							size="icon"
-							variant="ghost"
-						>
+					<Button
+						className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+						onClick={() => onUnarchive(thread._id)}
+						size="icon"
+						variant="ghost"
+					>
 						<RotateCcwIcon className="size-4" />
 						<span className="sr-only">Unarchive</span>
 					</Button>

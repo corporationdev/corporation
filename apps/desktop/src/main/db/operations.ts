@@ -81,6 +81,6 @@ export function appendManyEvents(db: AppDb, events: CachedEventRecord[]): void {
 				eventJson: event.eventJson,
 			}))
 		)
-			.onConflictDoNothing()
-			.run();
+		.onConflictDoNothing()
+		.run();
 }
