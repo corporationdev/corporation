@@ -32,6 +32,11 @@ export const create = authedMutation({
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
+		installCommand: v.optional(v.string()),
+		devCommand: v.optional(v.string()),
+		envVars: v.optional(
+			v.array(v.object({ key: v.string(), value: v.string() }))
+		),
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
@@ -42,6 +47,9 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
+			installCommand: args.installCommand,
+			devCommand: args.devCommand,
+			envVars: args.envVars,
 			createdAt: now,
 			updatedAt: now,
 		});
