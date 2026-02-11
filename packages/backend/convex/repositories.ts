@@ -39,6 +39,17 @@ export const create = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
+		const existing = await ctx.db
+			.query("repositories")
+			.withIndex("by_github_repo_id", (q) =>
+				q.eq("githubRepoId", args.githubRepoId)
+			)
+			.first();
+
+		if (existing && existing.userId === ctx.userId) {
+			throw new ConvexError("Repository already connected");
+		}
+
 		const now = Date.now();
 
 		return await ctx.db.insert("repositories", {

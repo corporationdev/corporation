@@ -1,8 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { useForm } from "@tanstack/react-form";
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useConvex } from "convex/react";
+import { useConvex, useQuery } from "convex/react";
 import { Check, Search } from "lucide-react";
 import { useState } from "react";
 
@@ -11,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiClient } from "@/lib/api-client";
+import type { GitHubRepo } from "@/hooks/use-github-repos";
+import { useGitHubRepos } from "@/hooks/use-github-repos";
 
 export const Route = createFileRoute(
 	"/_authenticated/settings/repositories/connect"
@@ -19,37 +19,11 @@ export const Route = createFileRoute(
 	component: ConnectRepositoryPage,
 });
 
-type GitHubRepo = {
-	id: number;
-	name: string;
-	fullName: string;
-	owner: string;
-	defaultBranch: string;
-	private: boolean;
-	url: string;
-};
-
-async function fetchGitHubRepos() {
-	const res = await apiClient.repositories.github.$get({});
-	if (!res.ok) {
-		throw new Error("Failed to fetch GitHub repositories");
-	}
-	const data = await res.json();
-	return data.repositories;
-}
-
 function ConnectRepositoryPage() {
 	const navigate = useNavigate();
 	const convex = useConvex();
-
-	const {
-		data: repos,
-		isLoading,
-		error,
-	} = useQuery({
-		queryKey: ["github-repos"],
-		queryFn: fetchGitHubRepos,
-	});
+	const { data: repos, isLoading, error } = useGitHubRepos();
+	const connectedRepos = useQuery(api.repositories.list);
 
 	const [search, setSearch] = useState("");
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
@@ -83,7 +57,14 @@ function ConnectRepositoryPage() {
 		},
 	});
 
+	const connectedGithubIds = new Set(
+		connectedRepos?.map((r) => r.githubRepoId)
+	);
+
 	const filteredRepos = repos?.filter((repo) => {
+		if (connectedGithubIds.has(repo.id)) {
+			return false;
+		}
 		const query = search.toLowerCase();
 		return (
 			repo.name.toLowerCase().includes(query) ||

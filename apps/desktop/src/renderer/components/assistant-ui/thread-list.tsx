@@ -22,7 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
 	useOptimisticDeleteThreadMutation,
 	useOptimisticUpdateThreadMutation,
-} from "@/lib/agent-session-mutations";
+} from "@/hooks/agent-session-mutations";
 import { cn } from "@/lib/utils";
 
 export const ThreadList: FC = () => {

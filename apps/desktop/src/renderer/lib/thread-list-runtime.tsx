@@ -12,10 +12,10 @@ import { createRivetKit } from "@rivetkit/react";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
 import { type ReactNode, useEffect } from "react";
-import { useOptimisticTouchThreadMutation } from "@/lib/agent-session-mutations";
+import { useOptimisticTouchThreadMutation } from "@/hooks/agent-session-mutations";
+import { useThreadEventState } from "@/hooks/use-thread-event-state";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
-import { useThreadEventState } from "./use-thread-event-state";
 
 const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";

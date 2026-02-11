@@ -6,7 +6,7 @@ import {
 	appendEventsToCache,
 	getCachedEvents,
 } from "@/lib/cache/cached-events";
-import { type ItemState, processEvent } from "./convert-events";
+import { type ItemState, processEvent } from "@/lib/convert-events";
 
 type ThreadState = {
 	messages: ThreadMessageLike[];
