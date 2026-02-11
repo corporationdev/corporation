@@ -1,5 +1,5 @@
 import path from "node:path";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import { registerIpcHandlers } from "./ipc-handlers";
 
 function createWindow() {
@@ -14,6 +14,11 @@ function createWindow() {
 
 	win.maximize();
 	win.show();
+
+	win.webContents.setWindowOpenHandler(({ url }) => {
+		shell.openExternal(url);
+		return { action: "deny" };
+	});
 
 	if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
 		win.loadURL(process.env.ELECTRON_RENDERER_URL);

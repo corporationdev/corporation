@@ -24,6 +24,8 @@ export const server = await Worker("agent-server", {
 	bindings: {
 		DAYTONA_API_KEY: alchemy.secret(process.env.DAYTONA_API_KEY),
 		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
+		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
+		CONVEX_SITE_URL: process.env.CONVEX_SITE_URL ?? "",
 		ACTOR_DO: actorDO,
 		ACTOR_KV: actorKV,
 	},

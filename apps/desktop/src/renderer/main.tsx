@@ -1,6 +1,10 @@
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { env } from "@corporation/env/web";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+	focusManager,
+	QueryClient,
+	QueryClientProvider,
+} from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { ConvexReactClient } from "convex/react";
 import ReactDOM from "react-dom/client";
@@ -12,6 +16,15 @@ import { routeTree } from "./routeTree.gen";
 
 const convex = new ConvexReactClient(env.VITE_CONVEX_URL);
 const queryClient = new QueryClient();
+
+focusManager.setEventListener((handleFocus) => {
+	window.addEventListener("focus", () => handleFocus(true));
+	window.addEventListener("blur", () => handleFocus(false));
+	return () => {
+		window.removeEventListener("focus", () => handleFocus(true));
+		window.removeEventListener("blur", () => handleFocus(false));
+	};
+});
 
 const router = createRouter({
 	routeTree,
