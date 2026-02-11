@@ -19,20 +19,29 @@ function EditRepositoryPage() {
 	const convex = useConvex();
 	const repositories = useQuery(api.repositories.list);
 	const repository = repositories?.find((r) => r._id === repositoryId);
+	const environments = useQuery(
+		api.environments.listByRepository,
+		repository ? { repositoryId: repository._id } : "skip"
+	);
+	const environment = environments?.[0];
 
 	const form = useForm({
 		defaultValues: {
-			installCommand: repository?.installCommand ?? "",
-			devCommand: repository?.devCommand ?? "",
-			envVars: repository?.envVars ?? ([] as { key: string; value: string }[]),
+			installCommand: environment?.installCommand ?? "",
+			devCommand: environment?.devCommand ?? "",
+			envVars: environment?.envVars ?? ([] as { key: string; value: string }[]),
 		},
 		onSubmit: async ({ value }) => {
+			if (!environment) {
+				return;
+			}
+
 			const validEnvVars = value.envVars.filter(
 				(v) => v.key.trim() !== "" && v.value.trim() !== ""
 			);
 
-			await convex.mutation(api.repositories.update, {
-				id: repositoryId as never,
+			await convex.mutation(api.environments.update, {
+				id: environment._id,
 				installCommand: value.installCommand.trim() || undefined,
 				devCommand: value.devCommand.trim() || undefined,
 				envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
@@ -42,7 +51,10 @@ function EditRepositoryPage() {
 		},
 	});
 
-	if (repositories === undefined) {
+	if (
+		repositories === undefined ||
+		(repository && environments === undefined)
+	) {
 		return (
 			<div className="p-6">
 				<p className="text-muted-foreground text-sm">Loading...</p>
@@ -50,7 +62,7 @@ function EditRepositoryPage() {
 		);
 	}
 
-	if (!repository) {
+	if (!(repository && environment)) {
 		return (
 			<div className="p-6">
 				<p className="text-destructive text-sm">Repository not found.</p>

@@ -18,7 +18,12 @@ async function requireOwnedSession(
 		throw new ConvexError("Agent session not found");
 	}
 
-	const repository = await ctx.db.get(sandbox.repositoryId);
+	const environment = await ctx.db.get(sandbox.environmentId);
+	if (!environment) {
+		throw new ConvexError("Agent session not found");
+	}
+
+	const repository = await ctx.db.get(environment.repositoryId);
 	if (!repository || repository.userId !== ctx.userId) {
 		throw new ConvexError("Agent session not found");
 	}
@@ -31,14 +36,23 @@ export const list = authedQuery({
 	handler: async (ctx) => {
 		const repos = await ctx.db
 			.query("repositories")
-			.withIndex("by_user_and_github_repo", (q) => q.eq("userId", ctx.userId))
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		const sandboxes = (
+		const environments = (
 			await asyncMap(repos, (repo) =>
 				ctx.db
-					.query("sandboxes")
+					.query("environments")
 					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
+					.collect()
+			)
+		).flat();
+
+		const sandboxes = (
+			await asyncMap(environments, (env) =>
+				ctx.db
+					.query("sandboxes")
+					.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
 					.collect()
 			)
 		).flat();
@@ -67,7 +81,12 @@ export const listBySandbox = authedQuery({
 			throw new ConvexError("Sandbox not found");
 		}
 
-		const repository = await ctx.db.get(sandbox.repositoryId);
+		const environment = await ctx.db.get(sandbox.environmentId);
+		if (!environment) {
+			throw new ConvexError("Sandbox not found");
+		}
+
+		const repository = await ctx.db.get(environment.repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
 			throw new ConvexError("Sandbox not found");
 		}
@@ -90,7 +109,12 @@ export const create = authedMutation({
 			throw new ConvexError("Sandbox not found");
 		}
 
-		const repository = await ctx.db.get(sandbox.repositoryId);
+		const environment = await ctx.db.get(sandbox.environmentId);
+		if (!environment) {
+			throw new ConvexError("Sandbox not found");
+		}
+
+		const repository = await ctx.db.get(environment.repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
 			throw new ConvexError("Sandbox not found");
 		}

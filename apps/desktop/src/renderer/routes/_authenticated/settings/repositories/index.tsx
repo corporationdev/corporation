@@ -1,4 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -24,11 +25,13 @@ function RepositoryCard({
 		_id: string;
 		owner: string;
 		name: string;
-		installCommand?: string;
-		devCommand?: string;
 	};
 }) {
 	const removeRepository = useMutation(api.repositories.remove);
+	const environments = useQuery(api.environments.listByRepository, {
+		repositoryId: repository._id as Id<"repositories">,
+	});
+	const environment = environments?.[0];
 
 	return (
 		<Card size="sm">
@@ -38,8 +41,8 @@ function RepositoryCard({
 						{repository.owner}/{repository.name}
 					</CardTitle>
 					<CardDescription>
-						{repository.installCommand || repository.devCommand
-							? [repository.installCommand, repository.devCommand]
+						{environment?.installCommand || environment?.devCommand
+							? [environment.installCommand, environment.devCommand]
 									.filter(Boolean)
 									.join(" | ")
 							: "No environment configured"}

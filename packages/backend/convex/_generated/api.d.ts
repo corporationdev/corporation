@@ -10,6 +10,7 @@
 
 import type * as agentSessions from "../agentSessions.js";
 import type * as auth from "../auth.js";
+import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
@@ -24,6 +25,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentSessions: typeof agentSessions;
   auth: typeof auth;
+  environments: typeof environments;
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
