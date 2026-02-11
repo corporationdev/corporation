@@ -16,11 +16,12 @@
     "@corporation/logger": "workspace:*",
     "@daytonaio/sdk": "catalog:",
     "@hono/zod-openapi": "^1.2.1",
-    "@nangohq/node": "^0.45.0",
+    "@nangohq/node": "^0.69.31",
     "@rivetkit/cloudflare-workers": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:",
     "jose": "^6.1.0",
+    "octokit": "^5.0.5",
     "rivetkit": "catalog:",
     "sandbox-agent": "catalog:"
   },

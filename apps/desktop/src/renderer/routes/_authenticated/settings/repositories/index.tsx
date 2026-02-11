@@ -26,7 +26,7 @@ function RepositoryCard({
 		name: string;
 		installCommand?: string;
 		devCommand?: string;
-	}
+	};
 }) {
 	const removeRepository = useMutation(api.repositories.remove);
 
@@ -56,7 +56,7 @@ function RepositoryCard({
 				</CardAction>
 			</CardHeader>
 		</Card>
-	)
+	);
 }
 
 function RepositoriesPage() {
@@ -99,5 +99,5 @@ function RepositoriesPage() {
 				)}
 			</div>
 		</div>
-	)
+	);
 }
