@@ -1,7 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -46,13 +46,23 @@ function RepositoryCard({
 					</CardDescription>
 				</div>
 				<CardAction>
-					<Button
-						onClick={() => removeRepository({ id: repository._id as never })}
-						size="icon-sm"
-						variant="ghost"
-					>
-						<Trash2 className="size-4" />
-					</Button>
+					<div className="flex items-center gap-1">
+						<Link
+							params={{ repositoryId: repository._id }}
+							to="/settings/repositories/$repositoryId/edit"
+						>
+							<Button size="icon-sm" variant="ghost">
+								<Pencil className="size-4" />
+							</Button>
+						</Link>
+						<Button
+							onClick={() => removeRepository({ id: repository._id as never })}
+							size="icon-sm"
+							variant="ghost"
+						>
+							<Trash2 className="size-4" />
+						</Button>
+					</div>
 				</CardAction>
 			</CardHeader>
 		</Card>

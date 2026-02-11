@@ -20,6 +20,7 @@ import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_
 import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authenticated/chat.$threadId'
 import { Route as AuthenticatedSettingsRepositoriesIndexRouteImport } from './routes/_authenticated/settings/repositories/index'
 import { Route as AuthenticatedSettingsRepositoriesConnectRouteImport } from './routes/_authenticated/settings/repositories/connect'
+import { Route as AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport } from './routes/_authenticated/settings/repositories/$repositoryId.edit'
 
 const PublicRoute = PublicRouteImport.update({
   id: '/_public',
@@ -78,6 +79,12 @@ const AuthenticatedSettingsRepositoriesConnectRoute =
     path: '/repositories/connect',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsRepositoriesRepositoryIdEditRoute =
+  AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport.update({
+    id: '/repositories/$repositoryId/edit',
+    path: '/repositories/$repositoryId/edit',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
+  '/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -100,6 +108,7 @@ export interface FileRoutesByTo {
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories': typeof AuthenticatedSettingsRepositoriesIndexRoute
+  '/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -114,6 +123,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/_authenticated/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/_authenticated/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
+  '/_authenticated/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/settings/connections'
     | '/settings/repositories/connect'
     | '/settings/repositories/'
+    | '/settings/repositories/$repositoryId/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/settings/connections'
     | '/settings/repositories/connect'
     | '/settings/repositories'
+    | '/settings/repositories/$repositoryId/edit'
   id:
     | '__root__'
     | '/'
@@ -151,6 +163,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/connections'
     | '/_authenticated/settings/repositories/connect'
     | '/_authenticated/settings/repositories/'
+    | '/_authenticated/settings/repositories/$repositoryId/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -238,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRepositoriesConnectRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/repositories/$repositoryId/edit': {
+      id: '/_authenticated/settings/repositories/$repositoryId/edit'
+      path: '/repositories/$repositoryId/edit'
+      fullPath: '/settings/repositories/$repositoryId/edit'
+      preLoaderRoute: typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
   }
 }
 
@@ -256,6 +276,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsConnectionsRoute: typeof AuthenticatedSettingsConnectionsRoute
   AuthenticatedSettingsRepositoriesConnectRoute: typeof AuthenticatedSettingsRepositoriesConnectRoute
   AuthenticatedSettingsRepositoriesIndexRoute: typeof AuthenticatedSettingsRepositoriesIndexRoute
+  AuthenticatedSettingsRepositoriesRepositoryIdEditRoute: typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
@@ -264,6 +285,8 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
     AuthenticatedSettingsRepositoriesConnectRoute,
   AuthenticatedSettingsRepositoriesIndexRoute:
     AuthenticatedSettingsRepositoriesIndexRoute,
+  AuthenticatedSettingsRepositoriesRepositoryIdEditRoute:
+    AuthenticatedSettingsRepositoriesRepositoryIdEditRoute,
 }
 
 const AuthenticatedSettingsRouteWithChildren =

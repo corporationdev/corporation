@@ -1,13 +1,15 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useForm } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
-import { Check, Plus, Search, Trash2 } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { useState } from "react";
 
+import { RepositoryConfigFields } from "@/components/repository-config-fields";
 import { Button } from "@/components/ui/button";
+import { FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 
@@ -51,9 +53,35 @@ function ConnectRepositoryPage() {
 
 	const [search, setSearch] = useState("");
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
-	const [installCommand, setInstallCommand] = useState("");
-	const [devCommand, setDevCommand] = useState("");
-	const [envVars, setEnvVars] = useState<{ key: string; value: string }[]>([]);
+
+	const form = useForm({
+		defaultValues: {
+			installCommand: "",
+			devCommand: "",
+			envVars: [] as { key: string; value: string }[],
+		},
+		onSubmit: async ({ value }) => {
+			if (!selectedRepo) {
+				return;
+			}
+
+			const validEnvVars = value.envVars.filter(
+				(v) => v.key.trim() !== "" && v.value.trim() !== ""
+			);
+
+			await convex.mutation(api.repositories.create, {
+				githubRepoId: selectedRepo.id,
+				owner: selectedRepo.owner,
+				name: selectedRepo.name,
+				defaultBranch: selectedRepo.defaultBranch,
+				installCommand: value.installCommand.trim() || undefined,
+				devCommand: value.devCommand.trim() || undefined,
+				envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
+			});
+
+			navigate({ to: "/settings/repositories" });
+		},
+	});
 
 	const filteredRepos = repos?.filter((repo) => {
 		const query = search.toLowerCase();
@@ -63,51 +91,14 @@ function ConnectRepositoryPage() {
 		);
 	});
 
-	const handleAddEnvVar = () => {
-		setEnvVars([...envVars, { key: "", value: "" }]);
-	};
-
-	const handleRemoveEnvVar = (index: number) => {
-		setEnvVars(envVars.filter((_, i) => i !== index));
-	};
-
-	const handleEnvVarChange = (
-		index: number,
-		field: "key" | "value",
-		value: string
-	) => {
-		const updated = [...envVars];
-		updated[index] = { ...updated[index], [field]: value };
-		setEnvVars(updated);
-	};
-
-	const connectMutation = useMutation({
-		mutationFn: async () => {
-			if (!selectedRepo) {
-				throw new Error("No repository selected");
-			}
-
-			const validEnvVars = envVars.filter(
-				(v) => v.key.trim() !== "" && v.value.trim() !== ""
-			);
-
-			await convex.mutation(api.repositories.create, {
-				githubRepoId: selectedRepo.id,
-				owner: selectedRepo.owner,
-				name: selectedRepo.name,
-				defaultBranch: selectedRepo.defaultBranch,
-				installCommand: installCommand.trim() || undefined,
-				devCommand: devCommand.trim() || undefined,
-				envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
-			});
-		},
-		onSuccess: () => {
-			navigate({ to: "/settings/repositories" });
-		},
-	});
-
 	return (
-		<div className="flex flex-col gap-6 p-6">
+		<form
+			className="flex flex-col gap-6 p-6"
+			onSubmit={(e) => {
+				e.preventDefault();
+				form.handleSubmit();
+			}}
+		>
 			<div>
 				<h1 className="font-semibold text-lg">Connect Repository</h1>
 				<p className="mt-1 text-muted-foreground text-sm">
@@ -118,7 +109,7 @@ function ConnectRepositoryPage() {
 			{error && <p className="text-destructive text-sm">{error.message}</p>}
 
 			<div className="flex flex-col gap-2">
-				<Label>Repository</Label>
+				<FieldLabel>Repository</FieldLabel>
 				<div className="relative">
 					<Search className="absolute top-2 left-2.5 size-3.5 text-muted-foreground" />
 					<Input
@@ -173,80 +164,19 @@ function ConnectRepositoryPage() {
 
 			{selectedRepo && (
 				<>
-					<div className="flex flex-col gap-2">
-						<Label htmlFor="install-command">Install Command</Label>
-						<Input
-							id="install-command"
-							onChange={(e) => setInstallCommand(e.target.value)}
-							placeholder="e.g. npm install"
-							value={installCommand}
-						/>
-					</div>
-
-					<div className="flex flex-col gap-2">
-						<Label htmlFor="dev-command">Dev Command</Label>
-						<Input
-							id="dev-command"
-							onChange={(e) => setDevCommand(e.target.value)}
-							placeholder="e.g. npm run dev"
-							value={devCommand}
-						/>
-					</div>
-
-					<div className="flex flex-col gap-2">
-						<div className="flex items-center justify-between">
-							<Label>Environment Variables</Label>
-							<Button onClick={handleAddEnvVar} size="xs" variant="ghost">
-								<Plus className="size-3" />
-								Add
-							</Button>
-						</div>
-						{envVars.length > 0 && (
-							<div className="flex flex-col gap-2">
-								{envVars.map((envVar, index) => (
-									<div
-										className="flex items-center gap-2"
-										key={`env-${index.toString()}`}
-									>
-										<Input
-											onChange={(e) =>
-												handleEnvVarChange(index, "key", e.target.value)
-											}
-											placeholder="KEY"
-											value={envVar.key}
-										/>
-										<Input
-											onChange={(e) =>
-												handleEnvVarChange(index, "value", e.target.value)
-											}
-											placeholder="value"
-											value={envVar.value}
-										/>
-										<Button
-											onClick={() => handleRemoveEnvVar(index)}
-											size="icon-sm"
-											variant="ghost"
-										>
-											<Trash2 className="size-3.5" />
-										</Button>
-									</div>
-								))}
-							</div>
-						)}
-					</div>
+					<RepositoryConfigFields form={form} />
 
 					<div className="flex justify-end">
-						<Button
-							disabled={connectMutation.isPending}
-							onClick={() => connectMutation.mutate()}
-						>
-							{connectMutation.isPending
-								? "Connecting..."
-								: "Connect Repository"}
-						</Button>
+						<form.Subscribe selector={(state) => state.isSubmitting}>
+							{(isSubmitting) => (
+								<Button disabled={!selectedRepo || isSubmitting} type="submit">
+									{isSubmitting ? "Connecting..." : "Connect Repository"}
+								</Button>
+							)}
+						</form.Subscribe>
 					</div>
 				</>
 			)}
-		</div>
+		</form>
 	);
 }

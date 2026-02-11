@@ -56,6 +56,26 @@ export const create = authedMutation({
 	},
 });
 
+export const update = authedMutation({
+	args: {
+		id: v.id("repositories"),
+		installCommand: v.optional(v.string()),
+		devCommand: v.optional(v.string()),
+		envVars: v.optional(
+			v.array(v.object({ key: v.string(), value: v.string() }))
+		),
+	},
+	handler: async (ctx, args) => {
+		await requireOwnedRepository(ctx, ctx.userId, args.id);
+		await ctx.db.patch(args.id, {
+			installCommand: args.installCommand,
+			devCommand: args.devCommand,
+			envVars: args.envVars,
+			updatedAt: Date.now(),
+		});
+	},
+});
+
 export const remove = authedMutation({
 	args: {
 		id: v.id("repositories"),
