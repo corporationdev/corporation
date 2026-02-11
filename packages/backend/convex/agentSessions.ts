@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-
+import { asyncMap } from "convex-helpers";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
@@ -34,22 +34,23 @@ export const list = authedQuery({
 			.withIndex("by_user_and_github_repo", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		const sessions: Doc<"agentSessions">[] = [];
+		const sandboxes = (
+			await asyncMap(repos, (repo) =>
+				ctx.db
+					.query("sandboxes")
+					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
+					.collect()
+			)
+		).flat();
 
-		for (const repo of repos) {
-			const sandboxes = await ctx.db
-				.query("sandboxes")
-				.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
-				.collect();
-
-			for (const sandbox of sandboxes) {
-				const sandboxSessions = await ctx.db
+		const sessions = (
+			await asyncMap(sandboxes, (sandbox) =>
+				ctx.db
 					.query("agentSessions")
 					.withIndex("by_sandbox", (q) => q.eq("sandboxId", sandbox._id))
-					.collect();
-				sessions.push(...sandboxSessions);
-			}
-		}
+					.collect()
+			)
+		).flat();
 
 		sessions.sort((a, b) => b.updatedAt - a.updatedAt);
 		return sessions;

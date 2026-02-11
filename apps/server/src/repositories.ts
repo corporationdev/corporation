@@ -78,7 +78,7 @@ export const repositoriesApp = $(
 	new OpenAPIHono<RepositoriesEnv>().openapi(
 		listGitHubReposRoute,
 		async (c) => {
-			const userId = c.get("userId");
+			const { sub: userId } = c.get("jwtPayload");
 			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 
 			try {

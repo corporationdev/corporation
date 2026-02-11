@@ -161,7 +161,7 @@ const disconnectRoute = createRoute({
 export const integrationsApp = $(
 	new OpenAPIHono<IntegrationsEnv>()
 		.openapi(listIntegrationsRoute, async (c) => {
-			const userId = c.get("userId");
+			const { sub: userId } = c.get("jwtPayload");
 			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 
 			try {
@@ -210,16 +210,15 @@ export const integrationsApp = $(
 		})
 		.openapi(createConnectSessionRoute, async (c) => {
 			const body = c.req.valid("json");
-			const userId = c.get("userId");
-			const jwtPayload = c.get("jwtPayload");
+			const { sub: userId, email, name } = c.get("jwtPayload");
 			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 
 			try {
 				const { data } = await nango.createConnectSession({
 					end_user: {
 						id: userId,
-						email: jwtPayload.email as string | undefined,
-						display_name: jwtPayload.name as string | undefined,
+						email,
+						display_name: name,
 					},
 					allowed_integrations: body.allowed_integrations,
 				});
