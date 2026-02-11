@@ -1,7 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useConvex, useQuery } from "convex/react";
+import { useConvex } from "convex/react";
 import { Check, Search } from "lucide-react";
 import { useState } from "react";
 
@@ -22,8 +22,13 @@ export const Route = createFileRoute(
 function ConnectRepositoryPage() {
 	const navigate = useNavigate();
 	const convex = useConvex();
-	const { data: repos, isLoading, error } = useGitHubRepos();
-	const connectedRepos = useQuery(api.repositories.list);
+	const {
+		data: repos,
+		isLoading,
+		error,
+	} = useGitHubRepos({
+		excludeConnected: true,
+	});
 
 	const [search, setSearch] = useState("");
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
@@ -57,14 +62,7 @@ function ConnectRepositoryPage() {
 		},
 	});
 
-	const connectedGithubIds = new Set(
-		connectedRepos?.map((r) => r.githubRepoId)
-	);
-
 	const filteredRepos = repos?.filter((repo) => {
-		if (connectedGithubIds.has(repo.id)) {
-			return false;
-		}
 		const query = search.toLowerCase();
 		return (
 			repo.name.toLowerCase().includes(query) ||

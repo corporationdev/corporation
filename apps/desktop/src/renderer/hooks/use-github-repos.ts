@@ -1,4 +1,6 @@
+import { api } from "@corporation/backend/convex/_generated/api";
 import { useQuery } from "@tanstack/react-query";
+import { useQuery as useConvexQuery } from "convex/react";
 import type { InferResponseType } from "hono/client";
 
 import { apiClient } from "@/lib/api-client";
@@ -19,9 +21,25 @@ async function fetchGitHubRepos() {
 	return data.repositories;
 }
 
-export function useGitHubRepos() {
-	return useQuery({
+export function useGitHubRepos(options?: { excludeConnected?: boolean }) {
+	const connectedRepos = useConvexQuery(
+		api.repositories.list,
+		options?.excludeConnected ? {} : "skip"
+	);
+
+	const query = useQuery({
 		queryKey: ["github-repos"],
 		queryFn: fetchGitHubRepos,
 	});
+
+	if (!options?.excludeConnected) {
+		return query;
+	}
+
+	const connectedIds = new Set(connectedRepos?.map((r) => r.githubRepoId));
+
+	return {
+		...query,
+		data: query.data?.filter((repo) => !connectedIds.has(repo.id)),
+	};
 }

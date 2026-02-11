@@ -26,7 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export const ThreadList: FC = () => {
-	const threads = useQuery(api.agentSessions.listAll);
+	const threads = useQuery(api.agentSessions.list);
 	const updateThread = useOptimisticUpdateThreadMutation();
 	const deleteThread = useOptimisticDeleteThreadMutation();
 

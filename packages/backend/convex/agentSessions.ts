@@ -26,12 +26,12 @@ async function requireOwnedSession(
 	return session;
 }
 
-export const listAll = authedQuery({
+export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const repos = await ctx.db
 			.query("repositories")
-			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.withIndex("by_user_and_github_repo", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
 		const sessions: Doc<"agentSessions">[] = [];
@@ -56,7 +56,7 @@ export const listAll = authedQuery({
 	},
 });
 
-export const list = authedQuery({
+export const listBySandbox = authedQuery({
 	args: {
 		sandboxId: v.id("sandboxes"),
 	},

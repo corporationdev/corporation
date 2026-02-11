@@ -8,10 +8,7 @@ export function useOptimisticUpdateThreadMutation() {
 	return useMemo(
 		() =>
 			updateThread.withOptimisticUpdate((localStore, args) => {
-				const currentSessions = localStore.getQuery(
-					api.agentSessions.listAll,
-					{}
-				);
+				const currentSessions = localStore.getQuery(api.agentSessions.list, {});
 				if (!currentSessions) {
 					return;
 				}
@@ -30,7 +27,7 @@ export function useOptimisticUpdateThreadMutation() {
 					)
 					.sort((a, b) => b.updatedAt - a.updatedAt);
 
-				localStore.setQuery(api.agentSessions.listAll, {}, nextSessions);
+				localStore.setQuery(api.agentSessions.list, {}, nextSessions);
 			}),
 		[updateThread]
 	);
@@ -42,10 +39,7 @@ export function useOptimisticDeleteThreadMutation() {
 	return useMemo(
 		() =>
 			deleteThread.withOptimisticUpdate((localStore, args) => {
-				const currentSessions = localStore.getQuery(
-					api.agentSessions.listAll,
-					{}
-				);
+				const currentSessions = localStore.getQuery(api.agentSessions.list, {});
 				if (!currentSessions) {
 					return;
 				}
@@ -53,7 +47,7 @@ export function useOptimisticDeleteThreadMutation() {
 				const nextSessions = currentSessions.filter(
 					(session) => session._id !== args.id
 				);
-				localStore.setQuery(api.agentSessions.listAll, {}, nextSessions);
+				localStore.setQuery(api.agentSessions.list, {}, nextSessions);
 			}),
 		[deleteThread]
 	);
@@ -65,10 +59,7 @@ export function useOptimisticTouchThreadMutation() {
 	return useMemo(
 		() =>
 			touchThread.withOptimisticUpdate((localStore, args) => {
-				const currentSessions = localStore.getQuery(
-					api.agentSessions.listAll,
-					{}
-				);
+				const currentSessions = localStore.getQuery(api.agentSessions.list, {});
 				if (!currentSessions) {
 					return;
 				}
@@ -81,7 +72,7 @@ export function useOptimisticTouchThreadMutation() {
 							: session
 					)
 					.sort((a, b) => b.updatedAt - a.updatedAt);
-				localStore.setQuery(api.agentSessions.listAll, {}, nextSessions);
+				localStore.setQuery(api.agentSessions.list, {}, nextSessions);
 			}),
 		[touchThread]
 	);
