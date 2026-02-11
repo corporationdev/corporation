@@ -1,6 +1,6 @@
 import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { Nango } from "@nangohq/node";
-import { authMiddleware } from "./auth";
+import { type AuthVariables, authMiddleware } from "./auth";
 
 const ErrorResponseSchema = z.object({
 	error: z.string().openapi({ description: "Error message" }),
@@ -8,7 +8,7 @@ const ErrorResponseSchema = z.object({
 
 type IntegrationsEnv = {
 	Bindings: Env;
-	Variables: { jwtPayload: import("jose").JWTPayload };
+	Variables: AuthVariables;
 };
 
 // ---------------------------------------------------------------------------
@@ -161,47 +161,14 @@ const disconnectRoute = createRoute({
 export const integrationsApp = $(
 	new OpenAPIHono<IntegrationsEnv>()
 		.openapi(listIntegrationsRoute, async (c) => {
-			const jwtPayload = c.get("jwtPayload");
-			const userId = jwtPayload.sub;
-
-			if (!userId) {
-				return c.json({ error: "User ID not found in token" }, 500);
-			}
-
+			const { sub: userId } = c.get("jwtPayload");
 			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 
 			try {
-				const [integrationsRes, connectionsRes] = await Promise.all([
+				const [integrationsRes, connectionsData] = await Promise.all([
 					nango.listIntegrations(),
-					fetch(
-						`https://api.nango.dev/connection?endUserId=${encodeURIComponent(userId)}`,
-						{
-							headers: {
-								Authorization: `Bearer ${c.env.NANGO_SECRET_KEY}`,
-							},
-						}
-					),
+					nango.listConnections({ userId }),
 				]);
-
-				if (!connectionsRes.ok) {
-					throw new Error(
-						`Nango connections API returned ${connectionsRes.status}`
-					);
-				}
-
-				const connectionsData = (await connectionsRes.json()) as {
-					connections: {
-						connection_id: string;
-						provider_config_key: string;
-						provider: string;
-						created: string;
-						end_user: {
-							id: string;
-							email: string | null;
-							display_name: string | null;
-						} | null;
-					}[];
-				};
 
 				const connectionsByKey = new Map(
 					connectionsData.connections.map((conn) => [
@@ -243,21 +210,15 @@ export const integrationsApp = $(
 		})
 		.openapi(createConnectSessionRoute, async (c) => {
 			const body = c.req.valid("json");
-			const jwtPayload = c.get("jwtPayload");
-			const userId = jwtPayload.sub;
-
-			if (!userId) {
-				return c.json({ error: "User ID not found in token" }, 500);
-			}
-
+			const { sub: userId, email, name } = c.get("jwtPayload");
 			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 
 			try {
 				const { data } = await nango.createConnectSession({
 					end_user: {
 						id: userId,
-						email: jwtPayload.email as string | undefined,
-						display_name: jwtPayload.name as string | undefined,
+						email,
+						display_name: name,
 					},
 					allowed_integrations: body.allowed_integrations,
 				});

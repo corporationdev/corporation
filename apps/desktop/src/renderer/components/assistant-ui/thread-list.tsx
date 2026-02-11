@@ -1,6 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMatch, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "convex/react";
 import {
 	ArchiveIcon,
 	MoreHorizontalIcon,
@@ -21,28 +22,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
 	useOptimisticDeleteThreadMutation,
 	useOptimisticUpdateThreadMutation,
-} from "@/lib/agent-session-mutations";
-import {
-	AGENT_SESSIONS_CACHE_KEY,
-	type ConvexAgentSession,
-	readCachedAgentSessions,
-	writeCachedAgentSessions,
-} from "@/lib/cache/agent-sessions-adapter";
-import { useCachedConvexQuery } from "@/lib/cache/use-cached-convex-query";
+} from "@/hooks/agent-session-mutations";
 import { cn } from "@/lib/utils";
 
 export const ThreadList: FC = () => {
-	const cachedThreadsQuery = useCachedConvexQuery({
-		query: api.agentSessions.list,
-		args: {},
-		cacheKey: AGENT_SESSIONS_CACHE_KEY,
-		readCache: readCachedAgentSessions,
-		writeCache: writeCachedAgentSessions,
-	});
+	const threads = useQuery(api.agentSessions.list);
 	const updateThread = useOptimisticUpdateThreadMutation();
 	const deleteThread = useOptimisticDeleteThreadMutation();
 
-	if (cachedThreadsQuery.isLoading) {
+	if (threads === undefined) {
 		return (
 			<div className="flex flex-col gap-1">
 				<ThreadListNew />
@@ -51,7 +39,6 @@ export const ThreadList: FC = () => {
 		);
 	}
 
-	const threads = cachedThreadsQuery.data;
 	const regularThreads = threads.filter((thread) => thread.archivedAt === null);
 
 	return (
@@ -209,7 +196,7 @@ const ThreadListItemMore: FC<{
 };
 
 const ArchivedThreadList: FC<{
-	threads: ConvexAgentSession[];
+	threads: Doc<"agentSessions">[];
 	onUnarchive: (id: Id<"agentSessions">) => Promise<void>;
 }> = ({ threads, onUnarchive }) => {
 	const navigate = useNavigate();
