@@ -128,7 +128,27 @@ function ConnectionsPage() {
 				throw new Error("Failed to disconnect");
 			}
 		},
-		onSuccess: () => {
+		onMutate: async ({ providerConfigKey }) => {
+			await queryClient.cancelQueries({ queryKey: ["integrations"] });
+
+			const previous = queryClient.getQueryData<Integration[]>([
+				"integrations",
+			]);
+
+			queryClient.setQueryData<Integration[]>(["integrations"], (old) =>
+				old?.map((i) =>
+					i.unique_key === providerConfigKey ? { ...i, connection: null } : i
+				)
+			);
+
+			return { previous };
+		},
+		onError: (_err, _vars, context) => {
+			if (context?.previous) {
+				queryClient.setQueryData(["integrations"], context.previous);
+			}
+		},
+		onSettled: () => {
 			queryClient.invalidateQueries({ queryKey: ["integrations"] });
 		},
 	});
