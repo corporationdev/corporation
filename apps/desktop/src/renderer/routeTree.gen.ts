@@ -18,6 +18,8 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_authenticated/settings/connections'
 import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authenticated/chat.$threadId'
+import { Route as AuthenticatedSettingsRepositoriesIndexRouteImport } from './routes/_authenticated/settings/repositories/index'
+import { Route as AuthenticatedSettingsRepositoriesConnectRouteImport } from './routes/_authenticated/settings/repositories/connect'
 
 const PublicRoute = PublicRouteImport.update({
   id: '/_public',
@@ -64,6 +66,18 @@ const AuthenticatedChatThreadIdRoute =
     path: '/$threadId',
     getParentRoute: () => AuthenticatedChatRoute,
   } as any)
+const AuthenticatedSettingsRepositoriesIndexRoute =
+  AuthenticatedSettingsRepositoriesIndexRouteImport.update({
+    id: '/repositories/',
+    path: '/repositories/',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedSettingsRepositoriesConnectRoute =
+  AuthenticatedSettingsRepositoriesConnectRouteImport.update({
+    id: '/repositories/connect',
+    path: '/repositories/connect',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -73,6 +87,8 @@ export interface FileRoutesByFullPath {
   '/signup': typeof PublicSignupRoute
   '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
+  '/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -82,6 +98,8 @@ export interface FileRoutesByTo {
   '/signup': typeof PublicSignupRoute
   '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
+  '/settings/repositories': typeof AuthenticatedSettingsRepositoriesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,6 +112,8 @@ export interface FileRoutesById {
   '/_public/signup': typeof PublicSignupRoute
   '/_authenticated/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/_authenticated/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
+  '/_authenticated/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -105,6 +125,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/chat/$threadId'
     | '/settings/connections'
+    | '/settings/repositories/connect'
+    | '/settings/repositories/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -114,6 +136,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/chat/$threadId'
     | '/settings/connections'
+    | '/settings/repositories/connect'
+    | '/settings/repositories'
   id:
     | '__root__'
     | '/'
@@ -125,6 +149,8 @@ export interface FileRouteTypes {
     | '/_public/signup'
     | '/_authenticated/chat/$threadId'
     | '/_authenticated/settings/connections'
+    | '/_authenticated/settings/repositories/connect'
+    | '/_authenticated/settings/repositories/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -198,6 +224,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChatThreadIdRouteImport
       parentRoute: typeof AuthenticatedChatRoute
     }
+    '/_authenticated/settings/repositories/': {
+      id: '/_authenticated/settings/repositories/'
+      path: '/repositories'
+      fullPath: '/settings/repositories/'
+      preLoaderRoute: typeof AuthenticatedSettingsRepositoriesIndexRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/repositories/connect': {
+      id: '/_authenticated/settings/repositories/connect'
+      path: '/repositories/connect'
+      fullPath: '/settings/repositories/connect'
+      preLoaderRoute: typeof AuthenticatedSettingsRepositoriesConnectRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
   }
 }
 
@@ -214,10 +254,16 @@ const AuthenticatedChatRouteWithChildren =
 
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsConnectionsRoute: typeof AuthenticatedSettingsConnectionsRoute
+  AuthenticatedSettingsRepositoriesConnectRoute: typeof AuthenticatedSettingsRepositoriesConnectRoute
+  AuthenticatedSettingsRepositoriesIndexRoute: typeof AuthenticatedSettingsRepositoriesIndexRoute
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsConnectionsRoute: AuthenticatedSettingsConnectionsRoute,
+  AuthenticatedSettingsRepositoriesConnectRoute:
+    AuthenticatedSettingsRepositoriesConnectRoute,
+  AuthenticatedSettingsRepositoriesIndexRoute:
+    AuthenticatedSettingsRepositoriesIndexRoute,
 }
 
 const AuthenticatedSettingsRouteWithChildren =

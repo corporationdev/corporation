@@ -1,11 +1,12 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { ArrowLeft, Cable } from "lucide-react";
+import { ArrowLeft, Cable, GitFork } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/settings")({
 	component: SettingsLayout,
 });
 
 const navItems = [
+	{ label: "Repositories", href: "/settings/repositories", icon: GitFork },
 	{ label: "Connections", href: "/settings/connections", icon: Cable },
 ];
 

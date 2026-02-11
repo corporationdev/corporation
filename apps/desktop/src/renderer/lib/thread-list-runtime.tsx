@@ -43,7 +43,11 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 				.map((part) => part.text)
 				.join("");
 
-			const newThreadId = await createThread({ title: "New Chat" });
+			// TODO: pass real sandboxId once sandbox-scoped navigation exists
+			const newThreadId = await createThread({
+				title: "New Chat",
+				sandboxId: "" as never,
+			});
 			setPendingMessage(text);
 			navigate({
 				to: "/chat/$threadId",
