@@ -15,9 +15,7 @@ export default defineSchema({
 		),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-	})
-		.index("by_user", ["userId"])
-		.index("by_github_repo_id", ["githubRepoId"]),
+	}).index("by_user_and_github_repo", ["userId", "githubRepoId"]),
 
 	sandboxes: defineTable({
 		repositoryId: v.id("repositories"),
