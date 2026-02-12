@@ -79,12 +79,14 @@
     "apps/server": {
       "name": "@corporation/server",
       "dependencies": {
+        "@corporation/backend": "workspace:*",
         "@corporation/env": "workspace:*",
         "@corporation/logger": "workspace:*",
         "@daytonaio/sdk": "catalog:",
         "@hono/zod-openapi": "^1.2.1",
         "@nangohq/node": "^0.69.31",
         "@rivetkit/cloudflare-workers": "catalog:",
+        "convex": "catalog:",
         "effect": "catalog:",
         "hono": "catalog:",
         "jose": "^6.1.0",

@@ -32,10 +32,11 @@ export default defineSchema(
 			daytonaSandboxId: v.optional(v.string()),
 			branchName: v.string(),
 			status: v.union(
-				v.literal("provisioning"),
-				v.literal("running"),
+				v.literal("creating"),
+				v.literal("starting"),
+				v.literal("started"),
 				v.literal("stopped"),
-				v.literal("failed")
+				v.literal("error")
 			),
 			createdAt: v.number(),
 			updatedAt: v.number(),

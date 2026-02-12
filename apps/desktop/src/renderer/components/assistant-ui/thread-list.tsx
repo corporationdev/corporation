@@ -173,7 +173,7 @@ const ThreadListItemMore: FC<{
 	return (
 		<DropdownMenu>
 			<Button
-				className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100 data-[popup-open]:bg-accent data-[popup-open]:opacity-100"
+				className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100 data-popup-open:bg-accent data-popup-open:opacity-100"
 				render={<DropdownMenuTrigger />}
 				size="icon"
 				variant="ghost"
