@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { asyncMap } from "convex-helpers";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
@@ -24,6 +25,37 @@ async function requireOwnedSandbox(
 
 	return sandbox;
 }
+
+export const list = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		const repos = await ctx.db
+			.query("repositories")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.collect();
+
+		const environments = (
+			await asyncMap(repos, (repo) =>
+				ctx.db
+					.query("environments")
+					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
+					.collect()
+			)
+		).flat();
+
+		const sandboxes = (
+			await asyncMap(environments, (env) =>
+				ctx.db
+					.query("sandboxes")
+					.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
+					.collect()
+			)
+		).flat();
+
+		sandboxes.sort((a, b) => b.updatedAt - a.updatedAt);
+		return sandboxes;
+	},
+});
 
 export const getById = authedQuery({
 	args: { id: v.id("sandboxes") },

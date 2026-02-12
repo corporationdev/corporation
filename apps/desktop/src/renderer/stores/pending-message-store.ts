@@ -1,18 +1,24 @@
 import { create } from "zustand";
 
+type PendingMessage = {
+	text: string;
+	sandboxId: string;
+	baseUrl: string;
+};
+
 type PendingMessageStore = {
-	pendingMessage: string | null;
-	setPendingMessage: (message: string) => void;
-	consumePendingMessage: () => string | null;
+	pending: PendingMessage | null;
+	setPending: (message: PendingMessage) => void;
+	consumePending: () => PendingMessage | null;
 };
 
 export const usePendingMessageStore = create<PendingMessageStore>(
 	(set, get) => ({
-		pendingMessage: null,
-		setPendingMessage: (message) => set({ pendingMessage: message }),
-		consumePendingMessage: () => {
-			const message = get().pendingMessage;
-			set({ pendingMessage: null });
+		pending: null,
+		setPending: (message) => set({ pending: message }),
+		consumePending: () => {
+			const message = get().pending;
+			set({ pending: null });
 			return message;
 		},
 	})
