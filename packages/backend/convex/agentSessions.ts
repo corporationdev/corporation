@@ -31,6 +31,13 @@ async function requireOwnedSession(
 	return session;
 }
 
+export const getById = authedQuery({
+	args: { id: v.id("agentSessions") },
+	handler: async (ctx, args) => {
+		return await requireOwnedSession(ctx, args.id);
+	},
+});
+
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {

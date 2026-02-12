@@ -30,6 +30,7 @@ export default defineSchema(
 		sandboxes: defineTable({
 			environmentId: v.id("environments"),
 			daytonaSandboxId: v.optional(v.string()),
+			baseUrl: v.optional(v.string()),
 			branchName: v.string(),
 			status: v.union(
 				v.literal("creating"),

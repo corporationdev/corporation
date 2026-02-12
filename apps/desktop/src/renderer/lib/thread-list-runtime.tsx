@@ -47,8 +47,8 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 
 	const ensureSandboxMutation = useTanstackMutation({
 		mutationFn: async (args: {
-			environmentId: string;
-			repositoryId: string;
+			environmentId?: string;
+			repositoryId?: string;
 			sandboxId?: string;
 		}) => {
 			const res = await apiClient.sandboxes.ensure.$post({
@@ -63,7 +63,7 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 	});
 
 	const runtime = useExternalStoreRuntime({
-		isRunning: ensureSandboxMutation.isPending,
+		isRunning: false,
 		messages: [] as ThreadMessageLike[],
 		convertMessage: (message: ThreadMessageLike) => message,
 		onNew: async (message: AppendMessage) => {
@@ -78,18 +78,26 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 				.map((part) => part.text)
 				.join("");
 
-			const { sandboxId, baseUrl } = await ensureSandboxMutation.mutateAsync({
+			const result = await ensureSandboxMutation.mutateAsync({
 				environmentId: firstEnv._id,
 				repositoryId: firstRepo._id,
 				sandboxId: selectedSandboxId ?? undefined,
 			});
 
+			if (!result.baseUrl) {
+				throw new Error("Expected baseUrl from ensure for new sandbox");
+			}
+
 			const newThreadId = await createThread({
 				title: "New Chat",
-				sandboxId: sandboxId as Id<"sandboxes">,
+				sandboxId: result.sandboxId as Id<"sandboxes">,
 			});
 
-			setPending({ text, sandboxId, baseUrl });
+			setPending({
+				text,
+				sandboxId: result.sandboxId,
+				baseUrl: result.baseUrl,
+			});
 			navigate({
 				to: "/chat/$threadId",
 				params: { threadId: newThreadId },
@@ -116,10 +124,31 @@ function ConnectedThreadRuntime({
 	const resetPermissions = usePermissionStore((s) => s.reset);
 	const touchThread = useOptimisticTouchThreadMutation();
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
+	const pending = usePendingMessageStore((s) => s.pending);
+
+	const session = useQuery(api.agentSessions.getById, {
+		id: threadId as Id<"agentSessions">,
+	});
+
+	const ensureSandboxMutation = useTanstackMutation({
+		mutationFn: async (args: { sandboxId: string }) => {
+			const res = await apiClient.sandboxes.ensure.$post({
+				json: args,
+			});
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error);
+			}
+			return await res.json();
+		},
+	});
 
 	const actor = useActor({
 		name: "sandboxAgent",
 		key: [threadId],
+		createWithInput: pending?.baseUrl
+			? { baseUrl: pending.baseUrl }
+			: undefined,
 	});
 
 	const threadState = useThreadEventState({
@@ -155,15 +184,15 @@ function ConnectedThreadRuntime({
 			return;
 		}
 
-		const pending = consumePending();
-		if (!pending) {
+		const consumed = consumePending();
+		if (!consumed) {
 			return;
 		}
 
 		touchThread({ id: threadId as Id<"agentSessions"> }).catch(() => {
 			// Pending messages are best-effort and can be retried by the user on failure.
 		});
-		actor.connection.postMessage(pending.text).catch(() => {
+		actor.connection.postMessage(consumed.text).catch(() => {
 			// Runtime stream stays connected; user can resend manually if needed.
 		});
 	}, [
@@ -179,6 +208,10 @@ function ConnectedThreadRuntime({
 		messages: threadState.messages,
 		convertMessage: (message) => message,
 		onNew: async (message: AppendMessage) => {
+			if (!session) {
+				throw new Error("Session not loaded");
+			}
+
 			const text = message.content
 				.filter(
 					(part): part is { type: "text"; text: string } => part.type === "text"
@@ -186,8 +219,12 @@ function ConnectedThreadRuntime({
 				.map((part) => part.text)
 				.join("");
 
+			const result = await ensureSandboxMutation.mutateAsync({
+				sandboxId: session.sandboxId,
+			});
+
 			await touchThread({ id: threadId as Id<"agentSessions"> });
-			await actor.connection?.postMessage(text);
+			await actor.connection?.postMessage(text, result.baseUrl ?? undefined);
 		},
 	});
 

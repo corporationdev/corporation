@@ -9,6 +9,7 @@ import {
 	createReadySandbox,
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
+	isPreviewUrlHealthy,
 } from "./sandbox-lifecycle";
 
 type SandboxesEnv = {
@@ -36,12 +37,22 @@ function getBearerToken(authHeader: string | undefined): string {
 	return authHeader.slice(7);
 }
 
+async function generateAndStorePreviewUrl(
+	convex: ConvexHttpClient,
+	sandbox: Sandbox,
+	sandboxId: Id<"sandboxes">
+): Promise<string> {
+	const baseUrl = await getPreviewUrl(sandbox);
+	await convex.mutation(api.sandboxes.update, { id: sandboxId, baseUrl });
+	return baseUrl;
+}
+
 async function ensureExistingSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
 	sandboxId: Id<"sandboxes">,
 	anthropicApiKey: string
-): Promise<{ sandboxId: string; baseUrl: string }> {
+): Promise<{ sandboxId: string; baseUrl: string | undefined }> {
 	const record = await convex.query(api.sandboxes.getById, {
 		id: sandboxId,
 	});
@@ -71,7 +82,16 @@ async function ensureExistingSandbox(
 
 	if (state === "started") {
 		await ensureSandboxAgentRunning(sandbox);
-		const baseUrl = await getPreviewUrl(sandbox);
+
+		if (record.baseUrl && (await isPreviewUrlHealthy(record.baseUrl))) {
+			return { sandboxId: record._id, baseUrl: undefined };
+		}
+
+		const baseUrl = await generateAndStorePreviewUrl(
+			convex,
+			sandbox,
+			record._id
+		);
 		return { sandboxId: record._id, baseUrl };
 	}
 
@@ -86,7 +106,11 @@ async function ensureExistingSandbox(
 			id: record._id,
 			status: "started",
 		});
-		const baseUrl = await getPreviewUrl(sandbox);
+		const baseUrl = await generateAndStorePreviewUrl(
+			convex,
+			sandbox,
+			record._id
+		);
 		return { sandboxId: record._id, baseUrl };
 	}
 
@@ -106,14 +130,15 @@ async function provisionDaytonaSandbox(
 	anthropicApiKey: string
 ): Promise<{ sandboxId: string; baseUrl: string }> {
 	const sandbox = await createReadySandbox(daytona, anthropicApiKey);
+	const baseUrl = await getPreviewUrl(sandbox);
 
 	await convex.mutation(api.sandboxes.update, {
 		id: sandboxId,
 		status: "started",
 		daytonaSandboxId: sandbox.id,
+		baseUrl,
 	});
 
-	const baseUrl = await getPreviewUrl(sandbox);
 	return { sandboxId, baseUrl };
 }
 
@@ -130,12 +155,14 @@ const ensureRoute = createRoute({
 			content: {
 				"application/json": {
 					schema: z.object({
-						environmentId: z
-							.string()
-							.openapi({ description: "Convex environment ID" }),
-						repositoryId: z
-							.string()
-							.openapi({ description: "Convex repository ID" }),
+						environmentId: z.string().optional().openapi({
+							description:
+								"Convex environment ID (required when sandboxId is absent)",
+						}),
+						repositoryId: z.string().optional().openapi({
+							description:
+								"Convex repository ID (required when sandboxId is absent)",
+						}),
 						sandboxId: z.string().optional().openapi({
 							description: "Convex sandbox ID if one already exists",
 						}),
@@ -152,8 +179,9 @@ const ensureRoute = createRoute({
 				"application/json": {
 					schema: z.object({
 						sandboxId: z.string().openapi({ description: "Convex sandbox ID" }),
-						baseUrl: z.string().openapi({
-							description: "Preview URL to the sandbox-agent server",
+						baseUrl: z.string().optional().openapi({
+							description:
+								"Preview URL to the sandbox-agent server. Undefined if the cached URL is still valid.",
 						}),
 					}),
 				},
@@ -183,7 +211,7 @@ export const sandboxesApp = $(
 		let sandboxId: Id<"sandboxes"> | undefined;
 
 		try {
-			let result: { sandboxId: string; baseUrl: string };
+			let result: { sandboxId: string; baseUrl: string | undefined };
 
 			if (body.sandboxId) {
 				sandboxId = body.sandboxId as Id<"sandboxes">;
@@ -194,6 +222,13 @@ export const sandboxesApp = $(
 					c.env.ANTHROPIC_API_KEY
 				);
 			} else {
+				if (!body.environmentId) {
+					return c.json(
+						{ error: "environmentId is required when sandboxId is absent" },
+						500
+					);
+				}
+
 				sandboxId = await convex.mutation(api.sandboxes.create, {
 					environmentId: body.environmentId as Id<"environments">,
 					branchName: "main",

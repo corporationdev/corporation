@@ -104,6 +104,7 @@ export const update = authedMutation({
 			)
 		),
 		daytonaSandboxId: v.optional(v.string()),
+		baseUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await requireOwnedSandbox(ctx, args.id);
