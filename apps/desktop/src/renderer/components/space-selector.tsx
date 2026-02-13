@@ -12,21 +12,19 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSandboxSelectionStore } from "@/stores/sandbox-selection-store";
+import { useSpaceSelectionStore } from "@/stores/space-selection-store";
 
-export const SandboxSelector: FC = () => {
-	const sandboxes = useQuery(api.sandboxes.list);
-	const selectedSandboxId = useSandboxSelectionStore(
-		(s) => s.selectedSandboxId
-	);
-	const setSelectedSandboxId = useSandboxSelectionStore(
-		(s) => s.setSelectedSandboxId
+export const SpaceSelector: FC = () => {
+	const spaces = useQuery(api.spaces.list);
+	const selectedSpaceId = useSpaceSelectionStore((s) => s.selectedSpaceId);
+	const setSelectedSpaceId = useSpaceSelectionStore(
+		(s) => s.setSelectedSpaceId
 	);
 
-	const selected = sandboxes?.find((s) => s._id === selectedSandboxId);
+	const selected = spaces?.find((s) => s._id === selectedSpaceId);
 	const label = selected
 		? `${selected.branchName} (${selected.status})`
-		: "New sandbox";
+		: "New space";
 
 	return (
 		<DropdownMenu>
@@ -41,21 +39,21 @@ export const SandboxSelector: FC = () => {
 			</Button>
 			<DropdownMenuContent align="start">
 				<DropdownMenuGroup>
-					<DropdownMenuLabel>Sandbox</DropdownMenuLabel>
+					<DropdownMenuLabel>Space</DropdownMenuLabel>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={() => setSelectedSandboxId(null)}>
+					<DropdownMenuItem onClick={() => setSelectedSpaceId(null)}>
 						<PlusIcon className="size-4" />
-						New sandbox
+						New space
 					</DropdownMenuItem>
-					{sandboxes?.map((sandbox) => (
+					{spaces?.map((space) => (
 						<DropdownMenuItem
-							key={sandbox._id}
-							onClick={() => setSelectedSandboxId(sandbox._id)}
+							key={space._id}
+							onClick={() => setSelectedSpaceId(space._id)}
 						>
 							<BoxIcon className="size-4" />
-							{sandbox.branchName}
+							{space.branchName}
 							<span className="ml-auto text-muted-foreground text-xs">
-								{sandbox.status}
+								{space.status}
 							</span>
 						</DropdownMenuItem>
 					))}

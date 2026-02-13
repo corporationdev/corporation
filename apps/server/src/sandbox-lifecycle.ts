@@ -104,9 +104,11 @@ export async function ensureSandboxAgentRunning(
 const HEALTH_CHECK_TIMEOUT_MS = 3000;
 const PREVIEW_URL_EXPIRY_SECONDS = 86_400; // 24 hours
 
-export async function isPreviewUrlHealthy(baseUrl: string): Promise<boolean> {
+export async function isPreviewUrlHealthy(
+	sandboxUrl: string
+): Promise<boolean> {
 	try {
-		const response = await fetch(`${baseUrl}/v1/health`, {
+		const response = await fetch(`${sandboxUrl}/v1/health`, {
 			signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
 		});
 		return response.ok;

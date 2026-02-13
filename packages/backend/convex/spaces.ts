@@ -4,26 +4,26 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 
-async function requireOwnedSandbox(
+async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string },
-	id: Id<"sandboxes">
-): Promise<Doc<"sandboxes">> {
-	const sandbox = await ctx.db.get(id);
-	if (!sandbox) {
-		throw new ConvexError("Sandbox not found");
+	id: Id<"spaces">
+): Promise<Doc<"spaces">> {
+	const space = await ctx.db.get(id);
+	if (!space) {
+		throw new ConvexError("Space not found");
 	}
 
-	const environment = await ctx.db.get(sandbox.environmentId);
+	const environment = await ctx.db.get(space.environmentId);
 	if (!environment) {
-		throw new ConvexError("Sandbox not found");
+		throw new ConvexError("Space not found");
 	}
 
 	const repository = await ctx.db.get(environment.repositoryId);
 	if (!repository || repository.userId !== ctx.userId) {
-		throw new ConvexError("Sandbox not found");
+		throw new ConvexError("Space not found");
 	}
 
-	return sandbox;
+	return space;
 }
 
 export const list = authedQuery({
@@ -43,24 +43,24 @@ export const list = authedQuery({
 			)
 		).flat();
 
-		const sandboxes = (
+		const spaces = (
 			await asyncMap(environments, (env) =>
 				ctx.db
-					.query("sandboxes")
+					.query("spaces")
 					.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
 					.collect()
 			)
 		).flat();
 
-		sandboxes.sort((a, b) => b.updatedAt - a.updatedAt);
-		return sandboxes;
+		spaces.sort((a, b) => b.updatedAt - a.updatedAt);
+		return spaces;
 	},
 });
 
 export const getById = authedQuery({
-	args: { id: v.id("sandboxes") },
+	args: { id: v.id("spaces") },
 	handler: async (ctx, args) => {
-		return await requireOwnedSandbox(ctx, args.id);
+		return await requireOwnedSpace(ctx, args.id);
 	},
 });
 
@@ -81,7 +81,7 @@ export const create = authedMutation({
 		}
 
 		const now = Date.now();
-		return await ctx.db.insert("sandboxes", {
+		return await ctx.db.insert("spaces", {
 			environmentId: args.environmentId,
 			branchName: args.branchName,
 			status: "creating",
@@ -93,7 +93,7 @@ export const create = authedMutation({
 
 export const update = authedMutation({
 	args: {
-		id: v.id("sandboxes"),
+		id: v.id("spaces"),
 		status: v.optional(
 			v.union(
 				v.literal("creating"),
@@ -103,11 +103,11 @@ export const update = authedMutation({
 				v.literal("error")
 			)
 		),
-		daytonaSandboxId: v.optional(v.string()),
-		baseUrl: v.optional(v.string()),
+		sandboxId: v.optional(v.string()),
+		sandboxUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSandbox(ctx, args.id);
+		await requireOwnedSpace(ctx, args.id);
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(

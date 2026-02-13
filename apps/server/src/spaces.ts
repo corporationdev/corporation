@@ -12,7 +12,7 @@ import {
 	isPreviewUrlHealthy,
 } from "./sandbox-lifecycle";
 
-type SandboxesEnv = {
+type SpacesEnv = {
 	Bindings: Env;
 	Variables: AuthVariables;
 };
@@ -37,27 +37,27 @@ function getBearerToken(authHeader: string | undefined): string {
 	return authHeader.slice(7);
 }
 
-async function generateAndStorePreviewUrl(
+async function generateAndStoreSandboxUrl(
 	convex: ConvexHttpClient,
 	sandbox: Sandbox,
-	sandboxId: Id<"sandboxes">
+	spaceId: Id<"spaces">
 ): Promise<string> {
-	const baseUrl = await getPreviewUrl(sandbox);
-	await convex.mutation(api.sandboxes.update, { id: sandboxId, baseUrl });
-	return baseUrl;
+	const sandboxUrl = await getPreviewUrl(sandbox);
+	await convex.mutation(api.spaces.update, { id: spaceId, sandboxUrl });
+	return sandboxUrl;
 }
 
 async function ensureExistingSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
-	sandboxId: Id<"sandboxes">,
+	spaceId: Id<"spaces">,
 	anthropicApiKey: string
-): Promise<{ sandboxId: string; baseUrl: string | undefined }> {
-	const record = await convex.query(api.sandboxes.getById, {
-		id: sandboxId,
+): Promise<{ spaceId: string; sandboxUrl: string | undefined }> {
+	const record = await convex.query(api.spaces.getById, {
+		id: spaceId,
 	});
 
-	if (!record.daytonaSandboxId) {
+	if (!record.sandboxId) {
 		return await provisionDaytonaSandbox(
 			convex,
 			daytona,
@@ -68,7 +68,7 @@ async function ensureExistingSandbox(
 
 	let sandbox: Sandbox;
 	try {
-		sandbox = await daytona.get(record.daytonaSandboxId);
+		sandbox = await daytona.get(record.sandboxId);
 	} catch {
 		return await provisionDaytonaSandbox(
 			convex,
@@ -83,35 +83,35 @@ async function ensureExistingSandbox(
 	if (state === "started") {
 		await ensureSandboxAgentRunning(sandbox);
 
-		if (record.baseUrl && (await isPreviewUrlHealthy(record.baseUrl))) {
-			return { sandboxId: record._id, baseUrl: undefined };
+		if (record.sandboxUrl && (await isPreviewUrlHealthy(record.sandboxUrl))) {
+			return { spaceId: record._id, sandboxUrl: undefined };
 		}
 
-		const baseUrl = await generateAndStorePreviewUrl(
+		const sandboxUrl = await generateAndStoreSandboxUrl(
 			convex,
 			sandbox,
 			record._id
 		);
-		return { sandboxId: record._id, baseUrl };
+		return { spaceId: record._id, sandboxUrl };
 	}
 
 	if (state === "stopped" || state === "archived") {
-		await convex.mutation(api.sandboxes.update, {
+		await convex.mutation(api.spaces.update, {
 			id: record._id,
 			status: "starting",
 		});
 		await sandbox.start();
 		await bootSandboxAgent(sandbox);
-		await convex.mutation(api.sandboxes.update, {
+		await convex.mutation(api.spaces.update, {
 			id: record._id,
 			status: "started",
 		});
-		const baseUrl = await generateAndStorePreviewUrl(
+		const sandboxUrl = await generateAndStoreSandboxUrl(
 			convex,
 			sandbox,
 			record._id
 		);
-		return { sandboxId: record._id, baseUrl };
+		return { spaceId: record._id, sandboxUrl };
 	}
 
 	// error / unknown — reprovision
@@ -126,20 +126,20 @@ async function ensureExistingSandbox(
 async function provisionDaytonaSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
-	sandboxId: Id<"sandboxes">,
+	spaceId: Id<"spaces">,
 	anthropicApiKey: string
-): Promise<{ sandboxId: string; baseUrl: string }> {
+): Promise<{ spaceId: string; sandboxUrl: string }> {
 	const sandbox = await createReadySandbox(daytona, anthropicApiKey);
-	const baseUrl = await getPreviewUrl(sandbox);
+	const sandboxUrl = await getPreviewUrl(sandbox);
 
-	await convex.mutation(api.sandboxes.update, {
-		id: sandboxId,
+	await convex.mutation(api.spaces.update, {
+		id: spaceId,
 		status: "started",
-		daytonaSandboxId: sandbox.id,
-		baseUrl,
+		sandboxId: sandbox.id,
+		sandboxUrl,
 	});
 
-	return { sandboxId, baseUrl };
+	return { spaceId, sandboxUrl };
 }
 
 // ---------------------------------------------------------------------------
@@ -157,20 +157,20 @@ const ensureRoute = createRoute({
 					schema: z.object({
 						environmentId: z.string().optional().openapi({
 							description:
-								"Convex environment ID (required when sandboxId is absent)",
+								"Convex environment ID (required when spaceId is absent)",
 						}),
 						repositoryId: z.string().optional().openapi({
 							description:
-								"Convex repository ID (required when sandboxId is absent)",
+								"Convex repository ID (required when spaceId is absent)",
 						}),
-						sandboxId: z.string().optional().openapi({
-							description: "Convex sandbox ID if one already exists",
+						spaceId: z.string().optional().openapi({
+							description: "Convex space ID if one already exists",
 						}),
 					}),
 				},
 			},
 			required: true,
-			description: "Ensure a running sandbox exists for the given environment",
+			description: "Ensure a running sandbox exists for the given space",
 		},
 	},
 	responses: {
@@ -178,8 +178,8 @@ const ensureRoute = createRoute({
 			content: {
 				"application/json": {
 					schema: z.object({
-						sandboxId: z.string().openapi({ description: "Convex sandbox ID" }),
-						baseUrl: z.string().optional().openapi({
+						spaceId: z.string().openapi({ description: "Convex space ID" }),
+						sandboxUrl: z.string().optional().openapi({
 							description:
 								"Preview URL to the sandbox-agent server. Undefined if the cached URL is still valid.",
 						}),
@@ -201,35 +201,35 @@ const ensureRoute = createRoute({
 // App
 // ---------------------------------------------------------------------------
 
-export const sandboxesApp = $(
-	new OpenAPIHono<SandboxesEnv>().openapi(ensureRoute, async (c) => {
+export const spacesApp = $(
+	new OpenAPIHono<SpacesEnv>().openapi(ensureRoute, async (c) => {
 		const body = c.req.valid("json");
 		const token = getBearerToken(c.req.header("Authorization"));
 		const convex = createConvexClient(c.env.CONVEX_URL, token);
 		const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
 
-		let sandboxId: Id<"sandboxes"> | undefined;
+		let spaceId: Id<"spaces"> | undefined;
 
 		try {
-			let result: { sandboxId: string; baseUrl: string | undefined };
+			let result: { spaceId: string; sandboxUrl: string | undefined };
 
-			if (body.sandboxId) {
-				sandboxId = body.sandboxId as Id<"sandboxes">;
+			if (body.spaceId) {
+				spaceId = body.spaceId as Id<"spaces">;
 				result = await ensureExistingSandbox(
 					convex,
 					daytona,
-					sandboxId,
+					spaceId,
 					c.env.ANTHROPIC_API_KEY
 				);
 			} else {
 				if (!body.environmentId) {
 					return c.json(
-						{ error: "environmentId is required when sandboxId is absent" },
+						{ error: "environmentId is required when spaceId is absent" },
 						500
 					);
 				}
 
-				sandboxId = await convex.mutation(api.sandboxes.create, {
+				spaceId = await convex.mutation(api.spaces.create, {
 					environmentId: body.environmentId as Id<"environments">,
 					branchName: "main",
 				});
@@ -237,17 +237,17 @@ export const sandboxesApp = $(
 				result = await provisionDaytonaSandbox(
 					convex,
 					daytona,
-					sandboxId,
+					spaceId,
 					c.env.ANTHROPIC_API_KEY
 				);
 			}
 
 			return c.json(result, 200);
 		} catch (error) {
-			if (sandboxId) {
+			if (spaceId) {
 				try {
-					await convex.mutation(api.sandboxes.update, {
-						id: sandboxId,
+					await convex.mutation(api.spaces.update, {
+						id: spaceId,
 						status: "error",
 					});
 				} catch {

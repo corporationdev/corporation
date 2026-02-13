@@ -27,10 +27,10 @@ export default defineSchema(
 			updatedAt: v.number(),
 		}).index("by_repository", ["repositoryId"]),
 
-		sandboxes: defineTable({
+		spaces: defineTable({
 			environmentId: v.id("environments"),
-			daytonaSandboxId: v.optional(v.string()),
-			baseUrl: v.optional(v.string()),
+			sandboxId: v.optional(v.string()),
+			sandboxUrl: v.optional(v.string()),
 			branchName: v.string(),
 			status: v.union(
 				v.literal("creating"),
@@ -46,7 +46,7 @@ export default defineSchema(
 		agentSessions: defineTable({
 			slug: v.string(),
 			title: v.string(),
-			sandboxId: v.id("sandboxes"),
+			spaceId: v.id("spaces"),
 			status: v.union(
 				v.literal("running"),
 				v.literal("waiting"),
@@ -57,7 +57,7 @@ export default defineSchema(
 			updatedAt: v.number(),
 			archivedAt: v.union(v.number(), v.null()),
 		})
-			.index("by_sandbox", ["sandboxId"])
+			.index("by_space", ["spaceId"])
 			.index("by_slug", ["slug"]),
 	},
 	// TODO: remove schemaValidation: false before launch

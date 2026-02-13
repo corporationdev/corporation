@@ -6,14 +6,14 @@ import {
 	SandboxAgentError,
 } from "sandbox-agent";
 
-const log = createLogger("sandbox-agent");
+const log = createLogger("agent");
 
 // ---------------------------------------------------------------------------
 // State & Vars types
 // ---------------------------------------------------------------------------
 
 export type SessionState = {
-	baseUrl: string;
+	sandboxUrl: string;
 	sessionId: string;
 	events: UniversalEvent[];
 };
@@ -42,10 +42,10 @@ async function ensureSessionExists(
 }
 
 async function connectClient(
-	baseUrl: string,
+	sandboxUrl: string,
 	sessionId: string
 ): Promise<SandboxAgentClient> {
-	const client = await SandboxAgentClient.connect({ baseUrl });
+	const client = await SandboxAgentClient.connect({ baseUrl: sandboxUrl });
 	await ensureSessionExists(client, sessionId);
 	return client;
 }
@@ -54,20 +54,20 @@ async function connectClient(
 // Actor definition
 // ---------------------------------------------------------------------------
 
-export const sandboxAgent = actor({
-	createState: (c, input: { baseUrl: string }): SessionState => {
+export const agent = actor({
+	createState: (c, input: { sandboxUrl: string }): SessionState => {
 		const sessionId = c.key[0];
 		if (!sessionId) {
 			throw new Error("Actor key must contain a threadId");
 		}
 
-		log.info({ sessionId, baseUrl: input.baseUrl }, "actor created");
+		log.info({ sessionId, sandboxUrl: input.sandboxUrl }, "actor created");
 
-		return { baseUrl: input.baseUrl, sessionId, events: [] };
+		return { sandboxUrl: input.sandboxUrl, sessionId, events: [] };
 	},
 
 	createVars: async (c): Promise<SessionVars> => {
-		const client = await connectClient(c.state.baseUrl, c.state.sessionId);
+		const client = await connectClient(c.state.sandboxUrl, c.state.sessionId);
 		return { client };
 	},
 
@@ -109,11 +109,11 @@ export const sandboxAgent = actor({
 	},
 
 	actions: {
-		postMessage: async (c, content: string, baseUrl?: string) => {
-			if (baseUrl && baseUrl !== c.state.baseUrl) {
-				log.info({ sessionId: c.state.sessionId }, "updating baseUrl");
-				c.state.baseUrl = baseUrl;
-				c.vars.client = await connectClient(baseUrl, c.state.sessionId);
+		postMessage: async (c, content: string, sandboxUrl?: string) => {
+			if (sandboxUrl && sandboxUrl !== c.state.sandboxUrl) {
+				log.info({ sessionId: c.state.sessionId }, "updating sandboxUrl");
+				c.state.sandboxUrl = sandboxUrl;
+				c.vars.client = await connectClient(sandboxUrl, c.state.sessionId);
 			}
 
 			await c.vars.client.postMessage(c.state.sessionId, {
@@ -141,6 +141,6 @@ export const sandboxAgent = actor({
 		getTranscript: (c, offset: number) =>
 			c.state.events.filter((e) => (e.sequence ?? 0) > offset),
 
-		getPreviewUrl: (c) => c.state.baseUrl,
+		getPreviewUrl: (c) => c.state.sandboxUrl,
 	},
 });

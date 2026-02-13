@@ -4,7 +4,7 @@ type PendingMessage = {
 	text: string;
 	environmentId: string;
 	repositoryId: string;
-	selectedSandboxId?: string;
+	selectedSpaceId?: string;
 };
 
 type PendingMessageStore = {

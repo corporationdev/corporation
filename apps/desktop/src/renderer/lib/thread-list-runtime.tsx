@@ -19,7 +19,7 @@ import { useThreadEventState } from "@/hooks/use-thread-event-state";
 import { apiClient } from "@/lib/api-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
-import { useSandboxSelectionStore } from "@/stores/sandbox-selection-store";
+import { useSpaceSelectionStore } from "@/stores/space-selection-store";
 
 const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
@@ -33,9 +33,7 @@ const { useActor } = createRivetKit<typeof registry>({
 function NewThreadRuntime({ children }: { children: ReactNode }) {
 	const navigate = useNavigate();
 	const setPending = usePendingMessageStore((s) => s.setPending);
-	const selectedSandboxId = useSandboxSelectionStore(
-		(s) => s.selectedSandboxId
-	);
+	const selectedSpaceId = useSpaceSelectionStore((s) => s.selectedSpaceId);
 
 	const repositories = useQuery(api.repositories.list);
 	const firstRepo = repositories?.[0];
@@ -67,7 +65,7 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 				text,
 				environmentId: firstEnv._id,
 				repositoryId: firstRepo._id,
-				selectedSandboxId: selectedSandboxId ?? undefined,
+				selectedSpaceId: selectedSpaceId ?? undefined,
 			});
 
 			navigate({
@@ -89,9 +87,9 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 async function callEnsureSandbox(args: {
 	environmentId?: string;
 	repositoryId?: string;
-	sandboxId?: string;
+	spaceId?: string;
 }) {
-	const res = await apiClient.sandboxes.ensure.$post({ json: args });
+	const res = await apiClient.spaces.ensure.$post({ json: args });
 	if (!res.ok) {
 		const data = await res.json();
 		throw new Error(data.error);
@@ -116,33 +114,33 @@ function ConnectedThreadRuntime({
 	const session = useQuery(api.agentSessions.getBySlug, { slug });
 
 	// For new threads: consume pending → ensure sandbox → create session.
-	// Stores the baseUrl and pending text for the actor to use once connected.
+	// Stores the sandboxUrl and pending text for the actor to use once connected.
 	const pendingTextRef = useRef<string | null>(null);
 	const initMutation = useTanstackMutation({
 		mutationFn: async (pending: {
 			text: string;
 			environmentId: string;
 			repositoryId: string;
-			selectedSandboxId?: string;
+			selectedSpaceId?: string;
 		}) => {
 			const result = await callEnsureSandbox({
 				environmentId: pending.environmentId,
 				repositoryId: pending.repositoryId,
-				sandboxId: pending.selectedSandboxId,
+				spaceId: pending.selectedSpaceId,
 			});
 
-			if (!result.baseUrl) {
-				throw new Error("Expected baseUrl from ensure for new sandbox");
+			if (!result.sandboxUrl) {
+				throw new Error("Expected sandboxUrl from ensure for new sandbox");
 			}
 
 			await createThread({
 				slug,
 				title: "New Chat",
-				sandboxId: result.sandboxId as Id<"sandboxes">,
+				spaceId: result.spaceId as Id<"spaces">,
 			});
 
 			pendingTextRef.current = pending.text;
-			return result.baseUrl;
+			return result.sandboxUrl;
 		},
 	});
 
@@ -166,15 +164,15 @@ function ConnectedThreadRuntime({
 		initMutation.mutate,
 	]);
 
-	// baseUrl comes from init (new thread) — for existing threads the actor
+	// sandboxUrl comes from init (new thread) — for existing threads the actor
 	// already has it persisted in state.
-	const baseUrl = initMutation.data;
+	const sandboxUrl = initMutation.data;
 
 	const actor = useActor({
-		name: "sandboxAgent",
+		name: "agent",
 		key: [slug],
-		createWithInput: baseUrl ? { baseUrl } : undefined,
-		enabled: !!baseUrl || !!session,
+		createWithInput: sandboxUrl ? { sandboxUrl } : undefined,
+		enabled: !!sandboxUrl || !!session,
 	});
 
 	const threadState = useThreadEventState({
@@ -238,11 +236,11 @@ function ConnectedThreadRuntime({
 				.join("");
 
 			const result = await callEnsureSandbox({
-				sandboxId: session.sandboxId,
+				spaceId: session.spaceId,
 			});
 
 			await touchThread({ id: session._id });
-			await actor.connection?.postMessage(text, result.baseUrl);
+			await actor.connection?.postMessage(text, result.sandboxUrl);
 		},
 	});
 

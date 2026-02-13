@@ -13,12 +13,12 @@ async function requireOwnedSession(
 		throw new ConvexError("Agent session not found");
 	}
 
-	const sandbox = await ctx.db.get(session.sandboxId);
-	if (!sandbox) {
+	const space = await ctx.db.get(session.spaceId);
+	if (!space) {
 		throw new ConvexError("Agent session not found");
 	}
 
-	const environment = await ctx.db.get(sandbox.environmentId);
+	const environment = await ctx.db.get(space.environmentId);
 	if (!environment) {
 		throw new ConvexError("Agent session not found");
 	}
@@ -70,20 +70,20 @@ export const list = authedQuery({
 			)
 		).flat();
 
-		const sandboxes = (
+		const spaces = (
 			await asyncMap(environments, (env) =>
 				ctx.db
-					.query("sandboxes")
+					.query("spaces")
 					.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
 					.collect()
 			)
 		).flat();
 
 		const sessions = (
-			await asyncMap(sandboxes, (sandbox) =>
+			await asyncMap(spaces, (space) =>
 				ctx.db
 					.query("agentSessions")
-					.withIndex("by_sandbox", (q) => q.eq("sandboxId", sandbox._id))
+					.withIndex("by_space", (q) => q.eq("spaceId", space._id))
 					.collect()
 			)
 		).flat();
@@ -93,29 +93,29 @@ export const list = authedQuery({
 	},
 });
 
-export const listBySandbox = authedQuery({
+export const listBySpace = authedQuery({
 	args: {
-		sandboxId: v.id("sandboxes"),
+		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
-		const sandbox = await ctx.db.get(args.sandboxId);
-		if (!sandbox) {
-			throw new ConvexError("Sandbox not found");
+		const space = await ctx.db.get(args.spaceId);
+		if (!space) {
+			throw new ConvexError("Space not found");
 		}
 
-		const environment = await ctx.db.get(sandbox.environmentId);
+		const environment = await ctx.db.get(space.environmentId);
 		if (!environment) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
 		}
 
 		const repository = await ctx.db.get(environment.repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
 		}
 
 		return await ctx.db
 			.query("agentSessions")
-			.withIndex("by_sandbox", (q) => q.eq("sandboxId", args.sandboxId))
+			.withIndex("by_space", (q) => q.eq("spaceId", args.spaceId))
 			.collect();
 	},
 });
@@ -124,22 +124,22 @@ export const create = authedMutation({
 	args: {
 		slug: v.string(),
 		title: v.string(),
-		sandboxId: v.id("sandboxes"),
+		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
-		const sandbox = await ctx.db.get(args.sandboxId);
-		if (!sandbox) {
-			throw new ConvexError("Sandbox not found");
+		const space = await ctx.db.get(args.spaceId);
+		if (!space) {
+			throw new ConvexError("Space not found");
 		}
 
-		const environment = await ctx.db.get(sandbox.environmentId);
+		const environment = await ctx.db.get(space.environmentId);
 		if (!environment) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
 		}
 
 		const repository = await ctx.db.get(environment.repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
 		}
 
 		const now = Date.now();
@@ -147,7 +147,7 @@ export const create = authedMutation({
 		return await ctx.db.insert("agentSessions", {
 			slug: args.slug,
 			title: args.title,
-			sandboxId: args.sandboxId,
+			spaceId: args.spaceId,
 			status: "waiting",
 			createdAt: now,
 			updatedAt: now,
