@@ -1,5 +1,5 @@
 import { setup } from "rivetkit";
-import { sandboxAgent } from "./sandbox-agent";
+import { agent } from "./agent";
 
 // Workaround: rivetkit's Registry constructor calls setTimeout() which is
 // disallowed in Cloudflare Workers global scope when using alchemy/Miniflare.
@@ -8,6 +8,6 @@ import { sandboxAgent } from "./sandbox-agent";
 const _setTimeout = globalThis.setTimeout;
 globalThis.setTimeout = (() => 0) as unknown as typeof globalThis.setTimeout;
 export const registry = setup({
-	use: { sandboxAgent },
+	use: { agent },
 });
 globalThis.setTimeout = _setTimeout;

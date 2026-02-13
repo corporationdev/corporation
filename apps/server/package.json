@@ -12,8 +12,10 @@
     "check-types": "tsc -b"
   },
   "dependencies": {
+    "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
+    "convex": "catalog:",
     "@daytonaio/sdk": "catalog:",
     "@hono/zod-openapi": "^1.2.1",
     "@nangohq/node": "^0.69.31",

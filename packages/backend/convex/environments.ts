@@ -1,18 +1,13 @@
 import { ConvexError, v } from "convex/values";
 
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 
 async function requireOwnedEnvironment(
 	ctx: QueryCtx & { userId: string },
-	id: Id<"environments">
+	environment: Doc<"environments">
 ): Promise<Doc<"environments">> {
-	const environment = await ctx.db.get(id);
-	if (!environment) {
-		throw new ConvexError("Environment not found");
-	}
-
 	const repository = await ctx.db.get(environment.repositoryId);
 	if (!repository || repository.userId !== ctx.userId) {
 		throw new ConvexError("Environment not found");
@@ -50,7 +45,11 @@ export const update = authedMutation({
 		),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedEnvironment(ctx, args.id);
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			throw new ConvexError("Environment not found");
+		}
+		await requireOwnedEnvironment(ctx, environment);
 		await ctx.db.patch(args.id, {
 			installCommand: args.installCommand,
 			devCommand: args.devCommand,

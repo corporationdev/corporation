@@ -9,13 +9,18 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { env } from "@corporation/env/web";
 import type { registry } from "@corporation/server/registry";
 import { createRivetKit } from "@rivetkit/react";
+import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
-import { useMutation } from "convex/react";
-import { type ReactNode, useEffect } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { nanoid } from "nanoid";
+import { type ReactNode, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { useOptimisticTouchThreadMutation } from "@/hooks/agent-session-mutations";
 import { useThreadEventState } from "@/hooks/use-thread-event-state";
+import { apiClient } from "@/lib/api-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
+import { useSpaceSelectionStore } from "@/stores/space-selection-store";
 
 const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
@@ -27,15 +32,27 @@ const { useActor } = createRivetKit<typeof registry>({
 });
 
 function NewThreadRuntime({ children }: { children: ReactNode }) {
-	const createThread = useMutation(api.agentSessions.create);
 	const navigate = useNavigate();
-	const setPendingMessage = usePendingMessageStore((s) => s.setPendingMessage);
+	const setPending = usePendingMessageStore((s) => s.setPending);
+	const selectedSpaceId = useSpaceSelectionStore((s) => s.selectedSpaceId);
+
+	const repositories = useQuery(api.repositories.list);
+	const firstRepo = repositories?.[0];
+	const environments = useQuery(
+		api.environments.listByRepository,
+		firstRepo ? { repositoryId: firstRepo._id } : "skip"
+	);
+	const firstEnv = environments?.[0];
 
 	const runtime = useExternalStoreRuntime({
 		isRunning: false,
 		messages: [] as ThreadMessageLike[],
 		convertMessage: (message: ThreadMessageLike) => message,
-		onNew: async (message: AppendMessage) => {
+		onNew: (message: AppendMessage) => {
+			if (!(firstRepo && firstEnv)) {
+				throw new Error("No repository or environment configured");
+			}
+
 			const text = message.content
 				.filter(
 					(part): part is { type: "text"; text: string } => part.type === "text"
@@ -43,16 +60,20 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 				.map((part) => part.text)
 				.join("");
 
-			// TODO: pass real sandboxId once sandbox-scoped navigation exists
-			const newThreadId = await createThread({
-				title: "New Chat",
-				sandboxId: "" as never,
+			const slug = nanoid();
+
+			setPending({
+				text,
+				environmentId: firstEnv._id,
+				selectedSpaceId: selectedSpaceId ?? undefined,
 			});
-			setPendingMessage(text);
+
 			navigate({
-				to: "/chat/$threadId",
-				params: { threadId: newThreadId },
+				to: "/chat/$slug",
+				params: { slug },
 			});
+
+			return Promise.resolve();
 		},
 	});
 
@@ -63,28 +84,96 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 	);
 }
 
+async function callEnsureSandbox(args: {
+	environmentId?: string;
+	spaceId?: string;
+}) {
+	const res = await apiClient.spaces.ensure.$post({ json: args });
+	if (!res.ok) {
+		const data = await res.json();
+		throw new Error(data.error);
+	}
+	return await res.json();
+}
+
 function ConnectedThreadRuntime({
-	threadId,
+	slug,
 	children,
 }: {
-	threadId: string;
+	slug: string;
 	children: ReactNode;
 }) {
 	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
 	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
 	const resetPermissions = usePermissionStore((s) => s.reset);
 	const touchThread = useOptimisticTouchThreadMutation();
-	const consumePendingMessage = usePendingMessageStore(
-		(s) => s.consumePendingMessage
-	);
+	const consumePending = usePendingMessageStore((s) => s.consumePending);
+	const createThread = useMutation(api.agentSessions.create);
+
+	const session = useQuery(api.agentSessions.getBySlug, { slug });
+
+	// For new threads: consume pending → ensure sandbox → create session.
+	// Stores the sandboxUrl and pending text for the actor to use once connected.
+	const pendingTextRef = useRef<string | null>(null);
+	const initMutation = useTanstackMutation({
+		mutationFn: async (pending: {
+			text: string;
+			environmentId: string;
+			selectedSpaceId?: string;
+		}) => {
+			const result = await callEnsureSandbox({
+				environmentId: pending.environmentId,
+				spaceId: pending.selectedSpaceId,
+			});
+
+			await createThread({
+				slug,
+				title: "New Chat",
+				spaceId: result.spaceId as Id<"spaces">,
+			});
+
+			pendingTextRef.current = pending.text;
+			return result.sandboxUrl;
+		},
+		onError: (error) => {
+			toast.error("Failed to start chat");
+			console.error("initMutation failed", error);
+		},
+	});
+
+	// Trigger init when pending message exists and session doesn't yet
+	useEffect(() => {
+		if (session !== null || initMutation.isPending || initMutation.data) {
+			return;
+		}
+
+		const consumed = consumePending();
+		if (!consumed) {
+			return;
+		}
+
+		initMutation.mutate(consumed);
+	}, [
+		session,
+		initMutation.isPending,
+		initMutation.data,
+		consumePending,
+		initMutation.mutate,
+	]);
+
+	// sandboxUrl comes from init (new thread) — for existing threads the actor
+	// already has it persisted in state.
+	const sandboxUrl = initMutation.data;
 
 	const actor = useActor({
-		name: "sandboxAgent",
-		key: [threadId],
+		name: "agent",
+		key: [slug],
+		createWithInput: sandboxUrl ? { sandboxUrl } : undefined,
+		enabled: !!sandboxUrl || !!session,
 	});
 
 	const threadState = useThreadEventState({
-		threadId,
+		slug,
 		actor,
 		onPermissionEvent,
 	});
@@ -110,36 +199,32 @@ function ConnectedThreadRuntime({
 		resetPermissions,
 	]);
 
-	// Drain pending message after navigating to a real thread
+	// Send pending message once actor is connected
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
 
-		const pending = consumePendingMessage();
-		if (!pending) {
+		const text = pendingTextRef.current;
+		if (!text) {
 			return;
 		}
+		pendingTextRef.current = null;
 
-		touchThread({ id: threadId as Id<"agentSessions"> }).catch(() => {
-			// Pending messages are best-effort and can be retried by the user on failure.
+		actor.connection.postMessage(text).catch((error) => {
+			console.error("Failed to send pending message", error);
 		});
-		actor.connection.postMessage(pending).catch(() => {
-			// Runtime stream stays connected; user can resend manually if needed.
-		});
-	}, [
-		actor.connStatus,
-		actor.connection,
-		threadId,
-		touchThread,
-		consumePendingMessage,
-	]);
+	}, [actor.connStatus, actor.connection]);
 
 	const runtime = useExternalStoreRuntime({
 		isRunning: threadState.isRunning,
 		messages: threadState.messages,
 		convertMessage: (message) => message,
 		onNew: async (message: AppendMessage) => {
+			if (!session) {
+				throw new Error("Session not loaded");
+			}
+
 			const text = message.content
 				.filter(
 					(part): part is { type: "text"; text: string } => part.type === "text"
@@ -147,8 +232,12 @@ function ConnectedThreadRuntime({
 				.map((part) => part.text)
 				.join("");
 
-			await touchThread({ id: threadId as Id<"agentSessions"> });
-			await actor.connection?.postMessage(text);
+			const result = await callEnsureSandbox({
+				spaceId: session.spaceId,
+			});
+
+			await touchThread({ id: session._id });
+			await actor.connection?.postMessage(text, result.sandboxUrl);
 		},
 	});
 
@@ -160,19 +249,17 @@ function ConnectedThreadRuntime({
 }
 
 function ThreadRuntime({
-	threadId,
+	slug,
 	children,
 }: {
-	threadId: string;
+	slug: string;
 	children: ReactNode;
 }) {
-	if (threadId === NEW_CHAT_ID) {
+	if (slug === NEW_CHAT_ID) {
 		return <NewThreadRuntime>{children}</NewThreadRuntime>;
 	}
 	return (
-		<ConnectedThreadRuntime threadId={threadId}>
-			{children}
-		</ConnectedThreadRuntime>
+		<ConnectedThreadRuntime slug={slug}>{children}</ConnectedThreadRuntime>
 	);
 }
 
@@ -182,13 +269,13 @@ export function ThreadListRuntimeProvider({
 	children: ReactNode;
 }) {
 	const match = useMatch({
-		from: "/_authenticated/chat/$threadId",
+		from: "/_authenticated/chat/$slug",
 		shouldThrow: false,
 	});
-	const threadId = match?.params.threadId ?? NEW_CHAT_ID;
+	const slug = match?.params.slug ?? NEW_CHAT_ID;
 
 	return (
-		<ThreadRuntime key={threadId} threadId={threadId}>
+		<ThreadRuntime key={slug} slug={slug}>
 			{children}
 		</ThreadRuntime>
 	);

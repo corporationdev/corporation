@@ -1,24 +1,19 @@
 import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 
 async function requireOwnedSession(
 	ctx: QueryCtx & { userId: string },
-	id: Id<"agentSessions">
+	session: Doc<"agentSessions">
 ): Promise<Doc<"agentSessions">> {
-	const session = await ctx.db.get(id);
-	if (!session) {
+	const space = await ctx.db.get(session.spaceId);
+	if (!space) {
 		throw new ConvexError("Agent session not found");
 	}
 
-	const sandbox = await ctx.db.get(session.sandboxId);
-	if (!sandbox) {
-		throw new ConvexError("Agent session not found");
-	}
-
-	const environment = await ctx.db.get(sandbox.environmentId);
+	const environment = await ctx.db.get(space.environmentId);
 	if (!environment) {
 		throw new ConvexError("Agent session not found");
 	}
@@ -30,6 +25,31 @@ async function requireOwnedSession(
 
 	return session;
 }
+
+export const getById = authedQuery({
+	args: { id: v.id("agentSessions") },
+	handler: async (ctx, args) => {
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		return await requireOwnedSession(ctx, session);
+	},
+});
+
+export const getBySlug = authedQuery({
+	args: { slug: v.string() },
+	handler: async (ctx, args) => {
+		const session = await ctx.db
+			.query("agentSessions")
+			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
+			.unique();
+		if (!session) {
+			return null;
+		}
+		return await requireOwnedSession(ctx, session);
+	},
+});
 
 export const list = authedQuery({
 	args: {},
@@ -48,20 +68,20 @@ export const list = authedQuery({
 			)
 		).flat();
 
-		const sandboxes = (
+		const spaces = (
 			await asyncMap(environments, (env) =>
 				ctx.db
-					.query("sandboxes")
+					.query("spaces")
 					.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
 					.collect()
 			)
 		).flat();
 
 		const sessions = (
-			await asyncMap(sandboxes, (sandbox) =>
+			await asyncMap(spaces, (space) =>
 				ctx.db
 					.query("agentSessions")
-					.withIndex("by_sandbox", (q) => q.eq("sandboxId", sandbox._id))
+					.withIndex("by_space", (q) => q.eq("spaceId", space._id))
 					.collect()
 			)
 		).flat();
@@ -71,59 +91,69 @@ export const list = authedQuery({
 	},
 });
 
-export const listBySandbox = authedQuery({
+export const listBySpace = authedQuery({
 	args: {
-		sandboxId: v.id("sandboxes"),
+		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
-		const sandbox = await ctx.db.get(args.sandboxId);
-		if (!sandbox) {
-			throw new ConvexError("Sandbox not found");
+		const space = await ctx.db.get(args.spaceId);
+		if (!space) {
+			throw new ConvexError("Space not found");
 		}
 
-		const environment = await ctx.db.get(sandbox.environmentId);
+		const environment = await ctx.db.get(space.environmentId);
 		if (!environment) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
 		}
 
 		const repository = await ctx.db.get(environment.repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
 		}
 
 		return await ctx.db
 			.query("agentSessions")
-			.withIndex("by_sandbox", (q) => q.eq("sandboxId", args.sandboxId))
+			.withIndex("by_space", (q) => q.eq("spaceId", args.spaceId))
 			.collect();
 	},
 });
 
 export const create = authedMutation({
 	args: {
+		slug: v.string(),
 		title: v.string(),
-		sandboxId: v.id("sandboxes"),
+		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
-		const sandbox = await ctx.db.get(args.sandboxId);
-		if (!sandbox) {
-			throw new ConvexError("Sandbox not found");
+		const space = await ctx.db.get(args.spaceId);
+		if (!space) {
+			throw new ConvexError("Space not found");
 		}
 
-		const environment = await ctx.db.get(sandbox.environmentId);
+		const environment = await ctx.db.get(space.environmentId);
 		if (!environment) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
 		}
 
 		const repository = await ctx.db.get(environment.repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Sandbox not found");
+			throw new ConvexError("Space not found");
+		}
+
+		const existing = await ctx.db
+			.query("agentSessions")
+			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
+			.unique();
+		if (existing) {
+			throw new ConvexError("Session with this slug already exists");
 		}
 
 		const now = Date.now();
 
 		return await ctx.db.insert("agentSessions", {
+			slug: args.slug,
 			title: args.title,
-			sandboxId: args.sandboxId,
+			spaceId: args.spaceId,
 			status: "waiting",
 			createdAt: now,
 			updatedAt: now,
@@ -139,7 +169,11 @@ export const update = authedMutation({
 		archivedAt: v.optional(v.union(v.number(), v.null())),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSession(ctx, args.id);
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		await requireOwnedSession(ctx, session);
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
@@ -157,7 +191,11 @@ export const touch = authedMutation({
 		id: v.id("agentSessions"),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSession(ctx, args.id);
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		await requireOwnedSession(ctx, session);
 
 		await ctx.db.patch(args.id, {
 			updatedAt: Date.now(),
@@ -171,7 +209,11 @@ export const remove = authedMutation({
 		id: v.id("agentSessions"),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSession(ctx, args.id);
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		await requireOwnedSession(ctx, session);
 
 		await ctx.db.delete(args.id);
 	},
