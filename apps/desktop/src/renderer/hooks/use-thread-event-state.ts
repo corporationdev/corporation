@@ -30,11 +30,11 @@ type ThreadEventActor = {
 };
 
 export function useThreadEventState({
-	threadId,
+	slug,
 	actor,
 	onPermissionEvent,
 }: {
-	threadId: string;
+	slug: string;
 	actor: ThreadEventActor;
 	onPermissionEvent: OnPermissionEvent;
 }): ThreadState {
@@ -71,17 +71,17 @@ export function useThreadEventState({
 			}
 
 			if (persist && newEvents.length > 0) {
-				appendEventsToCache(threadId, newEvents).catch(() => {
+				appendEventsToCache(slug, newEvents).catch(() => {
 					// Ignore write failures; cache will be refreshed on next transcript sync.
 				});
 			}
 		},
-		[onPermissionEvent, threadId]
+		[onPermissionEvent, slug]
 	);
 
 	const cachedEventsQuery = useTanstackQuery({
-		queryKey: ["thread-events-cache", threadId] as const,
-		queryFn: async () => await getCachedEvents(threadId),
+		queryKey: ["thread-events-cache", slug] as const,
+		queryFn: async () => await getCachedEvents(slug),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});

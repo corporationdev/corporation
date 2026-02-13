@@ -100,10 +100,10 @@ async function callEnsureSandbox(args: {
 }
 
 function ConnectedThreadRuntime({
-	threadId,
+	slug,
 	children,
 }: {
-	threadId: string;
+	slug: string;
 	children: ReactNode;
 }) {
 	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
@@ -113,7 +113,7 @@ function ConnectedThreadRuntime({
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
 	const createThread = useMutation(api.agentSessions.create);
 
-	const session = useQuery(api.agentSessions.getBySlug, { slug: threadId });
+	const session = useQuery(api.agentSessions.getBySlug, { slug });
 
 	// For new threads: consume pending → ensure sandbox → create session.
 	// Stores the baseUrl and pending text for the actor to use once connected.
@@ -136,7 +136,7 @@ function ConnectedThreadRuntime({
 			}
 
 			await createThread({
-				slug: threadId,
+				slug,
 				title: "New Chat",
 				sandboxId: result.sandboxId as Id<"sandboxes">,
 			});
@@ -172,13 +172,13 @@ function ConnectedThreadRuntime({
 
 	const actor = useActor({
 		name: "sandboxAgent",
-		key: [threadId],
+		key: [slug],
 		createWithInput: baseUrl ? { baseUrl } : undefined,
 		enabled: !!baseUrl || !!session,
 	});
 
 	const threadState = useThreadEventState({
-		threadId,
+		slug,
 		actor,
 		onPermissionEvent,
 	});
@@ -216,8 +216,8 @@ function ConnectedThreadRuntime({
 		}
 		pendingTextRef.current = null;
 
-		actor.connection.postMessage(text).catch(() => {
-			// Runtime stream stays connected; user can resend manually if needed.
+		actor.connection.postMessage(text).catch((error) => {
+			console.error("Failed to send pending message", error);
 		});
 	}, [actor.connStatus, actor.connection]);
 
@@ -242,7 +242,7 @@ function ConnectedThreadRuntime({
 			});
 
 			await touchThread({ id: session._id });
-			await actor.connection?.postMessage(text, result.baseUrl ?? undefined);
+			await actor.connection?.postMessage(text, result.baseUrl);
 		},
 	});
 
@@ -254,19 +254,17 @@ function ConnectedThreadRuntime({
 }
 
 function ThreadRuntime({
-	threadId,
+	slug,
 	children,
 }: {
-	threadId: string;
+	slug: string;
 	children: ReactNode;
 }) {
-	if (threadId === NEW_CHAT_ID) {
+	if (slug === NEW_CHAT_ID) {
 		return <NewThreadRuntime>{children}</NewThreadRuntime>;
 	}
 	return (
-		<ConnectedThreadRuntime threadId={threadId}>
-			{children}
-		</ConnectedThreadRuntime>
+		<ConnectedThreadRuntime slug={slug}>{children}</ConnectedThreadRuntime>
 	);
 }
 
@@ -279,10 +277,10 @@ export function ThreadListRuntimeProvider({
 		from: "/_authenticated/chat/$slug",
 		shouldThrow: false,
 	});
-	const threadId = match?.params.slug ?? NEW_CHAT_ID;
+	const slug = match?.params.slug ?? NEW_CHAT_ID;
 
 	return (
-		<ThreadRuntime key={threadId} threadId={threadId}>
+		<ThreadRuntime key={slug} slug={slug}>
 			{children}
 		</ThreadRuntime>
 	);
