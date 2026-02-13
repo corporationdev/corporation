@@ -17,7 +17,7 @@ import { Route as PublicLoginRouteImport } from './routes/_public/login'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_authenticated/settings/connections'
-import { Route as AuthenticatedChatThreadIdRouteImport } from './routes/_authenticated/chat.$threadId'
+import { Route as AuthenticatedChatSlugRouteImport } from './routes/_authenticated/chat.$slug'
 import { Route as AuthenticatedSettingsRepositoriesIndexRouteImport } from './routes/_authenticated/settings/repositories/index'
 import { Route as AuthenticatedSettingsRepositoriesConnectRouteImport } from './routes/_authenticated/settings/repositories/connect'
 import { Route as AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport } from './routes/_authenticated/settings/repositories/$repositoryId.edit'
@@ -61,12 +61,11 @@ const AuthenticatedSettingsConnectionsRoute =
     path: '/connections',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
-const AuthenticatedChatThreadIdRoute =
-  AuthenticatedChatThreadIdRouteImport.update({
-    id: '/$threadId',
-    path: '/$threadId',
-    getParentRoute: () => AuthenticatedChatRoute,
-  } as any)
+const AuthenticatedChatSlugRoute = AuthenticatedChatSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => AuthenticatedChatRoute,
+} as any)
 const AuthenticatedSettingsRepositoriesIndexRoute =
   AuthenticatedSettingsRepositoriesIndexRouteImport.update({
     id: '/repositories/',
@@ -92,7 +91,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
-  '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
+  '/chat/$slug': typeof AuthenticatedChatSlugRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
@@ -104,7 +103,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
-  '/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
+  '/chat/$slug': typeof AuthenticatedChatSlugRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories': typeof AuthenticatedSettingsRepositoriesIndexRoute
@@ -119,7 +118,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_public/login': typeof PublicLoginRoute
   '/_public/signup': typeof PublicSignupRoute
-  '/_authenticated/chat/$threadId': typeof AuthenticatedChatThreadIdRoute
+  '/_authenticated/chat/$slug': typeof AuthenticatedChatSlugRoute
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/_authenticated/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/_authenticated/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
@@ -133,7 +132,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/signup'
-    | '/chat/$threadId'
+    | '/chat/$slug'
     | '/settings/connections'
     | '/settings/repositories/connect'
     | '/settings/repositories/'
@@ -145,7 +144,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/signup'
-    | '/chat/$threadId'
+    | '/chat/$slug'
     | '/settings/connections'
     | '/settings/repositories/connect'
     | '/settings/repositories'
@@ -159,7 +158,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_public/login'
     | '/_public/signup'
-    | '/_authenticated/chat/$threadId'
+    | '/_authenticated/chat/$slug'
     | '/_authenticated/settings/connections'
     | '/_authenticated/settings/repositories/connect'
     | '/_authenticated/settings/repositories/'
@@ -230,11 +229,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsConnectionsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
-    '/_authenticated/chat/$threadId': {
-      id: '/_authenticated/chat/$threadId'
-      path: '/$threadId'
-      fullPath: '/chat/$threadId'
-      preLoaderRoute: typeof AuthenticatedChatThreadIdRouteImport
+    '/_authenticated/chat/$slug': {
+      id: '/_authenticated/chat/$slug'
+      path: '/$slug'
+      fullPath: '/chat/$slug'
+      preLoaderRoute: typeof AuthenticatedChatSlugRouteImport
       parentRoute: typeof AuthenticatedChatRoute
     }
     '/_authenticated/settings/repositories/': {
@@ -262,11 +261,11 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedChatRouteChildren {
-  AuthenticatedChatThreadIdRoute: typeof AuthenticatedChatThreadIdRoute
+  AuthenticatedChatSlugRoute: typeof AuthenticatedChatSlugRoute
 }
 
 const AuthenticatedChatRouteChildren: AuthenticatedChatRouteChildren = {
-  AuthenticatedChatThreadIdRoute: AuthenticatedChatThreadIdRoute,
+  AuthenticatedChatSlugRoute: AuthenticatedChatSlugRoute,
 }
 
 const AuthenticatedChatRouteWithChildren =

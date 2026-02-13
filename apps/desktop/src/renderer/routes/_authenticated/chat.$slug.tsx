@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { ChatLayout } from "@/components/chat-layout";
 
-export const Route = createFileRoute("/_authenticated/chat/$threadId")({
+export const Route = createFileRoute("/_authenticated/chat/$slug")({
 	component: ChatThreadRoute,
 });
 

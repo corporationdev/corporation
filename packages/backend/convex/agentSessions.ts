@@ -38,6 +38,21 @@ export const getById = authedQuery({
 	},
 });
 
+export const getBySlug = authedQuery({
+	args: { slug: v.string() },
+	handler: async (ctx, args) => {
+		const session = await ctx.db
+			.query("agentSessions")
+			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
+			.unique();
+		if (!session) {
+			return null;
+		}
+		await requireOwnedSession(ctx, session._id);
+		return session;
+	},
+});
+
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -107,6 +122,7 @@ export const listBySandbox = authedQuery({
 
 export const create = authedMutation({
 	args: {
+		slug: v.string(),
 		title: v.string(),
 		sandboxId: v.id("sandboxes"),
 	},
@@ -129,6 +145,7 @@ export const create = authedMutation({
 		const now = Date.now();
 
 		return await ctx.db.insert("agentSessions", {
+			slug: args.slug,
 			title: args.title,
 			sandboxId: args.sandboxId,
 			status: "waiting",

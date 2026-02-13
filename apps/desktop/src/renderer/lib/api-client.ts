@@ -5,13 +5,14 @@ import { authClient } from "./auth-client";
 
 export const apiClient = hc<AppType>(env.VITE_SERVER_URL, {
 	fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-		const headers = await getAuthHeaders();
+		const authHeaders = await getAuthHeaders();
+		const merged = new Headers(init?.headers);
+		for (const [key, value] of Object.entries(authHeaders)) {
+			merged.set(key, value);
+		}
 		return fetch(input, {
 			...init,
-			headers: {
-				...init?.headers,
-				...headers,
-			},
+			headers: merged,
 		});
 	},
 });

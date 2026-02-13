@@ -2,8 +2,9 @@ import { create } from "zustand";
 
 type PendingMessage = {
 	text: string;
-	sandboxId: string;
-	baseUrl: string;
+	environmentId: string;
+	repositoryId: string;
+	selectedSandboxId?: string;
 };
 
 type PendingMessageStore = {

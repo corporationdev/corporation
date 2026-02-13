@@ -44,6 +44,7 @@ export default defineSchema(
 		}).index("by_environment", ["environmentId"]),
 
 		agentSessions: defineTable({
+			slug: v.string(),
 			title: v.string(),
 			sandboxId: v.id("sandboxes"),
 			status: v.union(
@@ -55,7 +56,9 @@ export default defineSchema(
 			createdAt: v.number(),
 			updatedAt: v.number(),
 			archivedAt: v.union(v.number(), v.null()),
-		}).index("by_sandbox", ["sandboxId"]),
+		})
+			.index("by_sandbox", ["sandboxId"])
+			.index("by_slug", ["slug"]),
 	},
 	// TODO: remove schemaValidation: false before launch
 	{ schemaValidation: false }

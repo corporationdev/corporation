@@ -46,7 +46,6 @@ export const ThreadList: FC = () => {
 			<ThreadListNew />
 			{regularThreads.map((thread) => (
 				<ThreadListItem
-					id={thread._id}
 					key={thread._id}
 					onArchive={async () => {
 						await updateThread({
@@ -59,6 +58,7 @@ export const ThreadList: FC = () => {
 							id: thread._id,
 						});
 					}}
+					slug={thread.slug}
 					title={thread.title || "New Chat"}
 				/>
 			))}
@@ -108,24 +108,24 @@ const ThreadListSkeleton: FC = () => {
 };
 
 const ThreadListItem: FC<{
-	id: Id<"agentSessions">;
+	slug: string;
 	title: string;
 	onArchive: () => Promise<void>;
 	onDelete: () => Promise<void>;
-}> = ({ id, title, onArchive, onDelete }) => {
+}> = ({ slug, title, onArchive, onDelete }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
-		from: "/_authenticated/chat/$threadId",
+		from: "/_authenticated/chat/$slug",
 		shouldThrow: false,
 	});
-	const currentThreadId = match?.params.threadId;
+	const currentSlug = match?.params.slug;
 
-	const isActive = currentThreadId === id;
+	const isActive = currentSlug === slug;
 
 	const handleSelect = () => {
 		navigate({
-			to: "/chat/$threadId",
-			params: { threadId: id },
+			to: "/chat/$slug",
+			params: { slug },
 		});
 	};
 
@@ -222,8 +222,8 @@ const ArchivedThreadList: FC<{
 						className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-muted-foreground text-sm"
 						onClick={() =>
 							navigate({
-								to: "/chat/$threadId",
-								params: { threadId: thread._id },
+								to: "/chat/$slug",
+								params: { slug: thread.slug },
 							})
 						}
 						type="button"

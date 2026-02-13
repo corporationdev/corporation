@@ -55,8 +55,6 @@ async function connectClient(
 // ---------------------------------------------------------------------------
 
 export const sandboxAgent = actor({
-	state: {} as SessionState,
-
 	createState: (c, input: { baseUrl: string }): SessionState => {
 		const sessionId = c.key[0];
 		if (!sessionId) {

@@ -6,7 +6,7 @@ import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 
 export function ChatLayout() {
 	const match = useMatch({
-		from: "/_authenticated/chat/$threadId",
+		from: "/_authenticated/chat/$slug",
 		shouldThrow: false,
 	});
 	const isNewChat = !match;
