@@ -1,18 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 
 async function requireOwnedSession(
 	ctx: QueryCtx & { userId: string },
-	id: Id<"agentSessions">
+	session: Doc<"agentSessions">
 ): Promise<Doc<"agentSessions">> {
-	const session = await ctx.db.get(id);
-	if (!session) {
-		throw new ConvexError("Agent session not found");
-	}
-
 	const space = await ctx.db.get(session.spaceId);
 	if (!space) {
 		throw new ConvexError("Agent session not found");
@@ -34,7 +29,11 @@ async function requireOwnedSession(
 export const getById = authedQuery({
 	args: { id: v.id("agentSessions") },
 	handler: async (ctx, args) => {
-		return await requireOwnedSession(ctx, args.id);
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		return await requireOwnedSession(ctx, session);
 	},
 });
 
@@ -48,8 +47,7 @@ export const getBySlug = authedQuery({
 		if (!session) {
 			return null;
 		}
-		await requireOwnedSession(ctx, session._id);
-		return session;
+		return await requireOwnedSession(ctx, session);
 	},
 });
 
@@ -171,7 +169,11 @@ export const update = authedMutation({
 		archivedAt: v.optional(v.union(v.number(), v.null())),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSession(ctx, args.id);
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		await requireOwnedSession(ctx, session);
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
@@ -189,7 +191,11 @@ export const touch = authedMutation({
 		id: v.id("agentSessions"),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSession(ctx, args.id);
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		await requireOwnedSession(ctx, session);
 
 		await ctx.db.patch(args.id, {
 			updatedAt: Date.now(),
@@ -203,7 +209,11 @@ export const remove = authedMutation({
 		id: v.id("agentSessions"),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSession(ctx, args.id);
+		const session = await ctx.db.get(args.id);
+		if (!session) {
+			throw new ConvexError("Agent session not found");
+		}
+		await requireOwnedSession(ctx, session);
 
 		await ctx.db.delete(args.id);
 	},

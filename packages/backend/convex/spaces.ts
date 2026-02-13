@@ -1,18 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string },
-	id: Id<"spaces">
+	space: Doc<"spaces">
 ): Promise<Doc<"spaces">> {
-	const space = await ctx.db.get(id);
-	if (!space) {
-		throw new ConvexError("Space not found");
-	}
-
 	const environment = await ctx.db.get(space.environmentId);
 	if (!environment) {
 		throw new ConvexError("Space not found");
@@ -60,7 +55,11 @@ export const list = authedQuery({
 export const getById = authedQuery({
 	args: { id: v.id("spaces") },
 	handler: async (ctx, args) => {
-		return await requireOwnedSpace(ctx, args.id);
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		return await requireOwnedSpace(ctx, space);
 	},
 });
 
@@ -107,7 +106,11 @@ export const update = authedMutation({
 		sandboxUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedSpace(ctx, args.id);
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(

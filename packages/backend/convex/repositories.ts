@@ -1,16 +1,13 @@
 import { ConvexError, v } from "convex/values";
 
-import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { authedMutation, authedQuery } from "./functions";
 
-async function requireOwnedRepository(
-	ctx: MutationCtx,
+function requireOwnedRepository(
 	userId: string,
-	id: Id<"repositories">
-): Promise<Doc<"repositories">> {
-	const repo = await ctx.db.get(id);
-	if (!repo || repo.userId !== userId) {
+	repo: Doc<"repositories">
+): Doc<"repositories"> {
+	if (repo.userId !== userId) {
 		throw new ConvexError("Repository not found");
 	}
 	return repo;
@@ -81,7 +78,11 @@ export const remove = authedMutation({
 		id: v.id("repositories"),
 	},
 	handler: async (ctx, args) => {
-		await requireOwnedRepository(ctx, ctx.userId, args.id);
+		const repo = await ctx.db.get(args.id);
+		if (!repo) {
+			throw new ConvexError("Repository not found");
+		}
+		requireOwnedRepository(ctx.userId, repo);
 
 		const environments = await ctx.db
 			.query("environments")
