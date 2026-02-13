@@ -159,10 +159,6 @@ const ensureRoute = createRoute({
 							description:
 								"Convex environment ID (required when spaceId is absent)",
 						}),
-						repositoryId: z.string().optional().openapi({
-							description:
-								"Convex repository ID (required when spaceId is absent)",
-						}),
 						spaceId: z.string().optional().openapi({
 							description: "Convex space ID if one already exists",
 						}),
@@ -187,6 +183,12 @@ const ensureRoute = createRoute({
 				},
 			},
 			description: "Sandbox is running and ready",
+		},
+		400: {
+			content: {
+				"application/json": { schema: ErrorResponseSchema },
+			},
+			description: "Invalid request parameters",
 		},
 		500: {
 			content: {
@@ -225,7 +227,7 @@ export const spacesApp = $(
 				if (!body.environmentId) {
 					return c.json(
 						{ error: "environmentId is required when spaceId is absent" },
-						500
+						400
 					);
 				}
 

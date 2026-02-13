@@ -14,6 +14,7 @@ import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { nanoid } from "nanoid";
 import { type ReactNode, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { useOptimisticTouchThreadMutation } from "@/hooks/agent-session-mutations";
 import { useThreadEventState } from "@/hooks/use-thread-event-state";
 import { apiClient } from "@/lib/api-client";
@@ -64,7 +65,6 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 			setPending({
 				text,
 				environmentId: firstEnv._id,
-				repositoryId: firstRepo._id,
 				selectedSpaceId: selectedSpaceId ?? undefined,
 			});
 
@@ -86,7 +86,6 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 
 async function callEnsureSandbox(args: {
 	environmentId?: string;
-	repositoryId?: string;
 	spaceId?: string;
 }) {
 	const res = await apiClient.spaces.ensure.$post({ json: args });
@@ -120,12 +119,10 @@ function ConnectedThreadRuntime({
 		mutationFn: async (pending: {
 			text: string;
 			environmentId: string;
-			repositoryId: string;
 			selectedSpaceId?: string;
 		}) => {
 			const result = await callEnsureSandbox({
 				environmentId: pending.environmentId,
-				repositoryId: pending.repositoryId,
 				spaceId: pending.selectedSpaceId,
 			});
 
@@ -141,6 +138,10 @@ function ConnectedThreadRuntime({
 
 			pendingTextRef.current = pending.text;
 			return result.sandboxUrl;
+		},
+		onError: (error) => {
+			toast.error("Failed to start chat");
+			console.error("initMutation failed", error);
 		},
 	});
 

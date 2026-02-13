@@ -142,6 +142,14 @@ export const create = authedMutation({
 			throw new ConvexError("Space not found");
 		}
 
+		const existing = await ctx.db
+			.query("agentSessions")
+			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
+			.unique();
+		if (existing) {
+			throw new ConvexError("Session with this slug already exists");
+		}
+
 		const now = Date.now();
 
 		return await ctx.db.insert("agentSessions", {
