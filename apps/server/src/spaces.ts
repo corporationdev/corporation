@@ -2,13 +2,18 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { Daytona, type Sandbox } from "@daytonaio/sdk";
 import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { Nango } from "@nangohq/node";
 import { ConvexHttpClient } from "convex/browser";
 import { type AuthVariables, authMiddleware } from "./auth";
+import { getGitHubToken } from "./lib/github";
 import {
 	bootSandboxAgent,
+	cloneRepoIntoSandbox,
 	createReadySandbox,
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
+	pullRepoInSandbox,
+	type RepoInfo,
 } from "./sandbox-lifecycle";
 
 type SpacesEnv = {
@@ -46,11 +51,17 @@ async function generateAndStoreSandboxUrl(
 	return sandboxUrl;
 }
 
+type GitCredentials = {
+	githubToken: string;
+	repoInfo: RepoInfo;
+};
+
 async function ensureExistingSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
-	anthropicApiKey: string
+	anthropicApiKey: string,
+	git: GitCredentials
 ): Promise<{ spaceId: string; sandboxUrl: string }> {
 	const record = await convex.query(api.spaces.getById, {
 		id: spaceId,
@@ -61,7 +72,8 @@ async function ensureExistingSandbox(
 			convex,
 			daytona,
 			record._id,
-			anthropicApiKey
+			anthropicApiKey,
+			git
 		);
 	}
 
@@ -73,7 +85,8 @@ async function ensureExistingSandbox(
 			convex,
 			daytona,
 			record._id,
-			anthropicApiKey
+			anthropicApiKey,
+			git
 		);
 	}
 
@@ -113,7 +126,8 @@ async function ensureExistingSandbox(
 		convex,
 		daytona,
 		record._id,
-		anthropicApiKey
+		anthropicApiKey,
+		git
 	);
 }
 
@@ -121,9 +135,11 @@ async function provisionDaytonaSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
-	anthropicApiKey: string
+	anthropicApiKey: string,
+	git: GitCredentials
 ): Promise<{ spaceId: string; sandboxUrl: string }> {
 	const sandbox = await createReadySandbox(daytona, anthropicApiKey);
+	await cloneRepoIntoSandbox(sandbox, git.githubToken, git.repoInfo);
 	const sandboxUrl = await getPreviewUrl(sandbox);
 
 	await convex.mutation(api.spaces.update, {
@@ -134,6 +150,19 @@ async function provisionDaytonaSandbox(
 	});
 
 	return { spaceId, sandboxUrl };
+}
+
+async function resolveGitCredentials(
+	convex: ConvexHttpClient,
+	nango: Nango,
+	userId: string,
+	spaceId: Id<"spaces">
+): Promise<GitCredentials> {
+	const [repoInfo, githubToken] = await Promise.all([
+		convex.query(api.spaces.getRepoInfo, { id: spaceId }),
+		getGitHubToken(nango, userId),
+	]);
+	return { githubToken, repoInfo };
 }
 
 // ---------------------------------------------------------------------------
@@ -193,64 +222,155 @@ const ensureRoute = createRoute({
 });
 
 // ---------------------------------------------------------------------------
+// POST /pull — Pull latest changes into a sandbox
+// ---------------------------------------------------------------------------
+
+const pullRoute = createRoute({
+	method: "post",
+	path: "/pull",
+	middleware: [authMiddleware],
+	request: {
+		body: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						spaceId: z
+							.string()
+							.openapi({ description: "Convex space ID to pull into" }),
+					}),
+				},
+			},
+			required: true,
+			description: "Pull latest changes from the remote repository",
+		},
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({
+						success: z
+							.boolean()
+							.openapi({ description: "Whether the pull succeeded" }),
+					}),
+				},
+			},
+			description: "Pull completed successfully",
+		},
+		500: {
+			content: {
+				"application/json": { schema: ErrorResponseSchema },
+			},
+			description: "Failed to pull",
+		},
+	},
+});
+
+// ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
 
 export const spacesApp = $(
-	new OpenAPIHono<SpacesEnv>().openapi(ensureRoute, async (c) => {
-		const body = c.req.valid("json");
-		const token = getBearerToken(c.req.header("Authorization"));
-		const convex = createConvexClient(c.env.CONVEX_URL, token);
-		const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
+	new OpenAPIHono<SpacesEnv>()
+		.openapi(ensureRoute, async (c) => {
+			const body = c.req.valid("json");
+			const { sub: userId } = c.get("jwtPayload");
+			const token = getBearerToken(c.req.header("Authorization"));
+			const convex = createConvexClient(c.env.CONVEX_URL, token);
+			const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
+			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 
-		let spaceId: Id<"spaces"> | undefined;
+			let spaceId: Id<"spaces"> | undefined;
 
-		try {
-			let result: { spaceId: string; sandboxUrl: string };
+			try {
+				let result: { spaceId: string; sandboxUrl: string };
 
-			if (body.spaceId) {
-				spaceId = body.spaceId as Id<"spaces">;
-				result = await ensureExistingSandbox(
-					convex,
-					daytona,
-					spaceId,
-					c.env.ANTHROPIC_API_KEY
-				);
-			} else {
-				if (!body.environmentId) {
-					return c.json(
-						{ error: "environmentId is required when spaceId is absent" },
-						400
+				if (body.spaceId) {
+					spaceId = body.spaceId as Id<"spaces">;
+					const git = await resolveGitCredentials(
+						convex,
+						nango,
+						userId,
+						spaceId
+					);
+					result = await ensureExistingSandbox(
+						convex,
+						daytona,
+						spaceId,
+						c.env.ANTHROPIC_API_KEY,
+						git
+					);
+				} else {
+					if (!body.environmentId) {
+						return c.json(
+							{ error: "environmentId is required when spaceId is absent" },
+							400
+						);
+					}
+
+					spaceId = await convex.mutation(api.spaces.create, {
+						environmentId: body.environmentId as Id<"environments">,
+						branchName: "main",
+					});
+
+					const git = await resolveGitCredentials(
+						convex,
+						nango,
+						userId,
+						spaceId
+					);
+					result = await provisionDaytonaSandbox(
+						convex,
+						daytona,
+						spaceId,
+						c.env.ANTHROPIC_API_KEY,
+						git
 					);
 				}
 
-				spaceId = await convex.mutation(api.spaces.create, {
-					environmentId: body.environmentId as Id<"environments">,
-					branchName: "main",
-				});
-
-				result = await provisionDaytonaSandbox(
-					convex,
-					daytona,
-					spaceId,
-					c.env.ANTHROPIC_API_KEY
-				);
-			}
-
-			return c.json(result, 200);
-		} catch (error) {
-			if (spaceId) {
-				try {
-					await convex.mutation(api.spaces.update, {
-						id: spaceId,
-						status: "error",
-					});
-				} catch {
-					// Best effort
+				return c.json(result, 200);
+			} catch (error) {
+				if (spaceId) {
+					try {
+						await convex.mutation(api.spaces.update, {
+							id: spaceId,
+							status: "error",
+						});
+					} catch {
+						// Best effort
+					}
 				}
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
+				return c.json({ error: `Sandbox ensure failed: ${message}` }, 500);
 			}
-			const message = error instanceof Error ? error.message : "Unknown error";
-			return c.json({ error: `Sandbox ensure failed: ${message}` }, 500);
-		}
-	})
+		})
+		.openapi(pullRoute, async (c) => {
+			const { spaceId: rawSpaceId } = c.req.valid("json");
+			const { sub: userId } = c.get("jwtPayload");
+			const token = getBearerToken(c.req.header("Authorization"));
+			const convex = createConvexClient(c.env.CONVEX_URL, token);
+			const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
+			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
+
+			try {
+				const spaceId = rawSpaceId as Id<"spaces">;
+				const space = await convex.query(api.spaces.getById, { id: spaceId });
+
+				if (!space.sandboxId) {
+					throw new Error("Space has no active sandbox");
+				}
+
+				const sandbox = await daytona.get(space.sandboxId);
+				const githubToken = await getGitHubToken(nango, userId);
+
+				await pullRepoInSandbox(sandbox, githubToken);
+
+				return c.json({ success: true }, 200);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
+				return c.json({ error: `Pull failed: ${message}` }, 500);
+			}
+		})
 );

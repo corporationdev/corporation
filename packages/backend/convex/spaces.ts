@@ -90,6 +90,34 @@ export const create = authedMutation({
 	},
 });
 
+export const getRepoInfo = authedQuery({
+	args: { id: v.id("spaces") },
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		const environment = await ctx.db.get(space.environmentId);
+		if (!environment) {
+			throw new ConvexError("Environment not found");
+		}
+
+		const repository = await ctx.db.get(environment.repositoryId);
+		if (!repository) {
+			throw new ConvexError("Repository not found");
+		}
+
+		return {
+			owner: repository.owner,
+			name: repository.name,
+			defaultBranch: repository.defaultBranch,
+			branchName: space.branchName,
+		};
+	},
+});
+
 export const update = authedMutation({
 	args: {
 		id: v.id("spaces"),

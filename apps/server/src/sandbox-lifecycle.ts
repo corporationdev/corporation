@@ -21,7 +21,7 @@ export async function ensureSnapshot(daytona: Daytona): Promise<void> {
 		await daytona.snapshot.create({
 			name: SNAPSHOT_NAME,
 			image: Image.base("ubuntu:22.04").runCommands(
-				"apt-get update && apt-get install -y curl ca-certificates",
+				"apt-get update && apt-get install -y curl ca-certificates git",
 				"curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
 				"sandbox-agent install-agent claude"
 			),
@@ -109,4 +109,47 @@ export async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
 		PREVIEW_URL_EXPIRY_SECONDS
 	);
 	return result.url;
+}
+
+// ---------------------------------------------------------------------------
+// Git operations
+// ---------------------------------------------------------------------------
+
+const REPO_DIR = "project";
+const GIT_USERNAME = "x-access-token";
+
+export type RepoInfo = {
+	owner: string;
+	name: string;
+	branchName: string;
+};
+
+export async function cloneRepoIntoSandbox(
+	sandbox: Sandbox,
+	githubToken: string,
+	repo: RepoInfo
+): Promise<void> {
+	const cloneUrl = `https://github.com/${repo.owner}/${repo.name}.git`;
+	log.info(
+		{ sandboxId: sandbox.id, repo: `${repo.owner}/${repo.name}` },
+		"cloning repository into sandbox"
+	);
+	await sandbox.git.clone(
+		cloneUrl,
+		REPO_DIR,
+		repo.branchName,
+		undefined,
+		GIT_USERNAME,
+		githubToken
+	);
+	log.info({ sandboxId: sandbox.id }, "repository cloned");
+}
+
+export async function pullRepoInSandbox(
+	sandbox: Sandbox,
+	githubToken: string
+): Promise<void> {
+	log.info({ sandboxId: sandbox.id }, "pulling latest changes");
+	await sandbox.git.pull(REPO_DIR, GIT_USERNAME, githubToken);
+	log.info({ sandboxId: sandbox.id }, "pull complete");
 }
