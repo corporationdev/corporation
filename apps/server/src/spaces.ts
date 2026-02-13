@@ -9,7 +9,6 @@ import {
 	createReadySandbox,
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
-	isPreviewUrlHealthy,
 } from "./sandbox-lifecycle";
 
 type SpacesEnv = {
@@ -52,7 +51,7 @@ async function ensureExistingSandbox(
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
 	anthropicApiKey: string
-): Promise<{ spaceId: string; sandboxUrl: string | undefined }> {
+): Promise<{ spaceId: string; sandboxUrl: string }> {
 	const record = await convex.query(api.spaces.getById, {
 		id: spaceId,
 	});
@@ -82,11 +81,6 @@ async function ensureExistingSandbox(
 
 	if (state === "started") {
 		await ensureSandboxAgentRunning(sandbox);
-
-		if (record.sandboxUrl && (await isPreviewUrlHealthy(record.sandboxUrl))) {
-			return { spaceId: record._id, sandboxUrl: undefined };
-		}
-
 		const sandboxUrl = await generateAndStoreSandboxUrl(
 			convex,
 			sandbox,
@@ -175,9 +169,8 @@ const ensureRoute = createRoute({
 				"application/json": {
 					schema: z.object({
 						spaceId: z.string().openapi({ description: "Convex space ID" }),
-						sandboxUrl: z.string().optional().openapi({
-							description:
-								"Preview URL to the sandbox-agent server. Undefined if the cached URL is still valid.",
+						sandboxUrl: z.string().openapi({
+							description: "Preview URL to the sandbox-agent server",
 						}),
 					}),
 				},
@@ -213,7 +206,7 @@ export const spacesApp = $(
 		let spaceId: Id<"spaces"> | undefined;
 
 		try {
-			let result: { spaceId: string; sandboxUrl: string | undefined };
+			let result: { spaceId: string; sandboxUrl: string };
 
 			if (body.spaceId) {
 				spaceId = body.spaceId as Id<"spaces">;

@@ -126,10 +126,6 @@ function ConnectedThreadRuntime({
 				spaceId: pending.selectedSpaceId,
 			});
 
-			if (!result.sandboxUrl) {
-				throw new Error("Expected sandboxUrl from ensure for new sandbox");
-			}
-
 			await createThread({
 				slug,
 				title: "New Chat",
