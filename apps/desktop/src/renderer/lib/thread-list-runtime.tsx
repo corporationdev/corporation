@@ -6,9 +6,6 @@ import {
 } from "@assistant-ui/react";
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import { env } from "@corporation/env/web";
-import type { registry } from "@corporation/server/registry";
-import { createRivetKit } from "@rivetkit/react";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
@@ -18,18 +15,12 @@ import { toast } from "sonner";
 import { useOptimisticTouchThreadMutation } from "@/hooks/agent-session-mutations";
 import { useThreadEventState } from "@/hooks/use-thread-event-state";
 import { apiClient } from "@/lib/api-client";
+import { useActor } from "@/lib/rivet";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
 import { useSpaceSelectionStore } from "@/stores/space-selection-store";
 
-const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
-
-const { useActor } = createRivetKit<typeof registry>({
-	endpoint: `${SERVER_URL}/api/rivet`,
-	disableMetadataLookup: true,
-	devtools: false,
-});
 
 function NewThreadRuntime({ children }: { children: ReactNode }) {
 	const navigate = useNavigate();
@@ -103,12 +94,12 @@ function ConnectedThreadRuntime({
 	slug: string;
 	children: ReactNode;
 }) {
-	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
+	const onPermission = usePermissionStore((s) => s.onPermission);
 	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
 	const resetPermissions = usePermissionStore((s) => s.reset);
 	const touchThread = useOptimisticTouchThreadMutation();
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
-	const createThread = useMutation(api.agentSessions.create);
+	const createSession = useMutation(api.agentSessions.create);
 
 	const session = useQuery(api.agentSessions.getBySlug, { slug });
 
@@ -126,7 +117,7 @@ function ConnectedThreadRuntime({
 				spaceId: pending.selectedSpaceId,
 			});
 
-			await createThread({
+			await createSession({
 				slug,
 				title: "New Chat",
 				spaceId: result.spaceId as Id<"spaces">,
@@ -173,9 +164,8 @@ function ConnectedThreadRuntime({
 	});
 
 	const threadState = useThreadEventState({
-		slug,
 		actor,
-		onPermissionEvent,
+		onPermission,
 	});
 
 	// Wire up permission replies
@@ -211,7 +201,7 @@ function ConnectedThreadRuntime({
 		}
 		pendingTextRef.current = null;
 
-		actor.connection.postMessage(text).catch((error) => {
+		actor.connection.sendMessage(text).catch((error: unknown) => {
 			console.error("Failed to send pending message", error);
 		});
 	}, [actor.connStatus, actor.connection]);
@@ -232,12 +222,9 @@ function ConnectedThreadRuntime({
 				.map((part) => part.text)
 				.join("");
 
-			const result = await callEnsureSandbox({
-				spaceId: session.spaceId,
-			});
-
+			await callEnsureSandbox({ spaceId: session.spaceId });
 			await touchThread({ id: session._id });
-			await actor.connection?.postMessage(text, result.sandboxUrl);
+			await actor.connection?.sendMessage(text);
 		},
 	});
 

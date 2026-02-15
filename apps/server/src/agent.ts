@@ -1,10 +1,7 @@
-import { createLogger } from "@corporation/logger";
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { actor } from "rivetkit";
 
 import { SandboxAgent, type Session } from "sandbox-agent";
-
-const log = createLogger("agent");
 
 // ---------------------------------------------------------------------------
 // State & Vars types
@@ -12,7 +9,7 @@ const log = createLogger("agent");
 
 type PersistedState = {
 	slug: string;
-	baseUrl: string;
+	sandboxUrl: string;
 };
 
 type SessionVars = {
@@ -21,28 +18,58 @@ type SessionVars = {
 	unsubscribe: () => void;
 };
 
+const HEALTH_TIMEOUT_MS = 30_000;
+const HEALTH_POLL_MS = 500;
+
+async function waitForHealth(sdk: SandboxAgent) {
+	const start = Date.now();
+	while (Date.now() - start < HEALTH_TIMEOUT_MS) {
+		try {
+			await sdk.getHealth();
+			return;
+		} catch {
+			await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_MS));
+		}
+	}
+	throw new Error("Timed out waiting for sandbox-agent to become healthy");
+}
+
 export const agent = actor({
-	createState: (c, input: { baseUrl: string }): PersistedState => {
+	createState: (c, input: { sandboxUrl: string }): PersistedState => {
 		const slug = c.key[0];
 		if (!slug) {
 			throw new Error("Actor key must contain a slug");
 		}
 		return {
 			slug,
-			baseUrl: input.baseUrl,
+			sandboxUrl: input.sandboxUrl,
 		};
 	},
 
 	createVars: async (c): Promise<SessionVars> => {
 		const persist = new RivetSessionPersistDriver(c);
+		console.log("[agent] connecting to sandbox-agent at", c.state.sandboxUrl);
+
 		const sdk = await SandboxAgent.connect({
-			baseUrl: c.state.baseUrl,
+			baseUrl: c.state.sandboxUrl,
 			persist,
 		});
+		console.log("[agent] connected, waiting for health...");
+
+		await waitForHealth(sdk);
+		console.log("[agent] healthy, installing claude agent...");
+
+		await sdk.installAgent("claude");
+		console.log("[agent] claude installed, creating session...");
+
+		const agents = await sdk.listAgents({ config: true });
+		console.log("[agent] available agents:", JSON.stringify(agents));
+
 		const session = await sdk.resumeOrCreateSession({
 			id: c.state.slug,
 			agent: "claude",
 		});
+		console.log("[agent] session created successfully");
 
 		const unsubscribe = session.onEvent((event) => {
 			c.broadcast("session.event", event);

@@ -13,7 +13,7 @@ export function PermissionOverlay() {
 	}
 
 	const handleReply = (reply: "once" | "always" | "reject") => {
-		replyPermission?.(first.permission_id, reply);
+		replyPermission?.(first.requestId, reply);
 	};
 
 	return (
@@ -25,12 +25,12 @@ export function PermissionOverlay() {
 					Pending
 				</span>
 			</div>
-			<p className="text-muted-foreground text-xs">{first.action}</p>
-			{first.metadata != null && (
+			<p className="text-muted-foreground text-xs">{first.title}</p>
+			{first.rawInput != null && (
 				<pre className="overflow-x-auto bg-muted p-2 text-xs">
-					{typeof first.metadata === "string"
-						? first.metadata
-						: JSON.stringify(first.metadata, null, 2)}
+					{typeof first.rawInput === "string"
+						? first.rawInput
+						: JSON.stringify(first.rawInput, null, 2)}
 				</pre>
 			)}
 			<div className="flex gap-2">

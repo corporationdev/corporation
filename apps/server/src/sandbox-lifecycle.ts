@@ -1,47 +1,27 @@
 import { createLogger } from "@corporation/logger";
-import { type Daytona, Image, type Sandbox } from "@daytonaio/sdk";
+import type { Daytona, Sandbox } from "@daytonaio/sdk";
 
 const PORT = 3000;
-const SNAPSHOT_NAME = "sandbox-agent-ready";
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
 const log = createLogger("sandbox-lifecycle");
 
-export async function ensureSnapshot(daytona: Daytona): Promise<void> {
-	let exists = true;
-	try {
-		await daytona.snapshot.get(SNAPSHOT_NAME);
-	} catch {
-		exists = false;
-	}
-
-	if (!exists) {
-		log.info("creating snapshot, this may take a while");
-		await daytona.snapshot.create({
-			name: SNAPSHOT_NAME,
-			image: Image.base("ubuntu:22.04").runCommands(
-				"apt-get update && apt-get install -y curl ca-certificates",
-				"curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
-				"sandbox-agent install-agent claude"
-			),
-		});
-		log.info("snapshot created");
-	}
-}
-
 export async function createReadySandbox(
 	daytona: Daytona,
 	anthropicApiKey: string
 ): Promise<Sandbox> {
-	await ensureSnapshot(daytona);
 	const sandbox = await daytona.create({
-		snapshot: SNAPSHOT_NAME,
 		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
-		autoStopInterval: 0,
 	});
 	log.debug({ sandboxId: sandbox.id }, "sandbox created");
+
+	await sandbox.process.executeCommand(
+		"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.x/install.sh | sh"
+	);
+	await sandbox.process.executeCommand("sandbox-agent install-agent claude");
 	await bootSandboxAgent(sandbox);
+
 	return sandbox;
 }
 

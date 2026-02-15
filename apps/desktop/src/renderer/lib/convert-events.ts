@@ -1,12 +1,5 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import type {
-	ContentPart,
-	ItemDeltaData,
-	ItemEventData,
-	PermissionEventData,
-	UniversalEvent,
-	UniversalItem,
-} from "sandbox-agent";
+import type { SessionEvent } from "sandbox-agent";
 
 type ThreadMessageContent = Exclude<ThreadMessageLike["content"], string>;
 
@@ -18,252 +11,322 @@ type ToolCallPart = {
 	result?: string;
 };
 
-export type ItemState = {
-	item: UniversalItem;
-	pendingDeltas: string[];
+type ToolCallState = {
+	part: ToolCallPart;
+	status: string;
 };
 
-type ProcessResult = {
-	messages: ThreadMessageLike[];
+export type ConversationState = {
+	entries: EntryState[];
+	toolCalls: Map<string, ToolCallState>;
+	currentAssistantId: string | null;
+	currentAssistantText: string;
 	isRunning: boolean;
 };
 
+type EntryState =
+	| { kind: "user"; id: string; text: string }
+	| { kind: "assistant"; id: string; text: string }
+	| { kind: "tool"; id: string; toolCallId: string };
+
+type Payload = {
+	method?: string;
+	params?: Record<string, unknown>;
+	id?: string | number | null;
+	result?: unknown;
+};
+
+type UpdatePayload = {
+	sessionUpdate: string;
+	content?: { type?: string; text?: string };
+	toolCallId?: string;
+	title?: string;
+	rawInput?: unknown;
+	rawOutput?: unknown;
+	status?: string;
+};
+
+type DeriveResult = { messages: ThreadMessageLike[]; isRunning: boolean };
+
+const REPLAY_PREFIX = "Previous session history is replayed below";
+
+export function createConversationState(): ConversationState {
+	return {
+		entries: [],
+		toolCalls: new Map(),
+		currentAssistantId: null,
+		currentAssistantText: "",
+		isRunning: false,
+	};
+}
+
+export type PermissionCallback = (
+	requestId: string,
+	toolCall: { title: string; rawInput?: unknown }
+) => void;
+
 /**
- * Apply a single event to the item states map and derive messages.
+ * Apply a single SessionEvent to the conversation state.
+ * Mutates `state` in place and returns the derived messages.
  */
 export function processEvent(
-	event: UniversalEvent,
-	itemStates: Map<string, ItemState>,
-	onPermission?: (
-		type: "permission.requested" | "permission.resolved",
-		data: PermissionEventData
-	) => void
-): ProcessResult {
-	switch (event.type) {
-		case "item.started": {
-			const { item } = event.data as ItemEventData;
-			itemStates.set(item.item_id, { item, pendingDeltas: [] });
-			break;
+	event: SessionEvent,
+	state: ConversationState,
+	onPermission?: PermissionCallback
+): DeriveResult {
+	const payload = event.payload as Payload;
+	const method = payload.method;
+
+	if (!method) {
+		if (payload.result != null) {
+			flushAssistant(state);
+			state.isRunning = false;
 		}
-		case "item.delta": {
-			const { item_id, delta } = event.data as ItemDeltaData;
-			const state = itemStates.get(item_id);
-			if (state) {
-				state.pendingDeltas.push(delta);
-			}
+		return deriveMessages(state);
+	}
+
+	if (event.sender === "client" && method === "session/prompt") {
+		handlePrompt(event, payload, state);
+	} else if (event.sender === "agent" && method === "session/update") {
+		handleSessionUpdate(event, payload, state);
+	} else if (method === "session/requestPermission" && payload.id != null) {
+		handlePermissionRequest(payload, onPermission);
+	}
+
+	return deriveMessages(state);
+}
+
+function handlePrompt(
+	event: SessionEvent,
+	payload: Payload,
+	state: ConversationState
+) {
+	flushAssistant(state);
+	state.isRunning = true;
+	const promptArray = payload.params?.prompt as
+		| Array<{ type: string; text?: string }>
+		| undefined;
+	const text = (promptArray ?? [])
+		.filter((part) => part?.type === "text" && typeof part.text === "string")
+		.map((part) => (part.text ?? "").trim())
+		.filter((t) => t.length > 0 && !t.startsWith(REPLAY_PREFIX))
+		.join("\n\n")
+		.trim();
+
+	if (text) {
+		state.entries.push({ kind: "user", id: event.id, text });
+	}
+}
+
+function handleSessionUpdate(
+	event: SessionEvent,
+	payload: Payload,
+	state: ConversationState
+) {
+	const update = payload.params?.update as UpdatePayload | undefined;
+	if (!update?.sessionUpdate) {
+		return;
+	}
+
+	switch (update.sessionUpdate) {
+		case "agent_message_chunk":
+		case "agent_thought_chunk":
+			handleMessageChunk(event, update, state);
 			break;
-		}
-		case "item.completed": {
-			const { item } = event.data as ItemEventData;
-			const state = itemStates.get(item.item_id);
-			if (state) {
-				state.item = item;
-				state.pendingDeltas = [];
-			}
+		case "tool_call":
+			handleToolCall(event, update, state);
 			break;
-		}
-		case "permission.requested":
-		case "permission.resolved": {
-			onPermission?.(event.type, event.data as PermissionEventData);
+		case "tool_call_update":
+			handleToolCallUpdate(update, state);
 			break;
-		}
 		default:
 			break;
 	}
-
-	return deriveMessages(itemStates);
 }
 
-function addToolCallItem(
-	item: UniversalItem,
-	assistantId: string,
-	byCallId: Map<string, ToolCallPart>,
-	byMessageId: Map<string, ToolCallPart[]>
+function handleMessageChunk(
+	event: SessionEvent,
+	update: UpdatePayload,
+	state: ConversationState
 ) {
-	for (const part of item.content) {
-		if (part.type !== "tool_call") {
-			continue;
-		}
-		const toolPart: ToolCallPart = {
-			type: "tool-call",
-			toolCallId: part.call_id,
-			toolName: part.name,
-			args: parseToolCallArgs(part.arguments),
-		};
-		byCallId.set(part.call_id, toolPart);
+	const text =
+		update.content?.type === "text" ? (update.content.text ?? "") : "";
+	if (!text) {
+		return;
+	}
 
-		const existing = byMessageId.get(assistantId);
-		if (existing) {
-			existing.push(toolPart);
-		} else {
-			byMessageId.set(assistantId, [toolPart]);
-		}
+	if (!state.currentAssistantId) {
+		state.currentAssistantId = `assistant-${event.id}`;
+		state.currentAssistantText = "";
+		state.entries.push({
+			kind: "assistant",
+			id: state.currentAssistantId,
+			text: "",
+		});
+	}
+	state.currentAssistantText += text;
+	const entry = state.entries.find((e) => e.id === state.currentAssistantId);
+	if (entry && entry.kind === "assistant") {
+		entry.text = state.currentAssistantText;
 	}
 }
 
-function resolveToolResults(
-	item: UniversalItem,
-	byCallId: Map<string, ToolCallPart>
+function handleToolCall(
+	event: SessionEvent,
+	update: UpdatePayload,
+	state: ConversationState
 ) {
-	for (const part of item.content) {
-		if (part.type !== "tool_result") {
-			continue;
-		}
-		const existing = byCallId.get(part.call_id);
-		if (existing) {
-			existing.result = part.output;
-		}
+	flushAssistant(state);
+	const toolCallId = update.toolCallId ?? event.id;
+	const existing = state.toolCalls.get(toolCallId);
+	if (existing) {
+		applyToolCallFields(existing, update);
+		return;
+	}
+
+	const part: ToolCallPart = {
+		type: "tool-call",
+		toolCallId,
+		toolName: update.title ?? "tool",
+		args: normalizeArgs(update.rawInput),
+		result:
+			update.rawOutput != null
+				? JSON.stringify(update.rawOutput, null, 2)
+				: undefined,
+	};
+	state.toolCalls.set(toolCallId, {
+		part,
+		status: update.status ?? "in_progress",
+	});
+	state.entries.push({ kind: "tool", id: `tool-${toolCallId}`, toolCallId });
+}
+
+function handleToolCallUpdate(update: UpdatePayload, state: ConversationState) {
+	const toolCallId = update.toolCallId;
+	if (!toolCallId) {
+		return;
+	}
+	const existing = state.toolCalls.get(toolCallId);
+	if (existing) {
+		applyToolCallFields(existing, update);
 	}
 }
 
-/**
- * Collect tool call/result items and group them by their parent assistant message.
- */
-function collectToolParts(itemStates: Map<string, ItemState>) {
-	const byCallId = new Map<string, ToolCallPart>();
-	const byMessageId = new Map<string, ToolCallPart[]>();
-	let currentAssistantId: string | null = null;
-
-	for (const { item } of itemStates.values()) {
-		if (item.kind === "message" && item.role === "assistant") {
-			currentAssistantId = item.item_id;
-		} else if (item.kind === "tool_call" && currentAssistantId) {
-			addToolCallItem(item, currentAssistantId, byCallId, byMessageId);
-		} else if (item.kind === "tool_result") {
-			resolveToolResults(item, byCallId);
-		}
+function applyToolCallFields(existing: ToolCallState, update: UpdatePayload) {
+	if (update.status) {
+		existing.status = update.status;
 	}
-
-	return { byMessageId };
+	if (update.title) {
+		existing.part.toolName = update.title;
+	}
+	if (update.rawInput != null) {
+		existing.part.args = normalizeArgs(update.rawInput);
+	}
+	if (update.rawOutput != null) {
+		existing.part.result = JSON.stringify(update.rawOutput, null, 2);
+	}
 }
 
-/**
- * Derive assistant-ui messages from the item states map.
- *
- * Tool call and tool result items (separate in the universal event stream)
- * are merged into the preceding assistant message as `tool-call` content
- * parts, matching assistant-ui's expected format.
- */
-function convertItemToMessage(
-	state: ItemState,
-	toolPartsForMessage: ToolCallPart[] | undefined
-): ThreadMessageLike | null {
-	const { item, pendingDeltas } = state;
-	if (item.kind !== "message") {
-		return null;
-	}
-
-	const role = item.role === "user" ? "user" : "assistant";
-	const content = convertContent(item.content, pendingDeltas);
-
-	if (role === "assistant") {
-		if (toolPartsForMessage) {
-			for (const tp of toolPartsForMessage) {
-				content.push(tp as ThreadMessageContent[number]);
-			}
-		}
-		return {
-			id: item.item_id,
-			role,
-			content,
-			status:
-				item.status === "completed"
-					? { type: "complete", reason: "stop" }
-					: { type: "running" },
-		};
-	}
-
-	return { id: item.item_id, role, content };
+function handlePermissionRequest(
+	payload: Payload,
+	onPermission?: PermissionCallback
+) {
+	const params = payload.params as
+		| { toolCall?: { title?: string; rawInput?: unknown } }
+		| undefined;
+	onPermission?.(String(payload.id), {
+		title: params?.toolCall?.title ?? "Permission requested",
+		rawInput: params?.toolCall?.rawInput,
+	});
 }
 
-function deriveMessages(itemStates: Map<string, ItemState>): ProcessResult {
-	const { byMessageId } = collectToolParts(itemStates);
+function flushAssistant(state: ConversationState) {
+	state.currentAssistantId = null;
+	state.currentAssistantText = "";
+}
+
+function deriveMessages(state: ConversationState): DeriveResult {
 	const messages: ThreadMessageLike[] = [];
-	let isRunning = false;
+	let currentAssistantMsg: {
+		id: string;
+		content: ThreadMessageContent[number][];
+	} | null = null;
 
-	for (const state of itemStates.values()) {
-		if (
-			state.item.role === "assistant" &&
-			state.item.status === "in_progress"
-		) {
-			isRunning = true;
-		}
-
-		const message = convertItemToMessage(
-			state,
-			byMessageId.get(state.item.item_id)
-		);
-		if (message) {
-			messages.push(message);
+	for (const entry of state.entries) {
+		switch (entry.kind) {
+			case "user": {
+				if (currentAssistantMsg) {
+					messages.push(
+						buildAssistantMessage(currentAssistantMsg, state.isRunning)
+					);
+					currentAssistantMsg = null;
+				}
+				messages.push({
+					id: entry.id,
+					role: "user",
+					content: [{ type: "text", text: entry.text }],
+				});
+				break;
+			}
+			case "assistant": {
+				if (currentAssistantMsg) {
+					messages.push(buildAssistantMessage(currentAssistantMsg, false));
+				}
+				currentAssistantMsg = {
+					id: entry.id,
+					content: entry.text ? [{ type: "text", text: entry.text }] : [],
+				};
+				break;
+			}
+			case "tool": {
+				const toolState = state.toolCalls.get(entry.toolCallId);
+				if (toolState && currentAssistantMsg) {
+					currentAssistantMsg.content.push(
+						toolState.part as ThreadMessageContent[number]
+					);
+				}
+				break;
+			}
+			default:
+				break;
 		}
 	}
 
-	return { messages, isRunning };
+	if (currentAssistantMsg) {
+		messages.push(buildAssistantMessage(currentAssistantMsg, state.isRunning));
+	}
+
+	return { messages, isRunning: state.isRunning };
 }
 
-function convertContent(
-	parts: ContentPart[],
-	pendingDeltas: string[]
-): ThreadMessageContent[number][] {
-	const content: ThreadMessageContent[number][] = [];
-
-	for (const part of parts) {
-		const converted = convertPart(part);
-		if (converted) {
-			content.push(converted);
-		}
-	}
-
-	if (pendingDeltas.length > 0) {
-		const streamingText = pendingDeltas.join("");
-		const lastPart = content.at(-1);
-
-		if (lastPart?.type === "text") {
-			content[content.length - 1] = {
-				type: "text",
-				text: (lastPart as { type: "text"; text: string }).text + streamingText,
-			};
-		} else {
-			content.push({ type: "text", text: streamingText });
-		}
-	}
-
-	return content;
+function buildAssistantMessage(
+	msg: { id: string; content: ThreadMessageContent[number][] },
+	isRunning: boolean
+): ThreadMessageLike {
+	return {
+		id: msg.id,
+		role: "assistant",
+		content: msg.content,
+		status: isRunning
+			? { type: "running" }
+			: { type: "complete", reason: "stop" },
+	};
 }
 
-function convertPart(part: ContentPart): ThreadMessageContent[number] | null {
-	switch (part.type) {
-		case "text":
-			return { type: "text", text: part.text };
-		case "reasoning":
-			return { type: "reasoning", text: part.text };
-		case "file_ref":
-			return {
-				type: "text",
-				text: `[${part.action}] ${part.path}${part.diff ? `\n\`\`\`diff\n${part.diff}\n\`\`\`` : ""}`,
-			};
-		case "image":
-			return { type: "image", image: part.path };
-		case "status":
-			return {
-				type: "text",
-				text: `[${part.label}]${part.detail ? `: ${part.detail}` : ""}`,
-			};
-		case "json":
-			return { type: "text", text: JSON.stringify(part.json, null, 2) };
-		default:
-			return null;
+function normalizeArgs(value: unknown): Record<string, unknown> {
+	if (value && typeof value === "object" && !Array.isArray(value)) {
+		return value as Record<string, unknown>;
 	}
-}
-
-function parseToolCallArgs(value: string): Record<string, unknown> {
-	try {
-		const parsed = JSON.parse(value);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			return parsed as Record<string, unknown>;
+	if (typeof value === "string") {
+		try {
+			const parsed = JSON.parse(value);
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				return parsed as Record<string, unknown>;
+			}
+		} catch {
+			// fall through
 		}
 		return { raw: value };
-	} catch {
-		return { raw: value };
 	}
+	return {};
 }

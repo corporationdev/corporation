@@ -1,16 +1,24 @@
-import type { PermissionEventData, PermissionReply } from "sandbox-agent";
 import { create } from "zustand";
 
+type PermissionData = {
+	requestId: string;
+	title: string;
+	rawInput?: unknown;
+};
+
+type PermissionReply = "once" | "always" | "reject";
+
 type PermissionStore = {
-	pendingPermissions: Record<string, PermissionEventData>;
+	pendingPermissions: Record<string, PermissionData>;
 	replyPermission:
 		| ((permissionId: string, reply: PermissionReply) => Promise<void>)
 		| null;
 
-	onPermissionEvent: (
-		type: "permission.requested" | "permission.resolved",
-		data: PermissionEventData
+	onPermission: (
+		requestId: string,
+		toolCall: { title: string; rawInput?: unknown }
 	) => void;
+	resolvePermission: (requestId: string) => void;
 	setReplyPermission: (fn: PermissionStore["replyPermission"]) => void;
 	reset: () => void;
 };
@@ -19,17 +27,20 @@ export const usePermissionStore = create<PermissionStore>((set) => ({
 	pendingPermissions: {},
 	replyPermission: null,
 
-	onPermissionEvent: (type, data) =>
+	onPermission: (requestId, toolCall) =>
+		set((s) => ({
+			pendingPermissions: {
+				...s.pendingPermissions,
+				[requestId]: {
+					requestId,
+					title: toolCall.title,
+					rawInput: toolCall.rawInput,
+				},
+			},
+		})),
+	resolvePermission: (requestId) =>
 		set((s) => {
-			if (type === "permission.requested") {
-				return {
-					pendingPermissions: {
-						...s.pendingPermissions,
-						[data.permission_id]: data,
-					},
-				};
-			}
-			const { [data.permission_id]: _, ...rest } = s.pendingPermissions;
+			const { [requestId]: _, ...rest } = s.pendingPermissions;
 			return { pendingPermissions: rest };
 		}),
 	setReplyPermission: (fn) => set({ replyPermission: fn }),
