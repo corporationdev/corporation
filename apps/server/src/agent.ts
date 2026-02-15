@@ -1,10 +1,8 @@
 import { createLogger } from "@corporation/logger";
+import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { actor } from "rivetkit";
-import type { UniversalEvent } from "sandbox-agent";
-import {
-	SandboxAgent as SandboxAgentClient,
-	SandboxAgentError,
-} from "sandbox-agent";
+
+import { SandboxAgent, type Session } from "sandbox-agent";
 
 const log = createLogger("agent");
 
@@ -12,114 +10,58 @@ const log = createLogger("agent");
 // State & Vars types
 // ---------------------------------------------------------------------------
 
-export type SessionState = {
-	sandboxUrl: string;
-	sessionId: string;
-	events: UniversalEvent[];
+type PersistedState = {
+	slug: string;
+	baseUrl: string;
 };
 
-export type SessionVars = {
-	client: SandboxAgentClient;
+type SessionVars = {
+	sdk: SandboxAgent;
+	session: Session;
+	unsubscribe: () => void;
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function ensureSessionExists(
-	client: SandboxAgentClient,
-	sessionId: string
-): Promise<void> {
-	try {
-		await client.createSession(sessionId, { agent: "claude" });
-	} catch (error) {
-		if (error instanceof SandboxAgentError && error.status === 409) {
-			log.debug({ sessionId }, "session already exists, reusing");
-			return;
-		}
-		throw error;
-	}
-}
-
-async function connectClient(
-	sandboxUrl: string,
-	sessionId: string
-): Promise<SandboxAgentClient> {
-	const client = await SandboxAgentClient.connect({ baseUrl: sandboxUrl });
-	await ensureSessionExists(client, sessionId);
-	return client;
-}
-
-// ---------------------------------------------------------------------------
-// Actor definition
-// ---------------------------------------------------------------------------
 
 export const agent = actor({
-	createState: (c, input: { sandboxUrl: string }): SessionState => {
-		const sessionId = c.key[0];
-		if (!sessionId) {
-			throw new Error("Actor key must contain a threadId");
+	createState: (c, input: { baseUrl: string }): PersistedState => {
+		const slug = c.key[0];
+		if (!slug) {
+			throw new Error("Actor key must contain a slug");
 		}
-
-		log.info({ sessionId, sandboxUrl: input.sandboxUrl }, "actor created");
-
-		return { sandboxUrl: input.sandboxUrl, sessionId, events: [] };
+		return {
+			slug,
+			baseUrl: input.baseUrl,
+		};
 	},
 
 	createVars: async (c): Promise<SessionVars> => {
-		const client = await connectClient(c.state.sandboxUrl, c.state.sessionId);
-		return { client };
-	},
+		const persist = new RivetSessionPersistDriver(c);
+		const sdk = await SandboxAgent.connect({
+			baseUrl: c.state.baseUrl,
+			persist,
+		});
+		const session = await sdk.resumeOrCreateSession({
+			id: c.state.slug,
+			agent: "claude",
+		});
 
-	// Start the SSE event stream when the actor wakes.
-	// Deferred with setTimeout because onWake runs before the actor is marked
-	// ready, and c.waitUntil / c.broadcast require the actor to be ready.
-	onWake: (c) => {
-		setTimeout(() => {
-			const lastSequence = c.state.events.at(-1)?.sequence ?? 0;
+		const unsubscribe = session.onEvent((event) => {
+			c.broadcast("session.event", event);
+		});
 
-			log.debug(
-				{ sessionId: c.state.sessionId, offset: lastSequence },
-				"sse stream starting"
-			);
-
-			c.waitUntil(
-				(async () => {
-					try {
-						for await (const event of c.vars.client.streamEvents(
-							c.state.sessionId,
-							{ offset: lastSequence }
-						)) {
-							c.state.events.push(event);
-							c.broadcast("agentEvent", event);
-						}
-						log.debug(
-							{ sessionId: c.state.sessionId },
-							"sse stream ended normally"
-						);
-					} catch (error) {
-						log.error(
-							{ sessionId: c.state.sessionId, err: error },
-							"sse stream error"
-						);
-					}
-				})()
-			);
-		}, 0);
+		return { sdk, session, unsubscribe };
 	},
 
 	actions: {
-		postMessage: async (c, content: string, sandboxUrl?: string) => {
-			if (sandboxUrl && sandboxUrl !== c.state.sandboxUrl) {
-				log.info({ sessionId: c.state.sessionId }, "updating sandboxUrl");
-				c.state.sandboxUrl = sandboxUrl;
-				c.vars.client = await connectClient(sandboxUrl, c.state.sessionId);
-			}
+		sendMessage: async (c, message: string) => {
+			await c.vars.session.prompt([{ type: "text", text: message }]);
+		},
 
-			await c.vars.client.postMessage(c.state.sessionId, {
-				message: content,
+		getEvents: (c, cursor?: string, limit?: number) => {
+			return c.vars.sdk.getEvents({
+				sessionId: c.state.slug,
+				cursor,
+				limit,
 			});
-			log.info({ sessionId: c.state.sessionId }, "message sent");
 		},
 
 		replyPermission: async (
@@ -127,20 +69,14 @@ export const agent = actor({
 			permissionId: string,
 			reply: "once" | "always" | "reject"
 		) => {
-			await c.vars.client.replyPermission(c.state.sessionId, permissionId, {
+			await c.vars.session.send("session/permission/reply", {
+				permission_id: permissionId,
 				reply,
 			});
-			log.info(
-				{ sessionId: c.state.sessionId, permissionId, reply },
-				"permission reply sent"
-			);
 		},
-
-		// Client calls this on connect to catch up on missed events.
-		// Returns events with sequence > offset (matching sandbox-agent API semantics).
-		getTranscript: (c, offset: number) =>
-			c.state.events.filter((e) => (e.sequence ?? 0) > offset),
-
-		getPreviewUrl: (c) => c.state.sandboxUrl,
+	},
+	onSleep: async (c) => {
+		c.vars.unsubscribe?.();
+		await c.vars.sdk.dispose();
 	},
 });
