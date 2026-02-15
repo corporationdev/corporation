@@ -1,55 +1,43 @@
-# OpenCode SDK & UI Support
+# OpenCode Compatibility
 
 > Source: `docs/opencode-compatibility.mdx`
 > Canonical URL: https://sandboxagent.dev/docs/opencode-compatibility
 > Description: Connect OpenCode clients, SDKs, and web UI to Sandbox Agent.
 
 ---
-**Experimental**: OpenCode SDK & UI support is experimental and may change without notice.
+**Experimental**: OpenCode SDK/UI compatibility may change.
 
-Sandbox Agent exposes an OpenCode-compatible API, allowing you to connect any OpenCode client, SDK, or web UI to control coding agents running inside sandboxes.
+Sandbox Agent exposes an OpenCode-compatible API at `/opencode`.
 
-## Why Use OpenCode Clients with Sandbox Agent?
+## Why use OpenCode clients with Sandbox Agent?
 
-OpenCode provides a rich ecosystem of clients:
+- OpenCode CLI (`opencode attach`)
+- OpenCode web UI
+- OpenCode TypeScript SDK (`@opencode-ai/sdk`)
 
-- **OpenCode CLI** (`opencode attach`): Terminal-based interface
-- **OpenCode Web UI**: Browser-based chat interface
-- **OpenCode SDK** (`@opencode-ai/sdk`): Rich TypeScript SDK
+## Quick start
 
-## Quick Start
-
-### Using OpenCode CLI & TUI
-
-Sandbox Agent provides an all-in-one command to setup Sandbox Agent and connect an OpenCode session, great for local development:
+### OpenCode CLI / TUI
 
 ```bash
 sandbox-agent opencode --port 2468 --no-token
 ```
 
-Or, start the server and attach separately:
+Or start server + attach manually:
 
 ```bash
-# Start sandbox-agent
 sandbox-agent server --no-token --host 127.0.0.1 --port 2468
-
-# Attach OpenCode CLI
 opencode attach http://localhost:2468/opencode
 ```
 
 With authentication enabled:
 
 ```bash
-# Start with token
 sandbox-agent server --token "$SANDBOX_TOKEN" --host 127.0.0.1 --port 2468
-
-# Attach with password
 opencode attach http://localhost:2468/opencode --password "$SANDBOX_TOKEN"
 ```
 
-### Using the OpenCode Web UI
-
-The OpenCode web UI can connect to Sandbox Agent for a full browser-based experience.
+### OpenCode web UI
 
 ### Start Sandbox Agent with CORS
 
@@ -57,7 +45,7 @@ The OpenCode web UI can connect to Sandbox Agent for a full browser-based experi
 sandbox-agent server --no-token --host 127.0.0.1 --port 2468 --cors-allow-origin http://127.0.0.1:5173
 ```
 
-### Clone and Start the OpenCode Web App
+### Run OpenCode web app
 
 ```bash
 git clone https://github.com/anomalyco/opencode
@@ -68,28 +56,21 @@ bun install
 bun run dev -- --host 127.0.0.1 --port 5173
 ```
 
-### Open the UI
+### Open UI
 
-Navigate to `http://127.0.0.1:5173/` in your browser.
+Visit `http://127.0.0.1:5173/`.
 
-If you see `Error: Could not connect to server`, check that:
-- The sandbox-agent server is running
-- `--cors-allow-origin` matches the **exact** browser origin (`localhost` and `127.0.0.1` are different origins)
-
-### Using OpenCode SDK
+### OpenCode SDK
 
 ```typescript
 import { createOpencodeClient } from "@opencode-ai/sdk";
 
 const client = createOpencodeClient({
   baseUrl: "http://localhost:2468/opencode",
-  headers: { Authorization: "Bearer YOUR_TOKEN" }, // if using auth
 });
 
-// Create a session
 const session = await client.session.create();
 
-// Send a prompt
 await client.session.promptAsync({
   path: { id: session.data.id },
   body: {
@@ -97,7 +78,6 @@ await client.session.promptAsync({
   },
 });
 
-// Subscribe to events
 const events = await client.event.subscribe({});
 for await (const event of events.stream) {
   console.log(event);
@@ -106,40 +86,38 @@ for await (const event of events.stream) {
 
 ## Notes
 
-- **API Routing**: The OpenCode API is available at the `/opencode` base path
-- **Authentication**: If sandbox-agent is started with `--token`, include `Authorization: Bearer <token>` header or use `--password` flag with CLI
-- **CORS**: When using the web UI from a different origin, configure `--cors-allow-origin`
-- **Provider Selection**: Use the provider/model selector in the UI to choose which backing agent to use (claude, codex, opencode, amp)
-- **Models & Variants**: Providers are grouped by backing agent (e.g. Claude Code, Codex, Amp). OpenCode models are grouped by `OpenCode (<provider>)` to preserve their native provider grouping. Each model keeps its real model ID, and variants are exposed when available (Codex/OpenCode/Amp).
-- **Optional Native Proxy for TUI/Config Endpoints**: Set `OPENCODE_COMPAT_PROXY_URL` (for example `http://127.0.0.1:4096`) to proxy select OpenCode-native endpoints to a real OpenCode server. This currently applies to `/command`, `/config`, `/global/config`, and `/tui/*`. If not set, sandbox-agent uses its built-in compatibility handlers.
+- API base path: `/opencode`
+- If server auth is enabled, pass bearer auth (or `--password` in OpenCode CLI)
+- For browser UIs, configure CORS with `--cors-allow-origin`
+- Provider selector currently exposes compatible providers (`mock`, `amp`, `claude`, `codex`)
+- Provider/model metadata for compatibility endpoints is normalized and may differ from native OpenCode grouping
+- Optional proxy: set `OPENCODE_COMPAT_PROXY_URL` to forward selected endpoints to native OpenCode
 
-## Endpoint Coverage
-
-See the full endpoint compatibility table below. Most endpoints are functional for session management, messaging, and event streaming. Some endpoints return stub responses for features not yet implemented.
+## Endpoint coverage
 
 #### Endpoint Status Table
 
 | Endpoint | Status | Notes |
 |---|---|---|
-| `GET /event` | ✓ | Emits events for session/message updates (SSE) |
-| `GET /global/event` | ✓ | Wraps events in GlobalEvent format (SSE) |
-| `GET /session` | ✓ | In-memory session store |
-| `POST /session` | ✓ | Create new sessions |
-| `GET /session/{id}` | ✓ | Get session details |
-| `POST /session/{id}/message` | ✓ | Send messages to session |
-| `GET /session/{id}/message` | ✓ | Get session messages |
-| `GET /permission` | ✓ | List pending permissions |
-| `POST /permission/{id}/reply` | ✓ | Respond to permission requests |
-| `GET /question` | ✓ | List pending questions |
-| `POST /question/{id}/reply` | ✓ | Answer agent questions |
-| `GET /provider` | ✓ | Returns provider metadata |
-| `GET /command` | ↔ | Proxied to native OpenCode when `OPENCODE_COMPAT_PROXY_URL` is set; otherwise stub response |
-| `GET /config` | ↔ | Proxied to native OpenCode when `OPENCODE_COMPAT_PROXY_URL` is set; otherwise stub response |
-| `PATCH /config` | ↔ | Proxied to native OpenCode when `OPENCODE_COMPAT_PROXY_URL` is set; otherwise local compatibility behavior |
-| `GET /global/config` | ↔ | Proxied to native OpenCode when `OPENCODE_COMPAT_PROXY_URL` is set; otherwise stub response |
-| `PATCH /global/config` | ↔ | Proxied to native OpenCode when `OPENCODE_COMPAT_PROXY_URL` is set; otherwise local compatibility behavior |
-| `/tui/*` | ↔ | Proxied to native OpenCode when `OPENCODE_COMPAT_PROXY_URL` is set; otherwise local compatibility behavior |
-| `GET /agent` | − | Returns agent list |
-| *other endpoints* | − | Return empty/stub responses |
+| `GET /event` | ✓ | Session/message updates (SSE) |
+| `GET /global/event` | ✓ | GlobalEvent-wrapped stream |
+| `GET /session` | ✓ | Session list |
+| `POST /session` | ✓ | Create session |
+| `GET /session/{id}` | ✓ | Session details |
+| `POST /session/{id}/message` | ✓ | Send message |
+| `GET /session/{id}/message` | ✓ | Session messages |
+| `GET /permission` | ✓ | Pending permissions |
+| `POST /permission/{id}/reply` | ✓ | Permission reply |
+| `GET /question` | ✓ | Pending questions |
+| `POST /question/{id}/reply` | ✓ | Question reply |
+| `GET /provider` | ✓ | Provider metadata |
+| `GET /command` | ↔ | Proxied when `OPENCODE_COMPAT_PROXY_URL` is set; otherwise stub |
+| `GET /config` | ↔ | Proxied when set; otherwise stub |
+| `PATCH /config` | ↔ | Proxied when set; otherwise local compatibility behavior |
+| `GET /global/config` | ↔ | Proxied when set; otherwise stub |
+| `PATCH /global/config` | ↔ | Proxied when set; otherwise local compatibility behavior |
+| `/tui/*` | ↔ | Proxied when set; otherwise local compatibility behavior |
+| `GET /agent` | − | Agent list |
+| *other endpoints* | − | Empty/stub responses |
 
-✓ Functional &nbsp;&nbsp; ↔ Proxied (optional) &nbsp;&nbsp; − Stubbed
+✓ Functional   ↔ Proxied optional   − Stubbed
