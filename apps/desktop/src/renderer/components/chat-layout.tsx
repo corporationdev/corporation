@@ -1,6 +1,7 @@
 import { useMatch } from "@tanstack/react-router";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
+import { CopyInspectorUrl } from "@/components/copy-inspector-url";
 import { SpaceSelector } from "@/components/space-selector";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 
@@ -17,6 +18,7 @@ export function ChatLayout() {
 			<SidebarInset className="overflow-hidden!">
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
+					{match && <CopyInspectorUrl slug={match.params.slug} />}
 					{isNewChat && <SpaceSelector />}
 				</header>
 				<Thread />
