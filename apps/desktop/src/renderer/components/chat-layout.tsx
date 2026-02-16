@@ -41,7 +41,7 @@ export function ChatLayout() {
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
 						{slug && <TerminalToggleButton slug={slug} />}
-						{slug && <CopyInspectorUrl slug={slug} />}
+						{sandboxUrl && <CopyInspectorUrl sandboxUrl={sandboxUrl} />}
 					</div>
 					{isNewChat && <SpaceSelector />}
 				</header>

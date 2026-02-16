@@ -7,7 +7,7 @@ import { useTerminalStore } from "@/stores/terminal-store";
 
 export const TerminalToggleButton: FC<{ slug: string }> = ({ slug }) => {
 	const session = useQuery(api.agentSessions.getBySlug, { slug });
-	const setOpen = useTerminalStore((s) => s.setOpen);
+	const setIsOpen = useTerminalStore((s) => s.setIsOpen);
 	const isOpen = useTerminalStore((s) => s.isOpen);
 
 	if (!session?.space.sandboxId) {
@@ -17,7 +17,7 @@ export const TerminalToggleButton: FC<{ slug: string }> = ({ slug }) => {
 	return (
 		<Button
 			data-active={isOpen}
-			onClick={() => setOpen(!isOpen)}
+			onClick={() => setIsOpen(!isOpen)}
 			size="icon-sm"
 			variant="ghost"
 		>
