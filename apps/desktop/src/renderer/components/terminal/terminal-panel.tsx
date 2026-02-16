@@ -7,17 +7,16 @@ import { useCallback, useEffect, useRef } from "react";
 
 type TerminalPanelProps = {
 	sandboxId: string;
-	sandboxUrl: string;
 };
 
-export function TerminalPanel({ sandboxId, sandboxUrl }: TerminalPanelProps) {
+export function TerminalPanel({ sandboxId }: TerminalPanelProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const terminalRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const actor = useActor({
 		name: "terminal",
 		key: [sandboxId],
-		createWithInput: { sandboxId, sandboxUrl },
+		createWithInput: { sandboxId },
 		enabled: true,
 	});
 

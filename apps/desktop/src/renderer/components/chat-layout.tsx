@@ -52,11 +52,7 @@ export function ChatLayout() {
 						</ResizablePanel>
 						<ResizableHandle />
 						<ResizablePanel defaultSize="30%">
-							<TerminalPanel
-								key={sandboxId}
-								sandboxId={sandboxId}
-								sandboxUrl={sandboxUrl}
-							/>
+							<TerminalPanel key={sandboxId} sandboxId={sandboxId} />
 						</ResizablePanel>
 					</ResizablePanelGroup>
 				) : (

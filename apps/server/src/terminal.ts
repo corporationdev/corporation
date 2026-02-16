@@ -15,13 +15,11 @@ const MAX_SCROLLBACK_BYTES = 256 * 1024;
 
 export type TerminalState = {
 	sandboxId: string;
-	sandboxUrl: string;
-	ptySessionId: string;
+	ptySessionId: string | null;
 	scrollback: number[];
 };
 
 export type TerminalVars = {
-	sandbox: Sandbox;
 	ptyHandle: PtyHandle;
 };
 
@@ -31,16 +29,21 @@ export type TerminalVars = {
 
 async function connectOrCreatePty(
 	sandbox: Sandbox,
-	ptySessionId: string,
+	ptySessionId: string | null,
 	onData: (data: Uint8Array) => void
 ): Promise<{ handle: PtyHandle; sessionId: string }> {
 	// Try reconnecting to the existing PTY session
-	try {
-		const handle = await sandbox.process.connectPty(ptySessionId, { onData });
-		log.debug({ ptySessionId }, "reconnected to existing pty session");
-		return { handle, sessionId: ptySessionId };
-	} catch {
-		log.warn({ ptySessionId }, "failed to reconnect pty, creating new session");
+	if (ptySessionId) {
+		try {
+			const handle = await sandbox.process.connectPty(ptySessionId, { onData });
+			log.debug({ ptySessionId }, "reconnected to existing pty session");
+			return { handle, sessionId: ptySessionId };
+		} catch {
+			log.warn(
+				{ ptySessionId },
+				"failed to reconnect pty, creating new session"
+			);
+		}
 	}
 
 	// Create a new PTY session
@@ -62,24 +65,15 @@ async function connectOrCreatePty(
 // ---------------------------------------------------------------------------
 
 export const terminal = actor({
-	createState: (
-		c,
-		input: { sandboxId: string; sandboxUrl: string }
-	): TerminalState => {
+	createState: (c, input: { sandboxId: string }): TerminalState => {
 		const sandboxId = c.key[0];
 		if (!sandboxId) {
 			throw new Error("Actor key must contain a sandboxId");
 		}
 
-		log.info(
-			{ sandboxId, sandboxUrl: input.sandboxUrl },
-			"terminal actor created"
-		);
-
 		return {
 			sandboxId: input.sandboxId,
-			sandboxUrl: input.sandboxUrl,
-			ptySessionId: crypto.randomUUID(),
+			ptySessionId: null,
 			scrollback: [],
 		};
 	},
@@ -92,7 +86,7 @@ export const terminal = actor({
 			const bytes = Array.from(data);
 
 			// Append to scrollback buffer, trimming from the front if over limit
-			c.state.scrollback.push(...bytes);
+			c.state.scrollback = c.state.scrollback.concat(bytes);
 			if (c.state.scrollback.length > MAX_SCROLLBACK_BYTES) {
 				c.state.scrollback = c.state.scrollback.slice(
 					c.state.scrollback.length - MAX_SCROLLBACK_BYTES
@@ -112,29 +106,11 @@ export const terminal = actor({
 			c.state.ptySessionId = sessionId;
 		}
 
-		return { sandbox, ptyHandle: handle };
+		return { ptyHandle: handle };
 	},
 
-	onWake: (c) => {
-		setTimeout(() => {
-			log.debug({ sandboxId: c.state.sandboxId }, "terminal actor woke");
-
-			// Keep the actor alive while the PTY WebSocket is open.
-			// The PTY handle's internal WebSocket will close when the shell
-			// exits or the sandbox stops, at which point this promise resolves.
-			c.waitUntil(
-				c.vars.ptyHandle.wait().then((result) => {
-					log.info(
-						{
-							sandboxId: c.state.sandboxId,
-							exitCode: result.exitCode,
-							error: result.error,
-						},
-						"pty session ended"
-					);
-				})
-			);
-		}, 0);
+	onSleep: async (c) => {
+		await c.vars.ptyHandle.disconnect();
 	},
 
 	actions: {
