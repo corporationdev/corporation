@@ -190,25 +190,7 @@ export const update = authedMutation({
 	},
 });
 
-export const touch = authedMutation({
-	args: {
-		id: v.id("agentSessions"),
-	},
-	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.id);
-		if (!session) {
-			throw new ConvexError("Agent session not found");
-		}
-		await requireOwnedSession(ctx, session);
-
-		await ctx.db.patch(args.id, {
-			updatedAt: Date.now(),
-			archivedAt: null,
-		});
-	},
-});
-
-export const remove = authedMutation({
+const del = authedMutation({
 	args: {
 		id: v.id("agentSessions"),
 	},
@@ -222,3 +204,4 @@ export const remove = authedMutation({
 		await ctx.db.delete(args.id);
 	},
 });
+export { del as delete };

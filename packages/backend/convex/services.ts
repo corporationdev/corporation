@@ -44,7 +44,7 @@ export const update = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+const del = authedMutation({
 	args: {
 		id: v.id("services"),
 	},
@@ -73,3 +73,4 @@ export const remove = authedMutation({
 		await ctx.db.delete(args.id);
 	},
 });
+export { del as delete };
