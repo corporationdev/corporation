@@ -40,7 +40,7 @@ export function ChatLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						{slug && <TerminalToggleButton slug={slug} />}
+						{sandboxId && <TerminalToggleButton />}
 						{sandboxUrl && <CopyInspectorUrl sandboxUrl={sandboxUrl} />}
 					</div>
 					{isNewChat && <SpaceSelector />}
