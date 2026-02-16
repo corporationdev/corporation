@@ -5,7 +5,7 @@ import { Nango } from "@nangohq/node";
 import { ConvexHttpClient } from "convex/browser";
 import { Octokit } from "octokit";
 import { type AuthVariables, authMiddleware } from "./auth";
-import { buildRepoSnapshot } from "./sandbox-lifecycle";
+import { buildRepoSnapshot } from "./lib/snapshots";
 
 type RepositoriesEnv = {
 	Bindings: Env;
@@ -141,11 +141,6 @@ export const repositoriesApp = $(
 			convex.setAuth(token);
 
 			try {
-				const repositoryId = await convex.mutation(
-					api.repositories.create,
-					body
-				);
-
 				const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 				const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
 				const githubToken = await getGitHubToken(nango, userId);
@@ -159,10 +154,16 @@ export const repositoriesApp = $(
 					body.installCommand
 				);
 
+				const repositoryId = await convex.mutation(
+					api.repositories.create,
+					body
+				);
+
 				return c.json({ repositoryId }, 200);
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
+				console.error(message);
 				return c.json({ error: message }, 500);
 			}
 		})

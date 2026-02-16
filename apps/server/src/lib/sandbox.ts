@@ -1,11 +1,12 @@
 import { createLogger } from "@corporation/logger";
-import { type Daytona, Image, type Sandbox } from "@daytonaio/sdk";
+import type { Sandbox } from "@daytonaio/sdk";
 
 const PORT = 3000;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
+const PREVIEW_URL_EXPIRY_SECONDS = 86_400; // 24 hours
 
-const log = createLogger("sandbox-lifecycle");
+const log = createLogger("sandbox");
 
 export async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
 	await sandbox.process.executeCommand(
@@ -63,57 +64,10 @@ export async function ensureSandboxAgentRunning(
 	await bootSandboxAgent(sandbox);
 }
 
-const PREVIEW_URL_EXPIRY_SECONDS = 86_400; // 24 hours
-
 export async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
 	const result = await sandbox.getSignedPreviewUrl(
 		PORT,
 		PREVIEW_URL_EXPIRY_SECONDS
 	);
 	return result.url;
-}
-
-// ---------------------------------------------------------------------------
-// Per-repo snapshots
-// ---------------------------------------------------------------------------
-
-export function repoSnapshotName(owner: string, name: string): string {
-	return `repo-${owner}-${name}`;
-}
-
-export async function buildRepoSnapshot(
-	daytona: Daytona,
-	owner: string,
-	name: string,
-	branch: string,
-	githubToken: string,
-	installCommand: string
-): Promise<string> {
-	const snapshotName = repoSnapshotName(owner, name);
-
-	try {
-		const existing = await daytona.snapshot.get(snapshotName);
-		await daytona.snapshot.delete(existing);
-		log.info({ snapshotName }, "deleted existing repo snapshot");
-	} catch {
-		// Snapshot doesn't exist yet
-	}
-
-	log.info(
-		{ snapshotName, repo: `${owner}/${name}` },
-		"building repo snapshot"
-	);
-	await daytona.snapshot.create({
-		name: snapshotName,
-		image: Image.base("ubuntu:22.04").runCommands(
-			"apt-get update && apt-get install -y curl ca-certificates git",
-			"curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
-			"sandbox-agent install-agent claude",
-			`git clone https://x-access-token:${githubToken}@github.com/${owner}/${name}.git /home/daytona/project --branch ${branch} --single-branch`,
-			`cd /home/daytona/project && ${installCommand}`
-		),
-	});
-	log.info({ snapshotName }, "repo snapshot built");
-
-	return snapshotName;
 }

@@ -2,6 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Check, Search } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { RepositoryConfigFields } from "@/components/repository-config-fields";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,8 @@ function ConnectRepositoryPage() {
 
 			if (!res.ok) {
 				const data = await res.json();
-				throw new Error(data.error);
+				toast.error(data.error);
+				return;
 			}
 
 			navigate({ to: "/settings/repositories" });

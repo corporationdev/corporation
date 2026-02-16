@@ -9,8 +9,8 @@ import {
 	bootSandboxAgent,
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
-	repoSnapshotName,
-} from "./sandbox-lifecycle";
+} from "./lib/sandbox";
+import { repoSnapshotName } from "./lib/snapshots";
 
 type Space = FunctionReturnType<typeof api.spaces.getById>;
 
