@@ -31,7 +31,7 @@ export async function buildRepoSnapshot(
 			"npm install -g yarn pnpm",
 			"curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun",
 			// Install sandbox-agent
-			"SANDBOX_AGENT_VERSION=0.1.9 curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
+			"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.1.9/install.sh | sh",
 			"sandbox-agent install-agent claude",
 			`git clone https://x-access-token:${githubToken}@github.com/${repo.owner}/${repo.name}.git /home/daytona/project --branch ${repo.defaultBranch} --single-branch`,
 			`cd /home/daytona/project && ${repo.installCommand}`
