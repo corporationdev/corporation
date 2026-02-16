@@ -2,7 +2,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useActor } from "@/lib/rivetkit";
-import { useTerminalStore } from "@/stores/terminal-store";
 import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef } from "react";
 
@@ -15,8 +14,6 @@ export function TerminalPanel({ sandboxId, sandboxUrl }: TerminalPanelProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const terminalRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
-	const panelHeight = useTerminalStore((s) => s.panelHeight);
-
 	const actor = useActor({
 		name: "terminal",
 		key: [sandboxId],
@@ -76,23 +73,6 @@ export function TerminalPanel({ sandboxId, sandboxUrl }: TerminalPanelProps) {
 		};
 	}, []);
 
-	// Refit when panel height changes and send new dimensions to actor.
-	// panelHeight is read inside the effect to satisfy exhaustive-deps while
-	// still triggering on height changes.
-	useEffect(() => {
-		// panelHeight triggers the effect — the ResizeObserver doesn't fire
-		// for programmatic height changes on the parent div.
-		const _height = panelHeight;
-		const fitAddon = fitAddonRef.current;
-		if (!fitAddon) {
-			return;
-		}
-		requestAnimationFrame(() => {
-			fitAddon.fit();
-			sendResize();
-		});
-	}, [panelHeight, sendResize]);
-
 	// Wire terminal input -> actor
 	useEffect(() => {
 		const terminal = terminalRef.current;
@@ -111,11 +91,18 @@ export function TerminalPanel({ sandboxId, sandboxUrl }: TerminalPanelProps) {
 		return () => disposable.dispose();
 	}, [actor.connection, sendResize]);
 
-	// Wire actor output -> terminal
+	// Replay scrollback buffer on connect, then stream live output
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
+
+		// Replay scrollback history
+		actor.connection.getScrollback().then((data: number[]) => {
+			if (data.length > 0) {
+				terminalRef.current?.write(new Uint8Array(data));
+			}
+		});
 
 		const unsubscribe = actor.connection.on("output", (data: number[]) => {
 			terminalRef.current?.write(new Uint8Array(data));

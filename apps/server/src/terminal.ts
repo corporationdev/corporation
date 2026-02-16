@@ -9,10 +9,14 @@ const log = createLogger("terminal");
 // State & Vars types
 // ---------------------------------------------------------------------------
 
+// ~256 KB scrollback buffer
+const MAX_SCROLLBACK_BYTES = 256 * 1024;
+
 export type TerminalState = {
 	sandboxId: string;
 	sandboxUrl: string;
 	ptySessionId: string;
+	scrollback: number[];
 };
 
 export type TerminalVars = {
@@ -63,10 +67,10 @@ async function connectOrCreatePty(
 // ---------------------------------------------------------------------------
 
 export const terminal = actor({
-	createState: async (
+	createState: (
 		c,
 		input: { sandboxId: string; sandboxUrl: string }
-	): Promise<TerminalState> => {
+	): TerminalState => {
 		const sandboxId = c.key[0];
 		if (!sandboxId) {
 			throw new Error("Actor key must contain a sandboxId");
@@ -77,25 +81,11 @@ export const terminal = actor({
 			"terminal actor created"
 		);
 
-		// Create initial PTY session
-		const daytona = getDaytona();
-		const sandbox = await daytona.get(input.sandboxId);
-		const workDir = await sandbox.getWorkDir();
-		const ptySessionId = crypto.randomUUID();
-		const handle = await sandbox.process.createPty({
-			id: ptySessionId,
-			cwd: workDir,
-			cols: 120,
-			rows: 30,
-			// biome-ignore lint/suspicious/noEmptyBlockStatements: noop placeholder for initial PTY creation
-			onData: () => {},
-		});
-		await handle.disconnect();
-
 		return {
 			sandboxId: input.sandboxId,
 			sandboxUrl: input.sandboxUrl,
-			ptySessionId,
+			ptySessionId: crypto.randomUUID(),
+			scrollback: [],
 		};
 	},
 
@@ -104,7 +94,17 @@ export const terminal = actor({
 		const sandbox = await daytona.get(c.state.sandboxId);
 
 		const onData = (data: Uint8Array) => {
-			c.broadcast("output", Array.from(data));
+			const bytes = Array.from(data);
+
+			// Append to scrollback buffer, trimming from the front if over limit
+			c.state.scrollback.push(...bytes);
+			if (c.state.scrollback.length > MAX_SCROLLBACK_BYTES) {
+				c.state.scrollback = c.state.scrollback.slice(
+					c.state.scrollback.length - MAX_SCROLLBACK_BYTES
+				);
+			}
+
+			c.broadcast("output", bytes);
 		};
 
 		const { handle, sessionId } = await connectOrCreatePty(
@@ -143,6 +143,10 @@ export const terminal = actor({
 	},
 
 	actions: {
+		getScrollback: (c) => {
+			return c.state.scrollback;
+		},
+
 		input: async (c, data: number[]) => {
 			await c.vars.ptyHandle.sendInput(new Uint8Array(data));
 		},
