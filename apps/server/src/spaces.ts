@@ -52,7 +52,6 @@ async function provisionSandbox(
 	const sandbox = await daytona.create({
 		snapshot: snapshotName,
 		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
-		autoStopInterval: 0,
 	});
 	await bootSandboxAgent(sandbox);
 	return sandbox;

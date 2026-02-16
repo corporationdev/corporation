@@ -1,6 +1,7 @@
-import { env } from "cloudflare:workers";
+import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
-import { Daytona, type PtyHandle, type Sandbox } from "@daytonaio/sdk";
+import type { PtyHandle, Sandbox } from "@daytonaio/sdk";
+import { Daytona } from "@daytonaio/sdk";
 import { actor } from "rivetkit";
 
 const log = createLogger("terminal");
@@ -27,12 +28,6 @@ export type TerminalVars = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function getDaytona(): Daytona {
-	return new Daytona({
-		apiKey: (env as unknown as Env).DAYTONA_API_KEY,
-	});
-}
 
 async function connectOrCreatePty(
 	sandbox: Sandbox,
@@ -90,7 +85,7 @@ export const terminal = actor({
 	},
 
 	createVars: async (c): Promise<TerminalVars> => {
-		const daytona = getDaytona();
+		const daytona = new Daytona({ apiKey: env.DAYTONA_API_KEY });
 		const sandbox = await daytona.get(c.state.sandboxId);
 
 		const onData = (data: Uint8Array) => {
