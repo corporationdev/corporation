@@ -7,16 +7,12 @@ import { Button } from "@/components/ui/button";
 
 export const CopyInspectorUrl: FC<{ slug: string }> = ({ slug }) => {
 	const session = useQuery(api.agentSessions.getBySlug, { slug });
-	const space = useQuery(
-		api.spaces.getById,
-		session?.spaceId ? { id: session.spaceId } : "skip"
-	);
 
-	if (!space?.sandboxUrl) {
+	if (!session?.space.sandboxUrl) {
 		return null;
 	}
 
-	const inspectorUrl = `${space.sandboxUrl}/ui/`;
+	const inspectorUrl = `${session.space.sandboxUrl}/ui/`;
 
 	return (
 		<Button

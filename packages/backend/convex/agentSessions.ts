@@ -7,7 +7,12 @@ import { authedMutation, authedQuery } from "./functions";
 async function requireOwnedSession(
 	ctx: QueryCtx & { userId: string },
 	session: Doc<"agentSessions">
-): Promise<Doc<"agentSessions">> {
+): Promise<{
+	session: Doc<"agentSessions">;
+	space: Doc<"spaces">;
+	environment: Doc<"environments">;
+	repository: Doc<"repositories">;
+}> {
 	const space = await ctx.db.get(session.spaceId);
 	if (!space) {
 		throw new ConvexError("Agent session not found");
@@ -23,7 +28,7 @@ async function requireOwnedSession(
 		throw new ConvexError("Agent session not found");
 	}
 
-	return session;
+	return { session, space, environment, repository };
 }
 
 export const getById = authedQuery({
@@ -33,7 +38,20 @@ export const getById = authedQuery({
 		if (!session) {
 			throw new ConvexError("Agent session not found");
 		}
-		return await requireOwnedSession(ctx, session);
+		const { space, environment, repository } = await requireOwnedSession(
+			ctx,
+			session
+		);
+		return {
+			...session,
+			space: {
+				...space,
+				environment: {
+					...environment,
+					repository,
+				},
+			},
+		};
 	},
 });
 
@@ -47,7 +65,20 @@ export const getBySlug = authedQuery({
 		if (!session) {
 			return null;
 		}
-		return await requireOwnedSession(ctx, session);
+		const { space, environment, repository } = await requireOwnedSession(
+			ctx,
+			session
+		);
+		return {
+			...session,
+			space: {
+				...space,
+				environment: {
+					...environment,
+					repository,
+				},
+			},
+		};
 	},
 });
 
