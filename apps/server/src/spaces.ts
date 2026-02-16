@@ -3,14 +3,16 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { Daytona, type Sandbox } from "@daytonaio/sdk";
 import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { ConvexHttpClient } from "convex/browser";
+import type { FunctionReturnType } from "convex/server";
 import { type AuthVariables, authMiddleware } from "./auth";
 import {
 	bootSandboxAgent,
-	createReadySandbox,
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
 	repoSnapshotName,
 } from "./sandbox-lifecycle";
+
+type Space = FunctionReturnType<typeof api.spaces.getById>;
 
 type SpacesEnv = {
 	Bindings: Env;
@@ -37,14 +39,83 @@ function getBearerToken(authHeader: string | undefined): string {
 	return authHeader.slice(7);
 }
 
-async function generateAndStoreSandboxUrl(
+async function provisionSandbox(
 	convex: ConvexHttpClient,
-	sandbox: Sandbox,
-	spaceId: Id<"spaces">
-): Promise<string> {
-	const sandboxUrl = await getPreviewUrl(sandbox);
-	await convex.mutation(api.spaces.update, { id: spaceId, sandboxUrl });
-	return sandboxUrl;
+	daytona: Daytona,
+	spaceId: Id<"spaces">,
+	repository: { owner: string; name: string },
+	anthropicApiKey: string
+): Promise<Sandbox> {
+	await convex.mutation(api.spaces.update, {
+		id: spaceId,
+		status: "creating",
+	});
+	const snapshot = repoSnapshotName(repository.owner, repository.name);
+	const sandbox = await daytona.create({
+		snapshot,
+		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
+		autoStopInterval: 0,
+	});
+	await bootSandboxAgent(sandbox);
+	return sandbox;
+}
+
+async function resolveSandbox(
+	convex: ConvexHttpClient,
+	daytona: Daytona,
+	space: Space,
+	anthropicApiKey: string
+): Promise<Sandbox> {
+	const { repository } = space.environment;
+
+	if (!space.sandboxId) {
+		return await provisionSandbox(
+			convex,
+			daytona,
+			space._id,
+			repository,
+			anthropicApiKey
+		);
+	}
+
+	let sandbox: Sandbox;
+	try {
+		sandbox = await daytona.get(space.sandboxId);
+	} catch {
+		return await provisionSandbox(
+			convex,
+			daytona,
+			space._id,
+			repository,
+			anthropicApiKey
+		);
+	}
+
+	const { state } = sandbox;
+
+	if (state === "started") {
+		await ensureSandboxAgentRunning(sandbox);
+		return sandbox;
+	}
+
+	if (state === "stopped" || state === "archived") {
+		await convex.mutation(api.spaces.update, {
+			id: space._id,
+			status: "starting",
+		});
+		await sandbox.start();
+		await bootSandboxAgent(sandbox);
+		return sandbox;
+	}
+
+	// error / unknown state — reprovision
+	return await provisionSandbox(
+		convex,
+		daytona,
+		space._id,
+		repository,
+		anthropicApiKey
+	);
 }
 
 async function ensureSandbox(
@@ -53,99 +124,22 @@ async function ensureSandbox(
 	spaceId: Id<"spaces">,
 	anthropicApiKey: string
 ): Promise<{ spaceId: string; sandboxUrl: string }> {
-	const record = await convex.query(api.spaces.getById, {
+	const space = await convex.query(api.spaces.getById, {
 		id: spaceId,
 	});
 
-	const { owner, name } = record.environment.repository;
+	const sandbox = await resolveSandbox(convex, daytona, space, anthropicApiKey);
 
-	if (!record.sandboxId) {
-		return await provisionDaytonaSandbox(
-			convex,
-			daytona,
-			record._id,
-			owner,
-			name,
-			anthropicApiKey
-		);
-	}
-
-	let sandbox: Sandbox;
-	try {
-		sandbox = await daytona.get(record.sandboxId);
-	} catch {
-		return await provisionDaytonaSandbox(
-			convex,
-			daytona,
-			record._id,
-			owner,
-			name,
-			anthropicApiKey
-		);
-	}
-
-	const state = sandbox.state;
-
-	if (state === "started") {
-		await ensureSandboxAgentRunning(sandbox);
-		const sandboxUrl = await generateAndStoreSandboxUrl(
-			convex,
-			sandbox,
-			record._id
-		);
-		return { spaceId: record._id, sandboxUrl };
-	}
-
-	if (state === "stopped" || state === "archived") {
-		await convex.mutation(api.spaces.update, {
-			id: record._id,
-			status: "starting",
-		});
-		await sandbox.start();
-		await bootSandboxAgent(sandbox);
-		await convex.mutation(api.spaces.update, {
-			id: record._id,
-			status: "started",
-		});
-		const sandboxUrl = await generateAndStoreSandboxUrl(
-			convex,
-			sandbox,
-			record._id
-		);
-		return { spaceId: record._id, sandboxUrl };
-	}
-
-	// error / unknown — reprovision
-	return await provisionDaytonaSandbox(
-		convex,
-		daytona,
-		record._id,
-		owner,
-		name,
-		anthropicApiKey
-	);
-}
-
-async function provisionDaytonaSandbox(
-	convex: ConvexHttpClient,
-	daytona: Daytona,
-	spaceId: Id<"spaces">,
-	owner: string,
-	name: string,
-	anthropicApiKey: string
-): Promise<{ spaceId: string; sandboxUrl: string }> {
-	const snapshot = repoSnapshotName(owner, name);
-	const sandbox = await createReadySandbox(daytona, anthropicApiKey, snapshot);
 	const sandboxUrl = await getPreviewUrl(sandbox);
 
 	await convex.mutation(api.spaces.update, {
-		id: spaceId,
+		id: space._id,
 		status: "started",
 		sandboxId: sandbox.id,
 		sandboxUrl,
 	});
 
-	return { spaceId, sandboxUrl };
+	return { spaceId: space._id, sandboxUrl };
 }
 
 // ---------------------------------------------------------------------------

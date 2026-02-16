@@ -7,21 +7,6 @@ const SERVER_POLL_INTERVAL_MS = 500;
 
 const log = createLogger("sandbox-lifecycle");
 
-export async function createReadySandbox(
-	daytona: Daytona,
-	anthropicApiKey: string,
-	snapshot: string
-): Promise<Sandbox> {
-	const sandbox = await daytona.create({
-		snapshot,
-		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
-		autoStopInterval: 0,
-	});
-	log.debug({ sandboxId: sandbox.id, snapshot }, "sandbox created");
-	await bootSandboxAgent(sandbox);
-	return sandbox;
-}
-
 export async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
 	await sandbox.process.executeCommand(
 		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
