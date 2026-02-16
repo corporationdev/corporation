@@ -7,7 +7,12 @@ import { authedMutation, authedQuery } from "./functions";
 async function requireOwnedSession(
 	ctx: QueryCtx & { userId: string },
 	session: Doc<"agentSessions">
-): Promise<Doc<"agentSessions">> {
+): Promise<{
+	session: Doc<"agentSessions">;
+	space: Doc<"spaces">;
+	environment: Doc<"environments">;
+	repository: Doc<"repositories">;
+}> {
 	const space = await ctx.db.get(session.spaceId);
 	if (!space) {
 		throw new ConvexError("Agent session not found");
@@ -23,7 +28,7 @@ async function requireOwnedSession(
 		throw new ConvexError("Agent session not found");
 	}
 
-	return session;
+	return { session, space, environment, repository };
 }
 
 export const getById = authedQuery({
@@ -33,7 +38,20 @@ export const getById = authedQuery({
 		if (!session) {
 			throw new ConvexError("Agent session not found");
 		}
-		return await requireOwnedSession(ctx, session);
+		const { space, environment, repository } = await requireOwnedSession(
+			ctx,
+			session
+		);
+		return {
+			...session,
+			space: {
+				...space,
+				environment: {
+					...environment,
+					repository,
+				},
+			},
+		};
 	},
 });
 
@@ -47,7 +65,20 @@ export const getBySlug = authedQuery({
 		if (!session) {
 			return null;
 		}
-		return await requireOwnedSession(ctx, session);
+		const { space, environment, repository } = await requireOwnedSession(
+			ctx,
+			session
+		);
+		return {
+			...session,
+			space: {
+				...space,
+				environment: {
+					...environment,
+					repository,
+				},
+			},
+		};
 	},
 });
 
@@ -88,33 +119,6 @@ export const list = authedQuery({
 
 		sessions.sort((a, b) => b.updatedAt - a.updatedAt);
 		return sessions;
-	},
-});
-
-export const listBySpace = authedQuery({
-	args: {
-		spaceId: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const space = await ctx.db.get(args.spaceId);
-		if (!space) {
-			throw new ConvexError("Space not found");
-		}
-
-		const environment = await ctx.db.get(space.environmentId);
-		if (!environment) {
-			throw new ConvexError("Space not found");
-		}
-
-		const repository = await ctx.db.get(environment.repositoryId);
-		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Space not found");
-		}
-
-		return await ctx.db
-			.query("agentSessions")
-			.withIndex("by_space", (q) => q.eq("spaceId", args.spaceId))
-			.collect();
 	},
 });
 

@@ -1,4 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { Daytona } from "@daytonaio/sdk";
 import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { Nango } from "@nangohq/node";
@@ -205,14 +206,14 @@ export const repositoriesApp = $(
 
 			try {
 				const repo = await convex.query(api.repositories.get, {
-					id,
+					id: id as Id<"repositories">,
 				});
 
 				const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
 				await deleteSnapshot(daytona, repo.snapshotName);
 
 				await convex.mutation(api.repositories.delete, {
-					id,
+					id: id as Id<"repositories">,
 				});
 
 				return c.json({ success: true }, 200);

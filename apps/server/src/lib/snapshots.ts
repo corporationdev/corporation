@@ -23,19 +23,24 @@ export async function buildRepoSnapshot(
 	);
 	await daytona.snapshot.create({
 		name: snapshotName,
-		image: Image.base("ubuntu:22.04").runCommands(
-			"apt-get update && apt-get install -y curl ca-certificates git unzip",
-			// Install Node.js LTS via NodeSource (puts node/npm on default PATH)
-			"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
-			// Install package managers
-			"npm install -g yarn pnpm",
-			"curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun",
-			// Install sandbox-agent
-			"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.1.9/install.sh | sh",
-			"sandbox-agent install-agent claude",
-			`git clone https://x-access-token:${githubToken}@github.com/${repo.owner}/${repo.name}.git /root/${repo.owner}-${repo.name} --branch ${repo.defaultBranch} --single-branch`,
-			`cd /root/${repo.owner}-${repo.name} && ${repo.installCommand}`
-		),
+		image: Image.base("ubuntu:22.04")
+			.runCommands(
+				"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
+				// TODO: Make the shell configurable
+				'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended',
+				"chsh -s $(which zsh)",
+				// Install Node.js LTS via NodeSource (puts node/npm on default PATH)
+				"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
+				// Install package managers
+				"npm install -g yarn pnpm",
+				"curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun",
+				// Install sandbox-agent
+				"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.1.9/install.sh | sh",
+				"sandbox-agent install-agent claude",
+				`git clone https://x-access-token:${githubToken}@github.com/${repo.owner}/${repo.name}.git /root/${repo.owner}-${repo.name} --branch ${repo.defaultBranch} --single-branch`,
+				`cd /root/${repo.owner}-${repo.name} && ${repo.installCommand}`
+			)
+			.workdir(`/root/${repo.owner}-${repo.name}`),
 	});
 	log.info({ snapshotName }, "repo snapshot built");
 

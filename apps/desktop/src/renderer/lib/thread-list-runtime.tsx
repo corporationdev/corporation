@@ -6,9 +6,6 @@ import {
 } from "@assistant-ui/react";
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import { env } from "@corporation/env/web";
-import type { registry } from "@corporation/server/registry";
-import { createRivetKit } from "@rivetkit/react";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
@@ -21,15 +18,9 @@ import { apiClient } from "@/lib/api-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
 import { useSpaceSelectionStore } from "@/stores/space-selection-store";
+import { useActor } from "./rivetkit";
 
-const SERVER_URL = env.VITE_SERVER_URL;
 const NEW_CHAT_ID = "new";
-
-const { useActor } = createRivetKit<typeof registry>({
-	endpoint: `${SERVER_URL}/api/rivet`,
-	disableMetadataLookup: true,
-	devtools: false,
-});
 
 function NewThreadRuntime({ children }: { children: ReactNode }) {
 	const navigate = useNavigate();
