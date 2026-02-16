@@ -1,7 +1,5 @@
-import { api } from "@corporation/backend/convex/_generated/api";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useConvex } from "convex/react";
 import { Check, Search } from "lucide-react";
 import { useState } from "react";
 
@@ -12,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { GitHubRepo } from "@/hooks/use-github-repos";
 import { useGitHubRepos } from "@/hooks/use-github-repos";
+import { apiClient } from "@/lib/api-client";
 
 export const Route = createFileRoute(
 	"/_authenticated/settings/repositories/connect"
@@ -21,7 +20,6 @@ export const Route = createFileRoute(
 
 function ConnectRepositoryPage() {
 	const navigate = useNavigate();
-	const convex = useConvex();
 	const {
 		data: repos,
 		isLoading,
@@ -48,15 +46,22 @@ function ConnectRepositoryPage() {
 				(v) => v.key.trim() !== "" && v.value.trim() !== ""
 			);
 
-			await convex.mutation(api.repositories.create, {
-				githubRepoId: selectedRepo.id,
-				owner: selectedRepo.owner,
-				name: selectedRepo.name,
-				defaultBranch: selectedRepo.defaultBranch,
-				installCommand: value.installCommand.trim() || undefined,
-				devCommand: value.devCommand.trim() || undefined,
-				envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
+			const res = await apiClient.repositories.connect.$post({
+				json: {
+					githubRepoId: selectedRepo.id,
+					owner: selectedRepo.owner,
+					name: selectedRepo.name,
+					defaultBranch: selectedRepo.defaultBranch,
+					installCommand: value.installCommand.trim(),
+					devCommand: value.devCommand.trim(),
+					envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
+				},
 			});
+
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error);
+			}
 
 			navigate({ to: "/settings/repositories" });
 		},

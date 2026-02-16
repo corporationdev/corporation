@@ -9,6 +9,7 @@ import {
 	createReadySandbox,
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
+	repoSnapshotName,
 } from "./sandbox-lifecycle";
 
 type SpacesEnv = {
@@ -46,7 +47,7 @@ async function generateAndStoreSandboxUrl(
 	return sandboxUrl;
 }
 
-async function ensureExistingSandbox(
+async function ensureSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
@@ -56,11 +57,15 @@ async function ensureExistingSandbox(
 		id: spaceId,
 	});
 
+	const { owner, name } = record.environment.repository;
+
 	if (!record.sandboxId) {
 		return await provisionDaytonaSandbox(
 			convex,
 			daytona,
 			record._id,
+			owner,
+			name,
 			anthropicApiKey
 		);
 	}
@@ -73,6 +78,8 @@ async function ensureExistingSandbox(
 			convex,
 			daytona,
 			record._id,
+			owner,
+			name,
 			anthropicApiKey
 		);
 	}
@@ -113,6 +120,8 @@ async function ensureExistingSandbox(
 		convex,
 		daytona,
 		record._id,
+		owner,
+		name,
 		anthropicApiKey
 	);
 }
@@ -121,9 +130,12 @@ async function provisionDaytonaSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
+	owner: string,
+	name: string,
 	anthropicApiKey: string
 ): Promise<{ spaceId: string; sandboxUrl: string }> {
-	const sandbox = await createReadySandbox(daytona, anthropicApiKey);
+	const snapshot = repoSnapshotName(owner, name);
+	const sandbox = await createReadySandbox(daytona, anthropicApiKey, snapshot);
 	const sandboxUrl = await getPreviewUrl(sandbox);
 
 	await convex.mutation(api.spaces.update, {
@@ -206,16 +218,8 @@ export const spacesApp = $(
 		let spaceId: Id<"spaces"> | undefined;
 
 		try {
-			let result: { spaceId: string; sandboxUrl: string };
-
 			if (body.spaceId) {
 				spaceId = body.spaceId as Id<"spaces">;
-				result = await ensureExistingSandbox(
-					convex,
-					daytona,
-					spaceId,
-					c.env.ANTHROPIC_API_KEY
-				);
 			} else {
 				if (!body.environmentId) {
 					return c.json(
@@ -223,19 +227,18 @@ export const spacesApp = $(
 						400
 					);
 				}
-
 				spaceId = await convex.mutation(api.spaces.create, {
 					environmentId: body.environmentId as Id<"environments">,
 					branchName: "main",
 				});
-
-				result = await provisionDaytonaSandbox(
-					convex,
-					daytona,
-					spaceId,
-					c.env.ANTHROPIC_API_KEY
-				);
 			}
+
+			const result = await ensureSandbox(
+				convex,
+				daytona,
+				spaceId,
+				c.env.ANTHROPIC_API_KEY
+			);
 
 			return c.json(result, 200);
 		} catch (error) {

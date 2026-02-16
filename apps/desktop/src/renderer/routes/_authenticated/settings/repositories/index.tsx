@@ -25,6 +25,7 @@ function RepositoryCard({
 		_id: string;
 		owner: string;
 		name: string;
+		installCommand: string;
 	};
 }) {
 	const removeRepository = useMutation(api.repositories.remove);
@@ -41,8 +42,8 @@ function RepositoryCard({
 						{repository.owner}/{repository.name}
 					</CardTitle>
 					<CardDescription>
-						{environment?.installCommand || environment?.devCommand
-							? [environment.installCommand, environment.devCommand]
+						{repository.installCommand || environment?.devCommand
+							? [repository.installCommand, environment?.devCommand]
 									.filter(Boolean)
 									.join(" | ")
 							: "No environment configured"}

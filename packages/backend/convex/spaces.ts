@@ -7,7 +7,11 @@ import { authedMutation, authedQuery } from "./functions";
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string },
 	space: Doc<"spaces">
-): Promise<Doc<"spaces">> {
+): Promise<{
+	space: Doc<"spaces">;
+	environment: Doc<"environments">;
+	repository: Doc<"repositories">;
+}> {
 	const environment = await ctx.db.get(space.environmentId);
 	if (!environment) {
 		throw new ConvexError("Space not found");
@@ -18,7 +22,7 @@ async function requireOwnedSpace(
 		throw new ConvexError("Space not found");
 	}
 
-	return space;
+	return { space, environment, repository };
 }
 
 export const list = authedQuery({
@@ -59,7 +63,15 @@ export const getById = authedQuery({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		return await requireOwnedSpace(ctx, space);
+		const { environment, repository } = await requireOwnedSpace(ctx, space);
+
+		return {
+			...space,
+			environment: {
+				...environment,
+				repository,
+			},
+		};
 	},
 });
 
@@ -110,7 +122,7 @@ export const update = authedMutation({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		await requireOwnedSpace(ctx, space);
+		await requireOwnedSpace(ctx, space); // auth check only
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
