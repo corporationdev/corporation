@@ -6,11 +6,6 @@ import { actor } from "rivetkit";
 
 const log = createLogger("terminal");
 
-// ---------------------------------------------------------------------------
-// State & Vars types
-// ---------------------------------------------------------------------------
-
-// ~256 KB scrollback buffer
 const MAX_SCROLLBACK_BYTES = 256 * 1024;
 
 export type TerminalState = {
@@ -22,10 +17,6 @@ export type TerminalState = {
 export type TerminalVars = {
 	ptyHandle: PtyHandle;
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 async function connectOrCreatePty(
 	sandbox: Sandbox,
@@ -59,10 +50,6 @@ async function connectOrCreatePty(
 	log.info({ ptySessionId: newId }, "created new pty session");
 	return { handle, sessionId: newId };
 }
-
-// ---------------------------------------------------------------------------
-// Actor definition
-// ---------------------------------------------------------------------------
 
 export const terminal = actor({
 	createState: (c, input: { sandboxId: string }): TerminalState => {

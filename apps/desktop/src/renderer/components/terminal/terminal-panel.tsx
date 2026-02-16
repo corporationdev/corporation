@@ -3,7 +3,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useActor } from "@/lib/rivetkit";
 import "@xterm/xterm/css/xterm.css";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 type TerminalPanelProps = {
 	sandboxId: string;
@@ -19,15 +19,6 @@ export function TerminalPanel({ sandboxId }: TerminalPanelProps) {
 		createWithInput: { sandboxId },
 		enabled: true,
 	});
-
-	// Send resize to the actor when terminal dimensions change
-	const sendResize = useCallback(() => {
-		const terminal = terminalRef.current;
-		if (!(terminal && actor.connection)) {
-			return;
-		}
-		actor.connection.resize(terminal.cols, terminal.rows);
-	}, [actor.connection]);
 
 	// Initialize xterm.js
 	useEffect(() => {
@@ -72,23 +63,30 @@ export function TerminalPanel({ sandboxId }: TerminalPanelProps) {
 		};
 	}, []);
 
-	// Wire terminal input -> actor
+	// Wire terminal input and resize -> actor
 	useEffect(() => {
 		const terminal = terminalRef.current;
 		if (!(terminal && actor.connection)) {
 			return;
 		}
 
-		const disposable = terminal.onData((data) => {
+		const dataDisposable = terminal.onData((data) => {
 			const bytes = Array.from(new TextEncoder().encode(data));
 			actor.connection?.input(bytes);
 		});
 
-		// Send initial resize so the server knows our dimensions
-		sendResize();
+		const resizeDisposable = terminal.onResize(({ cols, rows }) => {
+			actor.connection?.resize(cols, rows);
+		});
 
-		return () => disposable.dispose();
-	}, [actor.connection, sendResize]);
+		// Send initial resize so the server knows our dimensions
+		actor.connection.resize(terminal.cols, terminal.rows);
+
+		return () => {
+			dataDisposable.dispose();
+			resizeDisposable.dispose();
+		};
+	}, [actor.connection]);
 
 	// Replay scrollback buffer on connect, then stream live output
 	useEffect(() => {
