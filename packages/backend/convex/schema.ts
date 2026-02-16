@@ -9,6 +9,8 @@ export default defineSchema(
 			owner: v.string(),
 			name: v.string(),
 			defaultBranch: v.string(),
+			installCommand: v.string(),
+			snapshotName: v.string(),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
@@ -18,8 +20,7 @@ export default defineSchema(
 		environments: defineTable({
 			repositoryId: v.id("repositories"),
 			name: v.string(),
-			installCommand: v.optional(v.string()),
-			devCommand: v.optional(v.string()),
+			devCommand: v.string(),
 			envVars: v.optional(
 				v.array(v.object({ key: v.string(), value: v.string() }))
 			),

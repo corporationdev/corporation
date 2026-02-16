@@ -38,8 +38,7 @@ export const listByRepository = authedQuery({
 export const update = authedMutation({
 	args: {
 		id: v.id("environments"),
-		installCommand: v.optional(v.string()),
-		devCommand: v.optional(v.string()),
+		devCommand: v.string(),
 		envVars: v.optional(
 			v.array(v.object({ key: v.string(), value: v.string() }))
 		),
@@ -51,7 +50,6 @@ export const update = authedMutation({
 		}
 		await requireOwnedEnvironment(ctx, environment);
 		await ctx.db.patch(args.id, {
-			installCommand: args.installCommand,
 			devCommand: args.devCommand,
 			envVars: args.envVars,
 			updatedAt: Date.now(),

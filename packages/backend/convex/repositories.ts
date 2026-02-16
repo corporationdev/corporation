@@ -23,14 +23,26 @@ export const list = authedQuery({
 	},
 });
 
+export const get = authedQuery({
+	args: { id: v.id("repositories") },
+	handler: async (ctx, args) => {
+		const repo = await ctx.db.get(args.id);
+		if (!repo) {
+			throw new ConvexError("Repository not found");
+		}
+		return requireOwnedRepository(ctx.userId, repo);
+	},
+});
+
 export const create = authedMutation({
 	args: {
 		githubRepoId: v.number(),
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
-		installCommand: v.optional(v.string()),
-		devCommand: v.optional(v.string()),
+		installCommand: v.string(),
+		snapshotName: v.string(),
+		devCommand: v.string(),
 		envVars: v.optional(
 			v.array(v.object({ key: v.string(), value: v.string() }))
 		),
@@ -55,6 +67,8 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
+			installCommand: args.installCommand,
+			snapshotName: args.snapshotName,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -62,7 +76,6 @@ export const create = authedMutation({
 		await ctx.db.insert("environments", {
 			repositoryId,
 			name: "Default",
-			installCommand: args.installCommand,
 			devCommand: args.devCommand,
 			envVars: args.envVars,
 			createdAt: now,
@@ -73,7 +86,31 @@ export const create = authedMutation({
 	},
 });
 
-export const remove = authedMutation({
+export const update = authedMutation({
+	args: {
+		id: v.id("repositories"),
+		installCommand: v.optional(v.string()),
+		snapshotName: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const repo = await ctx.db.get(args.id);
+		if (!repo) {
+			throw new ConvexError("Repository not found");
+		}
+		requireOwnedRepository(ctx.userId, repo);
+
+		const { id, ...fields } = args;
+		const patch = Object.fromEntries(
+			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
+				([, v]) => v !== undefined
+			)
+		);
+
+		await ctx.db.patch(id, patch);
+	},
+});
+
+const del = authedMutation({
 	args: {
 		id: v.id("repositories"),
 	},
@@ -96,3 +133,4 @@ export const remove = authedMutation({
 		await ctx.db.delete(args.id);
 	},
 });
+export { del as delete };

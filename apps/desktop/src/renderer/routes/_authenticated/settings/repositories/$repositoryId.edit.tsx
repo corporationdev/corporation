@@ -27,12 +27,12 @@ function EditRepositoryPage() {
 
 	const form = useForm({
 		defaultValues: {
-			installCommand: environment?.installCommand ?? "",
+			installCommand: repository?.installCommand ?? "",
 			devCommand: environment?.devCommand ?? "",
 			envVars: environment?.envVars ?? ([] as { key: string; value: string }[]),
 		},
 		onSubmit: async ({ value }) => {
-			if (!environment) {
+			if (!(repository && environment)) {
 				return;
 			}
 
@@ -40,12 +40,17 @@ function EditRepositoryPage() {
 				(v) => v.key.trim() !== "" && v.value.trim() !== ""
 			);
 
-			await convex.mutation(api.environments.update, {
-				id: environment._id,
-				installCommand: value.installCommand.trim() || undefined,
-				devCommand: value.devCommand.trim() || undefined,
-				envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
-			});
+			await Promise.all([
+				convex.mutation(api.repositories.update, {
+					id: repository._id,
+					installCommand: value.installCommand.trim(),
+				}),
+				convex.mutation(api.environments.update, {
+					id: environment._id,
+					devCommand: value.devCommand.trim(),
+					envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
+				}),
+			]);
 
 			navigate({ to: "/settings/repositories" });
 		},
