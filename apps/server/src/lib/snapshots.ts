@@ -25,7 +25,10 @@ export async function buildRepoSnapshot(
 		name: snapshotName,
 		image: Image.base("ubuntu:22.04")
 			.runCommands(
-				"apt-get update && apt-get install -y curl ca-certificates git unzip",
+				"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
+				// TODO: Make the shell configurable
+				'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended',
+				"chsh -s $(which zsh)",
 				// Install Node.js LTS via NodeSource (puts node/npm on default PATH)
 				"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
 				// Install package managers
