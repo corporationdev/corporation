@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { authedMutation, authedQuery } from "./functions";
 
 function requireOwnedRepository(
@@ -30,7 +30,19 @@ export const get = authedQuery({
 		if (!repo) {
 			throw new ConvexError("Repository not found");
 		}
-		return requireOwnedRepository(ctx.userId, repo);
+		requireOwnedRepository(ctx.userId, repo);
+
+		const environments = await ctx.db
+			.query("environments")
+			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+			.collect();
+
+		const services = await ctx.db
+			.query("services")
+			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+			.collect();
+
+		return { ...repo, environments, services };
 	},
 });
 
@@ -42,9 +54,15 @@ export const create = authedMutation({
 		defaultBranch: v.string(),
 		installCommand: v.string(),
 		snapshotName: v.string(),
-		devCommand: v.string(),
-		envVars: v.optional(
-			v.array(v.object({ key: v.string(), value: v.string() }))
+		services: v.array(
+			v.object({
+				name: v.string(),
+				devCommand: v.string(),
+				cwd: v.optional(v.string()),
+				envVars: v.optional(
+					v.array(v.object({ key: v.string(), value: v.string() }))
+				),
+			})
 		),
 	},
 	handler: async (ctx, args) => {
@@ -73,11 +91,24 @@ export const create = authedMutation({
 			updatedAt: now,
 		});
 
+		const serviceIds: Id<"services">[] = [];
+		for (const service of args.services) {
+			const serviceId = await ctx.db.insert("services", {
+				repositoryId,
+				name: service.name,
+				devCommand: service.devCommand,
+				cwd: service.cwd,
+				envVars: service.envVars,
+				createdAt: now,
+				updatedAt: now,
+			});
+			serviceIds.push(serviceId);
+		}
+
 		await ctx.db.insert("environments", {
 			repositoryId,
 			name: "Default",
-			devCommand: args.devCommand,
-			envVars: args.envVars,
+			serviceIds,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -128,6 +159,15 @@ const del = authedMutation({
 
 		for (const env of environments) {
 			await ctx.db.delete(env._id);
+		}
+
+		const services = await ctx.db
+			.query("services")
+			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+			.collect();
+
+		for (const service of services) {
+			await ctx.db.delete(service._id);
 		}
 
 		await ctx.db.delete(args.id);

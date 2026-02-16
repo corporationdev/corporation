@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
-export type RepositoryConfigValues = {
-	installCommand: string;
+export type ServiceValues = {
+	name: string;
 	devCommand: string;
+	cwd: string;
 	envVars: { key: string; value: string }[];
 };
 
@@ -37,33 +38,45 @@ type ArrayFieldState = {
 	removeValue: (index: number) => void;
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
-export function RepositoryConfigFields({ form }: { form: any }) {
+export function ServiceConfigFields({
+	form,
+	prefix,
+	showName = true,
+}: {
+	// biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
+	form: any;
+	prefix: string;
+	showName?: boolean;
+}) {
+	const fieldName = (name: string) => (prefix ? `${prefix}.${name}` : name);
+
 	return (
 		<FieldGroup>
-			<form.Field name="installCommand">
-				{(field: FieldState) => {
-					const isInvalid =
-						field.state.meta.isTouched && !field.state.meta.isValid;
-					return (
-						<Field data-invalid={isInvalid}>
-							<FieldLabel htmlFor={field.name}>Install Command</FieldLabel>
-							<Input
-								aria-invalid={isInvalid}
-								id={field.name}
-								name={field.name}
-								onBlur={field.handleBlur}
-								onChange={(e) => field.handleChange(e.target.value)}
-								placeholder="e.g. npm install"
-								value={field.state.value}
-							/>
-							{isInvalid && <FieldError errors={field.state.meta.errors} />}
-						</Field>
-					);
-				}}
-			</form.Field>
+			{showName && (
+				<form.Field name={fieldName("name")}>
+					{(field: FieldState) => {
+						const isInvalid =
+							field.state.meta.isTouched && !field.state.meta.isValid;
+						return (
+							<Field data-invalid={isInvalid}>
+								<FieldLabel htmlFor={field.name}>Service Name</FieldLabel>
+								<Input
+									aria-invalid={isInvalid}
+									id={field.name}
+									name={field.name}
+									onBlur={field.handleBlur}
+									onChange={(e) => field.handleChange(e.target.value)}
+									placeholder="e.g. web, api, backend"
+									value={field.state.value}
+								/>
+								{isInvalid && <FieldError errors={field.state.meta.errors} />}
+							</Field>
+						);
+					}}
+				</form.Field>
+			)}
 
-			<form.Field name="devCommand">
+			<form.Field name={fieldName("devCommand")}>
 				{(field: FieldState) => {
 					const isInvalid =
 						field.state.meta.isTouched && !field.state.meta.isValid;
@@ -85,7 +98,29 @@ export function RepositoryConfigFields({ form }: { form: any }) {
 				}}
 			</form.Field>
 
-			<form.Field mode="array" name="envVars">
+			<form.Field name={fieldName("cwd")}>
+				{(field: FieldState) => {
+					const isInvalid =
+						field.state.meta.isTouched && !field.state.meta.isValid;
+					return (
+						<Field data-invalid={isInvalid}>
+							<FieldLabel htmlFor={field.name}>Working Directory</FieldLabel>
+							<Input
+								aria-invalid={isInvalid}
+								id={field.name}
+								name={field.name}
+								onBlur={field.handleBlur}
+								onChange={(e) => field.handleChange(e.target.value)}
+								placeholder="e.g. apps/web (relative to repo root)"
+								value={field.state.value}
+							/>
+							{isInvalid && <FieldError errors={field.state.meta.errors} />}
+						</Field>
+					);
+				}}
+			</form.Field>
+
+			<form.Field mode="array" name={fieldName("envVars")}>
 				{(field: ArrayFieldState) => (
 					<div className="flex flex-col gap-2">
 						<div className="flex items-center justify-between">
@@ -108,7 +143,9 @@ export function RepositoryConfigFields({ form }: { form: any }) {
 											className="flex items-center gap-2"
 											key={`env-${index.toString()}`}
 										>
-											<form.Field name={`envVars[${index}].key`}>
+											<form.Field
+												name={`${fieldName("envVars")}[${index}].key`}
+											>
 												{(subField: FieldState) => (
 													<Input
 														name={subField.name}
@@ -121,7 +158,9 @@ export function RepositoryConfigFields({ form }: { form: any }) {
 													/>
 												)}
 											</form.Field>
-											<form.Field name={`envVars[${index}].value`}>
+											<form.Field
+												name={`${fieldName("envVars")}[${index}].value`}
+											>
 												{(subField: FieldState) => (
 													<Input
 														name={subField.name}

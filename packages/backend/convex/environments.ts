@@ -38,10 +38,8 @@ export const listByRepository = authedQuery({
 export const update = authedMutation({
 	args: {
 		id: v.id("environments"),
-		devCommand: v.string(),
-		envVars: v.optional(
-			v.array(v.object({ key: v.string(), value: v.string() }))
-		),
+		name: v.optional(v.string()),
+		serviceIds: v.optional(v.array(v.id("services"))),
 	},
 	handler: async (ctx, args) => {
 		const environment = await ctx.db.get(args.id);
@@ -49,10 +47,14 @@ export const update = authedMutation({
 			throw new ConvexError("Environment not found");
 		}
 		await requireOwnedEnvironment(ctx, environment);
-		await ctx.db.patch(args.id, {
-			devCommand: args.devCommand,
-			envVars: args.envVars,
-			updatedAt: Date.now(),
-		});
+
+		const { id, ...fields } = args;
+		const patch = Object.fromEntries(
+			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
+				([, v]) => v !== undefined
+			)
+		);
+
+		await ctx.db.patch(id, patch);
 	},
 });

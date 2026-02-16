@@ -1,13 +1,18 @@
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Check, Search } from "lucide-react";
+import { Check, Plus, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { RepositoryConfigFields } from "@/components/repository-config-fields";
+import {
+	ServiceConfigFields,
+	type ServiceValues,
+} from "@/components/repository-config-fields";
 import { Button } from "@/components/ui/button";
-import { FieldLabel } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { GitHubRepo } from "@/hooks/use-github-repos";
 import { useGitHubRepos } from "@/hooks/use-github-repos";
@@ -18,6 +23,13 @@ export const Route = createFileRoute(
 )({
 	component: ConnectRepositoryPage,
 });
+
+const emptyService: ServiceValues = {
+	name: "",
+	devCommand: "",
+	cwd: "",
+	envVars: [],
+};
 
 function ConnectRepositoryPage() {
 	const navigate = useNavigate();
@@ -31,21 +43,38 @@ function ConnectRepositoryPage() {
 
 	const [search, setSearch] = useState("");
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
+	const [isMonorepo, setIsMonorepo] = useState(false);
 
 	const form = useForm({
 		defaultValues: {
 			installCommand: "",
-			devCommand: "",
-			envVars: [] as { key: string; value: string }[],
+			services: [
+				{ name: "Main", devCommand: "", cwd: "", envVars: [] },
+			] as ServiceValues[],
 		},
 		onSubmit: async ({ value }) => {
 			if (!selectedRepo) {
 				return;
 			}
 
-			const validEnvVars = value.envVars.filter(
-				(v) => v.key.trim() !== "" && v.value.trim() !== ""
-			);
+			const services = value.services
+				.filter((s) => s.devCommand.trim() !== "")
+				.map((s) => {
+					const validEnvVars = s.envVars.filter(
+						(v) => v.key.trim() !== "" && v.value.trim() !== ""
+					);
+					return {
+						name: s.name.trim() || "Main",
+						devCommand: s.devCommand.trim(),
+						cwd: s.cwd.trim() || undefined,
+						envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
+					};
+				});
+
+			if (services.length === 0) {
+				toast.error("At least one service with a dev command is required");
+				return;
+			}
 
 			const res = await apiClient.repositories.connect.$post({
 				json: {
@@ -54,8 +83,7 @@ function ConnectRepositoryPage() {
 					name: selectedRepo.name,
 					defaultBranch: selectedRepo.defaultBranch,
 					installCommand: value.installCommand.trim(),
-					devCommand: value.devCommand.trim(),
-					envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
+					services,
 				},
 			});
 
@@ -150,7 +178,83 @@ function ConnectRepositoryPage() {
 
 			{selectedRepo && (
 				<>
-					<RepositoryConfigFields form={form} />
+					<Field>
+						<FieldLabel htmlFor="installCommand">Install Command</FieldLabel>
+						<form.Field name="installCommand">
+							{(field) => (
+								<Input
+									id={field.name}
+									name={field.name}
+									onBlur={field.handleBlur}
+									onChange={(e) => field.handleChange(e.target.value)}
+									placeholder="e.g. npm install"
+									value={field.state.value}
+								/>
+							)}
+						</form.Field>
+					</Field>
+
+					<Label>
+						<Checkbox
+							checked={isMonorepo}
+							onCheckedChange={(checked) => setIsMonorepo(checked === true)}
+						/>
+						This is a monorepo
+					</Label>
+
+					{isMonorepo ? (
+						<form.Field mode="array" name="services">
+							{(servicesField) => (
+								<div className="flex flex-col gap-4">
+									<div className="flex items-center justify-between">
+										<FieldLabel>Services</FieldLabel>
+										<Button
+											onClick={() =>
+												servicesField.pushValue({ ...emptyService })
+											}
+											size="xs"
+											type="button"
+											variant="ghost"
+										>
+											<Plus className="size-3" />
+											Add Service
+										</Button>
+									</div>
+									{servicesField.state.value.map(
+										(_: ServiceValues, index: number) => (
+											<div
+												className="relative flex flex-col gap-3 border p-4"
+												key={`service-${index.toString()}`}
+											>
+												{servicesField.state.value.length > 1 && (
+													<Button
+														className="absolute top-2 right-2"
+														onClick={() => servicesField.removeValue(index)}
+														size="icon-sm"
+														type="button"
+														variant="ghost"
+													>
+														<Trash2 className="size-3.5" />
+													</Button>
+												)}
+												<ServiceConfigFields
+													form={form}
+													prefix={`services[${index}]`}
+													showName
+												/>
+											</div>
+										)
+									)}
+								</div>
+							)}
+						</form.Field>
+					) : (
+						<ServiceConfigFields
+							form={form}
+							prefix="services[0]"
+							showName={false}
+						/>
+					)}
 
 					<div className="flex justify-end">
 						<form.Subscribe selector={(state) => state.isSubmitting}>

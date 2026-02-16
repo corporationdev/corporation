@@ -1,18 +1,11 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardAction,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardAction, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api-client";
 
@@ -27,7 +20,6 @@ function RepositoryCard({
 		_id: string;
 		owner: string;
 		name: string;
-		installCommand: string;
 	};
 }) {
 	const { mutate: removeRepository, isPending: isDeleting } = useMutation({
@@ -44,10 +36,6 @@ function RepositoryCard({
 			toast.error(error.message);
 		},
 	});
-	const environments = useQuery(api.environments.listByRepository, {
-		repositoryId: repository._id as Id<"repositories">,
-	});
-	const environment = environments?.[0];
 
 	return (
 		<Card size="sm">
@@ -56,13 +44,6 @@ function RepositoryCard({
 					<CardTitle>
 						{repository.owner}/{repository.name}
 					</CardTitle>
-					<CardDescription>
-						{repository.installCommand || environment?.devCommand
-							? [repository.installCommand, environment?.devCommand]
-									.filter(Boolean)
-									.join(" | ")
-							: "No environment configured"}
-					</CardDescription>
 				</div>
 				<CardAction>
 					<div className="flex items-center gap-1">
