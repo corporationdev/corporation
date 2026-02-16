@@ -1,9 +1,10 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -13,6 +14,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiClient } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 	component: RepositoriesPage,
@@ -28,7 +30,20 @@ function RepositoryCard({
 		installCommand: string;
 	};
 }) {
-	const removeRepository = useMutation(api.repositories.remove);
+	const { mutate: removeRepository, isPending: isDeleting } = useMutation({
+		mutationFn: async (id: string) => {
+			const res = await apiClient.repositories[":id"].$delete({
+				param: { id },
+			});
+			if (!res.ok) {
+				const data = await res.json();
+				throw new Error(data.error);
+			}
+		},
+		onError: (error) => {
+			toast.error(error.message);
+		},
+	});
 	const environments = useQuery(api.environments.listByRepository, {
 		repositoryId: repository._id as Id<"repositories">,
 	});
@@ -60,7 +75,8 @@ function RepositoryCard({
 							</Button>
 						</Link>
 						<Button
-							onClick={() => removeRepository({ id: repository._id as never })}
+							disabled={isDeleting}
+							onClick={() => removeRepository(repository._id)}
 							size="icon-sm"
 							variant="ghost"
 						>

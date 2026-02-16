@@ -5,7 +5,7 @@ import { Nango } from "@nangohq/node";
 import { ConvexHttpClient } from "convex/browser";
 import { Octokit } from "octokit";
 import { type AuthVariables, authMiddleware } from "./auth";
-import { buildRepoSnapshot } from "./lib/snapshots";
+import { buildRepoSnapshot, deleteSnapshot } from "./lib/snapshots";
 
 type RepositoriesEnv = {
 	Bindings: Env;
@@ -128,6 +128,39 @@ const connectRoute = createRoute({
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /:id - Delete a repository and its snapshot
+// ---------------------------------------------------------------------------
+
+const deleteRoute = createRoute({
+	method: "delete",
+	path: "/:id",
+	middleware: [authMiddleware],
+	request: {
+		params: z.object({
+			id: z.string().openapi({ description: "Convex repository ID" }),
+		}),
+	},
+	responses: {
+		200: {
+			content: {
+				"application/json": {
+					schema: z.object({ success: z.boolean() }),
+				},
+			},
+			description: "Repository and snapshot deleted",
+		},
+		500: {
+			content: {
+				"application/json": {
+					schema: z.object({ error: z.string() }),
+				},
+			},
+			description: "Failed to delete repository",
+		},
+	},
+});
+
+// ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
 
@@ -145,25 +178,47 @@ export const repositoriesApp = $(
 				const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
 				const githubToken = await getGitHubToken(nango, userId);
 
-				await buildRepoSnapshot(
+				const snapshotName = await buildRepoSnapshot(
 					daytona,
-					body.owner,
-					body.name,
-					body.defaultBranch,
-					githubToken,
-					body.installCommand
+					body,
+					githubToken
 				);
 
-				const repositoryId = await convex.mutation(
-					api.repositories.create,
-					body
-				);
+				const repositoryId = await convex.mutation(api.repositories.create, {
+					...body,
+					snapshotName,
+				});
 
 				return c.json({ repositoryId }, 200);
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
 				console.error(message);
+				return c.json({ error: message }, 500);
+			}
+		})
+		.openapi(deleteRoute, async (c) => {
+			const { id } = c.req.valid("param");
+			const token = c.req.header("Authorization")?.slice(7) ?? "";
+			const convex = new ConvexHttpClient(c.env.CONVEX_URL);
+			convex.setAuth(token);
+
+			try {
+				const repo = await convex.query(api.repositories.get, {
+					id,
+				});
+
+				const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
+				await deleteSnapshot(daytona, repo.snapshotName);
+
+				await convex.mutation(api.repositories.delete, {
+					id,
+				});
+
+				return c.json({ success: true }, 200);
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : "Unknown error";
 				return c.json({ error: message }, 500);
 			}
 		})

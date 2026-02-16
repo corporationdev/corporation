@@ -10,7 +10,6 @@ import {
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
 } from "./lib/sandbox";
-import { repoSnapshotName } from "./lib/snapshots";
 
 type Space = FunctionReturnType<typeof api.spaces.getById>;
 
@@ -43,16 +42,15 @@ async function provisionSandbox(
 	convex: ConvexHttpClient,
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
-	repository: { owner: string; name: string },
+	snapshotName: string,
 	anthropicApiKey: string
 ): Promise<Sandbox> {
 	await convex.mutation(api.spaces.update, {
 		id: spaceId,
 		status: "creating",
 	});
-	const snapshot = repoSnapshotName(repository.owner, repository.name);
 	const sandbox = await daytona.create({
-		snapshot,
+		snapshot: snapshotName,
 		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
 		autoStopInterval: 0,
 	});
@@ -66,14 +64,14 @@ async function resolveSandbox(
 	space: Space,
 	anthropicApiKey: string
 ): Promise<Sandbox> {
-	const { repository } = space.environment;
+	const { snapshotName } = space.environment.repository;
 
 	if (!space.sandboxId) {
 		return await provisionSandbox(
 			convex,
 			daytona,
 			space._id,
-			repository,
+			snapshotName,
 			anthropicApiKey
 		);
 	}
@@ -86,7 +84,7 @@ async function resolveSandbox(
 			convex,
 			daytona,
 			space._id,
-			repository,
+			snapshotName,
 			anthropicApiKey
 		);
 	}
@@ -113,7 +111,7 @@ async function resolveSandbox(
 		convex,
 		daytona,
 		space._id,
-		repository,
+		snapshotName,
 		anthropicApiKey
 	);
 }

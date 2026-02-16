@@ -3,30 +3,22 @@ import { type Daytona, Image } from "@daytonaio/sdk";
 
 const log = createLogger("snapshots");
 
-export function repoSnapshotName(owner: string, name: string): string {
-	return `repo-${owner}-${name}`;
-}
+type RepoSnapshotInput = {
+	owner: string;
+	name: string;
+	defaultBranch: string;
+	installCommand: string;
+};
 
 export async function buildRepoSnapshot(
 	daytona: Daytona,
-	owner: string,
-	name: string,
-	branch: string,
-	githubToken: string,
-	installCommand: string
+	repo: RepoSnapshotInput,
+	githubToken: string
 ): Promise<string> {
-	const snapshotName = repoSnapshotName(owner, name);
-
-	try {
-		const existing = await daytona.snapshot.get(snapshotName);
-		await daytona.snapshot.delete(existing);
-		log.info({ snapshotName }, "deleted existing repo snapshot");
-	} catch {
-		// Snapshot doesn't exist yet
-	}
+	const snapshotName = `repo-${repo.owner}-${repo.name}-${Date.now()}`;
 
 	log.info(
-		{ snapshotName, repo: `${owner}/${name}` },
+		{ snapshotName, repo: `${repo.owner}/${repo.name}` },
 		"building repo snapshot"
 	);
 	await daytona.snapshot.create({
@@ -39,13 +31,26 @@ export async function buildRepoSnapshot(
 			"npm install -g yarn pnpm",
 			"curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun",
 			// Install sandbox-agent
-			"curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
+			"SANDBOX_AGENT_VERSION=0.1.9 curl -fsSL https://releases.rivet.dev/sandbox-agent/latest/install.sh | sh",
 			"sandbox-agent install-agent claude",
-			`git clone https://x-access-token:${githubToken}@github.com/${owner}/${name}.git /home/daytona/project --branch ${branch} --single-branch`,
-			`cd /home/daytona/project && ${installCommand}`
+			`git clone https://x-access-token:${githubToken}@github.com/${repo.owner}/${repo.name}.git /home/daytona/project --branch ${repo.defaultBranch} --single-branch`,
+			`cd /home/daytona/project && ${repo.installCommand}`
 		),
 	});
 	log.info({ snapshotName }, "repo snapshot built");
 
 	return snapshotName;
+}
+
+export async function deleteSnapshot(
+	daytona: Daytona,
+	snapshotName: string
+): Promise<void> {
+	try {
+		const snapshot = await daytona.snapshot.get(snapshotName);
+		await daytona.snapshot.delete(snapshot);
+		log.info({ snapshotName }, "snapshot deleted");
+	} catch {
+		log.warn({ snapshotName }, "snapshot not found for deletion");
+	}
 }

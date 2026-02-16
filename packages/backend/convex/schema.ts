@@ -10,6 +10,7 @@ export default defineSchema(
 			name: v.string(),
 			defaultBranch: v.string(),
 			installCommand: v.string(),
+			snapshotName: v.string(),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
