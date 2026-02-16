@@ -122,7 +122,7 @@ export const update = authedMutation({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		await requireOwnedSpace(ctx, space); // auth check only
+		await requireOwnedSpace(ctx, space);
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(

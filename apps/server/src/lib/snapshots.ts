@@ -33,8 +33,8 @@ export async function buildRepoSnapshot(
 			// Install sandbox-agent
 			"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.1.9/install.sh | sh",
 			"sandbox-agent install-agent claude",
-			`git clone https://x-access-token:${githubToken}@github.com/${repo.owner}/${repo.name}.git /home/daytona/project --branch ${repo.defaultBranch} --single-branch`,
-			`cd /home/daytona/project && ${repo.installCommand}`
+			`git clone https://x-access-token:${githubToken}@github.com/${repo.owner}/${repo.name}.git /root/${repo.owner}-${repo.name} --branch ${repo.defaultBranch} --single-branch`,
+			`cd /root/${repo.owner}-${repo.name} && ${repo.installCommand}`
 		),
 	});
 	log.info({ snapshotName }, "repo snapshot built");
