@@ -54,17 +54,22 @@ function EditRepositoryForm({
 				name: s.name,
 				devCommand: s.devCommand,
 				cwd: s.cwd,
-				envVars: s.envVars ?? [],
+				envVars: s.envVars?.length ? s.envVars : [{ key: "", value: "" }],
 			})),
 		},
 		validators: {
 			onSubmit: repositoryConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
+			const services = value.services.map((s) => ({
+				...s,
+				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
+			}));
+
 			await updateRepository({
 				id: repository._id,
 				installCommand: value.installCommand,
-				services: value.services,
+				services,
 			});
 
 			navigate({ to: "/settings/repositories" });

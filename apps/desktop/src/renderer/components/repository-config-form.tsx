@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import type React from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -12,14 +13,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const QUOTED_VALUE_RE = /^(['"])(.*)\1$/;
+
 const serviceSchema = z.object({
 	name: z.string().min(1, "Service name is required"),
 	devCommand: z.string().min(1, "Dev command is required"),
 	cwd: z.string(),
 	envVars: z.array(
 		z.object({
-			key: z.string().min(1, "Key is required"),
-			value: z.string().min(1, "Value is required"),
+			key: z.string(),
+			value: z.string(),
 		})
 	),
 });
@@ -61,11 +64,29 @@ type ServicesArrayFieldState = {
 	removeValue: (index: number) => void;
 };
 
+function parseEnvContent(text: string): { key: string; value: string }[] {
+	return text
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line && !line.startsWith("#"))
+		.map((line) => {
+			const eqIndex = line.indexOf("=");
+			if (eqIndex === -1) {
+				return null;
+			}
+			const key = line.slice(0, eqIndex).trim();
+			const raw = line.slice(eqIndex + 1).trim();
+			const value = raw.replace(QUOTED_VALUE_RE, "$2");
+			return key ? { key, value } : null;
+		})
+		.filter(Boolean) as { key: string; value: string }[];
+}
+
 const emptyService: ServiceValues = {
 	name: "",
 	devCommand: "",
 	cwd: "",
-	envVars: [],
+	envVars: [{ key: "", value: "" }],
 };
 
 function ServiceConfigFields({
@@ -151,73 +172,98 @@ function ServiceConfigFields({
 			</form.Field>
 
 			<form.Field mode="array" name={fieldName("envVars")}>
-				{(field: EnvVarArrayFieldState) => (
-					<div className="flex flex-col gap-2">
-						<div className="flex items-center justify-between">
-							<FieldLabel>Environment Variables</FieldLabel>
-							<Button
-								onClick={() => field.pushValue({ key: "", value: "" })}
-								size="xs"
-								type="button"
-								variant="ghost"
-							>
-								<Plus className="size-3" />
-								Add
-							</Button>
-						</div>
-						{field.state.value.length > 0 && (
-							<div className="flex flex-col gap-2">
-								{field.state.value.map(
-									(_: { key: string; value: string }, index: number) => (
-										<div
-											className="flex items-center gap-2"
-											key={`env-${index.toString()}`}
-										>
-											<form.Field
-												name={`${fieldName("envVars")}[${index}].key`}
-											>
-												{(subField: FieldState) => (
-													<Input
-														name={subField.name}
-														onBlur={subField.handleBlur}
-														onChange={(e) =>
-															subField.handleChange(e.target.value)
-														}
-														placeholder="KEY"
-														value={subField.state.value}
-													/>
-												)}
-											</form.Field>
-											<form.Field
-												name={`${fieldName("envVars")}[${index}].value`}
-											>
-												{(subField: FieldState) => (
-													<Input
-														name={subField.name}
-														onBlur={subField.handleBlur}
-														onChange={(e) =>
-															subField.handleChange(e.target.value)
-														}
-														placeholder="value"
-														value={subField.state.value}
-													/>
-												)}
-											</form.Field>
-											<Button
-												onClick={() => field.removeValue(index)}
-												size="icon-sm"
-												type="button"
-												variant="ghost"
-											>
-												<Trash2 className="size-3.5" />
-											</Button>
-										</div>
-									)
-								)}
+				{(field: EnvVarArrayFieldState) => {
+					const handleEnvPaste = (
+						e: React.ClipboardEvent<HTMLInputElement>,
+						index: number
+					) => {
+						const text = e.clipboardData.getData("text");
+						if (!text.includes("\n")) {
+							return;
+						}
+						const parsed = parseEnvContent(text);
+						if (parsed.length === 0) {
+							return;
+						}
+						e.preventDefault();
+						const current = field.state.value[index];
+						if (current && !current.key.trim() && !current.value.trim()) {
+							field.removeValue(index);
+						}
+						for (const pair of parsed) {
+							field.pushValue(pair);
+						}
+					};
+
+					return (
+						<div className="flex flex-col gap-2">
+							<div className="flex items-center justify-between">
+								<FieldLabel>Environment Variables</FieldLabel>
+								<Button
+									onClick={() => field.pushValue({ key: "", value: "" })}
+									size="xs"
+									type="button"
+									variant="ghost"
+								>
+									<Plus className="size-3" />
+									Add
+								</Button>
 							</div>
-						)}
-					</div>
-				)}
+							{field.state.value?.length > 0 && (
+								<div className="flex flex-col gap-2">
+									{field.state.value.map(
+										(_: { key: string; value: string }, index: number) => (
+											<div
+												className="flex items-center gap-2"
+												key={`env-${index.toString()}`}
+											>
+												<form.Field
+													name={`${fieldName("envVars")}[${index}].key`}
+												>
+													{(subField: FieldState) => (
+														<Input
+															name={subField.name}
+															onBlur={subField.handleBlur}
+															onChange={(e) =>
+																subField.handleChange(e.target.value)
+															}
+															onPaste={(e) => handleEnvPaste(e, index)}
+															placeholder="KEY"
+															value={subField.state.value}
+														/>
+													)}
+												</form.Field>
+												<form.Field
+													name={`${fieldName("envVars")}[${index}].value`}
+												>
+													{(subField: FieldState) => (
+														<Input
+															name={subField.name}
+															onBlur={subField.handleBlur}
+															onChange={(e) =>
+																subField.handleChange(e.target.value)
+															}
+															placeholder="value"
+															value={subField.state.value}
+														/>
+													)}
+												</form.Field>
+												<Button
+													onClick={() => field.removeValue(index)}
+													size="icon-sm"
+													type="button"
+													variant="ghost"
+												>
+													<Trash2 className="size-3.5" />
+												</Button>
+											</div>
+										)
+									)}
+								</div>
+							)}
+						</div>
+					);
+				}}
 			</form.Field>
 		</FieldGroup>
 	);

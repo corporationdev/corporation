@@ -41,7 +41,12 @@ function ConnectRepositoryPage() {
 		defaultValues: {
 			installCommand: "",
 			services: [
-				{ name: "Main", devCommand: "", cwd: "", envVars: [] },
+				{
+					name: "Main",
+					devCommand: "",
+					cwd: "",
+					envVars: [{ key: "", value: "" }],
+				},
 			] as ServiceValues[],
 		},
 		validators: {
@@ -52,6 +57,11 @@ function ConnectRepositoryPage() {
 				return;
 			}
 
+			const services = value.services.map((s) => ({
+				...s,
+				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
+			}));
+
 			const res = await apiClient.repositories.connect.$post({
 				json: {
 					githubRepoId: selectedRepo.id,
@@ -59,7 +69,7 @@ function ConnectRepositoryPage() {
 					name: selectedRepo.name,
 					defaultBranch: selectedRepo.defaultBranch,
 					installCommand: value.installCommand,
-					services: value.services,
+					services,
 				},
 			});
 

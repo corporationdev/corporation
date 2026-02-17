@@ -71,3 +71,31 @@ export async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
 	);
 	return result.url;
 }
+
+export async function writeServiceEnvFiles(
+	sandbox: Sandbox,
+	services: Array<{
+		cwd: string;
+		envVars?: Array<{ key: string; value: string }>;
+	}>
+): Promise<void> {
+	const files = services
+		.filter(
+			(s): s is typeof s & { envVars: Array<{ key: string; value: string }> } =>
+				s.envVars !== undefined && s.envVars.length > 0
+		)
+		.map((s) => {
+			const content = s.envVars
+				.map(({ key, value }) => `${key}=${value}`)
+				.join("\n");
+			const dir = s.cwd || ".";
+			return { source: Buffer.from(content), destination: `${dir}/.env` };
+		});
+
+	if (files.length === 0) {
+		return;
+	}
+
+	await sandbox.fs.uploadFiles(files);
+	log.debug({ sandboxId: sandbox.id, count: files.length }, "wrote .env files");
+}
