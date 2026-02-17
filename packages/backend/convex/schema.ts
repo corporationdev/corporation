@@ -20,7 +20,16 @@ export default defineSchema(
 		environments: defineTable({
 			repositoryId: v.id("repositories"),
 			name: v.string(),
+			serviceIds: v.array(v.id("services")),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		}).index("by_repository", ["repositoryId"]),
+
+		services: defineTable({
+			repositoryId: v.id("repositories"),
+			name: v.string(),
 			devCommand: v.string(),
+			cwd: v.string(),
 			envVars: v.optional(
 				v.array(v.object({ key: v.string(), value: v.string() }))
 			),

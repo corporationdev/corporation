@@ -93,10 +93,16 @@ const connectRoute = createRoute({
 						name: z.string(),
 						defaultBranch: z.string(),
 						installCommand: z.string(),
-						devCommand: z.string(),
-						envVars: z
-							.array(z.object({ key: z.string(), value: z.string() }))
-							.optional(),
+						services: z.array(
+							z.object({
+								name: z.string(),
+								devCommand: z.string(),
+								cwd: z.string(),
+								envVars: z
+									.array(z.object({ key: z.string(), value: z.string() }))
+									.optional(),
+							})
+						),
 					}),
 				},
 			},

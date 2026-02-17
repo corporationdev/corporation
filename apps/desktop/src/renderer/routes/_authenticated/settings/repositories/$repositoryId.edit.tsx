@@ -1,10 +1,15 @@
 // biome-ignore-all lint/style/useFilenamingConvention: TanStack Router uses `$` for dynamic route params
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useConvex, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import { useState } from "react";
 
-import { RepositoryConfigFields } from "@/components/repository-config-fields";
+import {
+	RepositoryConfigForm,
+	repositoryConfigSchema,
+} from "@/components/repository-config-form";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute(
@@ -15,51 +20,11 @@ export const Route = createFileRoute(
 
 function EditRepositoryPage() {
 	const { repositoryId } = Route.useParams();
-	const navigate = useNavigate();
-	const convex = useConvex();
-	const repositories = useQuery(api.repositories.list);
-	const repository = repositories?.find((r) => r._id === repositoryId);
-	const environments = useQuery(
-		api.environments.listByRepository,
-		repository ? { repositoryId: repository._id } : "skip"
-	);
-	const environment = environments?.[0];
-
-	const form = useForm({
-		defaultValues: {
-			installCommand: repository?.installCommand ?? "",
-			devCommand: environment?.devCommand ?? "",
-			envVars: environment?.envVars ?? ([] as { key: string; value: string }[]),
-		},
-		onSubmit: async ({ value }) => {
-			if (!(repository && environment)) {
-				return;
-			}
-
-			const validEnvVars = value.envVars.filter(
-				(v) => v.key.trim() !== "" && v.value.trim() !== ""
-			);
-
-			await Promise.all([
-				convex.mutation(api.repositories.update, {
-					id: repository._id,
-					installCommand: value.installCommand.trim(),
-				}),
-				convex.mutation(api.environments.update, {
-					id: environment._id,
-					devCommand: value.devCommand.trim(),
-					envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
-				}),
-			]);
-
-			navigate({ to: "/settings/repositories" });
-		},
+	const repository = useQuery(api.repositories.get, {
+		id: repositoryId as Id<"repositories">,
 	});
 
-	if (
-		repositories === undefined ||
-		(repository && environments === undefined)
-	) {
+	if (repository === undefined) {
 		return (
 			<div className="p-6">
 				<p className="text-muted-foreground text-sm">Loading...</p>
@@ -67,13 +32,50 @@ function EditRepositoryPage() {
 		);
 	}
 
-	if (!(repository && environment)) {
-		return (
-			<div className="p-6">
-				<p className="text-destructive text-sm">Repository not found.</p>
-			</div>
-		);
-	}
+	return <EditRepositoryForm repository={repository} />;
+}
+
+function EditRepositoryForm({
+	repository,
+}: {
+	repository: NonNullable<
+		ReturnType<typeof useQuery<typeof api.repositories.get>>
+	>;
+}) {
+	const navigate = useNavigate();
+	const updateRepository = useMutation(api.repositories.update);
+
+	const [isMonorepo, setIsMonorepo] = useState(repository.services.length > 1);
+
+	const form = useForm({
+		defaultValues: {
+			installCommand: repository.installCommand ?? "",
+			services: repository.services.map((s) => ({
+				name: s.name,
+				devCommand: s.devCommand,
+				cwd: s.cwd,
+				envVars: s.envVars?.length ? s.envVars : [{ key: "", value: "" }],
+			})),
+		},
+		validators: {
+			onSubmit: repositoryConfigSchema,
+		},
+		onSubmit: async ({ value }) => {
+			const submitted = isMonorepo ? value.services : [value.services[0]];
+			const services = submitted.map((s) => ({
+				...s,
+				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
+			}));
+
+			await updateRepository({
+				id: repository._id,
+				installCommand: value.installCommand,
+				services,
+			});
+
+			navigate({ to: "/settings/repositories" });
+		},
+	});
 
 	return (
 		<form
@@ -90,7 +92,11 @@ function EditRepositoryPage() {
 				</p>
 			</div>
 
-			<RepositoryConfigFields form={form} />
+			<RepositoryConfigForm
+				form={form}
+				isMonorepo={isMonorepo}
+				onMonorepoChange={setIsMonorepo}
+			/>
 
 			<div className="flex justify-end">
 				<form.Subscribe selector={(state) => state.isSubmitting}>

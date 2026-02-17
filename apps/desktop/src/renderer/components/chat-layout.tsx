@@ -5,14 +5,13 @@ import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
 import { CopyInspectorUrl } from "@/components/copy-inspector-url";
 import { SpaceSelector } from "@/components/space-selector";
-import { TerminalPanel } from "@/components/terminal/terminal-panel";
+import { TerminalSidebar } from "@/components/terminal/terminal-sidebar";
 import { TerminalToggleButton } from "@/components/terminal/terminal-toggle-button";
 import {
-	ResizableHandle,
-	ResizablePanel,
-	ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+	SidebarInset,
+	SidebarProvider,
+	SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { useTerminalStore } from "@/stores/terminal-store";
 
 export function ChatLayout() {
@@ -30,8 +29,7 @@ export function ChatLayout() {
 	const sandboxId = session?.space.sandboxId ?? null;
 	const sandboxUrl = session?.space.sandboxUrl ?? null;
 	const isOpen = useTerminalStore((s) => s.isOpen);
-
-	const showTerminal = isOpen && sandboxId && sandboxUrl;
+	const setIsOpen = useTerminalStore((s) => s.setIsOpen);
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -40,25 +38,22 @@ export function ChatLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						{sandboxId && <TerminalToggleButton />}
+						{isNewChat && <SpaceSelector />}
 						{sandboxUrl && <CopyInspectorUrl sandboxUrl={sandboxUrl} />}
+						{sandboxId && <TerminalToggleButton />}
 					</div>
-					{isNewChat && <SpaceSelector />}
 				</header>
-				{showTerminal ? (
-					<ResizablePanelGroup orientation="vertical">
-						<ResizablePanel defaultSize="70%">
-							<Thread />
-						</ResizablePanel>
-						<ResizableHandle />
-						<ResizablePanel defaultSize="30%">
-							<TerminalPanel key={sandboxId} sandboxId={sandboxId} />
-						</ResizablePanel>
-					</ResizablePanelGroup>
-				) : (
-					<Thread />
-				)}
+				<Thread />
 			</SidebarInset>
+			{sandboxId && (
+				<SidebarProvider
+					className="w-auto overflow-hidden"
+					onOpenChange={setIsOpen}
+					open={isOpen}
+				>
+					<TerminalSidebar sandboxId={sandboxId} />
+				</SidebarProvider>
+			)}
 		</div>
 	);
 }

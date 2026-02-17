@@ -1,5 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@corporation/backend/convex/_generated/dataModel";
 import { Daytona, type Sandbox } from "@daytonaio/sdk";
 import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { ConvexHttpClient } from "convex/browser";
@@ -9,6 +9,7 @@ import {
 	bootSandboxAgent,
 	ensureSandboxAgentRunning,
 	getPreviewUrl,
+	writeServiceEnvFiles,
 } from "./lib/sandbox";
 
 type Space = FunctionReturnType<typeof api.spaces.getById>;
@@ -43,7 +44,8 @@ async function provisionSandbox(
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
 	snapshotName: string,
-	anthropicApiKey: string
+	anthropicApiKey: string,
+	services: Doc<"services">[]
 ): Promise<Sandbox> {
 	await convex.mutation(api.spaces.update, {
 		id: spaceId,
@@ -54,6 +56,7 @@ async function provisionSandbox(
 		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
 	});
 	await bootSandboxAgent(sandbox);
+	await writeServiceEnvFiles(sandbox, services);
 	return sandbox;
 }
 
@@ -64,6 +67,7 @@ async function resolveSandbox(
 	anthropicApiKey: string
 ): Promise<Sandbox> {
 	const { snapshotName } = space.environment.repository;
+	const { services } = space.environment;
 
 	if (!space.sandboxId) {
 		return await provisionSandbox(
@@ -71,7 +75,8 @@ async function resolveSandbox(
 			daytona,
 			space._id,
 			snapshotName,
-			anthropicApiKey
+			anthropicApiKey,
+			services
 		);
 	}
 
@@ -84,7 +89,8 @@ async function resolveSandbox(
 			daytona,
 			space._id,
 			snapshotName,
-			anthropicApiKey
+			anthropicApiKey,
+			services
 		);
 	}
 
@@ -111,7 +117,8 @@ async function resolveSandbox(
 		daytona,
 		space._id,
 		snapshotName,
-		anthropicApiKey
+		anthropicApiKey,
+		services
 	);
 }
 

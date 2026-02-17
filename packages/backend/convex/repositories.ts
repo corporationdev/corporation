@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { authedMutation, authedQuery } from "./functions";
 
 function requireOwnedRepository(
@@ -30,7 +30,19 @@ export const get = authedQuery({
 		if (!repo) {
 			throw new ConvexError("Repository not found");
 		}
-		return requireOwnedRepository(ctx.userId, repo);
+		requireOwnedRepository(ctx.userId, repo);
+
+		const environments = await ctx.db
+			.query("environments")
+			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+			.collect();
+
+		const services = await ctx.db
+			.query("services")
+			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+			.collect();
+
+		return { ...repo, environments, services };
 	},
 });
 
@@ -42,9 +54,15 @@ export const create = authedMutation({
 		defaultBranch: v.string(),
 		installCommand: v.string(),
 		snapshotName: v.string(),
-		devCommand: v.string(),
-		envVars: v.optional(
-			v.array(v.object({ key: v.string(), value: v.string() }))
+		services: v.array(
+			v.object({
+				name: v.string(),
+				devCommand: v.string(),
+				cwd: v.string(),
+				envVars: v.optional(
+					v.array(v.object({ key: v.string(), value: v.string() }))
+				),
+			})
 		),
 	},
 	handler: async (ctx, args) => {
@@ -73,11 +91,24 @@ export const create = authedMutation({
 			updatedAt: now,
 		});
 
+		const serviceIds: Id<"services">[] = [];
+		for (const service of args.services) {
+			const serviceId = await ctx.db.insert("services", {
+				repositoryId,
+				name: service.name,
+				devCommand: service.devCommand,
+				cwd: service.cwd,
+				envVars: service.envVars,
+				createdAt: now,
+				updatedAt: now,
+			});
+			serviceIds.push(serviceId);
+		}
+
 		await ctx.db.insert("environments", {
 			repositoryId,
 			name: "Default",
-			devCommand: args.devCommand,
-			envVars: args.envVars,
+			serviceIds,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -91,6 +122,23 @@ export const update = authedMutation({
 		id: v.id("repositories"),
 		installCommand: v.optional(v.string()),
 		snapshotName: v.optional(v.string()),
+		services: v.optional(
+			v.array(
+				v.object({
+					name: v.string(),
+					devCommand: v.string(),
+					cwd: v.string(),
+					envVars: v.optional(
+						v.array(v.object({ key: v.string(), value: v.string() }))
+					),
+				})
+			)
+		),
+		environment: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+			})
+		),
 	},
 	handler: async (ctx, args) => {
 		const repo = await ctx.db.get(args.id);
@@ -99,14 +147,63 @@ export const update = authedMutation({
 		}
 		requireOwnedRepository(ctx.userId, repo);
 
-		const { id, ...fields } = args;
-		const patch = Object.fromEntries(
-			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
-				([, v]) => v !== undefined
-			)
-		);
+		const now = Date.now();
 
-		await ctx.db.patch(id, patch);
+		// Update repository fields
+		const repoPatch: Record<string, unknown> = { updatedAt: now };
+		if (args.installCommand !== undefined) {
+			repoPatch.installCommand = args.installCommand;
+		}
+		if (args.snapshotName !== undefined) {
+			repoPatch.snapshotName = args.snapshotName;
+		}
+		await ctx.db.patch(args.id, repoPatch);
+
+		// Replace services if provided
+		let newServiceIds: Id<"services">[] | undefined;
+		if (args.services) {
+			const existingServices = await ctx.db
+				.query("services")
+				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+				.collect();
+
+			for (const service of existingServices) {
+				await ctx.db.delete(service._id);
+			}
+
+			newServiceIds = [];
+			for (const service of args.services) {
+				const serviceId = await ctx.db.insert("services", {
+					repositoryId: args.id,
+					name: service.name,
+					devCommand: service.devCommand,
+					cwd: service.cwd,
+					envVars: service.envVars,
+					createdAt: now,
+					updatedAt: now,
+				});
+				newServiceIds.push(serviceId);
+			}
+		}
+
+		// Update environments if services changed or environment fields provided
+		if (newServiceIds || args.environment) {
+			const environments = await ctx.db
+				.query("environments")
+				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+				.collect();
+
+			for (const env of environments) {
+				const envPatch: Record<string, unknown> = { updatedAt: now };
+				if (newServiceIds) {
+					envPatch.serviceIds = newServiceIds;
+				}
+				if (args.environment?.name !== undefined) {
+					envPatch.name = args.environment.name;
+				}
+				await ctx.db.patch(env._id, envPatch);
+			}
+		}
 	},
 });
 
@@ -128,6 +225,15 @@ const del = authedMutation({
 
 		for (const env of environments) {
 			await ctx.db.delete(env._id);
+		}
+
+		const services = await ctx.db
+			.query("services")
+			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+			.collect();
+
+		for (const service of services) {
+			await ctx.db.delete(service._id);
 		}
 
 		await ctx.db.delete(args.id);

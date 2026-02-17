@@ -1,4 +1,4 @@
-import { TerminalIcon } from "lucide-react";
+import { PanelRightIcon } from "lucide-react";
 import type { FC } from "react";
 import { Button } from "@/components/ui/button";
 import { useTerminalStore } from "@/stores/terminal-store";
@@ -14,7 +14,7 @@ export const TerminalToggleButton: FC = () => {
 			size="icon-sm"
 			variant="ghost"
 		>
-			<TerminalIcon className="size-3.5" />
+			<PanelRightIcon />
 		</Button>
 	);
 };

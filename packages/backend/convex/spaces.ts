@@ -65,11 +65,16 @@ export const getById = authedQuery({
 		}
 		const { environment, repository } = await requireOwnedSpace(ctx, space);
 
+		const services = (
+			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
+		).filter((s): s is Doc<"services"> => s !== null);
+
 		return {
 			...space,
 			environment: {
 				...environment,
 				repository,
+				services,
 			},
 		};
 	},

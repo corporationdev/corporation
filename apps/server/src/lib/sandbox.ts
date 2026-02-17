@@ -8,6 +8,8 @@ const PREVIEW_URL_EXPIRY_SECONDS = 86_400; // 24 hours
 
 const log = createLogger("sandbox");
 
+const NEEDS_QUOTING_RE = /[\s"'#]/;
+
 export async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
 	await sandbox.process.executeCommand(
 		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
@@ -70,4 +72,37 @@ export async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
 		PREVIEW_URL_EXPIRY_SECONDS
 	);
 	return result.url;
+}
+
+export async function writeServiceEnvFiles(
+	sandbox: Sandbox,
+	services: Array<{
+		cwd: string;
+		envVars?: Array<{ key: string; value: string }>;
+	}>
+): Promise<void> {
+	const files = services
+		.filter(
+			(s): s is typeof s & { envVars: Array<{ key: string; value: string }> } =>
+				s.envVars !== undefined && s.envVars.length > 0
+		)
+		.map((s) => {
+			const content = s.envVars
+				.map(({ key, value }) => {
+					if (NEEDS_QUOTING_RE.test(value)) {
+						return `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+					}
+					return `${key}=${value}`;
+				})
+				.join("\n");
+			const dir = s.cwd || ".";
+			return { source: Buffer.from(content), destination: `${dir}/.env` };
+		});
+
+	if (files.length === 0) {
+		return;
+	}
+
+	await sandbox.fs.uploadFiles(files);
+	log.debug({ sandboxId: sandbox.id, count: files.length }, "wrote .env files");
 }

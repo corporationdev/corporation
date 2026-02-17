@@ -12,7 +12,7 @@ import { useMutation, useQuery } from "convex/react";
 import { nanoid } from "nanoid";
 import { type ReactNode, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { useOptimisticTouchThreadMutation } from "@/hooks/agent-session-mutations";
+import { useOptimisticUpdateThreadMutation } from "@/hooks/agent-session-mutations";
 import { useThreadEventState } from "@/hooks/use-thread-event-state";
 import { apiClient } from "@/lib/api-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
@@ -97,7 +97,7 @@ function ConnectedThreadRuntime({
 	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
 	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
 	const resetPermissions = usePermissionStore((s) => s.reset);
-	const touchThread = useOptimisticTouchThreadMutation();
+	const updateThread = useOptimisticUpdateThreadMutation();
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
 	const createThread = useMutation(api.agentSessions.create);
 
@@ -227,7 +227,7 @@ function ConnectedThreadRuntime({
 				spaceId: session.spaceId,
 			});
 
-			await touchThread({ id: session._id });
+			await updateThread({ id: session._id, archivedAt: null });
 			await actor.connection?.postMessage(text, result.sandboxUrl);
 		},
 	});

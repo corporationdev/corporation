@@ -4,7 +4,11 @@ import { Check, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { RepositoryConfigFields } from "@/components/repository-config-fields";
+import {
+	RepositoryConfigForm,
+	repositoryConfigSchema,
+	type ServiceValues,
+} from "@/components/repository-config-form";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -31,21 +35,33 @@ function ConnectRepositoryPage() {
 
 	const [search, setSearch] = useState("");
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
+	const [isMonorepo, setIsMonorepo] = useState(false);
 
 	const form = useForm({
 		defaultValues: {
 			installCommand: "",
-			devCommand: "",
-			envVars: [] as { key: string; value: string }[],
+			services: [
+				{
+					name: "Main",
+					devCommand: "",
+					cwd: "",
+					envVars: [{ key: "", value: "" }],
+				},
+			] as ServiceValues[],
+		},
+		validators: {
+			onSubmit: repositoryConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
 			if (!selectedRepo) {
 				return;
 			}
 
-			const validEnvVars = value.envVars.filter(
-				(v) => v.key.trim() !== "" && v.value.trim() !== ""
-			);
+			const submitted = isMonorepo ? value.services : [value.services[0]];
+			const services = submitted.map((s) => ({
+				...s,
+				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
+			}));
 
 			const res = await apiClient.repositories.connect.$post({
 				json: {
@@ -53,9 +69,8 @@ function ConnectRepositoryPage() {
 					owner: selectedRepo.owner,
 					name: selectedRepo.name,
 					defaultBranch: selectedRepo.defaultBranch,
-					installCommand: value.installCommand.trim(),
-					devCommand: value.devCommand.trim(),
-					envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
+					installCommand: value.installCommand,
+					services,
 				},
 			});
 
@@ -150,7 +165,11 @@ function ConnectRepositoryPage() {
 
 			{selectedRepo && (
 				<>
-					<RepositoryConfigFields form={form} />
+					<RepositoryConfigForm
+						form={form}
+						isMonorepo={isMonorepo}
+						onMonorepoChange={setIsMonorepo}
+					/>
 
 					<div className="flex justify-end">
 						<form.Subscribe selector={(state) => state.isSubmitting}>

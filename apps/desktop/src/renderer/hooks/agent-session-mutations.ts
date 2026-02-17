@@ -34,7 +34,7 @@ export function useOptimisticUpdateThreadMutation() {
 }
 
 export function useOptimisticDeleteThreadMutation() {
-	const deleteThread = useMutation(api.agentSessions.remove);
+	const deleteThread = useMutation(api.agentSessions.delete);
 
 	return useMemo(
 		() =>
@@ -50,30 +50,5 @@ export function useOptimisticDeleteThreadMutation() {
 				localStore.setQuery(api.agentSessions.list, {}, nextSessions);
 			}),
 		[deleteThread]
-	);
-}
-
-export function useOptimisticTouchThreadMutation() {
-	const touchThread = useMutation(api.agentSessions.touch);
-
-	return useMemo(
-		() =>
-			touchThread.withOptimisticUpdate((localStore, args) => {
-				const currentSessions = localStore.getQuery(api.agentSessions.list, {});
-				if (!currentSessions) {
-					return;
-				}
-
-				const updatedAt = Date.now();
-				const nextSessions = [...currentSessions]
-					.map((session) =>
-						session._id === args.id
-							? { ...session, archivedAt: null, updatedAt }
-							: session
-					)
-					.sort((a, b) => b.updatedAt - a.updatedAt);
-				localStore.setQuery(api.agentSessions.list, {}, nextSessions);
-			}),
-		[touchThread]
 	);
 }
