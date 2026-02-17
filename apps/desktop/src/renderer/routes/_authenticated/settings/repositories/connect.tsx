@@ -57,7 +57,8 @@ function ConnectRepositoryPage() {
 				return;
 			}
 
-			const services = value.services.map((s) => ({
+			const submitted = isMonorepo ? value.services : [value.services[0]];
+			const services = submitted.map((s) => ({
 				...s,
 				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
 			}));

@@ -48,6 +48,15 @@ export const update = authedMutation({
 		}
 		await requireOwnedEnvironment(ctx, environment);
 
+		if (args.serviceIds) {
+			for (const serviceId of args.serviceIds) {
+				const service = await ctx.db.get(serviceId);
+				if (!service || service.repositoryId !== environment.repositoryId) {
+					throw new ConvexError("Invalid service ID");
+				}
+			}
+		}
+
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
 			Object.entries({ ...fields, updatedAt: Date.now() }).filter(

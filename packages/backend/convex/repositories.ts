@@ -160,6 +160,7 @@ export const update = authedMutation({
 		await ctx.db.patch(args.id, repoPatch);
 
 		// Replace services if provided
+		let newServiceIds: Id<"services">[] | undefined;
 		if (args.services) {
 			const existingServices = await ctx.db
 				.query("services")
@@ -170,7 +171,7 @@ export const update = authedMutation({
 				await ctx.db.delete(service._id);
 			}
 
-			const serviceIds: Id<"services">[] = [];
+			newServiceIds = [];
 			for (const service of args.services) {
 				const serviceId = await ctx.db.insert("services", {
 					repositoryId: args.id,
@@ -181,33 +182,25 @@ export const update = authedMutation({
 					createdAt: now,
 					updatedAt: now,
 				});
-				serviceIds.push(serviceId);
-			}
-
-			// Update environment serviceIds
-			const environments = await ctx.db
-				.query("environments")
-				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
-				.collect();
-
-			for (const env of environments) {
-				await ctx.db.patch(env._id, { serviceIds, updatedAt: now });
+				newServiceIds.push(serviceId);
 			}
 		}
 
-		// Update environment fields if provided
-		if (args.environment) {
+		// Update environments if services changed or environment fields provided
+		if (newServiceIds || args.environment) {
 			const environments = await ctx.db
 				.query("environments")
 				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
 				.collect();
 
-			const envPatch: Record<string, unknown> = { updatedAt: now };
-			if (args.environment.name !== undefined) {
-				envPatch.name = args.environment.name;
-			}
-
 			for (const env of environments) {
+				const envPatch: Record<string, unknown> = { updatedAt: now };
+				if (newServiceIds) {
+					envPatch.serviceIds = newServiceIds;
+				}
+				if (args.environment?.name !== undefined) {
+					envPatch.name = args.environment.name;
+				}
 				await ctx.db.patch(env._id, envPatch);
 			}
 		}

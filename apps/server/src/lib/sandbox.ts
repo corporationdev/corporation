@@ -8,6 +8,8 @@ const PREVIEW_URL_EXPIRY_SECONDS = 86_400; // 24 hours
 
 const log = createLogger("sandbox");
 
+const NEEDS_QUOTING_RE = /[\s"'#]/;
+
 export async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
 	await sandbox.process.executeCommand(
 		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
@@ -86,7 +88,12 @@ export async function writeServiceEnvFiles(
 		)
 		.map((s) => {
 			const content = s.envVars
-				.map(({ key, value }) => `${key}=${value}`)
+				.map(({ key, value }) => {
+					if (NEEDS_QUOTING_RE.test(value)) {
+						return `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+					}
+					return `${key}=${value}`;
+				})
 				.join("\n");
 			const dir = s.cwd || ".";
 			return { source: Buffer.from(content), destination: `${dir}/.env` };
