@@ -29,7 +29,7 @@ export default defineSchema(
 			repositoryId: v.id("repositories"),
 			name: v.string(),
 			devCommand: v.string(),
-			cwd: v.optional(v.string()),
+			cwd: v.string(),
 			envVars: v.optional(
 				v.array(v.object({ key: v.string(), value: v.string() }))
 			),

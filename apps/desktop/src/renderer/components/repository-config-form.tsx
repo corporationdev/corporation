@@ -1,6 +1,8 @@
 import { Plus, Trash2 } from "lucide-react";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Field,
 	FieldError,
@@ -8,13 +10,26 @@ import {
 	FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
-export type ServiceValues = {
-	name: string;
-	devCommand: string;
-	cwd: string;
-	envVars: { key: string; value: string }[];
-};
+const serviceSchema = z.object({
+	name: z.string().min(1, "Service name is required"),
+	devCommand: z.string().min(1, "Dev command is required"),
+	cwd: z.string(),
+	envVars: z.array(
+		z.object({
+			key: z.string().min(1, "Key is required"),
+			value: z.string().min(1, "Value is required"),
+		})
+	),
+});
+
+export const repositoryConfigSchema = z.object({
+	installCommand: z.string().min(1, "Install command is required"),
+	services: z.array(serviceSchema).min(1, "At least one service is required"),
+});
+
+export type ServiceValues = z.infer<typeof serviceSchema>;
 
 type FieldState = {
 	name: string;
@@ -30,7 +45,7 @@ type FieldState = {
 	handleChange: (value: string) => void;
 };
 
-type ArrayFieldState = {
+type EnvVarArrayFieldState = {
 	state: {
 		value: { key: string; value: string }[];
 	};
@@ -38,7 +53,22 @@ type ArrayFieldState = {
 	removeValue: (index: number) => void;
 };
 
-export function ServiceConfigFields({
+type ServicesArrayFieldState = {
+	state: {
+		value: ServiceValues[];
+	};
+	pushValue: (val: ServiceValues) => void;
+	removeValue: (index: number) => void;
+};
+
+const emptyService: ServiceValues = {
+	name: "",
+	devCommand: "",
+	cwd: "",
+	envVars: [],
+};
+
+function ServiceConfigFields({
 	form,
 	prefix,
 	showName = true,
@@ -48,7 +78,7 @@ export function ServiceConfigFields({
 	prefix: string;
 	showName?: boolean;
 }) {
-	const fieldName = (name: string) => (prefix ? `${prefix}.${name}` : name);
+	const fieldName = (name: string) => `${prefix}.${name}`;
 
 	return (
 		<FieldGroup>
@@ -121,7 +151,7 @@ export function ServiceConfigFields({
 			</form.Field>
 
 			<form.Field mode="array" name={fieldName("envVars")}>
-				{(field: ArrayFieldState) => (
+				{(field: EnvVarArrayFieldState) => (
 					<div className="flex flex-col gap-2">
 						<div className="flex items-center justify-between">
 							<FieldLabel>Environment Variables</FieldLabel>
@@ -190,5 +220,101 @@ export function ServiceConfigFields({
 				)}
 			</form.Field>
 		</FieldGroup>
+	);
+}
+
+export function RepositoryConfigForm({
+	form,
+	isMonorepo,
+	onMonorepoChange,
+}: {
+	// biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
+	form: any;
+	isMonorepo: boolean;
+	onMonorepoChange: (value: boolean) => void;
+}) {
+	return (
+		<>
+			<Field>
+				<FieldLabel htmlFor="installCommand">Install Command</FieldLabel>
+				<form.Field name="installCommand">
+					{(field: {
+						name: string;
+						state: { value: string };
+						handleBlur: () => void;
+						handleChange: (value: string) => void;
+					}) => (
+						<Input
+							id={field.name}
+							name={field.name}
+							onBlur={field.handleBlur}
+							onChange={(e) => field.handleChange(e.target.value)}
+							placeholder="e.g. npm install"
+							value={field.state.value}
+						/>
+					)}
+				</form.Field>
+			</Field>
+
+			<Label>
+				<Checkbox
+					checked={isMonorepo}
+					onCheckedChange={(checked) => onMonorepoChange(checked === true)}
+				/>
+				This is a monorepo
+			</Label>
+
+			{isMonorepo ? (
+				<form.Field mode="array" name="services">
+					{(servicesField: ServicesArrayFieldState) => (
+						<div className="flex flex-col gap-4">
+							<div className="flex items-center justify-between">
+								<FieldLabel>Services</FieldLabel>
+								<Button
+									onClick={() => servicesField.pushValue({ ...emptyService })}
+									size="xs"
+									type="button"
+									variant="ghost"
+								>
+									<Plus className="size-3" />
+									Add Service
+								</Button>
+							</div>
+							{servicesField.state.value.map(
+								(_: ServiceValues, index: number) => (
+									<div
+										className="relative flex flex-col gap-3 border p-4"
+										key={`service-${index.toString()}`}
+									>
+										{servicesField.state.value.length > 1 && (
+											<Button
+												className="absolute top-2 right-2"
+												onClick={() => servicesField.removeValue(index)}
+												size="icon-sm"
+												type="button"
+												variant="ghost"
+											>
+												<Trash2 className="size-3.5" />
+											</Button>
+										)}
+										<ServiceConfigFields
+											form={form}
+											prefix={`services[${index}]`}
+											showName
+										/>
+									</div>
+								)
+							)}
+						</div>
+					)}
+				</form.Field>
+			) : (
+				<ServiceConfigFields
+					form={form}
+					prefix="services[0]"
+					showName={false}
+				/>
+			)}
+		</>
 	);
 }

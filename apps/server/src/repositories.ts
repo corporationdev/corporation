@@ -97,7 +97,7 @@ const connectRoute = createRoute({
 							z.object({
 								name: z.string(),
 								devCommand: z.string(),
-								cwd: z.string().optional(),
+								cwd: z.string(),
 								envVars: z
 									.array(z.object({ key: z.string(), value: z.string() }))
 									.optional(),

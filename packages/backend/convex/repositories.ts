@@ -58,7 +58,7 @@ export const create = authedMutation({
 			v.object({
 				name: v.string(),
 				devCommand: v.string(),
-				cwd: v.optional(v.string()),
+				cwd: v.string(),
 				envVars: v.optional(
 					v.array(v.object({ key: v.string(), value: v.string() }))
 				),
@@ -122,6 +122,23 @@ export const update = authedMutation({
 		id: v.id("repositories"),
 		installCommand: v.optional(v.string()),
 		snapshotName: v.optional(v.string()),
+		services: v.optional(
+			v.array(
+				v.object({
+					name: v.string(),
+					devCommand: v.string(),
+					cwd: v.string(),
+					envVars: v.optional(
+						v.array(v.object({ key: v.string(), value: v.string() }))
+					),
+				})
+			)
+		),
+		environment: v.optional(
+			v.object({
+				name: v.optional(v.string()),
+			})
+		),
 	},
 	handler: async (ctx, args) => {
 		const repo = await ctx.db.get(args.id);
@@ -130,14 +147,70 @@ export const update = authedMutation({
 		}
 		requireOwnedRepository(ctx.userId, repo);
 
-		const { id, ...fields } = args;
-		const patch = Object.fromEntries(
-			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
-				([, v]) => v !== undefined
-			)
-		);
+		const now = Date.now();
 
-		await ctx.db.patch(id, patch);
+		// Update repository fields
+		const repoPatch: Record<string, unknown> = { updatedAt: now };
+		if (args.installCommand !== undefined) {
+			repoPatch.installCommand = args.installCommand;
+		}
+		if (args.snapshotName !== undefined) {
+			repoPatch.snapshotName = args.snapshotName;
+		}
+		await ctx.db.patch(args.id, repoPatch);
+
+		// Replace services if provided
+		if (args.services) {
+			const existingServices = await ctx.db
+				.query("services")
+				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+				.collect();
+
+			for (const service of existingServices) {
+				await ctx.db.delete(service._id);
+			}
+
+			const serviceIds: Id<"services">[] = [];
+			for (const service of args.services) {
+				const serviceId = await ctx.db.insert("services", {
+					repositoryId: args.id,
+					name: service.name,
+					devCommand: service.devCommand,
+					cwd: service.cwd,
+					envVars: service.envVars,
+					createdAt: now,
+					updatedAt: now,
+				});
+				serviceIds.push(serviceId);
+			}
+
+			// Update environment serviceIds
+			const environments = await ctx.db
+				.query("environments")
+				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+				.collect();
+
+			for (const env of environments) {
+				await ctx.db.patch(env._id, { serviceIds, updatedAt: now });
+			}
+		}
+
+		// Update environment fields if provided
+		if (args.environment) {
+			const environments = await ctx.db
+				.query("environments")
+				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+				.collect();
+
+			const envPatch: Record<string, unknown> = { updatedAt: now };
+			if (args.environment.name !== undefined) {
+				envPatch.name = args.environment.name;
+			}
+
+			for (const env of environments) {
+				await ctx.db.patch(env._id, envPatch);
+			}
+		}
 	},
 });
 

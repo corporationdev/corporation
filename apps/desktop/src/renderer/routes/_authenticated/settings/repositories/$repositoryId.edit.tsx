@@ -3,8 +3,13 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useConvex, useQuery } from "convex/react";
-import { ServiceConfigFields } from "@/components/repository-config-fields";
+import { useMutation, useQuery } from "convex/react";
+import { useState } from "react";
+
+import {
+	RepositoryConfigForm,
+	repositoryConfigSchema,
+} from "@/components/repository-config-form";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute(
@@ -15,46 +20,8 @@ export const Route = createFileRoute(
 
 function EditRepositoryPage() {
 	const { repositoryId } = Route.useParams();
-	const navigate = useNavigate();
-	const convex = useConvex();
 	const repository = useQuery(api.repositories.get, {
 		id: repositoryId as Id<"repositories">,
-	});
-	const service = repository?.services[0];
-
-	const form = useForm({
-		defaultValues: {
-			installCommand: repository?.installCommand ?? "",
-			name: service?.name ?? "Main",
-			devCommand: service?.devCommand ?? "",
-			cwd: service?.cwd ?? "",
-			envVars: service?.envVars ?? ([] as { key: string; value: string }[]),
-		},
-		onSubmit: async ({ value }) => {
-			if (!(repository && service)) {
-				return;
-			}
-
-			const validEnvVars = value.envVars.filter(
-				(v) => v.key.trim() !== "" && v.value.trim() !== ""
-			);
-
-			await Promise.all([
-				convex.mutation(api.repositories.update, {
-					id: repository._id,
-					installCommand: value.installCommand.trim(),
-				}),
-				convex.mutation(api.services.update, {
-					id: service._id,
-					name: value.name.trim() || "Main",
-					devCommand: value.devCommand.trim(),
-					cwd: value.cwd.trim() || undefined,
-					envVars: validEnvVars.length > 0 ? validEnvVars : undefined,
-				}),
-			]);
-
-			navigate({ to: "/settings/repositories" });
-		},
 	});
 
 	if (repository === undefined) {
@@ -65,13 +32,44 @@ function EditRepositoryPage() {
 		);
 	}
 
-	if (!service) {
-		return (
-			<div className="p-6">
-				<p className="text-destructive text-sm">Repository not found.</p>
-			</div>
-		);
-	}
+	return <EditRepositoryForm repository={repository} />;
+}
+
+function EditRepositoryForm({
+	repository,
+}: {
+	repository: NonNullable<
+		ReturnType<typeof useQuery<typeof api.repositories.get>>
+	>;
+}) {
+	const navigate = useNavigate();
+	const updateRepository = useMutation(api.repositories.update);
+
+	const [isMonorepo, setIsMonorepo] = useState(repository.services.length > 1);
+
+	const form = useForm({
+		defaultValues: {
+			installCommand: repository.installCommand ?? "",
+			services: repository.services.map((s) => ({
+				name: s.name,
+				devCommand: s.devCommand,
+				cwd: s.cwd,
+				envVars: s.envVars ?? [],
+			})),
+		},
+		validators: {
+			onSubmit: repositoryConfigSchema,
+		},
+		onSubmit: async ({ value }) => {
+			await updateRepository({
+				id: repository._id,
+				installCommand: value.installCommand,
+				services: value.services,
+			});
+
+			navigate({ to: "/settings/repositories" });
+		},
+	});
 
 	return (
 		<form
@@ -88,7 +86,11 @@ function EditRepositoryPage() {
 				</p>
 			</div>
 
-			<ServiceConfigFields form={form} prefix="" showName={false} />
+			<RepositoryConfigForm
+				form={form}
+				isMonorepo={isMonorepo}
+				onMonorepoChange={setIsMonorepo}
+			/>
 
 			<div className="flex justify-end">
 				<form.Subscribe selector={(state) => state.isSubmitting}>
