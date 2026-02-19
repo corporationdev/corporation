@@ -17,7 +17,7 @@
       "hono": "^4.8.2",
       "agents": "^0.3.9",
       "sandbox-agent": "^0.1.9",
-      "@daytonaio/sdk": "^0.132.0",
+      "@daytonaio/sdk": "^0.143.0",
       "alchemy": "^0.82.1",
       "convex-helpers": "^0.1.111",
       "effect": "3.19.16",

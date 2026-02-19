@@ -1,5 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Doc, Id } from "@corporation/backend/convex/_generated/dataModel";
+import { createLogger } from "@corporation/logger";
 import { Daytona, type Sandbox } from "@daytonaio/sdk";
 import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { ConvexHttpClient } from "convex/browser";
@@ -7,7 +8,9 @@ import type { FunctionReturnType } from "convex/server";
 import { type AuthVariables, authMiddleware } from "./auth";
 import {
 	bootSandboxAgent,
+	ensureComputerUseRunning,
 	ensureSandboxAgentRunning,
+	getDesktopPreviewUrl,
 	getPreviewUrl,
 	writeServiceEnvFiles,
 } from "./lib/sandbox";
@@ -18,6 +21,8 @@ type SpacesEnv = {
 	Bindings: Env;
 	Variables: AuthVariables;
 };
+
+const log = createLogger("spaces");
 
 const ErrorResponseSchema = z.object({
 	error: z.string().openapi({ description: "Error message" }),
@@ -133,6 +138,16 @@ async function ensureSandbox(
 	});
 
 	const sandbox = await resolveSandbox(convex, daytona, space, anthropicApiKey);
+	await ensureComputerUseRunning(sandbox);
+	const desktopPreviewUrl = await getDesktopPreviewUrl(sandbox);
+	log.info(
+		{
+			spaceId: space._id,
+			sandboxId: sandbox.id,
+			desktopPreviewUrl,
+		},
+		"desktop preview url ready"
+	);
 
 	const sandboxUrl = await getPreviewUrl(sandbox);
 
@@ -240,6 +255,14 @@ export const spacesApp = $(
 
 			return c.json(result, 200);
 		} catch (error) {
+			log.error(
+				{
+					spaceId,
+					err: error,
+				},
+				"failed to ensure sandbox"
+			);
+
 			if (spaceId) {
 				try {
 					await convex.mutation(api.spaces.update, {
