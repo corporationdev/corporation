@@ -1,7 +1,7 @@
 import { createLogger } from "@corporation/logger";
 import type { Sandbox } from "@daytonaio/sdk";
 
-const PORT = 3000;
+const SANDBOX_AGENT_PORT = 5799;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 const PREVIEW_URL_EXPIRY_SECONDS = 86_400; // 24 hours
@@ -12,7 +12,7 @@ const NEEDS_QUOTING_RE = /[\s"'#]/;
 
 export async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
 	await sandbox.process.executeCommand(
-		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${PORT} >/tmp/sandbox-agent.log 2>&1 &`
+		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >/tmp/sandbox-agent.log 2>&1 &`
 	);
 	await waitForServerReady(sandbox);
 	log.debug({ sandboxId: sandbox.id }, "sandbox-agent server ready");
@@ -24,7 +24,7 @@ async function waitForServerReady(sandbox: Sandbox): Promise<void> {
 	while (Date.now() < deadline) {
 		try {
 			const result = await sandbox.process.executeCommand(
-				`curl -sf http://localhost:${PORT}/v1/health`
+				`curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
 			);
 			if (result.exitCode === 0) {
 				return;
@@ -43,7 +43,7 @@ async function waitForServerReady(sandbox: Sandbox): Promise<void> {
 async function isSandboxAgentHealthy(sandbox: Sandbox): Promise<boolean> {
 	try {
 		const result = await sandbox.process.executeCommand(
-			`curl -sf --max-time 1 http://localhost:${PORT}/v1/health`
+			`curl -sf --max-time 1 http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
 		);
 		return result.exitCode === 0;
 	} catch {
@@ -68,7 +68,7 @@ export async function ensureSandboxAgentRunning(
 
 export async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
 	const result = await sandbox.getSignedPreviewUrl(
-		PORT,
+		SANDBOX_AGENT_PORT,
 		PREVIEW_URL_EXPIRY_SECONDS
 	);
 	return result.url;
