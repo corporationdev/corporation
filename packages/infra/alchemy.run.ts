@@ -2,11 +2,13 @@ import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
 	KVNamespace,
+	Vite,
 	Worker,
 } from "alchemy/cloudflare";
 import { config } from "dotenv";
 
 config({ path: "../../apps/server/.env" });
+config({ path: "../../apps/web/.env" });
 
 const app = await alchemy("corporation");
 
@@ -36,5 +38,15 @@ export const server = await Worker("agent-server", {
 });
 
 console.log(`Agent server -> ${server.url}`);
+
+export const web = await Vite("web", {
+	cwd: "../../apps/web",
+	assets: "dist",
+	bindings: {
+		VITE_SERVER_URL: alchemy.env.VITE_SERVER_URL ?? "",
+	},
+});
+
+console.log(`Web    -> ${web.url}`);
 
 await app.finalize();

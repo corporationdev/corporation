@@ -18,7 +18,6 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
-import { clearCachedAuthSession } from "@/lib/auth-session-cache";
 
 export function NavUser({ user }: { user: User }) {
 	const { isMobile } = useSidebar();
@@ -29,7 +28,7 @@ export function NavUser({ user }: { user: User }) {
 			<SidebarMenuItem>
 				<DropdownMenu>
 					<SidebarMenuButton
-						className="data-[popup-open]:bg-sidebar-accent data-[popup-open]:text-sidebar-accent-foreground"
+						className="data-popup-open:bg-sidebar-accent data-popup-open:text-sidebar-accent-foreground"
 						render={<DropdownMenuTrigger />}
 						size="lg"
 					>
@@ -83,7 +82,6 @@ export function NavUser({ user }: { user: User }) {
 								authClient.signOut({
 									fetchOptions: {
 										onSuccess: () => {
-											clearCachedAuthSession();
 											navigate({ to: "/" });
 										},
 									},

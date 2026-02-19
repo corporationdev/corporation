@@ -1,11 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PermissionEventData, UniversalEvent } from "sandbox-agent";
-import {
-	appendEventsToCache,
-	getCachedEvents,
-} from "@/lib/cache/cached-events";
 import { type ItemState, processEvent } from "@/lib/convert-events";
 
 type ThreadState = {
@@ -30,7 +25,6 @@ type ThreadEventActor = {
 };
 
 export function useThreadEventState({
-	slug,
 	actor,
 	onPermissionEvent,
 }: {
@@ -48,8 +42,7 @@ export function useThreadEventState({
 	});
 
 	const applyEvents = useCallback(
-		(events: UniversalEvent[], persist: boolean) => {
-			const newEvents: UniversalEvent[] = [];
+		(events: UniversalEvent[]) => {
 			let lastResult: ThreadState | null = null;
 
 			for (const event of events) {
@@ -63,64 +56,31 @@ export function useThreadEventState({
 					onPermissionEvent
 				);
 				lastSequenceRef.current = event.sequence;
-				newEvents.push(event);
 			}
 
 			if (lastResult) {
 				setThreadState(lastResult);
 			}
-
-			if (persist && newEvents.length > 0) {
-				appendEventsToCache(slug, newEvents).catch(() => {
-					// Ignore write failures; cache will be refreshed on next transcript sync.
-				});
-			}
 		},
-		[onPermissionEvent, slug]
+		[onPermissionEvent]
 	);
 
-	const cachedEventsQuery = useTanstackQuery({
-		queryKey: ["thread-events-cache", slug] as const,
-		queryFn: async () => await getCachedEvents(slug),
-		retry: false,
-		staleTime: Number.POSITIVE_INFINITY,
-	});
-
+	// On connect, fetch all events then flush any buffered real-time events
 	useEffect(() => {
-		if (!cachedEventsQuery.data) {
-			return;
-		}
-		applyEvents(cachedEventsQuery.data, false);
-	}, [applyEvents, cachedEventsQuery.data]);
-
-	// On connect, fetch missed events then flush any buffered real-time events
-	useEffect(() => {
-		if (
-			!cachedEventsQuery.isFetched ||
-			actor.connStatus !== "connected" ||
-			!actor.connection
-		) {
+		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
 
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 
-		actor.connection
-			.getTranscript(lastSequenceRef.current)
-			.then((missedEvents) => {
-				applyEvents(missedEvents as UniversalEvent[], true);
-				// Flush buffered real-time events, skipping duplicates
-				applyEvents(bufferRef.current, true);
-				bufferRef.current = [];
-				caughtUpRef.current = true;
-			});
-	}, [
-		actor.connStatus,
-		actor.connection,
-		applyEvents,
-		cachedEventsQuery.isFetched,
-	]);
+		actor.connection.getTranscript(0).then((events) => {
+			applyEvents(events as UniversalEvent[]);
+			applyEvents(bufferRef.current);
+			bufferRef.current = [];
+			caughtUpRef.current = true;
+		});
+	}, [actor.connStatus, actor.connection, applyEvents]);
 
 	// Real-time events — buffer during catch-up, process directly after
 	actor.useEvent("agentEvent", (event) => {
@@ -129,7 +89,7 @@ export function useThreadEventState({
 			bufferRef.current.push(typed);
 			return;
 		}
-		applyEvents([typed], true);
+		applyEvents([typed]);
 	});
 
 	return threadState;

@@ -1,18 +1,1 @@
-import { contextBridge, ipcRenderer } from "electron";
-import type { LocalCacheApi } from "../shared/ipc-api";
-
-const localCache: LocalCacheApi = {
-	sessions: {
-		getAll: () => ipcRenderer.invoke("cache:sessions:getAll"),
-		replaceAll: (sessions) =>
-			ipcRenderer.invoke("cache:sessions:replaceAll", sessions),
-	},
-	events: {
-		getForSession: (sessionId) =>
-			ipcRenderer.invoke("cache:events:getForSession", sessionId),
-		appendMany: (events) =>
-			ipcRenderer.invoke("cache:events:appendMany", events),
-	},
-};
-
-contextBridge.exposeInMainWorld("localCache", localCache);
+// Preload script — placeholder for future IPC bridges.

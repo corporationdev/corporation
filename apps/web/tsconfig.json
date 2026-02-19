@@ -8,7 +8,7 @@
     "moduleResolution": "Bundler",
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": ["vite/client", "@cloudflare/workers-types"],
+    "types": ["vite/client"],
     "rootDirs": ["."],
     "baseUrl": ".",
     "paths": {
