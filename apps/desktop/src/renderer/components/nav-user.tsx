@@ -18,7 +18,6 @@ import {
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
-import { clearCachedAuthSession } from "@/lib/auth-session-cache";
 
 export function NavUser({ user }: { user: User }) {
 	const { isMobile } = useSidebar();
@@ -83,7 +82,6 @@ export function NavUser({ user }: { user: User }) {
 								authClient.signOut({
 									fetchOptions: {
 										onSuccess: () => {
-											clearCachedAuthSession();
 											navigate({ to: "/" });
 										},
 									},
