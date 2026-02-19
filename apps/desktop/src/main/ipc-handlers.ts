@@ -1,5 +1,5 @@
+import type { CachedEventRecord } from "@corporation/app/cache-adapter";
 import { ipcMain } from "electron";
-import type { CachedEventRecord } from "../shared/ipc-api";
 import { getDb } from "./db/index";
 import { migrate } from "./db/migrate";
 import { appendManyEvents, getEventsForSession } from "./db/operations";

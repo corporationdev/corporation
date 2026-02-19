@@ -1,7 +1,7 @@
+import type { CacheAdapter } from "@corporation/app/cache-adapter";
 import { contextBridge, ipcRenderer } from "electron";
-import type { LocalCacheApi } from "../shared/ipc-api";
 
-const localCache: LocalCacheApi = {
+const localCache: CacheAdapter = {
 	events: {
 		getForSession: (sessionId) =>
 			ipcRenderer.invoke("cache:events:getForSession", sessionId),

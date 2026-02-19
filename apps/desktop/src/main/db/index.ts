@@ -1,15 +1,15 @@
 import path from "node:path";
+import { cacheSchema } from "@corporation/app/cache-schema";
 import Database from "better-sqlite3";
 import {
 	type BetterSQLite3Database,
 	drizzle,
 } from "drizzle-orm/better-sqlite3";
 import { app } from "electron";
-import { dbSchema } from "./schema";
 
 type AppDb = {
 	sqlite: Database.Database;
-	orm: BetterSQLite3Database<typeof dbSchema>;
+	orm: BetterSQLite3Database<typeof cacheSchema>;
 };
 
 let db: AppDb | null = null;
@@ -19,7 +19,7 @@ function createDb(): AppDb {
 	const sqlite = new Database(dbPath);
 	sqlite.pragma("journal_mode = WAL");
 	sqlite.pragma("synchronous = NORMAL");
-	const orm = drizzle(sqlite, { schema: dbSchema });
+	const orm = drizzle(sqlite, { schema: cacheSchema });
 	return { sqlite, orm };
 }
 

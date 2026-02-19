@@ -1,7 +1,7 @@
+import type { CachedEventRecord } from "@corporation/app/cache-adapter";
+import { sessionEvents } from "@corporation/app/cache-schema";
 import { eq } from "drizzle-orm";
-import type { CachedEventRecord } from "../../shared/ipc-api";
 import type { AppDb } from "./index";
-import { sessionEvents } from "./schema";
 
 export function getEventsForSession(
 	db: AppDb,

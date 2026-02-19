@@ -35,6 +35,7 @@
     "check-types": "turbo check-types",
     "dev:native": "turbo -F native dev",
     "dev:desktop": "turbo -F desktop dev",
+    "dev:web": "turbo -F web dev",
     "dev:server": "turbo -F @corporation/backend dev",
     "dev:agent": "turbo -F @corporation/infra dev",
     "dev:setup": "turbo -F @corporation/backend dev:setup",

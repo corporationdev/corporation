@@ -7,6 +7,7 @@ import {
 	getCachedEvents,
 } from "@/lib/cache/cached-events";
 import { type ItemState, processEvent } from "@/lib/convert-events";
+import { useCache } from "@/stores/adapter-store";
 
 type ThreadState = {
 	messages: ThreadMessageLike[];
@@ -38,6 +39,7 @@ export function useThreadEventState({
 	actor: ThreadEventActor;
 	onPermissionEvent: OnPermissionEvent;
 }): ThreadState {
+	const cache = useCache();
 	const itemStatesRef = useRef(new Map<string, ItemState>());
 	const lastSequenceRef = useRef(0);
 	const caughtUpRef = useRef(false);
@@ -71,17 +73,17 @@ export function useThreadEventState({
 			}
 
 			if (persist && newEvents.length > 0) {
-				appendEventsToCache(slug, newEvents).catch(() => {
+				appendEventsToCache(cache, slug, newEvents).catch(() => {
 					// Ignore write failures; cache will be refreshed on next transcript sync.
 				});
 			}
 		},
-		[onPermissionEvent, slug]
+		[cache, onPermissionEvent, slug]
 	);
 
 	const cachedEventsQuery = useTanstackQuery({
 		queryKey: ["thread-events-cache", slug] as const,
-		queryFn: async () => await getCachedEvents(slug),
+		queryFn: async () => await getCachedEvents(cache, slug),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});

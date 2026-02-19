@@ -16,8 +16,6 @@ export const sessionEvents = sqliteTable(
 	(table) => [primaryKey({ columns: [table.sessionId, table.sequence] })]
 );
 
-export const dbSchema = {
-	sessionEvents,
-} as const;
+export const cacheSchema = { sessionEvents } as const;
 
 export type SessionEventRow = typeof sessionEvents.$inferSelect;

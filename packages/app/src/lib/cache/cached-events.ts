@@ -1,5 +1,5 @@
 import type { UniversalEvent } from "sandbox-agent";
-import type { CachedEventRecord } from "../../../shared/ipc-api";
+import type { CacheAdapter, CachedEventRecord } from "./adapter";
 
 function toCachedEventRecord(
 	slug: string,
@@ -13,8 +13,11 @@ function toCachedEventRecord(
 	};
 }
 
-export async function getCachedEvents(slug: string): Promise<UniversalEvent[]> {
-	const rows = await window.localCache.events.getForSession(slug);
+export async function getCachedEvents(
+	cache: CacheAdapter,
+	slug: string
+): Promise<UniversalEvent[]> {
+	const rows = await cache.events.getForSession(slug);
 	const parsedEvents: UniversalEvent[] = [];
 
 	for (const row of rows) {
@@ -30,13 +33,14 @@ export async function getCachedEvents(slug: string): Promise<UniversalEvent[]> {
 }
 
 export async function appendEventsToCache(
+	cache: CacheAdapter,
 	slug: string,
 	events: UniversalEvent[]
 ): Promise<void> {
 	if (events.length === 0) {
 		return;
 	}
-	await window.localCache.events.appendMany(
+	await cache.events.appendMany(
 		events.map((event) => toCachedEventRecord(slug, event))
 	);
 }
