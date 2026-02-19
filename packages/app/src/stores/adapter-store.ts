@@ -1,9 +1,8 @@
 import { create } from "zustand";
-import type { CacheAdapter } from "@/lib/cache/adapter";
 
-export type PlatformAdapters = {
-	cache: CacheAdapter;
-};
+// Extend this type as platform adapters are added (e.g. cache, webPreview, etc.)
+// biome-ignore lint/complexity/noBannedTypes: empty placeholder until adapters are added
+export type PlatformAdapters = {};
 
 type AdapterStore = {
 	adapters: PlatformAdapters | null;
@@ -27,8 +26,4 @@ export function useAdapters(): PlatformAdapters {
 		);
 	}
 	return adapters;
-}
-
-export function useCache(): CacheAdapter {
-	return useAdapters().cache;
 }

@@ -35,7 +35,6 @@ declare module "@tanstack/react-router" {
 	}
 }
 
-export type { CacheAdapter } from "@/lib/cache/adapter";
 export type { PlatformAdapters } from "@/stores/adapter-store";
 
 export function App({

@@ -39,7 +39,6 @@
     "dev:server": "turbo -F @corporation/backend dev",
     "dev:agent": "turbo -F @corporation/infra dev",
     "dev:setup": "turbo -F @corporation/backend dev:setup",
-    "desktop:generate": "bun run --cwd apps/desktop db:generate",
     "deploy": "turbo -F @corporation/infra deploy",
     "destroy": "turbo -F @corporation/infra destroy",
     "check": "ultracite check",
@@ -54,6 +53,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.3.13",
     "@corporation/config": "workspace:*",
+    "@types/node": "^22.13.14",
     "turbo": "^2.6.3",
     "typescript": "catalog:",
     "ultracite": "7.1.4"

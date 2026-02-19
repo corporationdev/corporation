@@ -1,6 +1,5 @@
 import { App } from "@corporation/app";
 import ReactDOM from "react-dom/client";
-import { webCacheAdapter } from "./cache-adapter";
 
 const rootElement = document.getElementById("app");
 
@@ -10,5 +9,5 @@ if (!rootElement) {
 
 if (!rootElement.innerHTML) {
 	const root = ReactDOM.createRoot(rootElement);
-	root.render(<App adapters={{ cache: webCacheAdapter }} />);
+	root.render(<App adapters={{}} />);
 }

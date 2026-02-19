@@ -1,7 +1,6 @@
 import { App } from "@corporation/app";
 import { focusManager } from "@tanstack/react-query";
 import ReactDOM from "react-dom/client";
-import { electronCacheAdapter } from "./cache-adapter";
 
 focusManager.setEventListener((handleFocus) => {
 	window.addEventListener("focus", () => handleFocus(true));
@@ -20,5 +19,5 @@ if (!rootElement) {
 
 if (!rootElement.innerHTML) {
 	const root = ReactDOM.createRoot(rootElement);
-	root.render(<App adapters={{ cache: electronCacheAdapter }} />);
+	root.render(<App adapters={{}} />);
 }

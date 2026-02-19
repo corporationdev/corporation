@@ -4,9 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.tsx",
-    "./cache-schema": "./src/lib/cache/schema.ts",
-    "./cache-adapter": "./src/lib/cache/adapter.ts"
+    ".": "./src/index.tsx"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.12.9",
@@ -28,7 +26,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "catalog:",
-    "drizzle-orm": "^0.45.1",
     "hono": "catalog:",
     "lucide-react": "^0.473.0",
     "nanoid": "^5.1.6",

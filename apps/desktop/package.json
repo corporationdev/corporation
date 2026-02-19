@@ -8,17 +8,14 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "check-types": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate --config=drizzle.config.ts"
+    "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@corporation/app": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
     "@tanstack/react-query": "^5.90.2",
-    "better-sqlite3": "^12.6.2",
     "dotenv": "catalog:",
-    "drizzle-orm": "^0.45.1",
     "electron": "^40.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"
@@ -29,12 +26,10 @@
     "@corporation/server": "workspace:*",
     "@tailwindcss/vite": "^4.0.15",
     "@tanstack/router-plugin": "^1.141.1",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.14",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "^4.3.4",
-    "drizzle-kit": "^0.31.8",
     "electron-vite": "^5.0.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.0.15",

@@ -1,6 +1,5 @@
 import path from "node:path";
 import { app, BrowserWindow, shell } from "electron";
-import { registerIpcHandlers } from "./ipc-handlers";
 
 function createWindow() {
 	const win = new BrowserWindow({
@@ -28,7 +27,6 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-	registerIpcHandlers();
 	createWindow();
 });
 
