@@ -1,9 +1,10 @@
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { create } from "zustand";
 
 type PendingMessage = {
 	text: string;
-	environmentId: string;
-	selectedSpaceId?: string;
+	environmentId: Id<"environments">;
+	selectedSpaceId?: Id<"spaces">;
 };
 
 type PendingMessageStore = {

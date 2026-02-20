@@ -5,6 +5,7 @@ import {
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
@@ -101,7 +102,7 @@ function ConnectedThreadRuntime({
 			selectedSpaceId?: Id<"spaces">;
 		}) => {
 			const spaceId = await ensureSpace({
-				environmentId: pending.selectedSpaceId,
+				environmentId: pending.environmentId,
 				spaceId: pending.selectedSpaceId,
 			});
 
