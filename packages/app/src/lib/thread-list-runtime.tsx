@@ -5,7 +5,6 @@ import {
 	useExternalStoreRuntime,
 } from "@assistant-ui/react";
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
@@ -14,7 +13,6 @@ import { type ReactNode, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useOptimisticUpdateThreadMutation } from "@/hooks/agent-session-mutations";
 import { useThreadEventState } from "@/hooks/use-thread-event-state";
-import { apiClient } from "@/lib/api-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
 import { useSpaceSelectionStore } from "@/stores/space-selection-store";
@@ -75,18 +73,6 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 	);
 }
 
-async function callEnsureSandbox(args: {
-	environmentId?: string;
-	spaceId?: string;
-}) {
-	const res = await apiClient.spaces.ensure.$post({ json: args });
-	if (!res.ok) {
-		const data = await res.json();
-		throw new Error(data.error);
-	}
-	return await res.json();
-}
-
 function ConnectedThreadRuntime({
 	slug,
 	children,
@@ -100,31 +86,32 @@ function ConnectedThreadRuntime({
 	const updateThread = useOptimisticUpdateThreadMutation();
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
 	const createThread = useMutation(api.agentSessions.create);
+	const ensureSpace = useMutation(api.spaces.ensure);
 
 	const session = useQuery(api.agentSessions.getBySlug, { slug });
 
-	// For new threads: consume pending → ensure sandbox → create session.
-	// Stores the sandboxUrl and pending text for the actor to use once connected.
+	// For new threads: consume pending → ensure space → create session.
+	// The sandboxUrl arrives reactively via the session query once the
+	// space reaches "started" state.
 	const pendingTextRef = useRef<string | null>(null);
 	const initMutation = useTanstackMutation({
 		mutationFn: async (pending: {
 			text: string;
-			environmentId: string;
-			selectedSpaceId?: string;
+			environmentId: Id<"environments">;
+			selectedSpaceId?: Id<"spaces">;
 		}) => {
-			const result = await callEnsureSandbox({
-				environmentId: pending.environmentId,
+			const spaceId = await ensureSpace({
+				environmentId: pending.selectedSpaceId,
 				spaceId: pending.selectedSpaceId,
 			});
 
 			await createThread({
 				slug,
 				title: "New Chat",
-				spaceId: result.spaceId as Id<"spaces">,
+				spaceId,
 			});
 
 			pendingTextRef.current = pending.text;
-			return result.sandboxUrl;
 		},
 		onError: (error) => {
 			toast.error("Failed to start chat");
@@ -134,7 +121,7 @@ function ConnectedThreadRuntime({
 
 	// Trigger init when pending message exists and session doesn't yet
 	useEffect(() => {
-		if (session !== null || initMutation.isPending || initMutation.data) {
+		if (session !== null || initMutation.isPending || initMutation.isSuccess) {
 			return;
 		}
 
@@ -147,20 +134,20 @@ function ConnectedThreadRuntime({
 	}, [
 		session,
 		initMutation.isPending,
-		initMutation.data,
+		initMutation.isSuccess,
 		consumePending,
 		initMutation.mutate,
 	]);
 
-	// sandboxUrl comes from init (new thread) — for existing threads the actor
-	// already has it persisted in state.
-	const sandboxUrl = initMutation.data;
+	// sandboxUrl arrives reactively via session once the space is started.
+	// For existing threads the session already has it.
+	const sandboxUrl = session?.space.sandboxUrl ?? null;
 
 	const actor = useActor({
 		name: "agent",
 		key: [slug],
 		createWithInput: sandboxUrl ? { sandboxUrl } : undefined,
-		enabled: !!sandboxUrl || !!session,
+		enabled: !!sandboxUrl,
 	});
 
 	const threadState = useThreadEventState({
@@ -223,12 +210,13 @@ function ConnectedThreadRuntime({
 				.map((part) => part.text)
 				.join("");
 
-			const result = await callEnsureSandbox({
-				spaceId: session.spaceId,
-			});
+			await ensureSpace({ spaceId: session.spaceId });
 
 			await updateThread({ id: session._id, archivedAt: null });
-			await actor.connection?.postMessage(text, result.sandboxUrl);
+			await actor.connection?.postMessage(
+				text,
+				session.space.sandboxUrl ?? undefined
+			);
 		},
 	});
 
