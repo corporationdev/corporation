@@ -6,28 +6,29 @@ import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 
-function getSiteUrl(): string {
-	const url = process.env.SITE_URL;
-	if (!url) {
-		throw new Error("SITE_URL environment variable is not set");
+function getRequiredEnv(name: string): string {
+	const value = process.env[name];
+	if (!value) {
+		throw new Error(`${name} environment variable is not set`);
 	}
-	return url;
+	return value;
 }
 
-const siteUrl = getSiteUrl();
+const webUrl = getRequiredEnv("WEB_URL");
+const desktopUrl = getRequiredEnv("DESKTOP_URL");
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 function createAuth(ctx: GenericCtx<DataModel>) {
 	return betterAuth({
-		trustedOrigins: [siteUrl],
+		trustedOrigins: [webUrl, desktopUrl],
 		database: authComponent.adapter(ctx),
 		emailAndPassword: {
 			enabled: true,
 			requireEmailVerification: false,
 		},
 		plugins: [
-			crossDomain({ siteUrl }),
+			crossDomain({ siteUrl: webUrl }),
 			convex({
 				authConfig,
 				jwksRotateOnTokenGenerationError: true,
