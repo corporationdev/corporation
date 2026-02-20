@@ -12,7 +12,7 @@ import {
 	writeServiceEnvFiles,
 } from "./lib/sandbox";
 
-type Space = FunctionReturnType<typeof api.spaces.getById>;
+type Space = FunctionReturnType<typeof api.spaces.get>;
 
 type SpacesEnv = {
 	Bindings: Env;
@@ -128,7 +128,7 @@ async function ensureSandbox(
 	spaceId: Id<"spaces">,
 	anthropicApiKey: string
 ): Promise<{ spaceId: string; sandboxUrl: string }> {
-	const space = await convex.query(api.spaces.getById, {
+	const space = await convex.query(api.spaces.get, {
 		id: spaceId,
 	});
 

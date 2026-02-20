@@ -154,6 +154,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@convex-dev/better-auth": "catalog:",
+        "@daytonaio/sdk": "catalog:",
         "better-auth": "catalog:",
         "convex": "catalog:",
         "convex-helpers": "catalog:",

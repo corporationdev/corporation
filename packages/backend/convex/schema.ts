@@ -1,27 +1,16 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const spaceStatusValidator = v.union(
+	v.literal("creating"),
+	v.literal("starting"),
+	v.literal("started"),
+	v.literal("stopped"),
+	v.literal("error")
+);
+
 export default defineSchema(
 	{
-		spaces: defineTable({
-			userId: v.string(),
-			environmentId: v.id("environments"),
-			sandboxId: v.optional(v.string()),
-			sandboxUrl: v.optional(v.string()),
-			branchName: v.string(),
-			status: v.union(
-				v.literal("creating"),
-				v.literal("starting"),
-				v.literal("started"),
-				v.literal("stopped"),
-				v.literal("error")
-			),
-			createdAt: v.number(),
-			updatedAt: v.number(),
-		})
-			.index("by_user", ["userId"])
-			.index("by_environment", ["environmentId"]),
-
 		environments: defineTable({
 			userId: v.string(),
 			repositoryId: v.id("repositories"),
@@ -58,6 +47,16 @@ export default defineSchema(
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		}).index("by_repository", ["repositoryId"]),
+
+		spaces: defineTable({
+			environmentId: v.id("environments"),
+			sandboxId: v.optional(v.string()),
+			sandboxUrl: v.optional(v.string()),
+			branchName: v.string(),
+			status: spaceStatusValidator,
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		}).index("by_environment", ["environmentId"]),
 
 		agentSessions: defineTable({
 			slug: v.string(),
