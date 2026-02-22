@@ -5,8 +5,8 @@
   "license": "ISC",
   "author": "",
   "scripts": {
-    "dev": "convex dev",
-    "dev:setup": "convex dev --configure --until-success"
+    "dev": "CONVEX_AGENT_MODE=anonymous convex dev --local --run-sh 'bun run scripts/sync-convex-env.ts'",
+    "dev:setup": "bun run scripts/setup-local.ts"
   },
   "dependencies": {
     "@convex-dev/better-auth": "catalog:",
