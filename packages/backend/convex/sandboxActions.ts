@@ -49,6 +49,24 @@ async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
 	await waitForServerReady(sandbox);
 }
 
+async function isSandboxAgentHealthy(sandbox: Sandbox): Promise<boolean> {
+	try {
+		const result = await sandbox.process.executeCommand(
+			`curl -sf --max-time 1 http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
+		);
+		return result.exitCode === 0;
+	} catch {
+		return false;
+	}
+}
+
+async function ensureSandboxAgentRunning(sandbox: Sandbox): Promise<void> {
+	const healthy = await isSandboxAgentHealthy(sandbox);
+	if (!healthy) {
+		await bootSandboxAgent(sandbox);
+	}
+}
+
 async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
 	const result = await sandbox.getSignedPreviewUrl(
 		SANDBOX_AGENT_PORT,
@@ -148,6 +166,11 @@ async function resolveSandbox(
 	}
 
 	const { state } = sandbox;
+
+	if (state === "started") {
+		await ensureSandboxAgentRunning(sandbox);
+		return sandbox;
+	}
 
 	if (state === "stopped" || state === "archived") {
 		await ctx.runMutation(internal.spaces.internalUpdate, {
