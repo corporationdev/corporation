@@ -41,7 +41,7 @@ export const buildSnapshot = internalAction({
 
 		try {
 			const envWithRepo = await ctx.runQuery(
-				internal.environments.internalGetWithRepo,
+				internal.environments.internalGet,
 				{ id: args.environmentId }
 			);
 
