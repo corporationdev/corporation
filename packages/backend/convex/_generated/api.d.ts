@@ -16,6 +16,7 @@ import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
 import type * as repositories from "../repositories.js";
 import type * as sandboxActions from "../sandboxActions.js";
+import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaces from "../spaces.js";
 
 import type {
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   repositories: typeof repositories;
   sandboxActions: typeof sandboxActions;
+  snapshotActions: typeof snapshotActions;
   spaces: typeof spaces;
 }>;
 

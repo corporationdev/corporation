@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
+import { createEnvironmentHelper } from "./environments";
 import { authedMutation, authedQuery } from "./functions";
 
 function requireOwnedRepository(
@@ -53,7 +54,6 @@ export const create = authedMutation({
 		name: v.string(),
 		defaultBranch: v.string(),
 		installCommand: v.string(),
-		snapshotName: v.string(),
 		services: v.array(
 			v.object({
 				name: v.string(),
@@ -86,7 +86,6 @@ export const create = authedMutation({
 			name: args.name,
 			defaultBranch: args.defaultBranch,
 			installCommand: args.installCommand,
-			snapshotName: args.snapshotName,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -105,12 +104,10 @@ export const create = authedMutation({
 			serviceIds.push(serviceId);
 		}
 
-		await ctx.db.insert("environments", {
+		await createEnvironmentHelper(ctx, {
 			repositoryId,
 			name: "Default",
 			serviceIds,
-			createdAt: now,
-			updatedAt: now,
 		});
 
 		return repositoryId;
@@ -121,7 +118,6 @@ export const update = authedMutation({
 	args: {
 		id: v.id("repositories"),
 		installCommand: v.optional(v.string()),
-		snapshotName: v.optional(v.string()),
 		services: v.optional(
 			v.array(
 				v.object({
@@ -153,9 +149,6 @@ export const update = authedMutation({
 		const repoPatch: Record<string, unknown> = { updatedAt: now };
 		if (args.installCommand !== undefined) {
 			repoPatch.installCommand = args.installCommand;
-		}
-		if (args.snapshotName !== undefined) {
-			repoPatch.snapshotName = args.snapshotName;
 		}
 		await ctx.db.patch(args.id, repoPatch);
 

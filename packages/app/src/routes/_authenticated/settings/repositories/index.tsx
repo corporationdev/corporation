@@ -1,13 +1,13 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation as useConvexMutation, useQuery } from "convex/react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiClient } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 	component: RepositoriesPage,
@@ -17,20 +17,15 @@ function RepositoryCard({
 	repository,
 }: {
 	repository: {
-		_id: string;
+		_id: Id<"repositories">;
 		owner: string;
 		name: string;
 	};
 }) {
+	const deleteRepo = useConvexMutation(api.repositories.delete);
 	const { mutate: removeRepository, isPending: isDeleting } = useMutation({
-		mutationFn: async (id: string) => {
-			const res = await apiClient.repositories[":id"].$delete({
-				param: { id },
-			});
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.error);
-			}
+		mutationFn: async (id: Id<"repositories">) => {
+			await deleteRepo({ id });
 		},
 		onError: (error) => {
 			toast.error(error.message);

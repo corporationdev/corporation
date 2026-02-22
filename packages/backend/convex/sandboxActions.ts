@@ -116,8 +116,11 @@ async function resolveSandbox(
 	space: Space,
 	anthropicApiKey: string
 ): Promise<Sandbox> {
-	const { snapshotName } = space.environment;
-	const { services } = space.environment;
+	const { snapshotName, services } = space.environment;
+
+	if (!snapshotName) {
+		throw new Error("Environment snapshot is not ready yet");
+	}
 
 	if (!space.sandboxId) {
 		return await provisionSandbox(

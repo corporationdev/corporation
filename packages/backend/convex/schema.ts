@@ -1,6 +1,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const snapshotStatusValidator = v.union(
+	v.literal("building"),
+	v.literal("ready"),
+	v.literal("error")
+);
+
 export const spaceStatusValidator = v.union(
 	v.literal("creating"),
 	v.literal("starting"),
@@ -15,7 +21,8 @@ export default defineSchema(
 			userId: v.string(),
 			repositoryId: v.id("repositories"),
 			name: v.string(),
-			snapshotName: v.string(),
+			snapshotName: v.optional(v.string()),
+			snapshotStatus: snapshotStatusValidator,
 			serviceIds: v.array(v.id("services")),
 			createdAt: v.number(),
 			updatedAt: v.number(),

@@ -18,6 +18,7 @@
       "agents": "^0.3.9",
       "sandbox-agent": "^0.1.9",
       "@daytonaio/sdk": "^0.132.0",
+      "@nangohq/node": "^0.69.31",
       "alchemy": "^0.82.1",
       "convex-helpers": "^0.1.111",
       "effect": "3.19.16",

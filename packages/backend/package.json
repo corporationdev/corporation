@@ -11,6 +11,7 @@
   "dependencies": {
     "@convex-dev/better-auth": "catalog:",
     "@daytonaio/sdk": "catalog:",
+    "@nangohq/node": "catalog:",
     "better-auth": "catalog:",
     "convex": "catalog:",
     "convex-helpers": "catalog:",
