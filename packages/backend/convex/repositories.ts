@@ -17,10 +17,24 @@ function requireOwnedRepository(
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db
+		const repos = await ctx.db
 			.query("repositories")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
+
+		return Promise.all(
+			repos.map(async (repo) => {
+				const defaultEnv = await ctx.db
+					.query("environments")
+					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
+					.first();
+
+				return {
+					...repo,
+					defaultEnvironmentStatus: defaultEnv?.snapshotStatus ?? null,
+				};
+			})
+		);
 	},
 });
 

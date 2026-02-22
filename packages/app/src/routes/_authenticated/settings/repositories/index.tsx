@@ -3,7 +3,7 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation as useConvexMutation, useQuery } from "convex/react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,41 @@ export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 	component: RepositoriesPage,
 });
 
+function SnapshotStatusIndicator({
+	status,
+}: {
+	status: "building" | "ready" | "error" | null;
+}) {
+	if (!status) {
+		return null;
+	}
+
+	if (status === "building") {
+		return (
+			<span className="flex items-center gap-1 text-muted-foreground text-xs">
+				<Loader2 className="size-3 animate-spin" />
+				Building
+			</span>
+		);
+	}
+
+	if (status === "ready") {
+		return (
+			<span className="flex items-center gap-1 text-emerald-600 text-xs">
+				<span className="size-1.5 rounded-full bg-emerald-500" />
+				Ready
+			</span>
+		);
+	}
+
+	return (
+		<span className="flex items-center gap-1 text-destructive text-xs">
+			<span className="size-1.5 rounded-full bg-destructive" />
+			Error
+		</span>
+	);
+}
+
 function RepositoryCard({
 	repository,
 }: {
@@ -20,6 +55,7 @@ function RepositoryCard({
 		_id: Id<"repositories">;
 		owner: string;
 		name: string;
+		defaultEnvironmentStatus: "building" | "ready" | "error" | null;
 	};
 }) {
 	const deleteRepo = useConvexMutation(api.repositories.delete);
@@ -35,10 +71,13 @@ function RepositoryCard({
 	return (
 		<Card size="sm">
 			<CardHeader>
-				<div>
+				<div className="flex items-center gap-3">
 					<CardTitle>
 						{repository.owner}/{repository.name}
 					</CardTitle>
+					<SnapshotStatusIndicator
+						status={repository.defaultEnvironmentStatus}
+					/>
 				</div>
 				<CardAction>
 					<div className="flex items-center gap-1">
