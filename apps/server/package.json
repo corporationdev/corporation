@@ -18,7 +18,7 @@
     "convex": "catalog:",
     "@daytonaio/sdk": "catalog:",
     "@hono/zod-openapi": "^1.2.1",
-    "@nangohq/node": "^0.69.31",
+    "@nangohq/node": "catalog:",
     "@rivetkit/cloudflare-workers": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:",

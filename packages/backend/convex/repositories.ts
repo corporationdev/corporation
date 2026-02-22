@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
+import { createEnvironmentHelper } from "./environments";
 import { authedMutation, authedQuery } from "./functions";
 
 function requireOwnedRepository(
@@ -16,10 +17,24 @@ function requireOwnedRepository(
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db
+		const repos = await ctx.db
 			.query("repositories")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
+
+		return Promise.all(
+			repos.map(async (repo) => {
+				const defaultEnv = await ctx.db
+					.query("environments")
+					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
+					.first();
+
+				return {
+					...repo,
+					defaultEnvironmentStatus: defaultEnv?.snapshotStatus ?? null,
+				};
+			})
+		);
 	},
 });
 
@@ -53,7 +68,6 @@ export const create = authedMutation({
 		name: v.string(),
 		defaultBranch: v.string(),
 		installCommand: v.string(),
-		snapshotName: v.string(),
 		services: v.array(
 			v.object({
 				name: v.string(),
@@ -86,7 +100,6 @@ export const create = authedMutation({
 			name: args.name,
 			defaultBranch: args.defaultBranch,
 			installCommand: args.installCommand,
-			snapshotName: args.snapshotName,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -105,12 +118,10 @@ export const create = authedMutation({
 			serviceIds.push(serviceId);
 		}
 
-		await ctx.db.insert("environments", {
+		await createEnvironmentHelper(ctx, {
 			repositoryId,
 			name: "Default",
 			serviceIds,
-			createdAt: now,
-			updatedAt: now,
 		});
 
 		return repositoryId;
@@ -121,7 +132,6 @@ export const update = authedMutation({
 	args: {
 		id: v.id("repositories"),
 		installCommand: v.optional(v.string()),
-		snapshotName: v.optional(v.string()),
 		services: v.optional(
 			v.array(
 				v.object({
@@ -153,9 +163,6 @@ export const update = authedMutation({
 		const repoPatch: Record<string, unknown> = { updatedAt: now };
 		if (args.installCommand !== undefined) {
 			repoPatch.installCommand = args.installCommand;
-		}
-		if (args.snapshotName !== undefined) {
-			repoPatch.snapshotName = args.snapshotName;
 		}
 		await ctx.db.patch(args.id, repoPatch);
 

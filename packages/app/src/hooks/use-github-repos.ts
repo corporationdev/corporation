@@ -5,15 +5,12 @@ import type { InferResponseType } from "hono/client";
 
 import { apiClient } from "@/lib/api-client";
 
-type GitHubReposResponse = InferResponseType<
-	typeof apiClient.repositories.github.$get,
-	200
->;
+type GitHubReposResponse = InferResponseType<typeof apiClient.github.$get, 200>;
 
 export type GitHubRepo = GitHubReposResponse["repositories"][number];
 
 async function fetchGitHubRepos() {
-	const res = await apiClient.repositories.github.$get({});
+	const res = await apiClient.github.$get({});
 	if (!res.ok) {
 		throw new Error("Failed to fetch GitHub repositories");
 	}

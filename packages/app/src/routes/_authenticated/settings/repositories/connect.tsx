@@ -1,5 +1,8 @@
+import { api } from "@corporation/backend/convex/_generated/api";
 import { useForm } from "@tanstack/react-form";
+import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation as useConvexMutation } from "convex/react";
 import { Check, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { GitHubRepo } from "@/hooks/use-github-repos";
 import { useGitHubRepos } from "@/hooks/use-github-repos";
-import { apiClient } from "@/lib/api-client";
 
 export const Route = createFileRoute(
 	"/_authenticated/settings/repositories/connect"
@@ -25,6 +27,7 @@ export const Route = createFileRoute(
 
 function ConnectRepositoryPage() {
 	const navigate = useNavigate();
+	const createRepo = useConvexMutation(api.repositories.create);
 	const {
 		data: repos,
 		isLoading,
@@ -36,6 +39,38 @@ function ConnectRepositoryPage() {
 	const [search, setSearch] = useState("");
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
 	const [isMonorepo, setIsMonorepo] = useState(false);
+
+	const { mutateAsync: connectRepo } = useMutation({
+		mutationFn: async (value: {
+			installCommand: string;
+			services: ServiceValues[];
+		}) => {
+			if (!selectedRepo) {
+				throw new Error("No repository selected");
+			}
+
+			const submitted = isMonorepo ? value.services : [value.services[0]];
+			const services = submitted.map((s) => ({
+				...s,
+				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
+			}));
+
+			await createRepo({
+				githubRepoId: selectedRepo.id,
+				owner: selectedRepo.owner,
+				name: selectedRepo.name,
+				defaultBranch: selectedRepo.defaultBranch,
+				installCommand: value.installCommand,
+				services,
+			});
+		},
+		onError: (error) => {
+			toast.error(error.message);
+		},
+		onSuccess: () => {
+			navigate({ to: "/settings/repositories" });
+		},
+	});
 
 	const form = useForm({
 		defaultValues: {
@@ -53,34 +88,7 @@ function ConnectRepositoryPage() {
 			onSubmit: repositoryConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
-			if (!selectedRepo) {
-				return;
-			}
-
-			const submitted = isMonorepo ? value.services : [value.services[0]];
-			const services = submitted.map((s) => ({
-				...s,
-				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
-			}));
-
-			const res = await apiClient.repositories.connect.$post({
-				json: {
-					githubRepoId: selectedRepo.id,
-					owner: selectedRepo.owner,
-					name: selectedRepo.name,
-					defaultBranch: selectedRepo.defaultBranch,
-					installCommand: value.installCommand,
-					services,
-				},
-			});
-
-			if (!res.ok) {
-				const data = await res.json();
-				toast.error(data.error);
-				return;
-			}
-
-			navigate({ to: "/settings/repositories" });
+			await connectRepo(value);
 		},
 	});
 

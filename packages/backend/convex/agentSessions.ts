@@ -31,7 +31,7 @@ async function requireOwnedSession(
 	return { session, space, environment, repository };
 }
 
-export const getById = authedQuery({
+export const get = authedQuery({
 	args: { id: v.id("agentSessions") },
 	handler: async (ctx, args) => {
 		const session = await ctx.db.get(args.id);

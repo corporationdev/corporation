@@ -1,8 +1,35 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const snapshotStatusValidator = v.union(
+	v.literal("building"),
+	v.literal("ready"),
+	v.literal("error")
+);
+
+export const spaceStatusValidator = v.union(
+	v.literal("creating"),
+	v.literal("starting"),
+	v.literal("started"),
+	v.literal("stopped"),
+	v.literal("error")
+);
+
 export default defineSchema(
 	{
+		environments: defineTable({
+			userId: v.string(),
+			repositoryId: v.id("repositories"),
+			name: v.string(),
+			snapshotName: v.optional(v.string()),
+			snapshotStatus: snapshotStatusValidator,
+			serviceIds: v.array(v.id("services")),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		})
+			.index("by_user", ["userId"])
+			.index("by_repository", ["repositoryId"]),
+
 		repositories: defineTable({
 			userId: v.string(),
 			githubRepoId: v.number(),
@@ -10,20 +37,11 @@ export default defineSchema(
 			name: v.string(),
 			defaultBranch: v.string(),
 			installCommand: v.string(),
-			snapshotName: v.string(),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
 			.index("by_user_and_github_repo", ["userId", "githubRepoId"]),
-
-		environments: defineTable({
-			repositoryId: v.id("repositories"),
-			name: v.string(),
-			serviceIds: v.array(v.id("services")),
-			createdAt: v.number(),
-			updatedAt: v.number(),
-		}).index("by_repository", ["repositoryId"]),
 
 		services: defineTable({
 			repositoryId: v.id("repositories"),
@@ -42,13 +60,7 @@ export default defineSchema(
 			sandboxId: v.optional(v.string()),
 			sandboxUrl: v.optional(v.string()),
 			branchName: v.string(),
-			status: v.union(
-				v.literal("creating"),
-				v.literal("starting"),
-				v.literal("started"),
-				v.literal("stopped"),
-				v.literal("error")
-			),
+			status: spaceStatusValidator,
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		}).index("by_environment", ["environmentId"]),
