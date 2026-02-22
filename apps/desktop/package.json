@@ -13,26 +13,26 @@
     "@corporation/app": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
-    "@tanstack/react-query": "^5.90.2",
+    "@tanstack/react-query": "catalog:",
     "dotenv": "catalog:",
-    "electron": "^40.1.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "electron": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@corporation/config": "workspace:*",
     "@corporation/server": "workspace:*",
-    "@tailwindcss/vite": "^4.0.15",
-    "@tanstack/router-plugin": "^1.141.1",
-    "@types/node": "^22.13.14",
-    "@types/react": "19.2.7",
-    "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "^4.3.4",
-    "electron-vite": "^5.0.0",
-    "postcss": "^8.5.3",
-    "tailwindcss": "^4.0.15",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "electron-vite": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
     "typescript": "catalog:",
-    "vite": "^6.2.2"
+    "vite": "catalog:"
   }
 }
