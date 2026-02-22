@@ -8,22 +8,12 @@
     "moduleResolution": "Bundler",
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "types": [
-      "vite/client",
-      "@cloudflare/workers-types"
-    ],
-    "rootDirs": [
-      "."
-    ],
+    "types": ["vite/client", "@cloudflare/workers-types"],
+    "rootDirs": ["."],
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "../../packages/app/src/*"
-      ]
+      "@/*": ["../../packages/app/src/*"]
     }
   },
-  "include": [
-    "src",
-    "../../packages/env/env.d.ts"
-  ]
+  "include": ["src", "../../packages/env/env.d.ts"]
 }
