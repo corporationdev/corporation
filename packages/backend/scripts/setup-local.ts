@@ -163,31 +163,6 @@ for (const [relPath, keys] of Object.entries(CONVEX_URL_KEYS)) {
 	console.log(`  Patched ${relPath}`);
 }
 
-// Step 6: Patch port-dependent URLs when running inside Conductor
-const conductorPort = process.env.CONDUCTOR_PORT
-	? Number(process.env.CONDUCTOR_PORT)
-	: undefined;
-
-if (conductorPort) {
-	const serverPort = conductorPort + 1;
-	const webUrl = `http://localhost:${conductorPort}`;
-	const serverUrl = `http://localhost:${serverPort}`;
-	console.log(`\nConductor detected (port ${conductorPort})`);
-	console.log(`  Web:    ${webUrl}`);
-	console.log(`  Server: ${serverUrl}`);
-
-	patchEnvFile(resolve(ROOT_DIR, "apps/web/.env"), {
-		VITE_SERVER_URL: serverUrl,
-	});
-	patchEnvFile(resolve(ROOT_DIR, "apps/desktop/.env"), {
-		VITE_SERVER_URL: serverUrl,
-	});
-	patchEnvFile(resolve(ROOT_DIR, "packages/backend/.env.convex"), {
-		WEB_URL: webUrl,
-	});
-	console.log("  Patched .env files with Conductor ports");
-}
-
 console.log("\nLocal Convex setup complete!");
 console.log(
 	"Run `bun run dev` to start the local backend (env vars will sync automatically)."

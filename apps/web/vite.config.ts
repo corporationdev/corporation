@@ -6,11 +6,6 @@ import { defineConfig } from "vite";
 
 const appPackageSrc = path.resolve(__dirname, "../../packages/app/src");
 
-const conductorPort = process.env.CONDUCTOR_PORT
-	? Number(process.env.CONDUCTOR_PORT)
-	: undefined;
-const webPort = conductorPort ?? 3001;
-
 export default defineConfig({
 	plugins: [
 		tailwindcss(),
@@ -26,6 +21,6 @@ export default defineConfig({
 		},
 	},
 	server: {
-		port: webPort,
+		port: 3001,
 	},
 });
