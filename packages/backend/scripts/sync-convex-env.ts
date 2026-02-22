@@ -13,6 +13,14 @@ if (!existsSync(envConvexPath)) {
 
 const content = readFileSync(envConvexPath, "utf-8");
 
+const conductorPort = process.env.CONDUCTOR_PORT
+	? Number(process.env.CONDUCTOR_PORT)
+	: undefined;
+const envOverrides: Record<string, string> = {};
+if (conductorPort) {
+	envOverrides.WEB_URL = `http://localhost:${conductorPort}`;
+}
+
 for (const line of content.split("\n")) {
 	const trimmed = line.trim();
 	if (!trimmed || trimmed.startsWith("#")) {
@@ -23,7 +31,7 @@ for (const line of content.split("\n")) {
 		continue;
 	}
 	const key = trimmed.slice(0, eqIndex).trim();
-	const value = trimmed.slice(eqIndex + 1).trim();
+	const value = envOverrides[key] ?? trimmed.slice(eqIndex + 1).trim();
 	if (!value) {
 		continue;
 	}

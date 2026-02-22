@@ -10,6 +10,11 @@ import { config } from "dotenv";
 config({ path: "../../apps/server/.env" });
 config({ path: "../../apps/web/.env" });
 
+const conductorPort = process.env.CONDUCTOR_PORT
+	? Number(process.env.CONDUCTOR_PORT)
+	: undefined;
+const serverPort = conductorPort ? conductorPort + 1 : 3000;
+
 const app = await alchemy("corporation");
 
 const actorDO = DurableObjectNamespace("actor-do", {
@@ -33,7 +38,7 @@ export const server = await Worker("agent-server", {
 		ACTOR_KV: actorKV,
 	},
 	dev: {
-		port: 3000,
+		port: serverPort,
 	},
 });
 
