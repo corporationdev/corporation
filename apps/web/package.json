@@ -11,21 +11,21 @@
   "dependencies": {
     "@corporation/app": "workspace:*",
     "@corporation/env": "workspace:*",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@corporation/config": "workspace:*",
-    "@tailwindcss/vite": "^4.0.15",
-    "@tanstack/router-plugin": "^1.141.1",
-    "@types/node": "^22.13.14",
-    "@types/react": "19.2.7",
-    "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "^4.3.4",
-    "postcss": "^8.5.3",
-    "tailwindcss": "^4.0.15",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
     "typescript": "catalog:",
-    "vite": "^6.2.2"
+    "vite": "catalog:"
   }
 }
