@@ -24,7 +24,8 @@
     "jose": "catalog:",
     "octokit": "catalog:",
     "rivetkit": "catalog:",
-    "sandbox-agent": "catalog:"
+    "sandbox-agent": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
