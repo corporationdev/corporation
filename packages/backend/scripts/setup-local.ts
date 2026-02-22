@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+// biome-ignore lint/style/noNonNullAssertion: dirname is always defined when running as a script
 const BACKEND_DIR = resolve(import.meta.dirname!, "..");
 const ROOT_DIR = resolve(BACKEND_DIR, "../..");
 
@@ -26,22 +27,32 @@ const CONVEX_URL_KEYS: Record<string, string[]> = {
 	"apps/server/.env": ["CONVEX_URL", "CONVEX_SITE_URL"],
 };
 
+const WHITESPACE_RE = /\s+/;
+
 function getMainWorktree(): string {
 	const output = execSync("git worktree list", { encoding: "utf-8" });
 	const firstLine = output.trim().split("\n")[0];
 	if (!firstLine) {
 		throw new Error("Could not determine main worktree");
 	}
-	return firstLine.split(/\s+/)[0]!;
+	const path = firstLine.split(WHITESPACE_RE)[0];
+	if (!path) {
+		throw new Error("Could not parse worktree path");
+	}
+	return path;
 }
 
 function parseEnvFile(content: string): Map<string, string> {
 	const vars = new Map<string, string>();
 	for (const line of content.split("\n")) {
 		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith("#")) continue;
+		if (!trimmed || trimmed.startsWith("#")) {
+			continue;
+		}
 		const eqIndex = trimmed.indexOf("=");
-		if (eqIndex === -1) continue;
+		if (eqIndex === -1) {
+			continue;
+		}
 		const key = trimmed.slice(0, eqIndex).trim();
 		const value = trimmed.slice(eqIndex + 1).trim();
 		vars.set(key, value);
