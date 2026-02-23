@@ -1,7 +1,9 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { BoxIcon, PlusIcon } from "lucide-react";
+import { nanoid } from "nanoid";
 import type { FC } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -37,15 +39,49 @@ export const SpaceList: FC = () => {
 
 const NewSpaceButton: FC = () => {
 	const navigate = useNavigate();
+	const ensureSpace = useMutation(api.spaces.ensure);
+	const repositories = useQuery(api.repositories.list);
+	const firstRepo = repositories?.[0];
+	const environments = useQuery(
+		api.environments.listByRepository,
+		firstRepo ? { repositoryId: firstRepo._id } : "skip"
+	);
+	const firstEnv = environments?.[0];
+
+	const createSpaceMutation = useTanstackMutation({
+		mutationFn: async () => {
+			if (!firstEnv) {
+				throw new Error("No repository or environment configured");
+			}
+
+			const spaceSlug = nanoid();
+			await ensureSpace({
+				slug: spaceSlug,
+				environmentId: firstEnv._id,
+			});
+
+			return spaceSlug;
+		},
+		onSuccess: (spaceSlug) => {
+			navigate({
+				to: "/space/$spaceSlug",
+				params: { spaceSlug },
+			});
+		},
+		onError: (error: unknown) => {
+			console.error("Failed to create space", error);
+		},
+	});
 
 	return (
 		<Button
 			className="h-9 justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted"
-			onClick={() => navigate({ to: "/space" })}
+			disabled={createSpaceMutation.isPending}
+			onClick={() => createSpaceMutation.mutate()}
 			variant="outline"
 		>
 			<PlusIcon className="size-4" />
-			New Space
+			{createSpaceMutation.isPending ? "Creating..." : "New Space"}
 		</Button>
 	);
 };

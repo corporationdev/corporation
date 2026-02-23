@@ -2,8 +2,17 @@
 
 import { v } from "convex/values";
 import { Webhook } from "svix";
+import { z } from "zod";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+
+const daytonaWebhookPayloadSchema = z
+	.object({
+		event: z.string(),
+		id: z.string(),
+		newState: z.string(),
+	})
+	.passthrough();
 
 export const handleWebhook = internalAction({
 	args: {
@@ -19,18 +28,23 @@ export const handleWebhook = internalAction({
 		}
 
 		const wh = new Webhook(secret);
-		const payload = wh.verify(args.body, {
+		const verifiedPayload = wh.verify(args.body, {
 			"svix-id": args.svixId,
 			"svix-timestamp": args.svixTimestamp,
 			"svix-signature": args.svixSignature,
-		}) as { event?: string; id?: string; state?: string };
+		});
 
-		const { event, id, state } = payload;
+		const parsedPayload =
+			daytonaWebhookPayloadSchema.safeParse(verifiedPayload);
+		if (!parsedPayload.success) {
+			throw new Error("Invalid Daytona webhook payload");
+		}
+
+		const { event, id, newState } = parsedPayload.data;
 
 		if (
 			event === "sandbox.state.updated" &&
-			id &&
-			(state === "stopped" || state === "archived")
+			(newState === "stopped" || newState === "archived")
 		) {
 			const space = await ctx.runQuery(internal.spaces.getBySandboxId, {
 				sandboxId: id,
