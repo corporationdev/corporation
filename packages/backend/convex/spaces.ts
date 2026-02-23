@@ -186,6 +186,23 @@ export const internalGet = internalQuery({
 	},
 });
 
+export const stop = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.stopSandbox, {
+			spaceId: args.id,
+		});
+	},
+});
+
 export const ensure = authedMutation({
 	args: {
 		slug: v.optional(v.string()),

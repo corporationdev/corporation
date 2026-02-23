@@ -206,6 +206,47 @@ async function resolveSandbox(
 	);
 }
 
+export const stopSandbox = internalAction({
+	args: {
+		spaceId: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		if (!daytonaApiKey) {
+			throw new Error("Missing DAYTONA_API_KEY env var");
+		}
+
+		const daytona = new Daytona({ apiKey: daytonaApiKey });
+
+		try {
+			const space = await ctx.runQuery(internal.spaces.internalGet, {
+				id: args.spaceId,
+			});
+
+			if (!space.sandboxId) {
+				throw new Error("Space has no sandbox to stop");
+			}
+
+			const sandbox = await daytona.get(space.sandboxId);
+			if (sandbox.state === "started") {
+				await sandbox.stop();
+			}
+
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: args.spaceId,
+				status: "stopped",
+			});
+		} catch (error) {
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: args.spaceId,
+				status: "error",
+			});
+
+			throw error;
+		}
+	},
+});
+
 export const ensureSandbox = internalAction({
 	args: {
 		spaceId: v.id("spaces"),

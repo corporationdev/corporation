@@ -107,6 +107,7 @@ export function SpaceLayout() {
 				>
 					<SpaceSidebar
 						actor={actor}
+						spaceId={space._id}
 						spaceSlug={spaceSlug}
 						status={space.status}
 					/>

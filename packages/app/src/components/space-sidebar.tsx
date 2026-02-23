@@ -1,5 +1,9 @@
+import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { TerminalIcon } from "lucide-react";
+import { useMutation } from "convex/react";
+import { LoaderIcon, PlayIcon, SquareIcon, TerminalIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { FC } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +13,7 @@ import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 
 type SpaceSidebarProps = {
+	spaceId: Id<"spaces">;
 	spaceSlug: string;
 	status: string;
 	actor: SpaceActor;
@@ -23,6 +28,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 export const SpaceSidebar: FC<SpaceSidebarProps> = ({
+	spaceId,
 	spaceSlug,
 	status,
 	actor,
@@ -32,6 +38,21 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({
 		label: status,
 		className: "bg-muted-foreground",
 	};
+
+	const ensureSpace = useMutation(api.spaces.ensure);
+	const stopSpace = useMutation(api.spaces.stop);
+
+	const startMutation = useTanstackMutation({
+		mutationFn: () => ensureSpace({ spaceId }),
+	});
+
+	const stopMutation = useTanstackMutation({
+		mutationFn: () => stopSpace({ id: spaceId }),
+	});
+
+	const isTransitioning = status === "creating" || status === "starting";
+	const isStopped = status === "stopped" || status === "error";
+	const isStarted = status === "started";
 
 	const handleNewTerminal = async () => {
 		if (!actor.connection) {
@@ -57,6 +78,49 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({
 							Sandbox: {config.label}
 						</span>
 					</div>
+					{isStopped && (
+						<Button
+							className="w-full justify-start gap-2"
+							disabled={startMutation.isPending}
+							onClick={() => startMutation.mutate()}
+							size="sm"
+							variant="outline"
+						>
+							{startMutation.isPending ? (
+								<LoaderIcon className="size-4 animate-spin" />
+							) : (
+								<PlayIcon className="size-4" />
+							)}
+							{startMutation.isPending ? "Starting..." : "Start Sandbox"}
+						</Button>
+					)}
+					{isStarted && (
+						<Button
+							className="w-full justify-start gap-2"
+							disabled={stopMutation.isPending}
+							onClick={() => stopMutation.mutate()}
+							size="sm"
+							variant="outline"
+						>
+							{stopMutation.isPending ? (
+								<LoaderIcon className="size-4 animate-spin" />
+							) : (
+								<SquareIcon className="size-4" />
+							)}
+							{stopMutation.isPending ? "Stopping..." : "Stop Sandbox"}
+						</Button>
+					)}
+					{isTransitioning && (
+						<Button
+							className="w-full justify-start gap-2"
+							disabled
+							size="sm"
+							variant="outline"
+						>
+							<LoaderIcon className="size-4 animate-spin" />
+							{status === "creating" ? "Creating..." : "Starting..."}
+						</Button>
+					)}
 					<Button
 						className="w-full justify-start gap-2"
 						disabled={actor.connStatus !== "connected" || status !== "started"}
