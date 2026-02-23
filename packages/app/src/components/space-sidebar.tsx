@@ -3,10 +3,16 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
-import { LoaderIcon, PlayIcon, SquareIcon, TerminalIcon } from "lucide-react";
+import {
+	ExternalLinkIcon,
+	LoaderIcon,
+	PlayIcon,
+	SquareIcon,
+	TerminalIcon,
+} from "lucide-react";
 import { nanoid } from "nanoid";
 import type { FC } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
@@ -14,6 +20,7 @@ import { cn } from "@/lib/utils";
 
 type SpaceSidebarProps = {
 	spaceId: Id<"spaces">;
+	sandboxUrl: string | null | undefined;
 	spaceSlug: string;
 	status: string;
 	actor: SpaceActor;
@@ -29,6 +36,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 export const SpaceSidebar: FC<SpaceSidebarProps> = ({
 	spaceId,
+	sandboxUrl,
 	spaceSlug,
 	status,
 	actor,
@@ -135,6 +143,20 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({
 						<TerminalIcon className="size-4" />
 						New Terminal
 					</Button>
+					{sandboxUrl && (
+						<a
+							className={cn(
+								buttonVariants({ variant: "outline", size: "sm" }),
+								"w-full justify-start gap-2"
+							)}
+							href={sandboxUrl}
+							rel="noopener noreferrer"
+							target="_blank"
+						>
+							<ExternalLinkIcon className="size-4" />
+							Open Preview
+						</a>
+					)}
 				</div>
 			</SidebarContent>
 		</Sidebar>

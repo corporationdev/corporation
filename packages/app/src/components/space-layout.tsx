@@ -5,7 +5,6 @@ import { useQuery } from "convex/react";
 import { PlusIcon } from "lucide-react";
 import { type FC, useEffect } from "react";
 import { SpaceListSidebar } from "@/components/assistant-ui/space-list-sidebar";
-import { CopyInspectorUrl } from "@/components/copy-inspector-url";
 import { SessionView } from "@/components/session-view";
 import { SpaceSidebar } from "@/components/space-sidebar";
 import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
@@ -79,9 +78,6 @@ export function SpaceLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						{space?.sandboxUrl && (
-							<CopyInspectorUrl sandboxUrl={space.sandboxUrl} />
-						)}
 						{space?.sandboxId && <SpaceSidebarToggle />}
 					</div>
 				</header>
@@ -107,6 +103,7 @@ export function SpaceLayout() {
 				>
 					<SpaceSidebar
 						actor={actor}
+						sandboxUrl={space.sandboxUrl}
 						spaceId={space._id}
 						spaceSlug={spaceSlug}
 						status={space.status}
