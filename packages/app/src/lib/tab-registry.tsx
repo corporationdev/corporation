@@ -61,26 +61,24 @@ export const tabRegistry: TabConfigMap = {
 	},
 };
 
-export type AppTabType = keyof TabConfigMap;
-export type TabConfig = TabConfigMap[AppTabType];
-export type AppTabParam = {
-	[K in AppTabType]: {
+export type TabType = keyof TabConfigMap;
+export type TabConfig = TabConfigMap[TabType];
+export type TabParam = {
+	[K in TabType]: {
 		type: K;
 		id: string;
 	};
-}[AppTabType];
+}[TabType];
 
-const appTabTypeSet = new Set<AppTabType>(
-	Object.keys(tabRegistry) as AppTabType[]
-);
+const tabTypeSet = new Set<TabType>(Object.keys(tabRegistry) as TabType[]);
 
-export function isAppTabType(value: string): value is AppTabType {
-	return appTabTypeSet.has(value as AppTabType);
+export function isTabType(value: string): value is TabType {
+	return tabTypeSet.has(value as TabType);
 }
 
-export function toAppTabParam(value: TabRouteParam): AppTabParam | undefined {
-	if (!isAppTabType(value.type)) {
+export function toTabParam(value: TabRouteParam): TabParam | undefined {
+	if (!isTabType(value.type)) {
 		return undefined;
 	}
-	return value as AppTabParam;
+	return value as TabParam;
 }

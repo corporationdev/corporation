@@ -1,10 +1,5 @@
-import {
-	type AppTabParam,
-	isAppTabType,
-	toAppTabParam,
-} from "@/lib/tab-registry";
-
-export type TabParam = AppTabParam;
+import type { TabParam } from "@/lib/tab-registry";
+import { isTabType, toTabParam } from "@/lib/tab-registry";
 
 export function serializeTab(tab: TabParam): string {
 	return `${tab.type}:${tab.id}`;
@@ -26,9 +21,9 @@ export function parseTab(raw: string | undefined): TabParam | undefined {
 		return undefined;
 	}
 
-	if (!isAppTabType(type)) {
+	if (!isTabType(type)) {
 		return undefined;
 	}
 
-	return toAppTabParam({ type, id });
+	return toTabParam({ type, id });
 }

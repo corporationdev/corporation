@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useSpaceTabs } from "@/hooks/use-space-tabs";
 import { useActor } from "@/lib/rivetkit";
-import { tabRegistry } from "@/lib/tab-registry";
-import { parseTab, serializeTab, type TabParam } from "@/lib/tab-routing";
+import { type TabParam, tabRegistry } from "@/lib/tab-registry";
+import { parseTab, serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 
 export function SpaceLayout() {
