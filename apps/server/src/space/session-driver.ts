@@ -99,6 +99,9 @@ async function persistSessionEvent(
 	);
 }
 
+// TODO: Revisit stream lifecycle on reconnect/DO eviction.
+// Streams are currently started from message-send flow; subscribe only manages
+// channel membership. Decide on a robust resume strategy before changing this.
 async function ensureStreamRunning(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,

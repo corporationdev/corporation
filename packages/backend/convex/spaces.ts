@@ -193,8 +193,9 @@ export const ensure = authedMutation({
 		spaceId: v.optional(v.id("spaces")),
 	},
 	handler: async (ctx, args) => {
+		const slug = args.slug?.trim();
+
 		// Look up by slug first — may already exist from a prior call
-		const { slug } = args;
 		if (slug) {
 			const existing = await ctx.db
 				.query("spaces")
@@ -234,6 +235,9 @@ export const ensure = authedMutation({
 		if (!args.environmentId) {
 			throw new ConvexError("environmentId is required when spaceId is absent");
 		}
+		if (!slug) {
+			throw new ConvexError("slug is required when creating a space");
+		}
 
 		const environment = await ctx.db.get(args.environmentId);
 		if (!environment || environment.userId !== ctx.userId) {
@@ -242,7 +246,7 @@ export const ensure = authedMutation({
 
 		const now = Date.now();
 		const spaceId = await ctx.db.insert("spaces", {
-			slug: args.slug ?? "",
+			slug,
 			environmentId: args.environmentId,
 			branchName: "main",
 			status: "creating",
