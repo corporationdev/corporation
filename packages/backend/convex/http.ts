@@ -22,15 +22,23 @@ http.route({
 		const body = await request.text();
 
 		try {
-			await ctx.runAction(internal.daytonaWebhook.handleWebhook, {
-				body,
-				svixId,
-				svixTimestamp,
-				svixSignature,
-			});
+			const result = await ctx.runAction(
+				internal.daytonaWebhook.handleWebhook,
+				{
+					body,
+					svixId,
+					svixTimestamp,
+					svixSignature,
+				}
+			);
+
+			if (result.status === "invalid") {
+				return new Response("Webhook verification failed", { status: 400 });
+			}
+
 			return new Response("OK", { status: 200 });
 		} catch {
-			return new Response("Webhook verification failed", { status: 400 });
+			return new Response("Internal webhook processing error", { status: 500 });
 		}
 	}),
 });

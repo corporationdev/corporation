@@ -6,20 +6,16 @@ import { PlusIcon } from "lucide-react";
 import { type FC, useEffect } from "react";
 import { SpaceListSidebar } from "@/components/assistant-ui/space-list-sidebar";
 import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
+import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
 import { SpaceSidebar } from "@/components/space-sidebar";
 import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
 import { Button } from "@/components/ui/button";
-import {
-	SidebarInset,
-	SidebarProvider,
-	SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useSpaceTabs } from "@/hooks/use-space-tabs";
 import { useActor } from "@/lib/rivetkit";
 import { tabRegistry } from "@/lib/tab-registry";
 import { parseTab, serializeTab, type TabParam } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
-import { useLayoutStore } from "@/stores/layout-store";
 
 export function SpaceLayout() {
 	const match = useMatch({
@@ -33,6 +29,8 @@ export function SpaceLayout() {
 		api.spaces.getBySlug,
 		spaceSlug ? { slug: spaceSlug } : "skip"
 	);
+	const isSpaceLoading = space === undefined;
+	const isSpaceMissing = !!spaceSlug && space === null;
 
 	const actor = useActor({
 		name: "space",
@@ -66,12 +64,11 @@ export function SpaceLayout() {
 
 	const tabs = useSpaceTabs(actor);
 
-	const isOpen = useLayoutStore((s) => s.rightSidebarOpen);
-	const setIsOpen = useLayoutStore((s) => s.setRightSidebarOpen);
-
 	const activeTabType = tab?.type ?? "session";
 	const activeTabConfig = tabRegistry[activeTabType];
-	const shouldWaitForSandboxStatus = activeTabConfig.requiresSandbox && !space;
+
+	const shouldWaitForSandboxStatus =
+		activeTabConfig.requiresSandbox && isSpaceLoading;
 	const shouldShowSandboxPaused =
 		activeTabConfig.requiresSandbox && !!space && space.status !== "started";
 
@@ -88,7 +85,9 @@ export function SpaceLayout() {
 				{spaceSlug && (
 					<SpaceTabBar activeTab={tab} spaceSlug={spaceSlug} tabs={tabs} />
 				)}
-				{shouldWaitForSandboxStatus ? (
+				{isSpaceMissing ? (
+					<SpaceNotFoundPanel />
+				) : shouldWaitForSandboxStatus ? (
 					<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
 						Loading sandbox status...
 					</div>
@@ -102,13 +101,7 @@ export function SpaceLayout() {
 					})
 				)}
 			</SidebarInset>
-			<SidebarProvider
-				className="w-auto overflow-hidden"
-				onOpenChange={setIsOpen}
-				open={isOpen}
-			>
-				<SpaceSidebar actor={actor} space={space} />
-			</SidebarProvider>
+			<SpaceSidebar actor={actor} space={space} />
 		</div>
 	);
 }

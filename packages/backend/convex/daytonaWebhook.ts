@@ -28,16 +28,21 @@ export const handleWebhook = internalAction({
 		}
 
 		const wh = new Webhook(secret);
-		const verifiedPayload = wh.verify(args.body, {
-			"svix-id": args.svixId,
-			"svix-timestamp": args.svixTimestamp,
-			"svix-signature": args.svixSignature,
-		});
+		let verifiedPayload: unknown;
+		try {
+			verifiedPayload = wh.verify(args.body, {
+				"svix-id": args.svixId,
+				"svix-timestamp": args.svixTimestamp,
+				"svix-signature": args.svixSignature,
+			});
+		} catch {
+			return { status: "invalid" as const };
+		}
 
 		const parsedPayload =
 			daytonaWebhookPayloadSchema.safeParse(verifiedPayload);
 		if (!parsedPayload.success) {
-			throw new Error("Invalid Daytona webhook payload");
+			return { status: "invalid" as const };
 		}
 
 		const { event, id, newState } = parsedPayload.data;
@@ -57,5 +62,7 @@ export const handleWebhook = internalAction({
 				});
 			}
 		}
+
+		return { status: "ok" as const };
 	},
 });

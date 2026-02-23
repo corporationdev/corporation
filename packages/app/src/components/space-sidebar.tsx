@@ -13,11 +13,16 @@ import {
 import { nanoid } from "nanoid";
 import type { FC } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
+import {
+	Sidebar,
+	SidebarContent,
+	SidebarProvider,
+} from "@/components/ui/sidebar";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
+import { useLayoutStore } from "@/stores/layout-store";
 
 export type Space = NonNullable<
 	FunctionReturnType<typeof api.spaces.getBySlug>
@@ -37,12 +42,21 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor }) => {
+	const isOpen = useLayoutStore((s) => s.rightSidebarOpen);
+	const setIsOpen = useLayoutStore((s) => s.setRightSidebarOpen);
+
 	return (
-		<Sidebar collapsible="offcanvas" side="right">
-			<SidebarContent className="p-4">
-				{space ? <SpaceSidebarContent actor={actor} space={space} /> : null}
-			</SidebarContent>
-		</Sidebar>
+		<SidebarProvider
+			className="w-auto overflow-hidden"
+			onOpenChange={setIsOpen}
+			open={isOpen}
+		>
+			<Sidebar collapsible="offcanvas" side="right">
+				<SidebarContent className="p-4">
+					{space ? <SpaceSidebarContent actor={actor} space={space} /> : null}
+				</SidebarContent>
+			</Sidebar>
+		</SidebarProvider>
 	);
 };
 
