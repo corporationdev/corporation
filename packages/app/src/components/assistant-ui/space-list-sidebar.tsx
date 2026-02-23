@@ -1,7 +1,7 @@
 import { Building } from "lucide-react";
 import type * as React from "react";
 
-import { SpaceList } from "@/components/assistant-ui/thread-list";
+import { SpaceList } from "@/components/assistant-ui/space-list";
 import { NavUser } from "@/components/nav-user";
 import {
 	Sidebar,
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuthedSession } from "@/hooks/use-authed-session";
 
-export function ThreadListSidebar({
+export function SpaceListSidebar({
 	...props
 }: React.ComponentProps<typeof Sidebar>) {
 	const { user } = useAuthedSession();

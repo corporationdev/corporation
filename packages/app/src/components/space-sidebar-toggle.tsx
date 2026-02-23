@@ -1,11 +1,11 @@
 import { PanelRightIcon } from "lucide-react";
 import type { FC } from "react";
 import { Button } from "@/components/ui/button";
-import { useTerminalStore } from "@/stores/terminal-store";
+import { useSpaceSidebarStore } from "@/stores/space-sidebar-store";
 
-export const TerminalToggleButton: FC = () => {
-	const setIsOpen = useTerminalStore((s) => s.setIsOpen);
-	const isOpen = useTerminalStore((s) => s.isOpen);
+export const SpaceSidebarToggle: FC = () => {
+	const setIsOpen = useSpaceSidebarStore((s) => s.setIsOpen);
+	const isOpen = useSpaceSidebarStore((s) => s.isOpen);
 
 	return (
 		<Button

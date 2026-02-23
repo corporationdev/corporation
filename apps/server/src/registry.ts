@@ -1,6 +1,5 @@
 import { setup } from "rivetkit";
-import { agent } from "./agent";
-import { terminal } from "./terminal";
+import { space } from "./space";
 
 // Workaround: rivetkit's Registry constructor calls setTimeout() which is
 // disallowed in Cloudflare Workers global scope when using alchemy/Miniflare.
@@ -9,6 +8,6 @@ import { terminal } from "./terminal";
 const _setTimeout = globalThis.setTimeout;
 globalThis.setTimeout = (() => 0) as unknown as typeof globalThis.setTimeout;
 export const registry = setup({
-	use: { agent, terminal },
+	use: { space },
 });
 globalThis.setTimeout = _setTimeout;

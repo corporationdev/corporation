@@ -7,16 +7,15 @@ import {
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
-import { useMatch, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { nanoid } from "nanoid";
 import { type ReactNode, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { useOptimisticUpdateThreadMutation } from "@/hooks/agent-session-mutations";
-import { useThreadEventState } from "@/hooks/use-thread-event-state";
+import { useSessionEventState } from "@/hooks/use-session-event-state";
+import type { useActor } from "@/lib/rivetkit";
+import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
-import { usePermissionStore } from "@/stores/permission-store";
-import { useActor } from "./rivetkit";
 
 function extractText(message: AppendMessage): string {
 	return message.content
@@ -27,10 +26,6 @@ function extractText(message: AppendMessage): string {
 		.join("");
 }
 
-/**
- * Thin runtime at `/space` (no spaceSlug). On send: generates both slugs,
- * stores pending, navigates to `/space/$spaceSlug?session=$sessionSlug`.
- */
 function NewSpaceRuntime({ children }: { children: ReactNode }) {
 	const navigate = useNavigate();
 	const setPending = usePendingMessageStore((s) => s.setPending);
@@ -54,14 +49,16 @@ function NewSpaceRuntime({ children }: { children: ReactNode }) {
 
 			const text = extractText(message);
 			const spaceSlug = nanoid();
-			const sessionSlug = nanoid();
+			const sessionId = nanoid();
 
 			setPending({ text, environmentId: firstEnv._id });
 
 			navigate({
 				to: "/space/$spaceSlug",
 				params: { spaceSlug },
-				search: { session: sessionSlug },
+				search: {
+					tab: serializeTab({ type: "session", id: sessionId }),
+				},
 			});
 
 			return Promise.resolve();
@@ -75,10 +72,6 @@ function NewSpaceRuntime({ children }: { children: ReactNode }) {
 	);
 }
 
-/**
- * Thin runtime at `/space/$spaceSlug` (no ?session param). On send: generates
- * session slug, stores pending, navigates to add ?session=$sessionSlug.
- */
 function NewSessionRuntime({
 	spaceSlug,
 	children,
@@ -95,14 +88,16 @@ function NewSessionRuntime({
 		convertMessage: (message: ThreadMessageLike) => message,
 		onNew: (message: AppendMessage) => {
 			const text = extractText(message);
-			const sessionSlug = nanoid();
+			const sessionId = nanoid();
 
 			setPending({ text, spaceSlug });
 
 			navigate({
 				to: "/space/$spaceSlug",
 				params: { spaceSlug },
-				search: { session: sessionSlug },
+				search: {
+					tab: serializeTab({ type: "session", id: sessionId }),
+				},
 			});
 
 			return Promise.resolve();
@@ -116,35 +111,22 @@ function NewSessionRuntime({
 	);
 }
 
-/**
- * Full runtime at `/space/$spaceSlug?session=$sessionSlug`.
- * Handles all business logic: ensures space exists (creates if needed),
- * creates agent session, manages actor connection, permissions, and messages.
- */
-function ConnectedThreadRuntime({
-	sessionSlug,
+function ConnectedSessionRuntime({
+	sessionId,
 	spaceSlug,
+	actor,
 	children,
 }: {
-	sessionSlug: string;
+	sessionId: string;
 	spaceSlug: string;
+	actor: ReturnType<typeof useActor>;
 	children: ReactNode;
 }) {
-	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
-	const setReplyPermission = usePermissionStore((s) => s.setReplyPermission);
-	const resetPermissions = usePermissionStore((s) => s.reset);
-	const updateThread = useOptimisticUpdateThreadMutation();
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
-	const createThread = useMutation(api.agentSessions.create);
 	const ensureSpace = useMutation(api.spaces.ensure);
 
-	const session = useQuery(api.agentSessions.getBySlug, {
-		slug: sessionSlug,
-	});
+	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 
-	// For new threads: consume pending → ensure space → create session.
-	// The sandboxUrl arrives reactively via the session query once the
-	// space reaches "started" state.
 	const pendingTextRef = useRef<string | null>(null);
 	const initMutation = useTanstackMutation({
 		mutationFn: async (pending: {
@@ -152,17 +134,9 @@ function ConnectedThreadRuntime({
 			environmentId?: Id<"environments">;
 			spaceSlug?: string;
 		}) => {
-			// Ensure space exists — either create new (environmentId) or
-			// ensure existing is running (spaceSlug lookup)
-			const spaceId = await ensureSpace({
+			await ensureSpace({
 				slug: spaceSlug,
 				environmentId: pending.environmentId,
-			});
-
-			await createThread({
-				slug: sessionSlug,
-				title: "New Chat",
-				spaceId,
 			});
 
 			pendingTextRef.current = pending.text;
@@ -173,9 +147,8 @@ function ConnectedThreadRuntime({
 		},
 	});
 
-	// Trigger init when pending message exists and session doesn't yet
 	useEffect(() => {
-		if (session !== null || initMutation.isPending || initMutation.isSuccess) {
+		if (initMutation.isPending || initMutation.isSuccess) {
 			return;
 		}
 
@@ -186,53 +159,23 @@ function ConnectedThreadRuntime({
 
 		initMutation.mutate(consumed);
 	}, [
-		session,
+		consumePending,
 		initMutation.isPending,
 		initMutation.isSuccess,
-		consumePending,
 		initMutation.mutate,
 	]);
 
-	// sandboxUrl arrives reactively via session once the space is started.
-	const sandboxUrl = session?.space.sandboxUrl ?? null;
-
-	const actor = useActor({
-		name: "agent",
-		key: [sessionSlug],
-		createWithInput: sandboxUrl ? { sandboxUrl } : undefined,
-		enabled: !!sandboxUrl,
-	});
-
-	const threadState = useThreadEventState({
-		slug: sessionSlug,
+	const sessionState = useSessionEventState({
+		sessionId,
 		actor,
-		onPermissionEvent,
 	});
 
-	// Wire up permission replies
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
 
-		setReplyPermission(async (permissionId, reply) => {
-			await actor.connection?.replyPermission(permissionId, reply);
-		});
-
-		return () => {
-			setReplyPermission(null);
-			resetPermissions();
-		};
-	}, [
-		actor.connStatus,
-		actor.connection,
-		setReplyPermission,
-		resetPermissions,
-	]);
-
-	// Send pending message once actor is connected
-	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
+		if (!space?.sandboxUrl) {
 			return;
 		}
 
@@ -242,29 +185,31 @@ function ConnectedThreadRuntime({
 		}
 		pendingTextRef.current = null;
 
-		actor.connection.postMessage(text).catch((error) => {
-			console.error("Failed to send pending message", error);
-		});
-	}, [actor.connStatus, actor.connection]);
+		actor.connection
+			.ensureSession(sessionId, "New Chat")
+			.then(() =>
+				actor.connection?.postMessage(sessionId, text, space.sandboxUrl)
+			)
+			.catch((error: unknown) => {
+				console.error("Failed to send pending message", error);
+			});
+	}, [actor.connStatus, actor.connection, sessionId, space?.sandboxUrl]);
 
 	const runtime = useExternalStoreRuntime({
-		isRunning: threadState.isRunning,
-		messages: threadState.messages,
+		isRunning: sessionState.isRunning,
+		messages: sessionState.messages,
 		convertMessage: (message) => message,
 		onNew: async (message: AppendMessage) => {
-			if (!session) {
-				throw new Error("Session not loaded");
-			}
-
 			const text = extractText(message);
 
 			await ensureSpace({ slug: spaceSlug });
 
-			await updateThread({ id: session._id, archivedAt: null });
-			await actor.connection?.postMessage(
-				text,
-				session.space.sandboxUrl ?? undefined
-			);
+			if (!space?.sandboxUrl) {
+				throw new Error("Space sandbox is not ready yet");
+			}
+
+			await actor.connection?.ensureSession(sessionId, "New Chat");
+			await actor.connection?.postMessage(sessionId, text, space.sandboxUrl);
 		},
 	});
 
@@ -275,41 +220,37 @@ function ConnectedThreadRuntime({
 	);
 }
 
-export function ThreadListRuntimeProvider({
+export function SessionRuntimeProvider({
+	sessionId,
+	spaceSlug,
+	actor,
 	children,
 }: {
+	sessionId: string | undefined;
+	spaceSlug: string | undefined;
+	actor: ReturnType<typeof useActor> | null;
 	children: ReactNode;
 }) {
-	const match = useMatch({
-		from: "/_authenticated/space/$spaceSlug",
-		shouldThrow: false,
-	});
-
-	const spaceSlug = match?.params.spaceSlug;
-	const sessionSlug = (match?.search as { session?: string })?.session;
-
-	// No spaceSlug → brand new space flow
 	if (!spaceSlug) {
 		return <NewSpaceRuntime>{children}</NewSpaceRuntime>;
 	}
 
-	// spaceSlug but no session → new session in existing space
-	if (!sessionSlug) {
+	if (sessionId && actor) {
 		return (
-			<NewSessionRuntime key={spaceSlug} spaceSlug={spaceSlug}>
+			<ConnectedSessionRuntime
+				actor={actor}
+				key={sessionId}
+				sessionId={sessionId}
+				spaceSlug={spaceSlug}
+			>
 				{children}
-			</NewSessionRuntime>
+			</ConnectedSessionRuntime>
 		);
 	}
 
-	// spaceSlug + session → connected thread
 	return (
-		<ConnectedThreadRuntime
-			key={sessionSlug}
-			sessionSlug={sessionSlug}
-			spaceSlug={spaceSlug}
-		>
+		<NewSessionRuntime key={spaceSlug} spaceSlug={spaceSlug}>
 			{children}
-		</ConnectedThreadRuntime>
+		</NewSessionRuntime>
 	);
 }

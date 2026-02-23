@@ -3,12 +3,11 @@ import type {
 	ContentPart,
 	ItemDeltaData,
 	ItemEventData,
-	PermissionEventData,
 	UniversalEvent,
 	UniversalItem,
 } from "sandbox-agent";
 
-type ThreadMessageContent = Exclude<ThreadMessageLike["content"], string>;
+type MessageContent = Exclude<ThreadMessageLike["content"], string>;
 
 type ToolCallPart = {
 	type: "tool-call";
@@ -33,11 +32,7 @@ type ProcessResult = {
  */
 export function processEvent(
 	event: UniversalEvent,
-	itemStates: Map<string, ItemState>,
-	onPermission?: (
-		type: "permission.requested" | "permission.resolved",
-		data: PermissionEventData
-	) => void
+	itemStates: Map<string, ItemState>
 ): ProcessResult {
 	switch (event.type) {
 		case "item.started": {
@@ -60,11 +55,6 @@ export function processEvent(
 				state.item = item;
 				state.pendingDeltas = [];
 			}
-			break;
-		}
-		case "permission.requested":
-		case "permission.resolved": {
-			onPermission?.(event.type, event.data as PermissionEventData);
 			break;
 		}
 		default:
@@ -159,7 +149,7 @@ function convertItemToMessage(
 	if (role === "assistant") {
 		if (toolPartsForMessage) {
 			for (const tp of toolPartsForMessage) {
-				content.push(tp as ThreadMessageContent[number]);
+				content.push(tp as MessageContent[number]);
 			}
 		}
 		return {
@@ -204,8 +194,8 @@ function deriveMessages(itemStates: Map<string, ItemState>): ProcessResult {
 function convertContent(
 	parts: ContentPart[],
 	pendingDeltas: string[]
-): ThreadMessageContent[number][] {
-	const content: ThreadMessageContent[number][] = [];
+): MessageContent[number][] {
+	const content: MessageContent[number][] = [];
 
 	for (const part of parts) {
 		const converted = convertPart(part);
@@ -231,7 +221,7 @@ function convertContent(
 	return content;
 }
 
-function convertPart(part: ContentPart): ThreadMessageContent[number] | null {
+function convertPart(part: ContentPart): MessageContent[number] | null {
 	switch (part.type) {
 		case "text":
 			return { type: "text", text: part.text };

@@ -1,11 +1,11 @@
 import { create } from "zustand";
 
-type TerminalStore = {
+type SpaceSidebarStore = {
 	isOpen: boolean;
 	setIsOpen: (open: boolean) => void;
 };
 
-export const useTerminalStore = create<TerminalStore>((set) => ({
+export const useSpaceSidebarStore = create<SpaceSidebarStore>((set) => ({
 	isOpen: false,
 	setIsOpen: (open) => set({ isOpen: open }),
 }));

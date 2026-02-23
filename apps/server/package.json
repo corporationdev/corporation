@@ -6,10 +6,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./app": "./src/app.ts",
-    "./registry": "./src/registry.ts"
+    "./registry": "./src/registry.ts",
+    "./space": "./src/space.ts"
   },
   "scripts": {
-    "check-types": "tsc -b"
+    "check-types": "tsc -b",
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts"
   },
   "dependencies": {
     "@corporation/backend": "workspace:*",
@@ -20,8 +22,10 @@
     "@nangohq/node": "catalog:",
     "@rivetkit/cloudflare-workers": "catalog:",
     "convex": "catalog:",
+    "drizzle-orm": "catalog:",
     "hono": "catalog:",
     "jose": "catalog:",
+    "nanoid": "catalog:",
     "octokit": "catalog:",
     "zod": "catalog:",
     "rivetkit": "catalog:",
@@ -30,6 +34,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@corporation/config": "workspace:*",
+    "drizzle-kit": "catalog:",
     "typescript": "catalog:"
   }
 }
