@@ -1,38 +1,19 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMutation } from "convex/react";
 
-type UseStartSandboxOptions = {
-	slug: string;
-	status: string;
-};
-
-export function useStartSandbox({ slug, status }: UseStartSandboxOptions) {
+export function useStartSandbox(slug: string, status: string) {
 	const ensureSpace = useMutation(api.spaces.ensure);
 
-	const startMutation = useTanstackMutation({
-		mutationFn: () => ensureSpace({ slug }),
-	});
-
-	const isTransitioning = status === "creating" || status === "starting";
+	const isStopped = status === "stopped" || status === "error";
 	const isStarted = status === "started";
-	const isPending = startMutation.isPending;
-	const isStarting = isPending || isTransitioning;
-	const isStartDisabled = isStarting || isStarted;
+	const isTransitioning = status === "creating" || status === "starting";
 
 	const startSandbox = () => {
-		if (isStartDisabled) {
+		if (!isStopped) {
 			return;
 		}
-		startMutation.mutate();
+		ensureSpace({ slug });
 	};
 
-	return {
-		startSandbox,
-		isPending,
-		isStarting,
-		isTransitioning,
-		isStarted,
-		isStartDisabled,
-	};
+	return { startSandbox, isStopped, isStarted, isTransitioning };
 }

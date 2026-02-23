@@ -16,10 +16,10 @@ type SandboxPausedPanelProps = {
 };
 
 export function SandboxPausedPanel({ slug, status }: SandboxPausedPanelProps) {
-	const { isStartDisabled, isStarting, startSandbox } = useStartSandbox({
+	const { startSandbox, isStopped, isTransitioning } = useStartSandbox(
 		slug,
-		status,
-	});
+		status
+	);
 
 	const statusLabel = statusLabelByValue[status] ?? status;
 
@@ -35,16 +35,16 @@ export function SandboxPausedPanel({ slug, status }: SandboxPausedPanelProps) {
 				</p>
 				<Button
 					className="mt-4 w-full justify-center gap-2"
-					disabled={isStartDisabled}
+					disabled={!isStopped}
 					onClick={startSandbox}
 					type="button"
 				>
-					{isStarting ? (
+					{isTransitioning ? (
 						<LoaderIcon className="size-4 animate-spin" />
 					) : (
 						<PlayIcon className="size-4" />
 					)}
-					{isStarting ? "Starting..." : "Start Sandbox"}
+					{isTransitioning ? "Starting..." : "Start Sandbox"}
 				</Button>
 			</div>
 		</div>

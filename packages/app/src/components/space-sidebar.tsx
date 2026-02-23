@@ -76,13 +76,8 @@ const SpaceSidebarContent: FC<{
 		mutationFn: () => stopSpace({ id: space._id }),
 	});
 
-	const { isPending, isStartDisabled, isTransitioning, startSandbox } =
-		useStartSandbox({
-			slug: space.slug,
-			status: space.status,
-		});
-	const isStopped = space.status === "stopped" || space.status === "error";
-	const isStarted = space.status === "started";
+	const { startSandbox, isStopped, isStarted, isTransitioning } =
+		useStartSandbox(space.slug, space.status);
 
 	const handleNewTerminal = async () => {
 		if (!actor.connection) {
@@ -109,17 +104,12 @@ const SpaceSidebarContent: FC<{
 			{isStopped && (
 				<Button
 					className="w-full justify-start gap-2"
-					disabled={isStartDisabled}
 					onClick={startSandbox}
 					size="sm"
 					variant="outline"
 				>
-					{isPending ? (
-						<LoaderIcon className="size-4 animate-spin" />
-					) : (
-						<PlayIcon className="size-4" />
-					)}
-					{isPending ? "Starting..." : "Start Sandbox"}
+					<PlayIcon className="size-4" />
+					Start Sandbox
 				</Button>
 			)}
 			{isStarted && (

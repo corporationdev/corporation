@@ -91,7 +91,7 @@ export function SpaceLayout() {
 					<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
 						Loading sandbox status...
 					</div>
-				) : shouldShowSandboxPaused && space ? (
+				) : shouldShowSandboxPaused ? (
 					<SandboxPausedPanel slug={space.slug} status={space.status} />
 				) : (
 					activeTabConfig.render({
