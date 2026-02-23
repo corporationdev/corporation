@@ -1,8 +1,8 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import {
 	ExternalLinkIcon,
 	LoaderIcon,
@@ -19,11 +19,12 @@ import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 
+export type Space = NonNullable<
+	FunctionReturnType<typeof api.spaces.getBySlug>
+>;
+
 type SpaceSidebarProps = {
-	spaceId: Id<"spaces">;
-	sandboxUrl: string | null | undefined;
-	spaceSlug: string;
-	status: string;
+	space?: Space | null;
 	actor: SpaceActor;
 };
 
@@ -35,32 +36,39 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 	error: { label: "Error", className: "bg-destructive" },
 };
 
-export const SpaceSidebar: FC<SpaceSidebarProps> = ({
-	spaceId,
-	sandboxUrl,
-	spaceSlug,
-	status,
-	actor,
-}) => {
+export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor }) => {
+	return (
+		<Sidebar collapsible="offcanvas" side="right">
+			<SidebarContent className="p-4">
+				{space ? <SpaceSidebarContent actor={actor} space={space} /> : null}
+			</SidebarContent>
+		</Sidebar>
+	);
+};
+
+const SpaceSidebarContent: FC<{
+	space: Space;
+	actor: SpaceActor;
+}> = ({ space, actor }) => {
 	const navigate = useNavigate();
-	const config = statusConfig[status] ?? {
-		label: status,
+	const config = statusConfig[space.status] ?? {
+		label: space.status,
 		className: "bg-muted-foreground",
 	};
 
 	const stopSpace = useMutation(api.spaces.stop);
 
 	const stopMutation = useTanstackMutation({
-		mutationFn: () => stopSpace({ id: spaceId }),
+		mutationFn: () => stopSpace({ id: space._id }),
 	});
 
 	const { isPending, isStartDisabled, isTransitioning, startSandbox } =
 		useStartSandbox({
-			spaceId,
-			status,
+			spaceId: space._id,
+			status: space.status,
 		});
-	const isStopped = status === "stopped" || status === "error";
-	const isStarted = status === "started";
+	const isStopped = space.status === "stopped" || space.status === "error";
+	const isStarted = space.status === "started";
 
 	const handleNewTerminal = async () => {
 		if (!actor.connection) {
@@ -71,94 +79,92 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({
 		await actor.connection.ensureTerminal(terminalId);
 		navigate({
 			to: "/space/$spaceSlug",
-			params: { spaceSlug },
+			params: { spaceSlug: space.slug },
 			search: { tab: serializeTab({ type: "terminal", id: terminalId }) },
 		});
 	};
 
 	return (
-		<Sidebar collapsible="offcanvas" side="right">
-			<SidebarContent className="p-4">
-				<div className="flex flex-col gap-4">
-					<div className="flex items-center gap-2">
-						<div className={cn("size-2 rounded-full", config.className)} />
-						<span className="text-muted-foreground text-sm">
-							Sandbox: {config.label}
-						</span>
-					</div>
-					{isStopped && (
-						<Button
-							className="w-full justify-start gap-2"
-							disabled={isStartDisabled}
-							onClick={startSandbox}
-							size="sm"
-							variant="outline"
-						>
-							{isPending ? (
-								<LoaderIcon className="size-4 animate-spin" />
-							) : (
-								<PlayIcon className="size-4" />
-							)}
-							{isPending ? "Starting..." : "Start Sandbox"}
-						</Button>
+		<div className="flex flex-col gap-4">
+			<div className="flex items-center gap-2">
+				<div className={cn("size-2 rounded-full", config.className)} />
+				<span className="text-muted-foreground text-sm">
+					Sandbox: {config.label}
+				</span>
+			</div>
+			{isStopped && (
+				<Button
+					className="w-full justify-start gap-2"
+					disabled={isStartDisabled}
+					onClick={startSandbox}
+					size="sm"
+					variant="outline"
+				>
+					{isPending ? (
+						<LoaderIcon className="size-4 animate-spin" />
+					) : (
+						<PlayIcon className="size-4" />
 					)}
-					{isStarted && (
-						<Button
-							className="w-full justify-start gap-2"
-							disabled={stopMutation.isPending}
-							onClick={() => stopMutation.mutate()}
-							size="sm"
-							variant="outline"
-						>
-							{stopMutation.isPending ? (
-								<LoaderIcon className="size-4 animate-spin" />
-							) : (
-								<SquareIcon className="size-4" />
-							)}
-							{stopMutation.isPending ? "Stopping..." : "Stop Sandbox"}
-						</Button>
+					{isPending ? "Starting..." : "Start Sandbox"}
+				</Button>
+			)}
+			{isStarted && (
+				<Button
+					className="w-full justify-start gap-2"
+					disabled={stopMutation.isPending}
+					onClick={() => stopMutation.mutate()}
+					size="sm"
+					variant="outline"
+				>
+					{stopMutation.isPending ? (
+						<LoaderIcon className="size-4 animate-spin" />
+					) : (
+						<SquareIcon className="size-4" />
 					)}
-					{isTransitioning && (
-						<Button
-							className="w-full justify-start gap-2"
-							disabled
-							size="sm"
-							variant="outline"
-						>
-							<LoaderIcon className="size-4 animate-spin" />
-							{status === "creating" ? "Creating..." : "Starting..."}
-						</Button>
+					{stopMutation.isPending ? "Stopping..." : "Stop Sandbox"}
+				</Button>
+			)}
+			{isTransitioning && (
+				<Button
+					className="w-full justify-start gap-2"
+					disabled
+					size="sm"
+					variant="outline"
+				>
+					<LoaderIcon className="size-4 animate-spin" />
+					{space.status === "creating" ? "Creating..." : "Starting..."}
+				</Button>
+			)}
+			<Button
+				className="w-full justify-start gap-2"
+				disabled={
+					actor.connStatus !== "connected" || space.status !== "started"
+				}
+				onClick={() => {
+					handleNewTerminal().catch((error: unknown) => {
+						console.error("Failed to create terminal", error);
+					});
+				}}
+				size="sm"
+				variant="outline"
+			>
+				<TerminalIcon className="size-4" />
+				New Terminal
+			</Button>
+			{space.sandboxUrl && (
+				<a
+					className={cn(
+						buttonVariants({ variant: "outline", size: "sm" }),
+						"w-full justify-start gap-2"
 					)}
-					<Button
-						className="w-full justify-start gap-2"
-						disabled={actor.connStatus !== "connected" || status !== "started"}
-						onClick={() => {
-							handleNewTerminal().catch((error: unknown) => {
-								console.error("Failed to create terminal", error);
-							});
-						}}
-						size="sm"
-						variant="outline"
-					>
-						<TerminalIcon className="size-4" />
-						New Terminal
-					</Button>
-					{sandboxUrl && (
-						<a
-							className={cn(
-								buttonVariants({ variant: "outline", size: "sm" }),
-								"w-full justify-start gap-2"
-							)}
-							href={sandboxUrl}
-							rel="noopener noreferrer"
-							target="_blank"
-						>
-							<ExternalLinkIcon className="size-4" />
-							Open Preview
-						</a>
-					)}
-				</div>
-			</SidebarContent>
-		</Sidebar>
+					href={space.sandboxUrl}
+					rel="noopener noreferrer"
+					target="_blank"
+				>
+					<ExternalLinkIcon className="size-4" />
+					Open Preview
+				</a>
+			)}
+		</div>
 	);
 };

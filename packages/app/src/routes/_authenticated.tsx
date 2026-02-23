@@ -3,6 +3,7 @@ import type { Session, User } from "better-auth";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
+import { useLayoutStore } from "@/stores/layout-store";
 
 export type AuthenticatedContext = {
 	session: { user: User; session: Session };
@@ -21,8 +22,15 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
+	const leftOpen = useLayoutStore((s) => s.leftSidebarOpen);
+	const setLeftOpen = useLayoutStore((s) => s.setLeftSidebarOpen);
+
 	return (
-		<SidebarProvider className="h-full overflow-hidden">
+		<SidebarProvider
+			className="h-full overflow-hidden"
+			onOpenChange={setLeftOpen}
+			open={leftOpen}
+		>
 			<Outlet />
 		</SidebarProvider>
 	);

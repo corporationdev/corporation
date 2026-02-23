@@ -25,7 +25,6 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -80,9 +79,6 @@ function SidebarProvider({
 			} else {
 				_setOpen(openState);
 			}
-
-			// This sets the cookie to keep the sidebar state.
-			localStorage.setItem(SIDEBAR_COOKIE_NAME, String(openState));
 		},
 		[setOpenProp, open]
 	);

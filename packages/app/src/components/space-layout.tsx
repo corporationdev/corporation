@@ -19,7 +19,7 @@ import { useActor } from "@/lib/rivetkit";
 import { tabRegistry } from "@/lib/tab-registry";
 import { parseTab, serializeTab, type TabParam } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
-import { useSpaceSidebarStore } from "@/stores/space-sidebar-store";
+import { useLayoutStore } from "@/stores/layout-store";
 
 export function SpaceLayout() {
 	const match = useMatch({
@@ -66,8 +66,8 @@ export function SpaceLayout() {
 
 	const tabs = useSpaceTabs(actor);
 
-	const isOpen = useSpaceSidebarStore((s) => s.isOpen);
-	const setIsOpen = useSpaceSidebarStore((s) => s.setIsOpen);
+	const isOpen = useLayoutStore((s) => s.rightSidebarOpen);
+	const setIsOpen = useLayoutStore((s) => s.setRightSidebarOpen);
 
 	const activeTabType = tab?.type ?? "session";
 	const activeTabConfig = tabRegistry[activeTabType];
@@ -82,7 +82,7 @@ export function SpaceLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						{space?.sandboxId && <SpaceSidebarToggle />}
+						<SpaceSidebarToggle />
 					</div>
 				</header>
 				{spaceSlug && (
@@ -102,21 +102,13 @@ export function SpaceLayout() {
 					})
 				)}
 			</SidebarInset>
-			{spaceSlug && space && (
-				<SidebarProvider
-					className="w-auto overflow-hidden"
-					onOpenChange={setIsOpen}
-					open={isOpen}
-				>
-					<SpaceSidebar
-						actor={actor}
-						sandboxUrl={space.sandboxUrl}
-						spaceId={space._id}
-						spaceSlug={spaceSlug}
-						status={space.status}
-					/>
-				</SidebarProvider>
-			)}
+			<SidebarProvider
+				className="w-auto overflow-hidden"
+				onOpenChange={setIsOpen}
+				open={isOpen}
+			>
+				<SpaceSidebar actor={actor} space={space} />
+			</SidebarProvider>
 		</div>
 	);
 }
