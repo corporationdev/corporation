@@ -58,6 +58,7 @@ export default defineSchema(
 		}).index("by_repository", ["repositoryId"]),
 
 		spaces: defineTable({
+			slug: v.string(),
 			environmentId: v.id("environments"),
 			sandboxId: v.optional(v.string()),
 			sandboxUrl: v.optional(v.string()),
@@ -65,23 +66,8 @@ export default defineSchema(
 			status: spaceStatusValidator,
 			createdAt: v.number(),
 			updatedAt: v.number(),
-		}).index("by_environment", ["environmentId"]),
-
-		agentSessions: defineTable({
-			slug: v.string(),
-			title: v.string(),
-			spaceId: v.id("spaces"),
-			status: v.union(
-				v.literal("running"),
-				v.literal("waiting"),
-				v.literal("stopped"),
-				v.literal("error")
-			),
-			createdAt: v.number(),
-			updatedAt: v.number(),
-			archivedAt: v.union(v.number(), v.null()),
 		})
-			.index("by_space", ["spaceId"])
+			.index("by_environment", ["environmentId"])
 			.index("by_slug", ["slug"]),
 	},
 	// TODO: remove schemaValidation: false before launch

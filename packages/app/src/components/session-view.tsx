@@ -31,11 +31,28 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { PermissionOverlay } from "@/components/permission-request";
 import { Button } from "@/components/ui/button";
+import type { SpaceActor } from "@/lib/rivetkit";
+import { SessionRuntimeProvider } from "@/lib/session-runtime";
 import { cn } from "@/lib/utils";
 
-export const Thread: FC = () => {
+export const SessionView: FC<{
+	actor: SpaceActor;
+	sessionId: string | undefined;
+	spaceSlug: string | undefined;
+}> = ({ actor, sessionId, spaceSlug }) => {
+	return (
+		<SessionRuntimeProvider
+			actor={actor}
+			sessionId={sessionId}
+			spaceSlug={spaceSlug}
+		>
+			<SessionViewContent />
+		</SessionRuntimeProvider>
+	);
+};
+
+const SessionViewContent: FC = () => {
 	return (
 		<ThreadPrimitive.Root
 			className="aui-root aui-thread-root @container flex min-h-0 flex-1 flex-col bg-background"
@@ -48,7 +65,7 @@ export const Thread: FC = () => {
 				className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth px-4 pt-4"
 			>
 				<AssistantIf condition={({ thread }) => thread.isEmpty}>
-					<ThreadWelcome />
+					<SessionWelcome />
 				</AssistantIf>
 
 				<ThreadPrimitive.Messages
@@ -60,8 +77,7 @@ export const Thread: FC = () => {
 				/>
 
 				<ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4 md:pb-6">
-					<ThreadScrollToBottom />
-					<PermissionOverlay />
+					<SessionScrollToBottom />
 					<Composer />
 				</ThreadPrimitive.ViewportFooter>
 			</ThreadPrimitive.Viewport>
@@ -69,7 +85,7 @@ export const Thread: FC = () => {
 	);
 };
 
-const ThreadScrollToBottom: FC = () => {
+const SessionScrollToBottom: FC = () => {
 	return (
 		<ThreadPrimitive.ScrollToBottom asChild>
 			<TooltipIconButton
@@ -83,7 +99,7 @@ const ThreadScrollToBottom: FC = () => {
 	);
 };
 
-const ThreadWelcome: FC = () => {
+const SessionWelcome: FC = () => {
 	return (
 		<div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
 			<div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
@@ -96,7 +112,7 @@ const ThreadWelcome: FC = () => {
 					</p>
 				</div>
 			</div>
-			<ThreadSuggestions />
+			<SessionSuggestions />
 		</div>
 	);
 };
@@ -114,7 +130,7 @@ const SUGGESTIONS = [
 	},
 ] as const;
 
-const ThreadSuggestions: FC = () => {
+const SessionSuggestions: FC = () => {
 	return (
 		<div className="aui-thread-welcome-suggestions grid w-full @md:grid-cols-2 gap-2 pb-4">
 			{SUGGESTIONS.map((suggestion, index) => (

@@ -17,7 +17,7 @@ function SettingsLayout() {
 				<div className="flex h-12 items-center border-b px-4">
 					<Link
 						className="flex items-center gap-2 text-muted-foreground text-sm hover:text-foreground"
-						to="/chat"
+						to="/space"
 					>
 						<ArrowLeft className="size-4" />
 						Settings

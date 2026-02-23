@@ -39,6 +39,8 @@
       "convex": "^1.32.0",
       "convex-helpers": "^0.1.111",
       "dotenv": "^17.2.2",
+      "drizzle-kit": "^0.31.9",
+      "drizzle-orm": "^0.45.1",
       "electron": "^40.1.0",
       "electron-vite": "^5.0.0",
       "hono": "^4.8.2",

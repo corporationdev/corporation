@@ -53,6 +53,38 @@ export const list = authedQuery({
 	},
 });
 
+export const getBySlug = authedQuery({
+	args: { slug: v.string() },
+	handler: async (ctx, args) => {
+		const space = await ctx.db
+			.query("spaces")
+			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
+			.unique();
+		if (!space) {
+			return null;
+		}
+		const { environment } = await requireOwnedSpace(ctx, space);
+
+		const repository = await ctx.db.get(environment.repositoryId);
+		if (!repository) {
+			throw new ConvexError("Repository not found");
+		}
+
+		const services = (
+			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
+		).filter((s): s is Doc<"services"> => s !== null);
+
+		return {
+			...space,
+			environment: {
+				...environment,
+				repository,
+				services,
+			},
+		};
+	},
+});
+
 export const get = authedQuery({
 	args: { id: v.id("spaces") },
 	handler: async (ctx, args) => {
@@ -154,12 +186,51 @@ export const internalGet = internalQuery({
 	},
 });
 
+export const stop = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.stopSandbox, {
+			spaceId: args.id,
+		});
+	},
+});
+
 export const ensure = authedMutation({
 	args: {
+		slug: v.optional(v.string()),
 		environmentId: v.optional(v.id("environments")),
 		spaceId: v.optional(v.id("spaces")),
 	},
 	handler: async (ctx, args) => {
+		const slug = args.slug?.trim();
+
+		// Look up by slug first — may already exist from a prior call
+		if (slug) {
+			const existing = await ctx.db
+				.query("spaces")
+				.withIndex("by_slug", (q) => q.eq("slug", slug))
+				.unique();
+			if (existing) {
+				await requireOwnedSpace(ctx, existing);
+				if (existing.status !== "started") {
+					await ctx.scheduler.runAfter(
+						0,
+						internal.sandboxActions.ensureSandbox,
+						{ spaceId: existing._id }
+					);
+				}
+				return existing._id;
+			}
+		}
+
 		if (args.spaceId) {
 			const space = await ctx.db.get(args.spaceId);
 			if (!space) {
@@ -181,6 +252,9 @@ export const ensure = authedMutation({
 		if (!args.environmentId) {
 			throw new ConvexError("environmentId is required when spaceId is absent");
 		}
+		if (!slug) {
+			throw new ConvexError("slug is required when creating a space");
+		}
 
 		const environment = await ctx.db.get(args.environmentId);
 		if (!environment || environment.userId !== ctx.userId) {
@@ -189,6 +263,7 @@ export const ensure = authedMutation({
 
 		const now = Date.now();
 		const spaceId = await ctx.db.insert("spaces", {
+			slug,
 			environmentId: args.environmentId,
 			branchName: "main",
 			status: "creating",

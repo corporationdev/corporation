@@ -14,10 +14,10 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PublicSignupRouteImport } from './routes/_public/signup'
 import { Route as PublicLoginRouteImport } from './routes/_public/login'
+import { Route as AuthenticatedSpaceRouteImport } from './routes/_authenticated/space'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
+import { Route as AuthenticatedSpaceSpaceSlugRouteImport } from './routes/_authenticated/space.$spaceSlug'
 import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_authenticated/settings/connections'
-import { Route as AuthenticatedChatSlugRouteImport } from './routes/_authenticated/chat.$slug'
 import { Route as AuthenticatedSettingsRepositoriesIndexRouteImport } from './routes/_authenticated/settings/repositories/index'
 import { Route as AuthenticatedSettingsRepositoriesConnectRouteImport } from './routes/_authenticated/settings/repositories/connect'
 import { Route as AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport } from './routes/_authenticated/settings/repositories/$repositoryId.edit'
@@ -45,27 +45,28 @@ const PublicLoginRoute = PublicLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => PublicRoute,
 } as any)
+const AuthenticatedSpaceRoute = AuthenticatedSpaceRouteImport.update({
+  id: '/space',
+  path: '/space',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedChatRoute = AuthenticatedChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
+const AuthenticatedSpaceSpaceSlugRoute =
+  AuthenticatedSpaceSpaceSlugRouteImport.update({
+    id: '/$spaceSlug',
+    path: '/$spaceSlug',
+    getParentRoute: () => AuthenticatedSpaceRoute,
+  } as any)
 const AuthenticatedSettingsConnectionsRoute =
   AuthenticatedSettingsConnectionsRouteImport.update({
     id: '/connections',
     path: '/connections',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
-const AuthenticatedChatSlugRoute = AuthenticatedChatSlugRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => AuthenticatedChatRoute,
-} as any)
 const AuthenticatedSettingsRepositoriesIndexRoute =
   AuthenticatedSettingsRepositoriesIndexRouteImport.update({
     id: '/repositories/',
@@ -87,24 +88,24 @@ const AuthenticatedSettingsRepositoriesRepositoryIdEditRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/chat': typeof AuthenticatedChatRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/space': typeof AuthenticatedSpaceRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
-  '/chat/$slug': typeof AuthenticatedChatSlugRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
   '/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/chat': typeof AuthenticatedChatRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/space': typeof AuthenticatedSpaceRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
-  '/chat/$slug': typeof AuthenticatedChatSlugRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories': typeof AuthenticatedSettingsRepositoriesIndexRoute
   '/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
@@ -114,12 +115,12 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_public': typeof PublicRouteWithChildren
-  '/_authenticated/chat': typeof AuthenticatedChatRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/_authenticated/space': typeof AuthenticatedSpaceRouteWithChildren
   '/_public/login': typeof PublicLoginRoute
   '/_public/signup': typeof PublicSignupRoute
-  '/_authenticated/chat/$slug': typeof AuthenticatedChatSlugRoute
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/_authenticated/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/_authenticated/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/_authenticated/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
   '/_authenticated/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
@@ -128,24 +129,24 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/chat'
     | '/settings'
+    | '/space'
     | '/login'
     | '/signup'
-    | '/chat/$slug'
     | '/settings/connections'
+    | '/space/$spaceSlug'
     | '/settings/repositories/connect'
     | '/settings/repositories/'
     | '/settings/repositories/$repositoryId/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/chat'
     | '/settings'
+    | '/space'
     | '/login'
     | '/signup'
-    | '/chat/$slug'
     | '/settings/connections'
+    | '/space/$spaceSlug'
     | '/settings/repositories/connect'
     | '/settings/repositories'
     | '/settings/repositories/$repositoryId/edit'
@@ -154,12 +155,12 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/_public'
-    | '/_authenticated/chat'
     | '/_authenticated/settings'
+    | '/_authenticated/space'
     | '/_public/login'
     | '/_public/signup'
-    | '/_authenticated/chat/$slug'
     | '/_authenticated/settings/connections'
+    | '/_authenticated/space/$spaceSlug'
     | '/_authenticated/settings/repositories/connect'
     | '/_authenticated/settings/repositories/'
     | '/_authenticated/settings/repositories/$repositoryId/edit'
@@ -208,6 +209,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicLoginRouteImport
       parentRoute: typeof PublicRoute
     }
+    '/_authenticated/space': {
+      id: '/_authenticated/space'
+      path: '/space'
+      fullPath: '/space'
+      preLoaderRoute: typeof AuthenticatedSpaceRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -215,12 +223,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/chat': {
-      id: '/_authenticated/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof AuthenticatedChatRouteImport
-      parentRoute: typeof AuthenticatedRoute
+    '/_authenticated/space/$spaceSlug': {
+      id: '/_authenticated/space/$spaceSlug'
+      path: '/$spaceSlug'
+      fullPath: '/space/$spaceSlug'
+      preLoaderRoute: typeof AuthenticatedSpaceSpaceSlugRouteImport
+      parentRoute: typeof AuthenticatedSpaceRoute
     }
     '/_authenticated/settings/connections': {
       id: '/_authenticated/settings/connections'
@@ -228,13 +236,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/connections'
       preLoaderRoute: typeof AuthenticatedSettingsConnectionsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
-    }
-    '/_authenticated/chat/$slug': {
-      id: '/_authenticated/chat/$slug'
-      path: '/$slug'
-      fullPath: '/chat/$slug'
-      preLoaderRoute: typeof AuthenticatedChatSlugRouteImport
-      parentRoute: typeof AuthenticatedChatRoute
     }
     '/_authenticated/settings/repositories/': {
       id: '/_authenticated/settings/repositories/'
@@ -260,17 +261,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AuthenticatedChatRouteChildren {
-  AuthenticatedChatSlugRoute: typeof AuthenticatedChatSlugRoute
-}
-
-const AuthenticatedChatRouteChildren: AuthenticatedChatRouteChildren = {
-  AuthenticatedChatSlugRoute: AuthenticatedChatSlugRoute,
-}
-
-const AuthenticatedChatRouteWithChildren =
-  AuthenticatedChatRoute._addFileChildren(AuthenticatedChatRouteChildren)
-
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsConnectionsRoute: typeof AuthenticatedSettingsConnectionsRoute
   AuthenticatedSettingsRepositoriesConnectRoute: typeof AuthenticatedSettingsRepositoriesConnectRoute
@@ -293,14 +283,25 @@ const AuthenticatedSettingsRouteWithChildren =
     AuthenticatedSettingsRouteChildren,
   )
 
+interface AuthenticatedSpaceRouteChildren {
+  AuthenticatedSpaceSpaceSlugRoute: typeof AuthenticatedSpaceSpaceSlugRoute
+}
+
+const AuthenticatedSpaceRouteChildren: AuthenticatedSpaceRouteChildren = {
+  AuthenticatedSpaceSpaceSlugRoute: AuthenticatedSpaceSpaceSlugRoute,
+}
+
+const AuthenticatedSpaceRouteWithChildren =
+  AuthenticatedSpaceRoute._addFileChildren(AuthenticatedSpaceRouteChildren)
+
 interface AuthenticatedRouteChildren {
-  AuthenticatedChatRoute: typeof AuthenticatedChatRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
+  AuthenticatedSpaceRoute: typeof AuthenticatedSpaceRouteWithChildren
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedChatRoute: AuthenticatedChatRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
+  AuthenticatedSpaceRoute: AuthenticatedSpaceRouteWithChildren,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
