@@ -14,6 +14,7 @@ import { nanoid } from "nanoid";
 import type { FC } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
+import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
@@ -47,18 +48,17 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({
 		className: "bg-muted-foreground",
 	};
 
-	const ensureSpace = useMutation(api.spaces.ensure);
 	const stopSpace = useMutation(api.spaces.stop);
-
-	const startMutation = useTanstackMutation({
-		mutationFn: () => ensureSpace({ spaceId }),
-	});
 
 	const stopMutation = useTanstackMutation({
 		mutationFn: () => stopSpace({ id: spaceId }),
 	});
 
-	const isTransitioning = status === "creating" || status === "starting";
+	const { isPending, isStartDisabled, isTransitioning, startSandbox } =
+		useStartSandbox({
+			spaceId,
+			status,
+		});
 	const isStopped = status === "stopped" || status === "error";
 	const isStarted = status === "started";
 
@@ -89,17 +89,17 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({
 					{isStopped && (
 						<Button
 							className="w-full justify-start gap-2"
-							disabled={startMutation.isPending}
-							onClick={() => startMutation.mutate()}
+							disabled={isStartDisabled}
+							onClick={startSandbox}
 							size="sm"
 							variant="outline"
 						>
-							{startMutation.isPending ? (
+							{isPending ? (
 								<LoaderIcon className="size-4 animate-spin" />
 							) : (
 								<PlayIcon className="size-4" />
 							)}
-							{startMutation.isPending ? "Starting..." : "Start Sandbox"}
+							{isPending ? "Starting..." : "Start Sandbox"}
 						</Button>
 					)}
 					{isStarted && (

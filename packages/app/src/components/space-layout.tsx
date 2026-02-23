@@ -5,10 +5,9 @@ import { useQuery } from "convex/react";
 import { PlusIcon } from "lucide-react";
 import { type FC, useEffect } from "react";
 import { SpaceListSidebar } from "@/components/assistant-ui/space-list-sidebar";
-import { SessionView } from "@/components/session-view";
+import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
 import { SpaceSidebar } from "@/components/space-sidebar";
 import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
-import { TerminalView } from "@/components/terminal-view";
 import { Button } from "@/components/ui/button";
 import {
 	SidebarInset,
@@ -17,6 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useSpaceTabs } from "@/hooks/use-space-tabs";
 import { useActor } from "@/lib/rivetkit";
+import { tabRegistry } from "@/lib/tab-registry";
 import { parseTab, serializeTab, type TabParam } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { useSpaceSidebarStore } from "@/stores/space-sidebar-store";
@@ -69,7 +69,11 @@ export function SpaceLayout() {
 	const isOpen = useSpaceSidebarStore((s) => s.isOpen);
 	const setIsOpen = useSpaceSidebarStore((s) => s.setIsOpen);
 
-	const sessionId = tab?.type === "session" ? tab.id : undefined;
+	const activeTabType = tab?.type ?? "session";
+	const activeTabConfig = tabRegistry[activeTabType];
+	const shouldWaitForSandboxStatus = activeTabConfig.requiresSandbox && !space;
+	const shouldShowSandboxPaused =
+		activeTabConfig.requiresSandbox && !!space && space.status !== "started";
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -84,15 +88,18 @@ export function SpaceLayout() {
 				{spaceSlug && (
 					<SpaceTabBar activeTab={tab} spaceSlug={spaceSlug} tabs={tabs} />
 				)}
-				{(!tab || tab.type === "session") && (
-					<SessionView
-						actor={actor}
-						sessionId={sessionId}
-						spaceSlug={spaceSlug}
-					/>
-				)}
-				{tab?.type === "terminal" && (
-					<TerminalView actor={actor} key={tab.id} terminalId={tab.id} />
+				{shouldWaitForSandboxStatus ? (
+					<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
+						Loading sandbox status...
+					</div>
+				) : shouldShowSandboxPaused && space ? (
+					<SandboxPausedPanel spaceId={space._id} status={space.status} />
+				) : (
+					activeTabConfig.render({
+						actor,
+						tabId: tab?.id,
+						spaceSlug,
+					})
 				)}
 			</SidebarInset>
 			{spaceSlug && space && (
@@ -124,14 +131,15 @@ const SpaceTabBar: FC<{
 	return (
 		<div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2">
 			{tabs.map((tab) => {
-				const tabParam =
-					tab.type === "session"
-						? ({ type: "session", id: tab.sessionId } as const)
-						: ({ type: "terminal", id: tab.terminalId } as const);
+				const tabConfig = tabRegistry[tab.type];
+				const tabParam = tabConfig.tabParamFromSpaceTab(tab);
+				if (!tabParam) {
+					return null;
+				}
+
 				const isActive =
 					activeTab?.type === tabParam.type && activeTab.id === tabParam.id;
-				const title =
-					tab.title || (tab.type === "session" ? "New Chat" : "Terminal");
+				const title = tab.title || tabConfig.defaultTitle;
 
 				return (
 					<button

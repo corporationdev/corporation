@@ -1,6 +1,10 @@
-export type TabParam =
-	| { type: "session"; id: string }
-	| { type: "terminal"; id: string };
+import {
+	type AppTabParam,
+	isAppTabType,
+	toAppTabParam,
+} from "@/lib/tab-registry";
+
+export type TabParam = AppTabParam;
 
 export function serializeTab(tab: TabParam): string {
 	return `${tab.type}:${tab.id}`;
@@ -22,9 +26,9 @@ export function parseTab(raw: string | undefined): TabParam | undefined {
 		return undefined;
 	}
 
-	if (type === "session" || type === "terminal") {
-		return { type, id };
+	if (!isAppTabType(type)) {
+		return undefined;
 	}
 
-	return undefined;
+	return toAppTabParam({ type, id });
 }

@@ -186,6 +186,16 @@ export const internalGet = internalQuery({
 	},
 });
 
+export const getBySandboxId = internalQuery({
+	args: { sandboxId: v.string() },
+	handler: async (ctx, args) => {
+		return await ctx.db
+			.query("spaces")
+			.withIndex("by_sandboxId", (q) => q.eq("sandboxId", args.sandboxId))
+			.unique();
+	},
+});
+
 export const stop = authedMutation({
 	args: {
 		id: v.id("spaces"),

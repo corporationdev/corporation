@@ -16,6 +16,7 @@
     "convex": "catalog:",
     "convex-helpers": "catalog:",
     "dotenv": "catalog:",
+    "svix": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

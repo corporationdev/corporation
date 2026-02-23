@@ -68,7 +68,8 @@ export default defineSchema(
 			updatedAt: v.number(),
 		})
 			.index("by_environment", ["environmentId"])
-			.index("by_slug", ["slug"]),
+			.index("by_slug", ["slug"])
+			.index("by_sandboxId", ["sandboxId"]),
 	},
 	// TODO: remove schemaValidation: false before launch
 	{ schemaValidation: false }
