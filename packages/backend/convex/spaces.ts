@@ -215,55 +215,29 @@ export const stop = authedMutation({
 
 export const ensure = authedMutation({
 	args: {
-		slug: v.optional(v.string()),
+		slug: v.string(),
 		environmentId: v.optional(v.id("environments")),
-		spaceId: v.optional(v.id("spaces")),
 	},
 	handler: async (ctx, args) => {
-		const slug = args.slug?.trim();
+		const slug = args.slug.trim();
 
-		// Look up by slug first — may already exist from a prior call
-		if (slug) {
-			const existing = await ctx.db
-				.query("spaces")
-				.withIndex("by_slug", (q) => q.eq("slug", slug))
-				.unique();
-			if (existing) {
-				await requireOwnedSpace(ctx, existing);
-				if (existing.status !== "started") {
-					await ctx.scheduler.runAfter(
-						0,
-						internal.sandboxActions.ensureSandbox,
-						{ spaceId: existing._id }
-					);
-				}
-				return existing._id;
+		// Look up by slug — may already exist from a prior call
+		const existing = await ctx.db
+			.query("spaces")
+			.withIndex("by_slug", (q) => q.eq("slug", slug))
+			.unique();
+		if (existing) {
+			await requireOwnedSpace(ctx, existing);
+			if (existing.status !== "started") {
+				await ctx.scheduler.runAfter(0, internal.sandboxActions.ensureSandbox, {
+					spaceId: existing._id,
+				});
 			}
-		}
-
-		if (args.spaceId) {
-			const space = await ctx.db.get(args.spaceId);
-			if (!space) {
-				throw new ConvexError("Space not found");
-			}
-			await requireOwnedSpace(ctx, space);
-
-			if (space.status === "started") {
-				return args.spaceId;
-			}
-
-			await ctx.scheduler.runAfter(0, internal.sandboxActions.ensureSandbox, {
-				spaceId: args.spaceId,
-			});
-
-			return args.spaceId;
+			return existing._id;
 		}
 
 		if (!args.environmentId) {
-			throw new ConvexError("environmentId is required when spaceId is absent");
-		}
-		if (!slug) {
-			throw new ConvexError("slug is required when creating a space");
+			throw new ConvexError("environmentId is required when creating a space");
 		}
 
 		const environment = await ctx.db.get(args.environmentId);

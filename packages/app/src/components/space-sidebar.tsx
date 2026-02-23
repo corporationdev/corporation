@@ -64,7 +64,7 @@ const SpaceSidebarContent: FC<{
 
 	const { isPending, isStartDisabled, isTransitioning, startSandbox } =
 		useStartSandbox({
-			spaceId: space._id,
+			slug: space.slug,
 			status: space.status,
 		});
 	const isStopped = space.status === "stopped" || space.status === "error";

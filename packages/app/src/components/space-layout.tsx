@@ -93,7 +93,7 @@ export function SpaceLayout() {
 						Loading sandbox status...
 					</div>
 				) : shouldShowSandboxPaused && space ? (
-					<SandboxPausedPanel spaceId={space._id} status={space.status} />
+					<SandboxPausedPanel slug={space.slug} status={space.status} />
 				) : (
 					activeTabConfig.render({
 						actor,

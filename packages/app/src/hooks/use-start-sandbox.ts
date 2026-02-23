@@ -1,18 +1,17 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMutation } from "convex/react";
 
 type UseStartSandboxOptions = {
-	spaceId: Id<"spaces">;
+	slug: string;
 	status: string;
 };
 
-export function useStartSandbox({ spaceId, status }: UseStartSandboxOptions) {
+export function useStartSandbox({ slug, status }: UseStartSandboxOptions) {
 	const ensureSpace = useMutation(api.spaces.ensure);
 
 	const startMutation = useTanstackMutation({
-		mutationFn: () => ensureSpace({ spaceId }),
+		mutationFn: () => ensureSpace({ slug }),
 	});
 
 	const isTransitioning = status === "creating" || status === "starting";

@@ -1,4 +1,3 @@
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { LoaderIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
@@ -12,16 +11,13 @@ const statusLabelByValue: Record<string, string> = {
 };
 
 type SandboxPausedPanelProps = {
-	spaceId: Id<"spaces">;
+	slug: string;
 	status: string;
 };
 
-export function SandboxPausedPanel({
-	spaceId,
-	status,
-}: SandboxPausedPanelProps) {
+export function SandboxPausedPanel({ slug, status }: SandboxPausedPanelProps) {
 	const { isStartDisabled, isStarting, startSandbox } = useStartSandbox({
-		spaceId,
+		slug,
 		status,
 	});
 
