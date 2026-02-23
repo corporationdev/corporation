@@ -62,7 +62,7 @@ export const buildSnapshot = internalAction({
 						"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
 						"npm install -g yarn pnpm",
 						"curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun",
-						"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.1.9/install.sh | sh",
+						"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.1.11/install.sh | sh",
 						"sandbox-agent install-agent claude",
 						`git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git /root/${repository.owner}-${repository.name} --branch ${repository.defaultBranch} --single-branch`,
 						`cd /root/${repository.owner}-${repository.name} && ${repository.setupCommand}`
