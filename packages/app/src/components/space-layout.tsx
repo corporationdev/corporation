@@ -5,22 +5,17 @@ import { useQuery } from "convex/react";
 import { PlusIcon } from "lucide-react";
 import { type FC, useEffect } from "react";
 import { SpaceListSidebar } from "@/components/assistant-ui/space-list-sidebar";
-import { CopyInspectorUrl } from "@/components/copy-inspector-url";
-import { SessionView } from "@/components/session-view";
+import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
+import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
 import { SpaceSidebar } from "@/components/space-sidebar";
 import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
-import { TerminalView } from "@/components/terminal-view";
 import { Button } from "@/components/ui/button";
-import {
-	SidebarInset,
-	SidebarProvider,
-	SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useSpaceTabs } from "@/hooks/use-space-tabs";
 import { useActor } from "@/lib/rivetkit";
-import { parseTab, serializeTab, type TabParam } from "@/lib/tab-routing";
+import { type TabParam, tabRegistry } from "@/lib/tab-registry";
+import { parseTab, serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
-import { useSpaceSidebarStore } from "@/stores/space-sidebar-store";
 
 export function SpaceLayout() {
 	const match = useMatch({
@@ -34,6 +29,8 @@ export function SpaceLayout() {
 		api.spaces.getBySlug,
 		spaceSlug ? { slug: spaceSlug } : "skip"
 	);
+	const isSpaceLoading = space === undefined;
+	const isSpaceMissing = !!spaceSlug && space === null;
 
 	const actor = useActor({
 		name: "space",
@@ -67,10 +64,13 @@ export function SpaceLayout() {
 
 	const tabs = useSpaceTabs(actor);
 
-	const isOpen = useSpaceSidebarStore((s) => s.isOpen);
-	const setIsOpen = useSpaceSidebarStore((s) => s.setIsOpen);
+	const activeTabType = tab?.type ?? "session";
+	const activeTabConfig = tabRegistry[activeTabType];
 
-	const sessionId = tab?.type === "session" ? tab.id : undefined;
+	const shouldWaitForSandboxStatus =
+		activeTabConfig.requiresSandbox && isSpaceLoading;
+	const shouldShowSandboxPaused =
+		activeTabConfig.requiresSandbox && !!space && space.status !== "started";
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -79,40 +79,29 @@ export function SpaceLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						{space?.sandboxUrl && (
-							<CopyInspectorUrl sandboxUrl={space.sandboxUrl} />
-						)}
-						{space?.sandboxId && <SpaceSidebarToggle />}
+						<SpaceSidebarToggle />
 					</div>
 				</header>
 				{spaceSlug && (
 					<SpaceTabBar activeTab={tab} spaceSlug={spaceSlug} tabs={tabs} />
 				)}
-				{(!tab || tab.type === "session") && (
-					<SessionView
-						actor={actor}
-						sessionId={sessionId}
-						spaceSlug={spaceSlug}
-					/>
-				)}
-				{tab?.type === "terminal" && (
-					<TerminalView actor={actor} key={tab.id} terminalId={tab.id} />
+				{isSpaceMissing ? (
+					<SpaceNotFoundPanel />
+				) : shouldWaitForSandboxStatus ? (
+					<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
+						Loading sandbox status...
+					</div>
+				) : shouldShowSandboxPaused ? (
+					<SandboxPausedPanel slug={space.slug} status={space.status} />
+				) : (
+					activeTabConfig.render({
+						actor,
+						tabId: tab?.id,
+						spaceSlug,
+					})
 				)}
 			</SidebarInset>
-			{spaceSlug && space && (
-				<SidebarProvider
-					className="w-auto overflow-hidden"
-					onOpenChange={setIsOpen}
-					open={isOpen}
-				>
-					<SpaceSidebar
-						actor={actor}
-						spaceId={space._id}
-						spaceSlug={spaceSlug}
-						status={space.status}
-					/>
-				</SidebarProvider>
-			)}
+			<SpaceSidebar actor={actor} space={space} />
 		</div>
 	);
 }
@@ -127,14 +116,15 @@ const SpaceTabBar: FC<{
 	return (
 		<div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2">
 			{tabs.map((tab) => {
-				const tabParam =
-					tab.type === "session"
-						? ({ type: "session", id: tab.sessionId } as const)
-						: ({ type: "terminal", id: tab.terminalId } as const);
+				const tabConfig = tabRegistry[tab.type];
+				const tabParam = tabConfig.tabParamFromSpaceTab(tab);
+				if (!tabParam) {
+					return null;
+				}
+
 				const isActive =
 					activeTab?.type === tabParam.type && activeTab.id === tabParam.id;
-				const title =
-					tab.title || (tab.type === "session" ? "New Chat" : "Terminal");
+				const title = tab.title || tabConfig.defaultTitle;
 
 				return (
 					<button

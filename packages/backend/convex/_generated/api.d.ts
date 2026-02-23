@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as daytonaWebhook from "../daytonaWebhook.js";
 import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
@@ -26,6 +27,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  daytonaWebhook: typeof daytonaWebhook;
   environments: typeof environments;
   functions: typeof functions;
   healthCheck: typeof healthCheck;
