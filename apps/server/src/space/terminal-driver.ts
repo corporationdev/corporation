@@ -253,7 +253,7 @@ async function ensureTerminal(
 		}
 	}
 
-	ctx.broadcast("tabs.changed");
+	await ctx.broadcastTabsChanged();
 }
 
 async function getScrollback(

@@ -1,4 +1,4 @@
-import type { TabType } from "../db/schema";
+import type { SpaceTab, TabType } from "../db/schema";
 import { createTabChannel } from "./channels";
 import type {
 	DriverAction,
@@ -7,6 +7,36 @@ import type {
 } from "./driver-types";
 import { subscribeToChannel, unsubscribeFromChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
+
+async function getAllTabs(
+	drivers: readonly TabDriverLifecycle<DriverActionMap>[],
+	ctx: SpaceRuntimeContext
+): Promise<SpaceTab[]> {
+	const allTabs = (
+		await Promise.all(drivers.map((driver) => driver.listTabs(ctx)))
+	).flat();
+
+	allTabs.sort((left, right) => {
+		if (left.updatedAt !== right.updatedAt) {
+			return right.updatedAt - left.updatedAt;
+		}
+		return left.createdAt - right.createdAt;
+	});
+
+	return allTabs;
+}
+
+export function augmentContext(
+	ctx: unknown,
+	drivers: readonly TabDriverLifecycle<DriverActionMap>[]
+): SpaceRuntimeContext {
+	const runtime = ctx as SpaceRuntimeContext;
+	runtime.broadcastTabsChanged = async () => {
+		const allTabs = await getAllTabs(drivers, runtime);
+		runtime.broadcast("tabs.changed", allTabs);
+	};
+	return runtime;
+}
 
 type UnionToIntersection<T> = (
 	T extends unknown
@@ -122,7 +152,7 @@ export function collectDriverActions<
 
 			assertNoCollision(actions, actionName, `${driver.kind}.publicActions`);
 			actions[actionName] = (ctx, ...args: never[]) =>
-				actionHandler(ctx as SpaceRuntimeContext, ...args);
+				actionHandler(augmentContext(ctx, drivers), ...args);
 		}
 
 		const kindSuffix = capitalize(driver.kind);

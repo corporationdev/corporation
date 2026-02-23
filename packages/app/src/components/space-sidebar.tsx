@@ -4,14 +4,14 @@ import { nanoid } from "nanoid";
 import type { FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Sidebar, SidebarContent } from "@/components/ui/sidebar";
-import type { useActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 
 type SpaceSidebarProps = {
 	spaceSlug: string;
 	status: string;
-	actor: ReturnType<typeof useActor>;
+	actor: SpaceActor;
 };
 
 const statusConfig: Record<string, { label: string; className: string }> = {

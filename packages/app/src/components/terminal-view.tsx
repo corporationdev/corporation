@@ -2,14 +2,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTermTerminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
-import type { useActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/rivetkit";
 import "@xterm/xterm/css/xterm.css";
-
-type SpaceActorLike = ReturnType<typeof useActor>;
 
 type TerminalViewProps = {
 	terminalId: string;
-	actor: SpaceActorLike;
+	actor: SpaceActor;
 };
 
 export function TerminalView({ actor, terminalId }: TerminalViewProps) {

@@ -32,12 +32,12 @@ import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
-import type { useActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/rivetkit";
 import { SessionRuntimeProvider } from "@/lib/session-runtime";
 import { cn } from "@/lib/utils";
 
 export const SessionView: FC<{
-	actor: ReturnType<typeof useActor>;
+	actor: SpaceActor;
 	sessionId: string | undefined;
 	spaceSlug: string | undefined;
 }> = ({ actor, sessionId, spaceSlug }) => {

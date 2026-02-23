@@ -9,3 +9,5 @@ export const { useActor } = createRivetKit<typeof registry>({
 	disableMetadataLookup: true,
 	devtools: false,
 });
+
+export type SpaceActor = ReturnType<typeof useActor>;

@@ -35,5 +35,6 @@ export type SpaceRuntimeContext = {
 	conns: Map<string, ConnectionSender>;
 	waitUntil: (promise: Promise<void>) => void;
 	broadcast: (eventName: string, ...args: unknown[]) => void;
+	broadcastTabsChanged: () => Promise<void>;
 	conn?: { id: string };
 };

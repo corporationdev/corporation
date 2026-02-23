@@ -184,7 +184,7 @@ async function ensureSession(
 		}
 	});
 
-	ctx.broadcast("tabs.changed");
+	await ctx.broadcastTabsChanged();
 }
 
 async function postMessage(
@@ -213,7 +213,7 @@ async function postMessage(
 		.set({ updatedAt: Date.now() })
 		.where(eq(tabs.id, createTabId("session", sessionId)));
 
-	ctx.broadcast("tabs.changed");
+	await ctx.broadcastTabsChanged();
 }
 
 async function replyPermission(

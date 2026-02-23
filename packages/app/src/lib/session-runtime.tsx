@@ -13,7 +13,7 @@ import { nanoid } from "nanoid";
 import { type ReactNode, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
-import type { useActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
@@ -119,7 +119,7 @@ function ConnectedSessionRuntime({
 }: {
 	sessionId: string;
 	spaceSlug: string;
-	actor: ReturnType<typeof useActor>;
+	actor: SpaceActor;
 	children: ReactNode;
 }) {
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
@@ -228,7 +228,7 @@ export function SessionRuntimeProvider({
 }: {
 	sessionId: string | undefined;
 	spaceSlug: string | undefined;
-	actor: ReturnType<typeof useActor> | null;
+	actor: SpaceActor | null;
 	children: ReactNode;
 }) {
 	if (!spaceSlug) {

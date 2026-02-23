@@ -2,27 +2,11 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UniversalEvent } from "sandbox-agent";
 import { type ItemState, processEvent } from "@/lib/convert-events";
+import type { SpaceActor } from "@/lib/rivetkit";
 
 type SessionState = {
 	messages: ThreadMessageLike[];
 	isRunning: boolean;
-};
-
-type SessionEventActor = {
-	connStatus: string;
-	connection:
-		| {
-				getTranscript: (
-					sessionId: string,
-					offset: number,
-					limit?: number
-				) => Promise<unknown>;
-				subscribeSession: (sessionId: string) => Promise<unknown>;
-				unsubscribeSession: (sessionId: string) => Promise<unknown>;
-		  }
-		| null
-		| undefined;
-	useEvent: (eventName: "session.event", cb: (event: unknown) => void) => void;
 };
 
 export function useSessionEventState({
@@ -30,7 +14,7 @@ export function useSessionEventState({
 	actor,
 }: {
 	sessionId: string;
-	actor: SessionEventActor;
+	actor: SpaceActor;
 }): SessionState {
 	const itemStatesRef = useRef(new Map<string, ItemState>());
 	const lastSequenceRef = useRef(0);
@@ -85,7 +69,7 @@ export function useSessionEventState({
 				if (isCancelled) {
 					return;
 				}
-				applyEvents((events as UniversalEvent[] | undefined) ?? []);
+				applyEvents(events ?? []);
 				applyEvents(bufferRef.current);
 				bufferRef.current = [];
 				caughtUpRef.current = true;

@@ -1,13 +1,9 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type {
-	SessionTab,
-	SpaceTab,
-	TerminalTab,
-} from "@corporation/server/space";
+import type { SpaceTab } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { PlusIcon } from "lucide-react";
-import { type FC, useEffect, useState } from "react";
+import { type FC, useEffect } from "react";
 import { SpaceListSidebar } from "@/components/assistant-ui/space-list-sidebar";
 import { CopyInspectorUrl } from "@/components/copy-inspector-url";
 import { SessionView } from "@/components/session-view";
@@ -20,6 +16,7 @@ import {
 	SidebarProvider,
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useSpaceTabs } from "@/hooks/use-space-tabs";
 import { useActor } from "@/lib/rivetkit";
 import { parseTab, serializeTab, type TabParam } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
@@ -68,28 +65,7 @@ export function SpaceLayout() {
 			});
 	}, [spaceSlug, actor.connStatus, actor.connection, space]);
 
-	const [tabs, setTabs] = useState<SpaceTab[]>([]);
-
-	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
-			return;
-		}
-		actor.connection
-			.listTabs()
-			.then((nextTabs) => setTabs(nextTabs as unknown as SpaceTab[]))
-			.catch((error: unknown) => {
-				console.error("Failed to fetch tabs", error);
-			});
-	}, [actor.connStatus, actor.connection]);
-
-	actor.useEvent("tabs.changed", () => {
-		actor.connection
-			?.listTabs()
-			.then((nextTabs) => setTabs(nextTabs as unknown as SpaceTab[]))
-			.catch((error: unknown) => {
-				console.error("Failed to fetch tabs", error);
-			});
-	});
+	const tabs = useSpaceTabs(actor);
 
 	const isOpen = useSpaceSidebarStore((s) => s.isOpen);
 	const setIsOpen = useSpaceSidebarStore((s) => s.setIsOpen);
@@ -147,67 +123,38 @@ const SpaceTabBar: FC<{
 }> = ({ spaceSlug, activeTab, tabs }) => {
 	const navigate = useNavigate();
 
-	const sessionTabs = tabs.filter((t): t is SessionTab => t.type === "session");
-	const terminalTabs = tabs.filter(
-		(t): t is TerminalTab => t.type === "terminal"
-	);
-
 	return (
 		<div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2">
-			{sessionTabs.map((sessionTab) => (
-				<button
-					className={cn(
-						"flex h-7 shrink-0 items-center rounded-md px-3 text-sm transition-colors hover:bg-muted",
-						activeTab?.type === "session" &&
-							activeTab.id === sessionTab.sessionId
-							? "bg-muted font-medium"
-							: "text-muted-foreground"
-					)}
-					key={sessionTab.id}
-					onClick={() =>
-						navigate({
-							to: "/space/$spaceSlug",
-							params: { spaceSlug },
-							search: {
-								tab: serializeTab({
-									type: "session",
-									id: sessionTab.sessionId,
-								}),
-							},
-						})
-					}
-					type="button"
-				>
-					{sessionTab.title || "New Chat"}
-				</button>
-			))}
-			{terminalTabs.map((terminalTab) => (
-				<button
-					className={cn(
-						"flex h-7 shrink-0 items-center rounded-md px-3 text-sm transition-colors hover:bg-muted",
-						activeTab?.type === "terminal" &&
-							activeTab.id === terminalTab.terminalId
-							? "bg-muted font-medium"
-							: "text-muted-foreground"
-					)}
-					key={terminalTab.id}
-					onClick={() =>
-						navigate({
-							to: "/space/$spaceSlug",
-							params: { spaceSlug },
-							search: {
-								tab: serializeTab({
-									type: "terminal",
-									id: terminalTab.terminalId,
-								}),
-							},
-						})
-					}
-					type="button"
-				>
-					{terminalTab.title || "Terminal"}
-				</button>
-			))}
+			{tabs.map((tab) => {
+				const tabParam =
+					tab.type === "session"
+						? ({ type: "session", id: tab.sessionId } as const)
+						: ({ type: "terminal", id: tab.terminalId } as const);
+				const isActive =
+					activeTab?.type === tabParam.type && activeTab.id === tabParam.id;
+				const title =
+					tab.title || (tab.type === "session" ? "New Chat" : "Terminal");
+
+				return (
+					<button
+						className={cn(
+							"flex h-7 shrink-0 items-center rounded-md px-3 text-sm transition-colors hover:bg-muted",
+							isActive ? "bg-muted font-medium" : "text-muted-foreground"
+						)}
+						key={tab.id}
+						onClick={() =>
+							navigate({
+								to: "/space/$spaceSlug",
+								params: { spaceSlug },
+								search: { tab: serializeTab(tabParam) },
+							})
+						}
+						type="button"
+					>
+						{title}
+					</button>
+				);
+			})}
 			<Button
 				className="size-7 shrink-0"
 				onClick={() =>

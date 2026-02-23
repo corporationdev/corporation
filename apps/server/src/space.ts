@@ -14,7 +14,10 @@ import {
 	tabs,
 	terminals,
 } from "./db/schema";
-import { collectDriverActions } from "./space/action-registration";
+import {
+	augmentContext,
+	collectDriverActions,
+} from "./space/action-registration";
 import { lifecycleDrivers } from "./space/driver-registry";
 import {
 	clearSubscriptions,
@@ -103,8 +106,11 @@ export const space = actor({
 		},
 
 		listTabs: async (c): Promise<SpaceTab[]> => {
+			const ctx = augmentContext(c, lifecycleDrivers);
 			const allTabs = (
-				await Promise.all(lifecycleDrivers.map((driver) => driver.listTabs(c)))
+				await Promise.all(
+					lifecycleDrivers.map((driver) => driver.listTabs(ctx))
+				)
 			).flat();
 
 			allTabs.sort((left, right) => {
@@ -116,14 +122,14 @@ export const space = actor({
 
 			return allTabs;
 		},
-		...driverActions,
-
 		archiveTab: async (c, tabId: string) => {
-			await c.vars.db
+			const ctx = augmentContext(c, lifecycleDrivers);
+			await ctx.vars.db
 				.update(tabs)
 				.set({ archivedAt: Date.now(), updatedAt: Date.now() })
 				.where(eq(tabs.id, tabId));
-			c.broadcast("tabs.changed");
+			await ctx.broadcastTabsChanged();
 		},
+		...driverActions,
 	},
 });
