@@ -4,7 +4,6 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
 
 import {
 	RepositoryConfigForm,
@@ -45,15 +44,15 @@ function EditRepositoryForm({
 	const navigate = useNavigate();
 	const updateRepository = useMutation(api.repositories.update);
 
-	const [isMonorepo, setIsMonorepo] = useState(repository.services.length > 1);
-
 	const form = useForm({
 		defaultValues: {
-			installCommand: repository.installCommand ?? "",
+			setupCommand: repository.setupCommand ?? "",
+			devCommand: repository.devCommand ?? "",
+			envVars: repository.envVars?.length
+				? repository.envVars
+				: [{ key: "", value: "" }],
 			services: repository.services.map((s) => ({
-				name: s.name,
-				devCommand: s.devCommand,
-				cwd: s.cwd,
+				path: s.path,
 				envVars: s.envVars?.length ? s.envVars : [{ key: "", value: "" }],
 			})),
 		},
@@ -61,15 +60,17 @@ function EditRepositoryForm({
 			onSubmit: repositoryConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
-			const submitted = isMonorepo ? value.services : [value.services[0]];
-			const services = submitted.map((s) => ({
+			const envVars = value.envVars.filter((v) => v.key.trim() !== "");
+			const services = value.services.map((s) => ({
 				...s,
 				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
 			}));
 
 			await updateRepository({
 				id: repository._id,
-				installCommand: value.installCommand,
+				setupCommand: value.setupCommand,
+				devCommand: value.devCommand,
+				envVars: envVars.length > 0 ? envVars : undefined,
 				services,
 			});
 
@@ -92,11 +93,7 @@ function EditRepositoryForm({
 				</p>
 			</div>
 
-			<RepositoryConfigForm
-				form={form}
-				isMonorepo={isMonorepo}
-				onMonorepoChange={setIsMonorepo}
-			/>
+			<RepositoryConfigForm form={form} />
 
 			<div className="flex justify-end">
 				<form.Subscribe selector={(state) => state.isSubmitting}>

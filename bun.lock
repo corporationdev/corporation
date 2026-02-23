@@ -58,6 +58,7 @@
         "octokit": "catalog:",
         "rivetkit": "catalog:",
         "sandbox-agent": "catalog:",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "catalog:",

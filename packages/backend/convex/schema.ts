@@ -36,7 +36,11 @@ export default defineSchema(
 			owner: v.string(),
 			name: v.string(),
 			defaultBranch: v.string(),
-			installCommand: v.string(),
+			setupCommand: v.string(),
+			devCommand: v.string(),
+			envVars: v.optional(
+				v.array(v.object({ key: v.string(), value: v.string() }))
+			),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
@@ -45,9 +49,7 @@ export default defineSchema(
 
 		services: defineTable({
 			repositoryId: v.id("repositories"),
-			name: v.string(),
-			devCommand: v.string(),
-			cwd: v.string(),
+			path: v.string(),
 			envVars: v.optional(
 				v.array(v.object({ key: v.string(), value: v.string() }))
 			),

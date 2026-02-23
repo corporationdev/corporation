@@ -65,7 +65,7 @@ export const buildSnapshot = internalAction({
 						"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.1.9/install.sh | sh",
 						"sandbox-agent install-agent claude",
 						`git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git /root/${repository.owner}-${repository.name} --branch ${repository.defaultBranch} --single-branch`,
-						`cd /root/${repository.owner}-${repository.name} && ${repository.installCommand}`
+						`cd /root/${repository.owner}-${repository.name} && ${repository.setupCommand}`
 					)
 					.workdir(`/root/${repository.owner}-${repository.name}`),
 			});

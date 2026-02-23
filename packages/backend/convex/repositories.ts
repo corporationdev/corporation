@@ -67,12 +67,14 @@ export const create = authedMutation({
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
-		installCommand: v.string(),
+		setupCommand: v.string(),
+		devCommand: v.string(),
+		envVars: v.optional(
+			v.array(v.object({ key: v.string(), value: v.string() }))
+		),
 		services: v.array(
 			v.object({
-				name: v.string(),
-				devCommand: v.string(),
-				cwd: v.string(),
+				path: v.string(),
 				envVars: v.optional(
 					v.array(v.object({ key: v.string(), value: v.string() }))
 				),
@@ -99,7 +101,9 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
-			installCommand: args.installCommand,
+			setupCommand: args.setupCommand,
+			devCommand: args.devCommand,
+			envVars: args.envVars,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -108,9 +112,7 @@ export const create = authedMutation({
 		for (const service of args.services) {
 			const serviceId = await ctx.db.insert("services", {
 				repositoryId,
-				name: service.name,
-				devCommand: service.devCommand,
-				cwd: service.cwd,
+				path: service.path,
 				envVars: service.envVars,
 				createdAt: now,
 				updatedAt: now,
@@ -131,13 +133,15 @@ export const create = authedMutation({
 export const update = authedMutation({
 	args: {
 		id: v.id("repositories"),
-		installCommand: v.optional(v.string()),
+		setupCommand: v.optional(v.string()),
+		devCommand: v.optional(v.string()),
+		envVars: v.optional(
+			v.array(v.object({ key: v.string(), value: v.string() }))
+		),
 		services: v.optional(
 			v.array(
 				v.object({
-					name: v.string(),
-					devCommand: v.string(),
-					cwd: v.string(),
+					path: v.string(),
 					envVars: v.optional(
 						v.array(v.object({ key: v.string(), value: v.string() }))
 					),
@@ -161,8 +165,14 @@ export const update = authedMutation({
 
 		// Update repository fields
 		const repoPatch: Record<string, unknown> = { updatedAt: now };
-		if (args.installCommand !== undefined) {
-			repoPatch.installCommand = args.installCommand;
+		if (args.setupCommand !== undefined) {
+			repoPatch.setupCommand = args.setupCommand;
+		}
+		if (args.devCommand !== undefined) {
+			repoPatch.devCommand = args.devCommand;
+		}
+		if (args.envVars !== undefined) {
+			repoPatch.envVars = args.envVars;
 		}
 		await ctx.db.patch(args.id, repoPatch);
 
@@ -182,9 +192,7 @@ export const update = authedMutation({
 			for (const service of args.services) {
 				const serviceId = await ctx.db.insert("services", {
 					repositoryId: args.id,
-					name: service.name,
-					devCommand: service.devCommand,
-					cwd: service.cwd,
+					path: service.path,
 					envVars: service.envVars,
 					createdAt: now,
 					updatedAt: now,

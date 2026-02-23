@@ -23,6 +23,7 @@
     "hono": "catalog:",
     "jose": "catalog:",
     "octokit": "catalog:",
+    "zod": "catalog:",
     "rivetkit": "catalog:",
     "sandbox-agent": "catalog:"
   },
