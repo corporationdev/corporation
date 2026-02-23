@@ -3,14 +3,15 @@ import { create } from "zustand";
 
 type PendingMessage = {
 	text: string;
-	environmentId: Id<"environments">;
-	selectedSpaceId?: Id<"spaces">;
+	/** Set when creating a brand new space (no existing space yet) */
+	environmentId?: Id<"environments">;
+	/** Set when creating a session in an existing space */
+	spaceSlug?: string;
 };
 
 type PendingMessageStore = {
 	pending: PendingMessage | null;
 	setPending: (message: PendingMessage) => void;
-	// TODO: consumePending is destructive — consider keying by slug for non-destructive reads
 	consumePending: () => PendingMessage | null;
 };
 

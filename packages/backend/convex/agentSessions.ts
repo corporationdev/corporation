@@ -82,6 +82,29 @@ export const getBySlug = authedQuery({
 	},
 });
 
+export const listBySpace = authedQuery({
+	args: { spaceId: v.id("spaces") },
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.spaceId);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+
+		const environment = await ctx.db.get(space.environmentId);
+		if (!environment || environment.userId !== ctx.userId) {
+			throw new ConvexError("Space not found");
+		}
+
+		const sessions = await ctx.db
+			.query("agentSessions")
+			.withIndex("by_space", (q) => q.eq("spaceId", args.spaceId))
+			.collect();
+
+		sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+		return sessions;
+	},
+});
+
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {

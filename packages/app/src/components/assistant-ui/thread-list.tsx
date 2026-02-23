@@ -1,93 +1,56 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Doc, Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import {
-	ArchiveIcon,
-	MoreHorizontalIcon,
-	PlusIcon,
-	RotateCcwIcon,
-	Trash2Icon,
-} from "lucide-react";
+import { BoxIcon, PlusIcon } from "lucide-react";
 import type { FC } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	useOptimisticDeleteThreadMutation,
-	useOptimisticUpdateThreadMutation,
-} from "@/hooks/agent-session-mutations";
 import { cn } from "@/lib/utils";
 
-export const ThreadList: FC = () => {
-	const threads = useQuery(api.agentSessions.list);
-	const updateThread = useOptimisticUpdateThreadMutation();
-	const deleteThread = useOptimisticDeleteThreadMutation();
+export const SpaceList: FC = () => {
+	const spaces = useQuery(api.spaces.list);
 
-	if (threads === undefined) {
+	if (spaces === undefined) {
 		return (
 			<div className="flex flex-col gap-1">
-				<ThreadListNew />
-				<ThreadListSkeleton />
+				<NewSpaceButton />
+				<SpaceListSkeleton />
 			</div>
 		);
 	}
 
-	const regularThreads = threads.filter((thread) => thread.archivedAt === null);
-
 	return (
 		<div className="flex flex-col gap-1">
-			<ThreadListNew />
-			{regularThreads.map((thread) => (
-				<ThreadListItem
-					key={thread._id}
-					onArchive={async () => {
-						await updateThread({
-							id: thread._id,
-							archivedAt: Date.now(),
-						});
-					}}
-					onDelete={async () => {
-						await deleteThread({
-							id: thread._id,
-						});
-					}}
-					slug={thread.slug}
-					title={thread.title || "New Chat"}
+			<NewSpaceButton />
+			{spaces.map((space) => (
+				<SpaceListItem
+					branchName={space.branchName}
+					key={space._id}
+					slug={space.slug}
+					status={space.status}
 				/>
 			))}
-			<ArchivedThreadList
-				onUnarchive={async (id) => {
-					await updateThread({ id, archivedAt: null });
-				}}
-				threads={threads}
-			/>
 		</div>
 	);
 };
 
-const ThreadListNew: FC = () => {
+const NewSpaceButton: FC = () => {
 	const navigate = useNavigate();
 
 	return (
 		<Button
 			className="h-9 justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted"
-			onClick={() => navigate({ to: "/chat" })}
+			onClick={() => navigate({ to: "/space" })}
 			variant="outline"
 		>
 			<PlusIcon className="size-4" />
-			New Thread
+			New Space
 		</Button>
 	);
 };
 
-const ThreadListSkeleton: FC = () => {
+const SpaceListSkeleton: FC = () => {
 	const skeletonKeys = [
 		"skeleton-0",
 		"skeleton-1",
@@ -107,45 +70,17 @@ const ThreadListSkeleton: FC = () => {
 	);
 };
 
-const ThreadListItem: FC<{
+const SpaceListItem: FC<{
 	slug: string;
-	title: string;
-	onArchive: () => Promise<void>;
-	onDelete: () => Promise<void>;
-}> = ({ slug, title, onArchive, onDelete }) => {
+	branchName: string;
+	status: string;
+}> = ({ slug, branchName, status }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
-		from: "/_authenticated/chat/$slug",
+		from: "/_authenticated/space/$spaceSlug",
 		shouldThrow: false,
 	});
-	const currentSlug = match?.params.slug;
-
-	const isActive = currentSlug === slug;
-
-	const handleSelect = () => {
-		navigate({
-			to: "/chat/$slug",
-			params: { slug },
-		});
-	};
-
-	const handleArchive = async () => {
-		await onArchive();
-		if (isActive) {
-			navigate({
-				to: "/chat",
-			});
-		}
-	};
-
-	const handleDelete = async () => {
-		await onDelete();
-		if (isActive) {
-			navigate({
-				to: "/chat",
-			});
-		}
-	};
+	const isActive = match?.params.spaceSlug === slug;
 
 	return (
 		<div
@@ -155,92 +90,21 @@ const ThreadListItem: FC<{
 			)}
 		>
 			<button
-				className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-sm"
-				onClick={handleSelect}
+				className="flex h-full min-w-0 flex-1 items-center gap-2 truncate px-3 text-start text-sm"
+				onClick={() =>
+					navigate({
+						to: "/space/$spaceSlug",
+						params: { spaceSlug: slug },
+					})
+				}
 				type="button"
 			>
-				{title}
+				<BoxIcon className="size-3.5 shrink-0" />
+				<span className="truncate">{branchName}</span>
+				<span className="ml-auto shrink-0 text-muted-foreground text-xs">
+					{status}
+				</span>
 			</button>
-			<ThreadListItemMore onArchive={handleArchive} onDelete={handleDelete} />
-		</div>
-	);
-};
-
-const ThreadListItemMore: FC<{
-	onArchive: () => void;
-	onDelete: () => void;
-}> = ({ onArchive, onDelete }) => {
-	return (
-		<DropdownMenu>
-			<Button
-				className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100 data-popup-open:bg-accent data-popup-open:opacity-100"
-				render={<DropdownMenuTrigger />}
-				size="icon"
-				variant="ghost"
-			>
-				<MoreHorizontalIcon className="size-4" />
-				<span className="sr-only">More options</span>
-			</Button>
-			<DropdownMenuContent align="start" side="bottom">
-				<DropdownMenuItem onClick={onArchive}>
-					<ArchiveIcon className="size-4" />
-					Archive
-				</DropdownMenuItem>
-				<DropdownMenuItem onClick={onDelete} variant="destructive">
-					<Trash2Icon className="size-4" />
-					Delete
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
-};
-
-const ArchivedThreadList: FC<{
-	threads: Doc<"agentSessions">[];
-	onUnarchive: (id: Id<"agentSessions">) => Promise<void>;
-}> = ({ threads, onUnarchive }) => {
-	const navigate = useNavigate();
-	const archivedThreads = threads.filter(
-		(thread) => thread.archivedAt !== null
-	);
-
-	if (archivedThreads.length === 0) {
-		return null;
-	}
-
-	return (
-		<div className="mt-4 flex flex-col gap-1">
-			<div className="px-3 font-medium text-muted-foreground text-xs">
-				Archived
-			</div>
-			{archivedThreads.map((thread) => (
-				<div
-					className="group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted"
-					key={thread._id}
-				>
-					<button
-						className="flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-muted-foreground text-sm"
-						onClick={() =>
-							navigate({
-								to: "/chat/$slug",
-								params: { slug: thread.slug },
-							})
-						}
-						type="button"
-					>
-						{thread.title || "New Chat"}
-					</button>
-					<Button
-						className="mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
-						onClick={() => onUnarchive(thread._id)}
-						size="icon"
-						variant="ghost"
-					>
-						<RotateCcwIcon className="size-4" />
-						<span className="sr-only">Unarchive</span>
-					</Button>
-				</div>
-			))}
 		</div>
 	);
 };

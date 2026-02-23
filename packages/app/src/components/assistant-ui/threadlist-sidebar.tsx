@@ -1,7 +1,7 @@
 import { Building } from "lucide-react";
 import type * as React from "react";
 
-import { ThreadList } from "@/components/assistant-ui/thread-list";
+import { SpaceList } from "@/components/assistant-ui/thread-list";
 import { NavUser } from "@/components/nav-user";
 import {
 	Sidebar,
@@ -26,7 +26,7 @@ export function ThreadListSidebar({
 				</div>
 			</SidebarHeader>
 			<SidebarContent className="aui-sidebar-content px-2">
-				<ThreadList />
+				<SpaceList />
 			</SidebarContent>
 			<SidebarRail />
 			<SidebarFooter className="aui-sidebar-footer border-t">

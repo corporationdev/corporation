@@ -16,15 +16,24 @@ import { useOptimisticUpdateThreadMutation } from "@/hooks/agent-session-mutatio
 import { useThreadEventState } from "@/hooks/use-thread-event-state";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { usePermissionStore } from "@/stores/permission-store";
-import { useSpaceSelectionStore } from "@/stores/space-selection-store";
 import { useActor } from "./rivetkit";
 
-const NEW_CHAT_ID = "new";
+function extractText(message: AppendMessage): string {
+	return message.content
+		.filter(
+			(part): part is { type: "text"; text: string } => part.type === "text"
+		)
+		.map((part) => part.text)
+		.join("");
+}
 
-function NewThreadRuntime({ children }: { children: ReactNode }) {
+/**
+ * Thin runtime at `/space` (no spaceSlug). On send: generates both slugs,
+ * stores pending, navigates to `/space/$spaceSlug?session=$sessionSlug`.
+ */
+function NewSpaceRuntime({ children }: { children: ReactNode }) {
 	const navigate = useNavigate();
 	const setPending = usePendingMessageStore((s) => s.setPending);
-	const selectedSpaceId = useSpaceSelectionStore((s) => s.selectedSpaceId);
 
 	const repositories = useQuery(api.repositories.list);
 	const firstRepo = repositories?.[0];
@@ -39,28 +48,20 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 		messages: [] as ThreadMessageLike[],
 		convertMessage: (message: ThreadMessageLike) => message,
 		onNew: (message: AppendMessage) => {
-			if (!(firstRepo && firstEnv)) {
+			if (!firstEnv) {
 				throw new Error("No repository or environment configured");
 			}
 
-			const text = message.content
-				.filter(
-					(part): part is { type: "text"; text: string } => part.type === "text"
-				)
-				.map((part) => part.text)
-				.join("");
+			const text = extractText(message);
+			const spaceSlug = nanoid();
+			const sessionSlug = nanoid();
 
-			const slug = nanoid();
-
-			setPending({
-				text,
-				environmentId: firstEnv._id,
-				selectedSpaceId: selectedSpaceId ?? undefined,
-			});
+			setPending({ text, environmentId: firstEnv._id });
 
 			navigate({
-				to: "/chat/$slug",
-				params: { slug },
+				to: "/space/$spaceSlug",
+				params: { spaceSlug },
+				search: { session: sessionSlug },
 			});
 
 			return Promise.resolve();
@@ -74,11 +75,59 @@ function NewThreadRuntime({ children }: { children: ReactNode }) {
 	);
 }
 
-function ConnectedThreadRuntime({
-	slug,
+/**
+ * Thin runtime at `/space/$spaceSlug` (no ?session param). On send: generates
+ * session slug, stores pending, navigates to add ?session=$sessionSlug.
+ */
+function NewSessionRuntime({
+	spaceSlug,
 	children,
 }: {
-	slug: string;
+	spaceSlug: string;
+	children: ReactNode;
+}) {
+	const navigate = useNavigate();
+	const setPending = usePendingMessageStore((s) => s.setPending);
+
+	const runtime = useExternalStoreRuntime({
+		isRunning: false,
+		messages: [] as ThreadMessageLike[],
+		convertMessage: (message: ThreadMessageLike) => message,
+		onNew: (message: AppendMessage) => {
+			const text = extractText(message);
+			const sessionSlug = nanoid();
+
+			setPending({ text, spaceSlug });
+
+			navigate({
+				to: "/space/$spaceSlug",
+				params: { spaceSlug },
+				search: { session: sessionSlug },
+			});
+
+			return Promise.resolve();
+		},
+	});
+
+	return (
+		<AssistantRuntimeProvider runtime={runtime}>
+			{children}
+		</AssistantRuntimeProvider>
+	);
+}
+
+/**
+ * Full runtime at `/space/$spaceSlug?session=$sessionSlug`.
+ * Handles all business logic: ensures space exists (creates if needed),
+ * creates agent session, manages actor connection, permissions, and messages.
+ */
+function ConnectedThreadRuntime({
+	sessionSlug,
+	spaceSlug,
+	children,
+}: {
+	sessionSlug: string;
+	spaceSlug: string;
 	children: ReactNode;
 }) {
 	const onPermissionEvent = usePermissionStore((s) => s.onPermissionEvent);
@@ -89,7 +138,9 @@ function ConnectedThreadRuntime({
 	const createThread = useMutation(api.agentSessions.create);
 	const ensureSpace = useMutation(api.spaces.ensure);
 
-	const session = useQuery(api.agentSessions.getBySlug, { slug });
+	const session = useQuery(api.agentSessions.getBySlug, {
+		slug: sessionSlug,
+	});
 
 	// For new threads: consume pending → ensure space → create session.
 	// The sandboxUrl arrives reactively via the session query once the
@@ -98,16 +149,18 @@ function ConnectedThreadRuntime({
 	const initMutation = useTanstackMutation({
 		mutationFn: async (pending: {
 			text: string;
-			environmentId: Id<"environments">;
-			selectedSpaceId?: Id<"spaces">;
+			environmentId?: Id<"environments">;
+			spaceSlug?: string;
 		}) => {
+			// Ensure space exists — either create new (environmentId) or
+			// ensure existing is running (spaceSlug lookup)
 			const spaceId = await ensureSpace({
+				slug: spaceSlug,
 				environmentId: pending.environmentId,
-				spaceId: pending.selectedSpaceId,
 			});
 
 			await createThread({
-				slug,
+				slug: sessionSlug,
 				title: "New Chat",
 				spaceId,
 			});
@@ -141,18 +194,17 @@ function ConnectedThreadRuntime({
 	]);
 
 	// sandboxUrl arrives reactively via session once the space is started.
-	// For existing threads the session already has it.
 	const sandboxUrl = session?.space.sandboxUrl ?? null;
 
 	const actor = useActor({
 		name: "agent",
-		key: [slug],
+		key: [sessionSlug],
 		createWithInput: sandboxUrl ? { sandboxUrl } : undefined,
 		enabled: !!sandboxUrl,
 	});
 
 	const threadState = useThreadEventState({
-		slug,
+		slug: sessionSlug,
 		actor,
 		onPermissionEvent,
 	});
@@ -204,14 +256,9 @@ function ConnectedThreadRuntime({
 				throw new Error("Session not loaded");
 			}
 
-			const text = message.content
-				.filter(
-					(part): part is { type: "text"; text: string } => part.type === "text"
-				)
-				.map((part) => part.text)
-				.join("");
+			const text = extractText(message);
 
-			await ensureSpace({ spaceId: session.spaceId });
+			await ensureSpace({ slug: spaceSlug });
 
 			await updateThread({ id: session._id, archivedAt: null });
 			await actor.connection?.postMessage(
@@ -228,35 +275,41 @@ function ConnectedThreadRuntime({
 	);
 }
 
-function ThreadRuntime({
-	slug,
-	children,
-}: {
-	slug: string;
-	children: ReactNode;
-}) {
-	if (slug === NEW_CHAT_ID) {
-		return <NewThreadRuntime>{children}</NewThreadRuntime>;
-	}
-	return (
-		<ConnectedThreadRuntime slug={slug}>{children}</ConnectedThreadRuntime>
-	);
-}
-
 export function ThreadListRuntimeProvider({
 	children,
 }: {
 	children: ReactNode;
 }) {
 	const match = useMatch({
-		from: "/_authenticated/chat/$slug",
+		from: "/_authenticated/space/$spaceSlug",
 		shouldThrow: false,
 	});
-	const slug = match?.params.slug ?? NEW_CHAT_ID;
 
+	const spaceSlug = match?.params.spaceSlug;
+	const sessionSlug = (match?.search as { session?: string })?.session;
+
+	// No spaceSlug → brand new space flow
+	if (!spaceSlug) {
+		return <NewSpaceRuntime>{children}</NewSpaceRuntime>;
+	}
+
+	// spaceSlug but no session → new session in existing space
+	if (!sessionSlug) {
+		return (
+			<NewSessionRuntime key={spaceSlug} spaceSlug={spaceSlug}>
+				{children}
+			</NewSessionRuntime>
+		);
+	}
+
+	// spaceSlug + session → connected thread
 	return (
-		<ThreadRuntime key={slug} slug={slug}>
+		<ConnectedThreadRuntime
+			key={sessionSlug}
+			sessionSlug={sessionSlug}
+			spaceSlug={spaceSlug}
+		>
 			{children}
-		</ThreadRuntime>
+		</ConnectedThreadRuntime>
 	);
 }

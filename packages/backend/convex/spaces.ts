@@ -53,6 +53,38 @@ export const list = authedQuery({
 	},
 });
 
+export const getBySlug = authedQuery({
+	args: { slug: v.string() },
+	handler: async (ctx, args) => {
+		const space = await ctx.db
+			.query("spaces")
+			.withIndex("by_slug", (q) => q.eq("slug", args.slug))
+			.unique();
+		if (!space) {
+			return null;
+		}
+		const { environment } = await requireOwnedSpace(ctx, space);
+
+		const repository = await ctx.db.get(environment.repositoryId);
+		if (!repository) {
+			throw new ConvexError("Repository not found");
+		}
+
+		const services = (
+			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
+		).filter((s): s is Doc<"services"> => s !== null);
+
+		return {
+			...space,
+			environment: {
+				...environment,
+				repository,
+				services,
+			},
+		};
+	},
+});
+
 export const get = authedQuery({
 	args: { id: v.id("spaces") },
 	handler: async (ctx, args) => {
@@ -156,10 +188,31 @@ export const internalGet = internalQuery({
 
 export const ensure = authedMutation({
 	args: {
+		slug: v.optional(v.string()),
 		environmentId: v.optional(v.id("environments")),
 		spaceId: v.optional(v.id("spaces")),
 	},
 	handler: async (ctx, args) => {
+		// Look up by slug first — may already exist from a prior call
+		const { slug } = args;
+		if (slug) {
+			const existing = await ctx.db
+				.query("spaces")
+				.withIndex("by_slug", (q) => q.eq("slug", slug))
+				.unique();
+			if (existing) {
+				await requireOwnedSpace(ctx, existing);
+				if (existing.status !== "started") {
+					await ctx.scheduler.runAfter(
+						0,
+						internal.sandboxActions.ensureSandbox,
+						{ spaceId: existing._id }
+					);
+				}
+				return existing._id;
+			}
+		}
+
 		if (args.spaceId) {
 			const space = await ctx.db.get(args.spaceId);
 			if (!space) {
@@ -189,6 +242,7 @@ export const ensure = authedMutation({
 
 		const now = Date.now();
 		const spaceId = await ctx.db.insert("spaces", {
+			slug: args.slug ?? "",
 			environmentId: args.environmentId,
 			branchName: "main",
 			status: "creating",

@@ -6,7 +6,7 @@ export const Route = createFileRoute("/_public")({
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
 		if (session.data) {
-			throw redirect({ to: "/chat" });
+			throw redirect({ to: "/space" });
 		}
 	},
 	component: () => <Outlet />,
