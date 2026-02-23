@@ -362,8 +362,8 @@ async function onSandboxContextChanged(
 	ctx.state.sandboxId = update.sandboxId;
 }
 
-type TerminalDriver = TabDriverLifecycle & {
-	ensure: (
+type TerminalPublicActions = {
+	ensureTerminal: (
 		ctx: SpaceRuntimeContext,
 		terminalId: string,
 		cols?: number,
@@ -386,13 +386,19 @@ type TerminalDriver = TabDriverLifecycle & {
 	) => Promise<void>;
 };
 
+type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
+	publicActions: TerminalPublicActions;
+};
+
 export const terminalDriver: TerminalDriver = {
 	kind: "terminal",
 	onSleep,
 	onSandboxContextChanged,
 	listTabs,
-	ensure: ensureTerminal,
-	getScrollback,
-	input,
-	resize,
+	publicActions: {
+		ensureTerminal,
+		getScrollback,
+		input,
+		resize,
+	},
 };

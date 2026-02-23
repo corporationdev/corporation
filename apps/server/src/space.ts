@@ -14,14 +14,12 @@ import {
 	tabs,
 	terminals,
 } from "./db/schema";
-import { createTabChannel } from "./space/channels";
-import { driverRegistry, lifecycleDrivers } from "./space/driver-registry";
+import { collectDriverActions } from "./space/action-registration";
+import { lifecycleDrivers } from "./space/driver-registry";
 import {
 	clearSubscriptions,
 	createSubscriptionHub,
-	subscribeToChannel,
 	unsubscribeConnection,
-	unsubscribeFromChannel,
 } from "./space/subscriptions";
 import type { PersistedState, SpaceVars } from "./space/types";
 
@@ -32,6 +30,8 @@ export type {
 	TabType,
 	TerminalTab,
 } from "./db/schema";
+
+const driverActions = collectDriverActions(lifecycleDrivers);
 
 export const space = actor({
 	createState: (
@@ -102,19 +102,6 @@ export const space = actor({
 			}
 		},
 
-		ensureSession: async (c, sessionId: string, title?: string) => {
-			await driverRegistry.session.ensure(c, sessionId, title);
-		},
-
-		ensureTerminal: async (
-			c,
-			terminalId: string,
-			cols?: number,
-			rows?: number
-		) => {
-			await driverRegistry.terminal.ensure(c, terminalId, cols, rows);
-		},
-
 		listTabs: async (c): Promise<SpaceTab[]> => {
 			const allTabs = (
 				await Promise.all(lifecycleDrivers.map((driver) => driver.listTabs(c)))
@@ -129,90 +116,7 @@ export const space = actor({
 
 			return allTabs;
 		},
-
-		subscribeSession: (c, sessionId: string) => {
-			if (!c.conn) {
-				throw new Error("Session subscriptions require an active connection");
-			}
-			subscribeToChannel(
-				c.vars.subscriptions,
-				createTabChannel("session", sessionId),
-				c.conn.id
-			);
-		},
-
-		unsubscribeSession: (c, sessionId: string) => {
-			if (!c.conn) {
-				throw new Error("Session subscriptions require an active connection");
-			}
-			unsubscribeFromChannel(
-				c.vars.subscriptions,
-				createTabChannel("session", sessionId),
-				c.conn.id
-			);
-		},
-
-		subscribeTerminal: (c, terminalId: string) => {
-			if (!c.conn) {
-				throw new Error("Terminal subscriptions require an active connection");
-			}
-			subscribeToChannel(
-				c.vars.subscriptions,
-				createTabChannel("terminal", terminalId),
-				c.conn.id
-			);
-		},
-
-		unsubscribeTerminal: (c, terminalId: string) => {
-			if (!c.conn) {
-				throw new Error("Terminal subscriptions require an active connection");
-			}
-			unsubscribeFromChannel(
-				c.vars.subscriptions,
-				createTabChannel("terminal", terminalId),
-				c.conn.id
-			);
-		},
-
-		postMessage: async (
-			c,
-			sessionId: string,
-			content: string,
-			sandboxUrl?: string
-		) => {
-			await driverRegistry.session.postMessage(
-				c,
-				sessionId,
-				content,
-				sandboxUrl
-			);
-		},
-
-		getTranscript: async (
-			c,
-			sessionId: string,
-			offset: number,
-			limit?: number
-		) => {
-			return await driverRegistry.session.getTranscript(
-				c,
-				sessionId,
-				offset,
-				limit
-			);
-		},
-
-		getScrollback: async (c, terminalId: string) => {
-			return await driverRegistry.terminal.getScrollback(c, terminalId);
-		},
-
-		input: async (c, terminalId: string, data: number[]) => {
-			await driverRegistry.terminal.input(c, terminalId, data);
-		},
-
-		resize: async (c, terminalId: string, cols: number, rows: number) => {
-			await driverRegistry.terminal.resize(c, terminalId, cols, rows);
-		},
+		...driverActions,
 
 		archiveTab: async (c, tabId: string) => {
 			await c.vars.db

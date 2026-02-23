@@ -295,8 +295,8 @@ async function onSandboxContextChanged(
 	await applySandboxUrlUpdate(ctx, update.sandboxUrl);
 }
 
-type SessionDriver = TabDriverLifecycle & {
-	ensure: (
+type SessionPublicActions = {
+	ensureSession: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
 		title?: string
@@ -321,13 +321,19 @@ type SessionDriver = TabDriverLifecycle & {
 	) => Promise<UniversalEvent[]>;
 };
 
+type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
+	publicActions: SessionPublicActions;
+};
+
 export const sessionDriver: SessionDriver = {
 	kind: "session",
 	onSleep,
 	onSandboxContextChanged,
 	listTabs,
-	ensure: ensureSession,
-	postMessage,
-	replyPermission,
-	getTranscript,
+	publicActions: {
+		ensureSession,
+		postMessage,
+		replyPermission,
+		getTranscript,
+	},
 };
