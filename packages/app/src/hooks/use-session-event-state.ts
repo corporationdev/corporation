@@ -62,21 +62,20 @@ export function useSessionEventState({
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 
-		actor.connection
-			.subscribeSession(sessionId)
-			.then(() => actor.connection?.getTranscript(sessionId, 0))
-			.then((events) => {
-				if (isCancelled) {
-					return;
-				}
-				applyEvents(events ?? []);
-				applyEvents(bufferRef.current);
-				bufferRef.current = [];
-				caughtUpRef.current = true;
-			})
-			.catch((error: unknown) => {
-				console.error("Failed to initialize session stream", error);
-			});
+		const conn = actor.connection;
+		(async () => {
+			await conn.subscribeSession(sessionId);
+			const events = await conn.getTranscript(sessionId, 0);
+			if (isCancelled) {
+				return;
+			}
+			applyEvents(await events);
+			applyEvents(bufferRef.current);
+			bufferRef.current = [];
+			caughtUpRef.current = true;
+		})().catch((error: unknown) => {
+			console.error("Failed to initialize session stream", error);
+		});
 
 		return () => {
 			isCancelled = true;

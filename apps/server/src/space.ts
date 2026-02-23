@@ -88,8 +88,9 @@ export const space = actor({
 	},
 
 	onSleep: async (c) => {
+		const ctx = augmentContext(c, lifecycleDrivers);
 		for (const driver of lifecycleDrivers) {
-			await driver.onSleep(c);
+			await driver.onSleep(ctx);
 		}
 		clearSubscriptions(c.vars.subscriptions);
 	},
@@ -100,8 +101,9 @@ export const space = actor({
 			sandboxId: string | null,
 			sandboxUrl?: string | null
 		) => {
+			const ctx = augmentContext(c, lifecycleDrivers);
 			for (const driver of lifecycleDrivers) {
-				await driver.onSandboxContextChanged(c, { sandboxId, sandboxUrl });
+				await driver.onSandboxContextChanged(ctx, { sandboxId, sandboxUrl });
 			}
 		},
 

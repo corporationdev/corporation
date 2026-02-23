@@ -9,12 +9,17 @@ export function useSpaceTabs(actor: SpaceActor): SpaceTab[] {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
-		actor.connection
-			.listTabs()
-			.then((nextTabs) => setTabs(nextTabs))
-			.catch((error: unknown) => {
+		const fetchTabs = async () => {
+			try {
+				const result = await actor.connection?.listTabs();
+				if (result) {
+					setTabs(await result);
+				}
+			} catch (error: unknown) {
 				console.error("Failed to fetch tabs", error);
-			});
+			}
+		};
+		fetchTabs();
 	}, [actor.connStatus, actor.connection]);
 
 	actor.useEvent("tabs.changed", (event) => {
