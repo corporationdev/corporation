@@ -3,7 +3,6 @@ import type React from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Field,
 	FieldError,
@@ -11,25 +10,24 @@ import {
 	FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 const QUOTED_VALUE_RE = /^(['"])(.*)\1$/;
 
+const envVarSchema = z.object({
+	key: z.string(),
+	value: z.string(),
+});
+
 const serviceSchema = z.object({
-	name: z.string().min(1, "Service name is required"),
-	devCommand: z.string().min(1, "Dev command is required"),
-	cwd: z.string(),
-	envVars: z.array(
-		z.object({
-			key: z.string(),
-			value: z.string(),
-		})
-	),
+	path: z.string().min(1, "Path is required"),
+	envVars: z.array(envVarSchema),
 });
 
 export const repositoryConfigSchema = z.object({
-	installCommand: z.string().min(1, "Install command is required"),
-	services: z.array(serviceSchema).min(1, "At least one service is required"),
+	setupCommand: z.string().min(1, "Setup command is required"),
+	devCommand: z.string().min(1, "Dev command is required"),
+	envVars: z.array(envVarSchema),
+	services: z.array(serviceSchema),
 });
 
 export type ServiceValues = z.infer<typeof serviceSchema>;
@@ -82,42 +80,130 @@ function parseEnvContent(text: string): { key: string; value: string }[] {
 		.filter(Boolean) as { key: string; value: string }[];
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
+function EnvVarsFields({ form, name }: { form: any; name: string }) {
+	return (
+		<form.Field mode="array" name={name}>
+			{(field: EnvVarArrayFieldState) => {
+				const handleEnvPaste = (
+					e: React.ClipboardEvent<HTMLInputElement>,
+					index: number
+				) => {
+					const text = e.clipboardData.getData("text");
+					if (!text.includes("\n")) {
+						return;
+					}
+					const parsed = parseEnvContent(text);
+					if (parsed.length === 0) {
+						return;
+					}
+					e.preventDefault();
+					const current = field.state.value[index];
+					if (current && !current.key.trim() && !current.value.trim()) {
+						field.removeValue(index);
+					}
+					for (const pair of parsed) {
+						field.pushValue(pair);
+					}
+				};
+
+				return (
+					<div className="flex flex-col gap-2">
+						<div className="flex items-center justify-between">
+							<FieldLabel>Environment Variables</FieldLabel>
+							<Button
+								onClick={() => field.pushValue({ key: "", value: "" })}
+								size="xs"
+								type="button"
+								variant="ghost"
+							>
+								<Plus className="size-3" />
+								Add
+							</Button>
+						</div>
+						{field.state.value?.length > 0 && (
+							<div className="flex flex-col gap-2">
+								{field.state.value.map(
+									(_: { key: string; value: string }, index: number) => (
+										<div
+											className="flex items-center gap-2"
+											key={`env-${index.toString()}`}
+										>
+											<form.Field name={`${name}[${index}].key`}>
+												{(subField: FieldState) => (
+													<Input
+														name={subField.name}
+														onBlur={subField.handleBlur}
+														onChange={(e) =>
+															subField.handleChange(e.target.value)
+														}
+														onPaste={(e) => handleEnvPaste(e, index)}
+														placeholder="KEY"
+														value={subField.state.value}
+													/>
+												)}
+											</form.Field>
+											<form.Field name={`${name}[${index}].value`}>
+												{(subField: FieldState) => (
+													<Input
+														name={subField.name}
+														onBlur={subField.handleBlur}
+														onChange={(e) =>
+															subField.handleChange(e.target.value)
+														}
+														placeholder="value"
+														value={subField.state.value}
+													/>
+												)}
+											</form.Field>
+											<Button
+												onClick={() => field.removeValue(index)}
+												size="icon-sm"
+												type="button"
+												variant="ghost"
+											>
+												<Trash2 className="size-3.5" />
+											</Button>
+										</div>
+									)
+								)}
+							</div>
+						)}
+					</div>
+				);
+			}}
+		</form.Field>
+	);
+}
+
 const emptyService: ServiceValues = {
-	name: "",
-	devCommand: "",
-	cwd: "",
+	path: "",
 	envVars: [{ key: "", value: "" }],
 };
 
-function ServiceConfigFields({
+export function RepositoryConfigForm({
 	form,
-	prefix,
-	showName = true,
 }: {
 	// biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
 	form: any;
-	prefix: string;
-	showName?: boolean;
 }) {
-	const fieldName = (name: string) => `${prefix}.${name}`;
-
 	return (
-		<FieldGroup>
-			{showName && (
-				<form.Field name={fieldName("name")}>
+		<>
+			<FieldGroup>
+				<form.Field name="setupCommand">
 					{(field: FieldState) => {
 						const isInvalid =
 							field.state.meta.isTouched && !field.state.meta.isValid;
 						return (
 							<Field data-invalid={isInvalid}>
-								<FieldLabel htmlFor={field.name}>Service Name</FieldLabel>
+								<FieldLabel htmlFor={field.name}>Setup Command</FieldLabel>
 								<Input
 									aria-invalid={isInvalid}
 									id={field.name}
 									name={field.name}
 									onBlur={field.handleBlur}
 									onChange={(e) => field.handleChange(e.target.value)}
-									placeholder="e.g. web, api, backend"
+									placeholder="e.g. npm install"
 									value={field.state.value}
 								/>
 								{isInvalid && <FieldError errors={field.state.meta.errors} />}
@@ -125,242 +211,95 @@ function ServiceConfigFields({
 						);
 					}}
 				</form.Field>
-			)}
 
-			<form.Field name={fieldName("devCommand")}>
-				{(field: FieldState) => {
-					const isInvalid =
-						field.state.meta.isTouched && !field.state.meta.isValid;
-					return (
-						<Field data-invalid={isInvalid}>
-							<FieldLabel htmlFor={field.name}>Dev Command</FieldLabel>
-							<Input
-								aria-invalid={isInvalid}
-								id={field.name}
-								name={field.name}
-								onBlur={field.handleBlur}
-								onChange={(e) => field.handleChange(e.target.value)}
-								placeholder="e.g. npm run dev"
-								value={field.state.value}
-							/>
-							{isInvalid && <FieldError errors={field.state.meta.errors} />}
-						</Field>
-					);
-				}}
-			</form.Field>
-
-			<form.Field name={fieldName("cwd")}>
-				{(field: FieldState) => {
-					const isInvalid =
-						field.state.meta.isTouched && !field.state.meta.isValid;
-					return (
-						<Field data-invalid={isInvalid}>
-							<FieldLabel htmlFor={field.name}>Working Directory</FieldLabel>
-							<Input
-								aria-invalid={isInvalid}
-								id={field.name}
-								name={field.name}
-								onBlur={field.handleBlur}
-								onChange={(e) => field.handleChange(e.target.value)}
-								placeholder="e.g. apps/web (relative to repo root)"
-								value={field.state.value}
-							/>
-							{isInvalid && <FieldError errors={field.state.meta.errors} />}
-						</Field>
-					);
-				}}
-			</form.Field>
-
-			<form.Field mode="array" name={fieldName("envVars")}>
-				{(field: EnvVarArrayFieldState) => {
-					const handleEnvPaste = (
-						e: React.ClipboardEvent<HTMLInputElement>,
-						index: number
-					) => {
-						const text = e.clipboardData.getData("text");
-						if (!text.includes("\n")) {
-							return;
-						}
-						const parsed = parseEnvContent(text);
-						if (parsed.length === 0) {
-							return;
-						}
-						e.preventDefault();
-						const current = field.state.value[index];
-						if (current && !current.key.trim() && !current.value.trim()) {
-							field.removeValue(index);
-						}
-						for (const pair of parsed) {
-							field.pushValue(pair);
-						}
-					};
-
-					return (
-						<div className="flex flex-col gap-2">
-							<div className="flex items-center justify-between">
-								<FieldLabel>Environment Variables</FieldLabel>
-								<Button
-									onClick={() => field.pushValue({ key: "", value: "" })}
-									size="xs"
-									type="button"
-									variant="ghost"
-								>
-									<Plus className="size-3" />
-									Add
-								</Button>
-							</div>
-							{field.state.value?.length > 0 && (
-								<div className="flex flex-col gap-2">
-									{field.state.value.map(
-										(_: { key: string; value: string }, index: number) => (
-											<div
-												className="flex items-center gap-2"
-												key={`env-${index.toString()}`}
-											>
-												<form.Field
-													name={`${fieldName("envVars")}[${index}].key`}
-												>
-													{(subField: FieldState) => (
-														<Input
-															name={subField.name}
-															onBlur={subField.handleBlur}
-															onChange={(e) =>
-																subField.handleChange(e.target.value)
-															}
-															onPaste={(e) => handleEnvPaste(e, index)}
-															placeholder="KEY"
-															value={subField.state.value}
-														/>
-													)}
-												</form.Field>
-												<form.Field
-													name={`${fieldName("envVars")}[${index}].value`}
-												>
-													{(subField: FieldState) => (
-														<Input
-															name={subField.name}
-															onBlur={subField.handleBlur}
-															onChange={(e) =>
-																subField.handleChange(e.target.value)
-															}
-															placeholder="value"
-															value={subField.state.value}
-														/>
-													)}
-												</form.Field>
-												<Button
-													onClick={() => field.removeValue(index)}
-													size="icon-sm"
-													type="button"
-													variant="ghost"
-												>
-													<Trash2 className="size-3.5" />
-												</Button>
-											</div>
-										)
-									)}
-								</div>
-							)}
-						</div>
-					);
-				}}
-			</form.Field>
-		</FieldGroup>
-	);
-}
-
-export function RepositoryConfigForm({
-	form,
-	isMonorepo,
-	onMonorepoChange,
-}: {
-	// biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
-	form: any;
-	isMonorepo: boolean;
-	onMonorepoChange: (value: boolean) => void;
-}) {
-	return (
-		<>
-			<Field>
-				<FieldLabel htmlFor="installCommand">Install Command</FieldLabel>
-				<form.Field name="installCommand">
-					{(field: {
-						name: string;
-						state: { value: string };
-						handleBlur: () => void;
-						handleChange: (value: string) => void;
-					}) => (
-						<Input
-							id={field.name}
-							name={field.name}
-							onBlur={field.handleBlur}
-							onChange={(e) => field.handleChange(e.target.value)}
-							placeholder="e.g. npm install"
-							value={field.state.value}
-						/>
-					)}
+				<form.Field name="devCommand">
+					{(field: FieldState) => {
+						const isInvalid =
+							field.state.meta.isTouched && !field.state.meta.isValid;
+						return (
+							<Field data-invalid={isInvalid}>
+								<FieldLabel htmlFor={field.name}>Dev Command</FieldLabel>
+								<Input
+									aria-invalid={isInvalid}
+									id={field.name}
+									name={field.name}
+									onBlur={field.handleBlur}
+									onChange={(e) => field.handleChange(e.target.value)}
+									placeholder="e.g. npm run dev"
+									value={field.state.value}
+								/>
+								{isInvalid && <FieldError errors={field.state.meta.errors} />}
+							</Field>
+						);
+					}}
 				</form.Field>
-			</Field>
 
-			<Label>
-				<Checkbox
-					checked={isMonorepo}
-					onCheckedChange={(checked) => onMonorepoChange(checked === true)}
-				/>
-				This is a monorepo
-			</Label>
+				<EnvVarsFields form={form} name="envVars" />
+			</FieldGroup>
 
-			{isMonorepo ? (
-				<form.Field mode="array" name="services">
-					{(servicesField: ServicesArrayFieldState) => (
-						<div className="flex flex-col gap-4">
-							<div className="flex items-center justify-between">
-								<FieldLabel>Services</FieldLabel>
-								<Button
-									onClick={() => servicesField.pushValue({ ...emptyService })}
-									size="xs"
-									type="button"
-									variant="ghost"
+			<form.Field mode="array" name="services">
+				{(servicesField: ServicesArrayFieldState) => (
+					<div className="flex flex-col gap-4">
+						<div className="flex items-center justify-between">
+							<FieldLabel>Services</FieldLabel>
+							<Button
+								onClick={() => servicesField.pushValue({ ...emptyService })}
+								size="xs"
+								type="button"
+								variant="ghost"
+							>
+								<Plus className="size-3" />
+								Add Service
+							</Button>
+						</div>
+						{servicesField.state.value.map(
+							(_: ServiceValues, index: number) => (
+								<div
+									className="relative flex flex-col gap-3 border p-4"
+									key={`service-${index.toString()}`}
 								>
-									<Plus className="size-3" />
-									Add Service
-								</Button>
-							</div>
-							{servicesField.state.value.map(
-								(_: ServiceValues, index: number) => (
-									<div
-										className="relative flex flex-col gap-3 border p-4"
-										key={`service-${index.toString()}`}
+									<Button
+										className="absolute top-2 right-2"
+										onClick={() => servicesField.removeValue(index)}
+										size="icon-sm"
+										type="button"
+										variant="ghost"
 									>
-										{servicesField.state.value.length > 1 && (
-											<Button
-												className="absolute top-2 right-2"
-												onClick={() => servicesField.removeValue(index)}
-												size="icon-sm"
-												type="button"
-												variant="ghost"
-											>
-												<Trash2 className="size-3.5" />
-											</Button>
-										)}
-										<ServiceConfigFields
-											form={form}
-											prefix={`services[${index}]`}
-											showName
-										/>
-									</div>
-								)
-							)}
-						</div>
-					)}
-				</form.Field>
-			) : (
-				<ServiceConfigFields
-					form={form}
-					prefix="services[0]"
-					showName={false}
-				/>
-			)}
+										<Trash2 className="size-3.5" />
+									</Button>
+									<form.Field name={`services[${index}].path`}>
+										{(field: FieldState) => {
+											const isInvalid =
+												field.state.meta.isTouched && !field.state.meta.isValid;
+											return (
+												<Field data-invalid={isInvalid}>
+													<FieldLabel htmlFor={field.name}>Path</FieldLabel>
+													<Input
+														aria-invalid={isInvalid}
+														id={field.name}
+														name={field.name}
+														onBlur={field.handleBlur}
+														onChange={(e) => field.handleChange(e.target.value)}
+														placeholder="e.g. apps/web (relative to repo root)"
+														value={field.state.value}
+													/>
+													{isInvalid && (
+														<FieldError errors={field.state.meta.errors} />
+													)}
+												</Field>
+											);
+										}}
+									</form.Field>
+									<EnvVarsFields
+										form={form}
+										name={`services[${index}].envVars`}
+									/>
+								</div>
+							)
+						)}
+					</div>
+				)}
+			</form.Field>
 		</>
 	);
 }

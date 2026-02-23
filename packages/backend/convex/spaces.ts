@@ -138,13 +138,18 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Environment not found");
 		}
 
+		const repository = await ctx.db.get(environment.repositoryId);
+		if (!repository) {
+			throw new ConvexError("Repository not found");
+		}
+
 		const services = (
 			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
 		).filter((s): s is Doc<"services"> => s !== null);
 
 		return {
 			...space,
-			environment: { ...environment, services },
+			environment: { ...environment, repository, services },
 		};
 	},
 });

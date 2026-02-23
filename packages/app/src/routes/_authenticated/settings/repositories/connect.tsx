@@ -38,19 +38,20 @@ function ConnectRepositoryPage() {
 
 	const [search, setSearch] = useState("");
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
-	const [isMonorepo, setIsMonorepo] = useState(false);
 
 	const { mutateAsync: connectRepo } = useMutation({
 		mutationFn: async (value: {
-			installCommand: string;
+			setupCommand: string;
+			devCommand: string;
+			envVars: { key: string; value: string }[];
 			services: ServiceValues[];
 		}) => {
 			if (!selectedRepo) {
 				throw new Error("No repository selected");
 			}
 
-			const submitted = isMonorepo ? value.services : [value.services[0]];
-			const services = submitted.map((s) => ({
+			const envVars = value.envVars.filter((v) => v.key.trim() !== "");
+			const services = value.services.map((s) => ({
 				...s,
 				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
 			}));
@@ -60,7 +61,9 @@ function ConnectRepositoryPage() {
 				owner: selectedRepo.owner,
 				name: selectedRepo.name,
 				defaultBranch: selectedRepo.defaultBranch,
-				installCommand: value.installCommand,
+				setupCommand: value.setupCommand,
+				devCommand: value.devCommand,
+				envVars: envVars.length > 0 ? envVars : undefined,
 				services,
 			});
 		},
@@ -74,15 +77,10 @@ function ConnectRepositoryPage() {
 
 	const form = useForm({
 		defaultValues: {
-			installCommand: "",
-			services: [
-				{
-					name: "Main",
-					devCommand: "",
-					cwd: "",
-					envVars: [{ key: "", value: "" }],
-				},
-			] as ServiceValues[],
+			setupCommand: "",
+			devCommand: "",
+			envVars: [{ key: "", value: "" }],
+			services: [] as ServiceValues[],
 		},
 		validators: {
 			onSubmit: repositoryConfigSchema,
@@ -173,11 +171,7 @@ function ConnectRepositoryPage() {
 
 			{selectedRepo && (
 				<>
-					<RepositoryConfigForm
-						form={form}
-						isMonorepo={isMonorepo}
-						onMonorepoChange={setIsMonorepo}
-					/>
+					<RepositoryConfigForm form={form} />
 
 					<div className="flex justify-end">
 						<form.Subscribe selector={(state) => state.isSubmitting}>

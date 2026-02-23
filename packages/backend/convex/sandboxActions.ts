@@ -75,30 +75,44 @@ async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
 	return result.url;
 }
 
-async function writeServiceEnvFiles(
+function formatEnvContent(
+	envVars: Array<{ key: string; value: string }>
+): string {
+	return envVars
+		.map(({ key, value }) => {
+			if (NEEDS_QUOTING_RE.test(value)) {
+				return `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+			}
+			return `${key}=${value}`;
+		})
+		.join("\n");
+}
+
+async function writeEnvFiles(
 	sandbox: Sandbox,
-	services: Array<{
-		cwd: string;
-		envVars?: Array<{ key: string; value: string }>;
-	}>
+	environment: Space["environment"]
 ): Promise<void> {
-	const files = services
-		.filter(
-			(s): s is typeof s & { envVars: Array<{ key: string; value: string }> } =>
-				s.envVars !== undefined && s.envVars.length > 0
-		)
-		.map((s) => {
-			const content = s.envVars
-				.map(({ key, value }) => {
-					if (NEEDS_QUOTING_RE.test(value)) {
-						return `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-					}
-					return `${key}=${value}`;
-				})
-				.join("\n");
-			const dir = s.cwd || ".";
-			return { source: Buffer.from(content), destination: `${dir}/.env` };
+	const files: Array<{ source: Buffer; destination: string }> = [];
+
+	// Root .env from repository-level env vars
+	const repoEnvVars = environment.repository.envVars;
+	if (repoEnvVars && repoEnvVars.length > 0) {
+		files.push({
+			source: Buffer.from(formatEnvContent(repoEnvVars)),
+			destination: "./.env",
 		});
+	}
+
+	// Service-level .env files at their respective paths
+	for (const service of environment.services) {
+		if (service.envVars && service.envVars.length > 0) {
+			const dir = service.path || ".";
+			files.push({
+				source: Buffer.from(formatEnvContent(service.envVars)),
+				destination: `${dir}/.env`,
+			});
+		}
+	}
 
 	if (files.length === 0) {
 		return;
@@ -113,7 +127,7 @@ async function provisionSandbox(
 	spaceId: Id<"spaces">,
 	snapshotName: string,
 	anthropicApiKey: string,
-	services: Space["environment"]["services"]
+	environment: Space["environment"]
 ): Promise<Sandbox> {
 	await ctx.runMutation(internal.spaces.internalUpdate, {
 		id: spaceId,
@@ -124,7 +138,7 @@ async function provisionSandbox(
 		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
 	});
 	await bootSandboxAgent(sandbox);
-	await writeServiceEnvFiles(sandbox, services);
+	await writeEnvFiles(sandbox, environment);
 	return sandbox;
 }
 
@@ -134,7 +148,7 @@ async function resolveSandbox(
 	space: Space,
 	anthropicApiKey: string
 ): Promise<Sandbox> {
-	const { snapshotName, services } = space.environment;
+	const { snapshotName } = space.environment;
 
 	if (!snapshotName) {
 		throw new Error("Environment snapshot is not ready yet");
@@ -147,7 +161,7 @@ async function resolveSandbox(
 			space._id,
 			snapshotName,
 			anthropicApiKey,
-			services
+			space.environment
 		);
 	}
 
@@ -161,7 +175,7 @@ async function resolveSandbox(
 			space._id,
 			snapshotName,
 			anthropicApiKey,
-			services
+			space.environment
 		);
 	}
 
@@ -188,7 +202,7 @@ async function resolveSandbox(
 		space._id,
 		snapshotName,
 		anthropicApiKey,
-		services
+		space.environment
 	);
 }
 
