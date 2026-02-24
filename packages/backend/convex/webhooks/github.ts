@@ -46,7 +46,7 @@ export async function handleGitHubWebhook(
 		);
 
 		for (const env of environments) {
-			await ctx.runMutation(internal.environments.rebuildSnapshot, {
+			await ctx.runMutation(internal.environments.internalRebuildSnapshot, {
 				id: env._id,
 			});
 		}

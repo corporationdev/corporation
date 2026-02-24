@@ -1,13 +1,17 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import { useMutation } from "@tanstack/react-query";
+import {
+	useMutation,
+	useQuery as useTanstackQuery,
+} from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation as useConvexMutation, useQuery } from "convex/react";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiClient } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 	component: RepositoriesPage,
@@ -15,8 +19,12 @@ export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 
 function SnapshotStatusIndicator({
 	status,
+	isOutdated,
+	isChecking,
 }: {
 	status: "building" | "ready" | "error" | null;
+	isOutdated: boolean;
+	isChecking: boolean;
 }) {
 	if (!status) {
 		return null;
@@ -27,6 +35,24 @@ function SnapshotStatusIndicator({
 			<span className="flex items-center gap-1 text-muted-foreground text-xs">
 				<Loader2 className="size-3 animate-spin" />
 				Building
+			</span>
+		);
+	}
+
+	if (status === "ready" && isChecking) {
+		return (
+			<span className="flex items-center gap-1 text-muted-foreground text-xs">
+				<Loader2 className="size-3 animate-spin" />
+				Checking
+			</span>
+		);
+	}
+
+	if (status === "ready" && isOutdated) {
+		return (
+			<span className="flex items-center gap-1 text-amber-600 text-xs">
+				<span className="size-1.5 rounded-full bg-amber-500" />
+				Out of date
 			</span>
 		);
 	}
@@ -50,18 +76,36 @@ function SnapshotStatusIndicator({
 
 function RepositoryCard({
 	repository,
+	isOutdated,
+	isChecking,
 }: {
 	repository: {
 		_id: Id<"repositories">;
 		owner: string;
 		name: string;
-		defaultEnvironmentStatus: "building" | "ready" | "error" | null;
+		defaultEnvironment: {
+			_id: Id<"environments">;
+			snapshotStatus: "building" | "ready" | "error";
+		} | null;
 	};
+	isOutdated: boolean;
+	isChecking: boolean;
 }) {
 	const deleteRepo = useConvexMutation(api.repositories.delete);
+	const rebuildEnv = useConvexMutation(api.environments.rebuildSnapshot);
+
 	const { mutate: removeRepository, isPending: isDeleting } = useMutation({
 		mutationFn: async (id: Id<"repositories">) => {
 			await deleteRepo({ id });
+		},
+		onError: (error) => {
+			toast.error(error.message);
+		},
+	});
+
+	const { mutate: rebuild, isPending: isRebuilding } = useMutation({
+		mutationFn: async (id: Id<"environments">) => {
+			await rebuildEnv({ id });
 		},
 		onError: (error) => {
 			toast.error(error.message);
@@ -76,11 +120,23 @@ function RepositoryCard({
 						{repository.owner}/{repository.name}
 					</CardTitle>
 					<SnapshotStatusIndicator
-						status={repository.defaultEnvironmentStatus}
+						isChecking={isChecking}
+						isOutdated={isOutdated}
+						status={repository.defaultEnvironment?.snapshotStatus ?? null}
 					/>
 				</div>
 				<CardAction>
 					<div className="flex items-center gap-1">
+						{isOutdated && repository.defaultEnvironment ? (
+							<Button
+								disabled={isRebuilding}
+								onClick={() => rebuild(repository.defaultEnvironment._id)}
+								size="icon-sm"
+								variant="ghost"
+							>
+								<RefreshCw className="size-4" />
+							</Button>
+						) : null}
 						<Link
 							params={{ repositoryId: repository._id }}
 							to="/settings/repositories/$repositoryId/edit"
@@ -108,6 +164,32 @@ function RepositoriesPage() {
 	const repositories = useQuery(api.repositories.list);
 	const isLoading = repositories === undefined;
 
+	const { data: latestShas, isPending: shasPending } = useTanstackQuery({
+		queryKey: ["latest-shas", repositories?.map((r) => r._id)],
+		queryFn: async () => {
+			if (!repositories?.length) {
+				return {};
+			}
+			const res = await apiClient.github["latest-shas"].$get({
+				query: {
+					repos: JSON.stringify(
+						repositories.map((r) => ({
+							owner: r.owner,
+							name: r.name,
+							defaultBranch: r.defaultBranch,
+						}))
+					),
+				},
+			});
+			if (!res.ok) {
+				return {};
+			}
+			const data = await res.json();
+			return data.shas;
+		},
+		enabled: !!repositories?.length,
+	});
+
 	return (
 		<div className="p-6">
 			<div className="flex items-center justify-between">
@@ -133,9 +215,23 @@ function RepositoriesPage() {
 					</div>
 				) : repositories.length ? (
 					<div className="flex flex-col gap-3">
-						{repositories.map((repo) => (
-							<RepositoryCard key={repo._id} repository={repo} />
-						))}
+						{repositories.map((repo) => {
+							const key = `${repo.owner}/${repo.name}`;
+							const latestSha = latestShas?.[key];
+							const isOutdated =
+								!!latestSha &&
+								(!repo.defaultEnvironment?.snapshotCommitSha ||
+									latestSha !== repo.defaultEnvironment.snapshotCommitSha);
+
+							return (
+								<RepositoryCard
+									isChecking={shasPending}
+									isOutdated={isOutdated}
+									key={repo._id}
+									repository={repo}
+								/>
+							);
+						})}
 					</div>
 				) : (
 					<p className="text-muted-foreground text-sm">

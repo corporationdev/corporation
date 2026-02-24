@@ -33,7 +33,7 @@ export const list = authedQuery({
 
 				return {
 					...repo,
-					defaultEnvironmentStatus: defaultEnv?.snapshotStatus ?? null,
+					defaultEnvironment: defaultEnv,
 				};
 			})
 		);

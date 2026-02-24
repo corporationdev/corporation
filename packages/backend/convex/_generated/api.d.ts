@@ -14,10 +14,12 @@ import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as nangoWebhook from "../nangoWebhook.js";
 import type * as repositories from "../repositories.js";
 import type * as sandboxActions from "../sandboxActions.js";
 import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaces from "../spaces.js";
+import type * as webhooks_github from "../webhooks/github.js";
 
 import type {
   ApiFromModules,
@@ -32,10 +34,12 @@ declare const fullApi: ApiFromModules<{
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  nangoWebhook: typeof nangoWebhook;
   repositories: typeof repositories;
   sandboxActions: typeof sandboxActions;
   snapshotActions: typeof snapshotActions;
   spaces: typeof spaces;
+  "webhooks/github": typeof webhooks_github;
 }>;
 
 /**
