@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const tabTypeValues = ["session", "terminal"] as const;
+export const tabTypeValues = ["session", "terminal", "preview"] as const;
 export type TabType = (typeof tabTypeValues)[number];
 
 export const tabs = sqliteTable("tabs", {
@@ -28,8 +28,21 @@ export const terminals = sqliteTable("terminals", {
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
 
+export const previews = sqliteTable("previews", {
+	id: text("id").primaryKey(),
+	tabId: text("tab_id")
+		.notNull()
+		.unique()
+		.references(() => tabs.id, { onDelete: "cascade" }),
+	url: text("url").notNull(),
+	port: integer("port").notNull(),
+	createdAt: integer("created_at", { mode: "number" }).notNull(),
+	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
 export type TabRow = InferSelectModel<typeof tabs>;
 export type TerminalRow = InferSelectModel<typeof terminals>;
+export type PreviewRow = InferSelectModel<typeof previews>;
 
 type SharedTabFields = Pick<
 	TabRow,
@@ -49,4 +62,11 @@ export type TerminalTab = SharedTabFields & {
 	rows: TerminalRow["rows"];
 };
 
-export type SpaceTab = SessionTab | TerminalTab;
+export type PreviewTab = SharedTabFields & {
+	type: "preview";
+	previewId: string;
+	url: string;
+	port: number;
+};
+
+export type SpaceTab = SessionTab | TerminalTab | PreviewTab;

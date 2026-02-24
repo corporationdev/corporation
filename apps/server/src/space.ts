@@ -8,7 +8,7 @@ import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { actor } from "rivetkit";
 import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
-import { type SpaceTab, tabs, terminals } from "./db/schema";
+import { previews, type SpaceTab, tabs, terminals } from "./db/schema";
 import {
 	augmentContext,
 	collectDriverActions,
@@ -22,6 +22,7 @@ import {
 import type { PersistedState, SpaceVars } from "./space/types";
 
 export type {
+	PreviewTab,
 	SessionTab,
 	SpaceTab,
 	TabType,
@@ -55,6 +56,7 @@ export const space = actor({
 			schema: {
 				tabs,
 				terminals,
+				previews,
 			},
 		});
 

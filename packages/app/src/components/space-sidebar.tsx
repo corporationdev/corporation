@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
-	ExternalLinkIcon,
+	GlobeIcon,
 	LoaderIcon,
 	PlayIcon,
 	SquareIcon,
@@ -94,16 +94,18 @@ const SpaceSidebarContent: FC<{
 			if (!space.sandboxId) {
 				throw new Error("Space has no sandbox");
 			}
-			const start = performance.now();
 			const res = await apiClient.sandbox.preview.$get({
 				query: { sandboxId: space.sandboxId, port: String(port) },
 			});
 			const data = await res.json();
-			console.log(
-				`[getPreviewUrl] round-trip: ${(performance.now() - start).toFixed(0)}ms`
-			);
 			if ("url" in data) {
-				window.open(data.url, "_blank", "noopener,noreferrer");
+				const previewId = nanoid();
+				await actor.connection?.ensurePreview(previewId, data.url, port);
+				navigate({
+					to: "/space/$spaceSlug",
+					params: { spaceSlug: space.slug },
+					search: { tab: serializeTab({ type: "preview", id: previewId }) },
+				});
 			}
 		},
 	});
@@ -207,7 +209,7 @@ const SpaceSidebarContent: FC<{
 						{previewMutation.isPending ? (
 							<LoaderIcon className="size-4 animate-spin" />
 						) : (
-							<ExternalLinkIcon className="size-4" />
+							<GlobeIcon className="size-4" />
 						)}
 						{previewMutation.isPending ? "Loading..." : "Open Preview"}
 					</Button>
