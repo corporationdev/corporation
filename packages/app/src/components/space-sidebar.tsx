@@ -11,14 +11,16 @@ import {
 	TerminalIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
-import type { FC } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { type FC, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	Sidebar,
 	SidebarContent,
 	SidebarProvider,
 } from "@/components/ui/sidebar";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
+import { apiClient } from "@/lib/api-client";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
@@ -70,10 +72,31 @@ const SpaceSidebarContent: FC<{
 		className: "bg-muted-foreground",
 	};
 
+	const [previewPort, setPreviewPort] = useState("3001");
+
 	const stopSpace = useMutation(api.spaces.stop);
 
 	const stopMutation = useTanstackMutation({
 		mutationFn: () => stopSpace({ id: space._id }),
+	});
+
+	const previewMutation = useTanstackMutation({
+		mutationFn: async (port: number) => {
+			if (!space.sandboxId) {
+				throw new Error("Space has no sandbox");
+			}
+			const start = performance.now();
+			const res = await apiClient.sandbox.preview.$get({
+				query: { sandboxId: space.sandboxId, port: String(port) },
+			});
+			const data = await res.json();
+			console.log(
+				`[getPreviewUrl] round-trip: ${(performance.now() - start).toFixed(0)}ms`
+			);
+			if ("url" in data) {
+				window.open(data.url, "_blank", "noopener,noreferrer");
+			}
+		},
 	});
 
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
@@ -86,6 +109,14 @@ const SpaceSidebarContent: FC<{
 			params: { spaceSlug: space.slug },
 			search: { tab: serializeTab({ type: "terminal", id: terminalId }) },
 		});
+	};
+
+	const handleOpenPreview = () => {
+		const port = Number.parseInt(previewPort, 10);
+		if (Number.isNaN(port) || port < 1 || port > 65_535 || !space.sandboxId) {
+			return;
+		}
+		previewMutation.mutate(port);
 	};
 
 	return (
@@ -146,19 +177,32 @@ const SpaceSidebarContent: FC<{
 				<TerminalIcon className="size-4" />
 				New Terminal
 			</Button>
-			{space.sandboxUrl && (
-				<a
-					className={cn(
-						buttonVariants({ variant: "outline", size: "sm" }),
-						"w-full justify-start gap-2"
-					)}
-					href={space.sandboxUrl}
-					rel="noopener noreferrer"
-					target="_blank"
-				>
-					<ExternalLinkIcon className="size-4" />
-					Open Preview
-				</a>
+			{space.sandboxId && space.status === "started" && (
+				<div className="flex gap-2">
+					<Input
+						className="w-20"
+						max={65_535}
+						min={1}
+						onChange={(e) => setPreviewPort(e.target.value)}
+						placeholder="Port"
+						type="number"
+						value={previewPort}
+					/>
+					<Button
+						className="flex-1 gap-2"
+						disabled={previewMutation.isPending}
+						onClick={handleOpenPreview}
+						size="sm"
+						variant="outline"
+					>
+						{previewMutation.isPending ? (
+							<LoaderIcon className="size-4 animate-spin" />
+						) : (
+							<ExternalLinkIcon className="size-4" />
+						)}
+						{previewMutation.isPending ? "Loading..." : "Open Preview"}
+					</Button>
+				</div>
 			)}
 		</div>
 	);

@@ -54,6 +54,7 @@ export const buildSnapshot = internalAction({
 
 			await daytona.snapshot.create({
 				name: snapshotName,
+				resources: { cpu: 4, memory: 8, disk: 10 },
 				image: Image.base("ubuntu:22.04")
 					.runCommands(
 						"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
@@ -84,5 +85,21 @@ export const buildSnapshot = internalAction({
 
 			throw error;
 		}
+	},
+});
+
+export const deleteSnapshot = internalAction({
+	args: {
+		snapshotName: v.string(),
+	},
+	handler: async (_ctx, args) => {
+		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		if (!daytonaApiKey) {
+			throw new Error("Missing DAYTONA_API_KEY env var");
+		}
+
+		const daytona = new Daytona({ apiKey: daytonaApiKey });
+		const snapshot = await daytona.snapshot.get(args.snapshotName);
+		await daytona.snapshot.delete(snapshot);
 	},
 });

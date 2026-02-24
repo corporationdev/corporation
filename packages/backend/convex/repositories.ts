@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { createEnvironmentHelper } from "./environments";
 import { authedMutation, authedQuery } from "./functions";
@@ -239,6 +240,13 @@ const del = authedMutation({
 			.collect();
 
 		for (const env of environments) {
+			if (env.snapshotName) {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.snapshotActions.deleteSnapshot,
+					{ snapshotName: env.snapshotName }
+				);
+			}
 			await ctx.db.delete(env._id);
 		}
 
