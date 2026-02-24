@@ -62,13 +62,15 @@ export const space = actor({
 
 		await migrate(db, bundledMigrations);
 
+		if (!c.state.sandboxUrl) {
+			throw new Error("Actor requires a sandboxUrl to initialize");
+		}
+
 		const persist = new RivetSessionPersistDriver(c);
-		const sandboxClient = c.state.sandboxUrl
-			? await SandboxAgentClient.connect({
-					baseUrl: c.state.sandboxUrl,
-					persist,
-				})
-			: null;
+		const sandboxClient = await SandboxAgentClient.connect({
+			baseUrl: c.state.sandboxUrl,
+			persist,
+		});
 
 		return {
 			db,
@@ -95,17 +97,6 @@ export const space = actor({
 	},
 
 	actions: {
-		setSandboxContext: async (
-			c,
-			sandboxId: string | null,
-			sandboxUrl?: string | null
-		) => {
-			const ctx = augmentContext(c, lifecycleDrivers);
-			for (const driver of lifecycleDrivers) {
-				await driver.onSandboxContextChanged(ctx, { sandboxId, sandboxUrl });
-			}
-		},
-
 		listTabs: async (c): Promise<SpaceTab[]> => {
 			const ctx = augmentContext(c, lifecycleDrivers);
 			const allTabs = (

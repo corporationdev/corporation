@@ -18,7 +18,7 @@ export type SubscriptionHub = {
 export type SpaceVars = {
 	db: SpaceDatabase;
 	daytona: Daytona;
-	sandboxClient: SandboxAgentClient | null;
+	sandboxClient: SandboxAgentClient;
 	sessionStreams: Map<string, () => void>;
 	terminalHandles: Map<string, PtyHandle>;
 	terminalBuffers: Map<string, number[]>;

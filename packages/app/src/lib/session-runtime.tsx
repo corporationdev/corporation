@@ -184,19 +184,10 @@ function ConnectedSessionRuntime({
 		pendingTextRef.current = null;
 
 		const conn = actor.connection;
-		conn
-			.ensureSession(sessionId, "New Chat")
-			.then(() => conn.sendMessage(sessionId, text))
-			.catch((error: unknown) => {
-				console.error("Failed to send pending message", error);
-			});
-	}, [
-		actor.connStatus,
-		actor.connection,
-		sessionId,
-		space?.sandboxUrl,
-		initMutation.isSuccess,
-	]);
+		conn.sendMessage(sessionId, text).catch((error: unknown) => {
+			console.error("Failed to send pending message", error);
+		});
+	}, [actor.connStatus, actor.connection, sessionId, space?.sandboxUrl]);
 
 	const runtime = useExternalStoreRuntime({
 		isRunning: sessionState.isRunning,
@@ -212,7 +203,6 @@ function ConnectedSessionRuntime({
 				throw new Error("Actor connection is unavailable");
 			}
 
-			await conn.ensureSession(sessionId, "New Chat");
 			await conn.sendMessage(sessionId, text);
 		},
 	});

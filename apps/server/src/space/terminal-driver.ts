@@ -4,7 +4,7 @@ import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
-import type { SandboxContextUpdate, TabDriverLifecycle } from "./driver-types";
+import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
@@ -350,18 +350,6 @@ async function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 	await disconnectAllTerminals(ctx);
 }
 
-async function onSandboxContextChanged(
-	ctx: SpaceRuntimeContext,
-	update: SandboxContextUpdate
-): Promise<void> {
-	if (update.sandboxId === ctx.state.sandboxId) {
-		return;
-	}
-
-	await disconnectAllTerminals(ctx);
-	ctx.state.sandboxId = update.sandboxId;
-}
-
 type TerminalPublicActions = {
 	ensureTerminal: (
 		ctx: SpaceRuntimeContext,
@@ -393,7 +381,6 @@ type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
 export const terminalDriver: TerminalDriver = {
 	kind: "terminal",
 	onSleep,
-	onSandboxContextChanged,
 	listTabs,
 	publicActions: {
 		ensureTerminal,

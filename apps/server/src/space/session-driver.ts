@@ -1,10 +1,9 @@
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { Session, SessionEvent } from "sandbox-agent";
-import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import { type SessionTab, sessions, tabs } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
-import type { SandboxContextUpdate, TabDriverLifecycle } from "./driver-types";
+import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
@@ -12,40 +11,11 @@ const DEFAULT_SESSION_TITLE = "New Chat";
 const DEFAULT_AGENT = "opencode";
 const SESSION_EVENT_NAME = "session.event";
 
-function connectSandbox(ctx: SpaceRuntimeContext, baseUrl: string) {
-	return SandboxAgentClient.connect({
-		baseUrl,
-		persist: new RivetSessionPersistDriver(ctx),
-	});
-}
-
 function abortAllSessionStreams(ctx: SpaceRuntimeContext): void {
 	for (const unsubscribe of ctx.vars.sessionStreams.values()) {
 		unsubscribe();
 	}
 	ctx.vars.sessionStreams.clear();
-}
-
-async function applySandboxUrlUpdate(
-	ctx: SpaceRuntimeContext,
-	sandboxUrl?: string | null
-): Promise<void> {
-	if (sandboxUrl === undefined || sandboxUrl === ctx.state.sandboxUrl) {
-		return;
-	}
-
-	ctx.state.sandboxUrl = sandboxUrl;
-	ctx.vars.sandboxClient = sandboxUrl
-		? await connectSandbox(ctx, sandboxUrl)
-		: null;
-	abortAllSessionStreams(ctx);
-}
-
-function getSandboxClient(ctx: SpaceRuntimeContext): SandboxAgentClient {
-	if (!ctx.vars.sandboxClient) {
-		throw new Error("Sandbox is not ready for session operations");
-	}
-	return ctx.vars.sandboxClient;
 }
 
 function ensureEventListener(ctx: SpaceRuntimeContext, session: Session): void {
@@ -120,8 +90,7 @@ async function sendMessage(
 ): Promise<void> {
 	await ensureSession(ctx, sessionId);
 
-	const client = getSandboxClient(ctx);
-	const session = await client.resumeOrCreateSession({
+	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
 		id: sessionId,
 		agent: DEFAULT_AGENT,
 	});
@@ -179,13 +148,6 @@ function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 	return Promise.resolve();
 }
 
-async function onSandboxContextChanged(
-	ctx: SpaceRuntimeContext,
-	update: SandboxContextUpdate
-): Promise<void> {
-	await applySandboxUrlUpdate(ctx, update.sandboxUrl);
-}
-
 type SessionPublicActions = {
 	ensureSession: (
 		ctx: SpaceRuntimeContext,
@@ -212,7 +174,6 @@ type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
 export const sessionDriver: SessionDriver = {
 	kind: "session",
 	onSleep,
-	onSandboxContextChanged,
 	listTabs,
 	publicActions: {
 		ensureSession,
