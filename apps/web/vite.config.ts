@@ -69,7 +69,6 @@ export default defineConfig(({ mode }) => {
 					target: serverProxyTarget,
 					changeOrigin: true,
 					ws: true,
-					rewrite: (pathname: string) => stripPrefix(pathname, "/api"),
 				},
 				"/convex/api/auth": {
 					target: convexSiteProxyTarget,

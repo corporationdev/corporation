@@ -5,6 +5,7 @@ import { integrationsApp } from "./integrations";
 import { sandboxApp } from "./sandbox";
 
 const app = new Hono<{ Bindings: Env }>()
+	.basePath("/api")
 	.use(cors({ origin: "*" }))
 	.get("/", (c) => c.text("OK"))
 	.get("/health", (c) => c.text("OK"))

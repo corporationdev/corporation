@@ -55,6 +55,7 @@ export const SyncCodeButton: FC<{
 					<TooltipTrigger
 						className="flex items-center"
 						onClick={(e) => e.stopPropagation()}
+						render={<span />}
 					>
 						<span
 							className={cn(
