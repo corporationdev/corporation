@@ -1,7 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
 	GlobeIcon,
@@ -22,10 +21,12 @@ import {
 } from "@/components/ui/sidebar";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import { apiClient } from "@/lib/api-client";
+import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { useLayoutStore } from "@/stores/layout-store";
+import { SyncCodeButton } from "./sync-code-button";
 
 export type Space = NonNullable<
 	FunctionReturnType<typeof api.spaces.getBySlug>
@@ -75,15 +76,9 @@ const SpaceSidebarContent: FC<{
 
 	const [previewPort, setPreviewPort] = useState("3001");
 
-	const stopSpace = useMutation(api.spaces.stop);
+	const stopMutation = useConvexTanstackMutation(api.spaces.stop);
 
-	const stopMutation = useTanstackMutation({
-		mutationFn: () => stopSpace({ id: space._id }),
-	});
-
-	const deleteSpace = useMutation(api.spaces.delete);
-	const deleteMutation = useTanstackMutation({
-		mutationFn: () => deleteSpace({ id: space._id }),
+	const deleteMutation = useConvexTanstackMutation(api.spaces.delete, {
 		onSuccess: () => {
 			navigate({ to: "/space" });
 		},
@@ -153,7 +148,7 @@ const SpaceSidebarContent: FC<{
 				<Button
 					className="w-full justify-start gap-2"
 					disabled={stopMutation.isPending}
-					onClick={() => stopMutation.mutate()}
+					onClick={() => stopMutation.mutate({ id: space._id })}
 					size="sm"
 					variant="outline"
 				>
@@ -176,6 +171,7 @@ const SpaceSidebarContent: FC<{
 					{space.status === "creating" ? "Creating..." : "Starting..."}
 				</Button>
 			)}
+			{isStarted && <SyncCodeButton space={space} />}
 			<Button
 				className="w-full justify-start gap-2"
 				disabled={
@@ -218,7 +214,7 @@ const SpaceSidebarContent: FC<{
 			<Button
 				className="w-full justify-start gap-2"
 				disabled={deleteMutation.isPending}
-				onClick={() => deleteMutation.mutate()}
+				onClick={() => deleteMutation.mutate({ id: space._id })}
 				size="sm"
 				variant="destructive"
 			>
