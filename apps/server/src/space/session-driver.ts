@@ -1,23 +1,27 @@
-import { createLogger } from "@corporation/logger";
-import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import type { UniversalEvent } from "sandbox-agent";
-import {
-	SandboxAgent as SandboxAgentClient,
-	SandboxAgentError,
-} from "sandbox-agent";
-import { type SessionTab, sessionEvents, sessions, tabs } from "../db/schema";
+import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import type { Session, SessionEvent } from "sandbox-agent";
+import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
+import { type SessionTab, sessions, tabs } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { SandboxContextUpdate, TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
-const log = createLogger("space:session");
 const DEFAULT_SESSION_TITLE = "New Chat";
+const DEFAULT_AGENT = "opencode";
 const SESSION_EVENT_NAME = "session.event";
 
+function connectSandbox(ctx: SpaceRuntimeContext, baseUrl: string) {
+	return SandboxAgentClient.connect({
+		baseUrl,
+		persist: new RivetSessionPersistDriver(ctx),
+	});
+}
+
 function abortAllSessionStreams(ctx: SpaceRuntimeContext): void {
-	for (const abortController of ctx.vars.sessionStreams.values()) {
-		abortController.abort();
+	for (const unsubscribe of ctx.vars.sessionStreams.values()) {
+		unsubscribe();
 	}
 	ctx.vars.sessionStreams.clear();
 }
@@ -32,115 +36,34 @@ async function applySandboxUrlUpdate(
 
 	ctx.state.sandboxUrl = sandboxUrl;
 	ctx.vars.sandboxClient = sandboxUrl
-		? await SandboxAgentClient.connect({ baseUrl: sandboxUrl })
+		? await connectSandbox(ctx, sandboxUrl)
 		: null;
 	abortAllSessionStreams(ctx);
 }
 
-async function ensureSandboxClient(
-	ctx: SpaceRuntimeContext
-): Promise<SandboxAgentClient> {
+function getSandboxClient(ctx: SpaceRuntimeContext): SandboxAgentClient {
 	if (!ctx.vars.sandboxClient) {
-		if (!ctx.state.sandboxUrl) {
-			throw new Error("Sandbox is not ready for session operations");
-		}
-		ctx.vars.sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: ctx.state.sandboxUrl,
-		});
-	}
-
-	const sandboxClient = ctx.vars.sandboxClient;
-	if (!sandboxClient) {
 		throw new Error("Sandbox is not ready for session operations");
 	}
-
-	return sandboxClient;
+	return ctx.vars.sandboxClient;
 }
 
-async function ensureRemoteSessionExists(
-	client: SandboxAgentClient,
-	sessionId: string
-): Promise<void> {
-	try {
-		await client.createSession(sessionId, { agent: "claude" });
-	} catch (error) {
-		if (error instanceof SandboxAgentError && error.status === 409) {
-			return;
-		}
-		throw error;
-	}
-}
-
-async function persistSessionEvent(
-	ctx: SpaceRuntimeContext,
-	sessionId: string,
-	event: UniversalEvent
-): Promise<void> {
-	const sequence = event.sequence ?? 0;
-	if (sequence <= 0) {
-		return;
-	}
-
-	await ctx.vars.db
-		.insert(sessionEvents)
-		.values({
-			sessionId,
-			sequence,
-			eventJson: JSON.stringify(event),
-			createdAt: Date.now(),
-		})
-		.onConflictDoNothing();
-
-	publishToChannel(
-		ctx,
-		createTabChannel("session", sessionId),
-		SESSION_EVENT_NAME,
-		event
-	);
-}
-
-// TODO: Revisit stream lifecycle on reconnect/DO eviction.
-// Streams are currently started from message-send flow; subscribe only manages
-// channel membership. Decide on a robust resume strategy before changing this.
-async function ensureStreamRunning(
-	ctx: SpaceRuntimeContext,
-	sessionId: string,
-	sandboxClient: SandboxAgentClient
-): Promise<void> {
+function ensureEventListener(ctx: SpaceRuntimeContext, session: Session): void {
+	const sessionId = session.id;
 	if (ctx.vars.sessionStreams.has(sessionId)) {
 		return;
 	}
 
-	const lastSequenceRows = await ctx.vars.db
-		.select({
-			lastSequence: sql<number>`coalesce(max(${sessionEvents.sequence}), 0)`,
-		})
-		.from(sessionEvents)
-		.where(eq(sessionEvents.sessionId, sessionId));
+	const unsubscribe = session.onEvent((event) => {
+		publishToChannel(
+			ctx,
+			createTabChannel("session", sessionId),
+			SESSION_EVENT_NAME,
+			event
+		);
+	});
 
-	const lastSequence = lastSequenceRows[0]?.lastSequence ?? 0;
-	const abortController = new AbortController();
-	ctx.vars.sessionStreams.set(sessionId, abortController);
-
-	ctx.waitUntil(
-		(async () => {
-			try {
-				for await (const event of sandboxClient.streamEvents(
-					sessionId,
-					{ offset: lastSequence },
-					abortController.signal
-				)) {
-					await persistSessionEvent(ctx, sessionId, event);
-				}
-			} catch (error) {
-				if (!abortController.signal.aborted) {
-					log.error({ sessionId, err: error }, "session stream failed");
-				}
-			} finally {
-				ctx.vars.sessionStreams.delete(sessionId);
-			}
-		})()
-	);
+	ctx.vars.sessionStreams.set(sessionId, unsubscribe);
 }
 
 async function ensureSession(
@@ -190,45 +113,21 @@ async function ensureSession(
 	await ctx.broadcastTabsChanged();
 }
 
-async function postMessage(
+async function sendMessage(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
-	content: string,
-	sandboxUrl?: string
+	content: string
 ): Promise<void> {
-	await applySandboxUrlUpdate(ctx, sandboxUrl);
+	await ensureSession(ctx, sessionId);
 
-	const sandboxClient = await ensureSandboxClient(ctx);
-	await ensureRemoteSessionExists(sandboxClient, sessionId);
-	await ensureStreamRunning(ctx, sessionId, sandboxClient);
-
-	await sandboxClient.postMessage(sessionId, {
-		message: content,
+	const client = getSandboxClient(ctx);
+	const session = await client.resumeOrCreateSession({
+		id: sessionId,
+		agent: DEFAULT_AGENT,
 	});
+	ensureEventListener(ctx, session);
 
-	await ctx.vars.db
-		.update(sessions)
-		.set({ status: "running", updatedAt: Date.now() })
-		.where(eq(sessions.id, sessionId));
-
-	await ctx.vars.db
-		.update(tabs)
-		.set({ updatedAt: Date.now() })
-		.where(eq(tabs.id, createTabId("session", sessionId)));
-
-	await ctx.broadcastTabsChanged();
-}
-
-async function replyPermission(
-	ctx: SpaceRuntimeContext,
-	sessionId: string,
-	permissionId: string,
-	reply: "once" | "always" | "reject"
-): Promise<void> {
-	const sandboxClient = await ensureSandboxClient(ctx);
-	await sandboxClient.replyPermission(sessionId, permissionId, {
-		reply,
-	});
+	await session.prompt([{ type: "text", text: content }]);
 }
 
 async function getTranscript(
@@ -236,22 +135,14 @@ async function getTranscript(
 	sessionId: string,
 	offset: number,
 	limit?: number
-): Promise<UniversalEvent[]> {
-	const baseQuery = ctx.vars.db
-		.select({ eventJson: sessionEvents.eventJson })
-		.from(sessionEvents)
-		.where(
-			and(
-				eq(sessionEvents.sessionId, sessionId),
-				gt(sessionEvents.sequence, offset)
-			)
-		)
-		.orderBy(asc(sessionEvents.sequence));
-
-	const rows =
-		limit === undefined ? await baseQuery : await baseQuery.limit(limit);
-
-	return rows.map((row) => JSON.parse(row.eventJson) as UniversalEvent);
+): Promise<SessionEvent[]> {
+	const persist = new RivetSessionPersistDriver(ctx);
+	const page = await persist.listEvents({
+		sessionId,
+		cursor: offset > 0 ? String(offset) : undefined,
+		limit,
+	});
+	return page.items;
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
@@ -271,19 +162,16 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 		.where(and(eq(tabs.type, "session"), isNull(tabs.archivedAt)))
 		.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt));
 
-	return rows.map((row) => {
-		const tab: SessionTab = {
-			id: row.tabId,
-			type: "session",
-			title: row.title,
-			createdAt: row.createdAt,
-			updatedAt: row.updatedAt,
-			archivedAt: row.archivedAt,
-			sessionId: row.sessionId,
-			status: row.sessionStatus,
-		};
-		return tab;
-	});
+	return rows.map((row) => ({
+		id: row.tabId,
+		type: "session" as const,
+		title: row.title,
+		createdAt: row.createdAt,
+		updatedAt: row.updatedAt,
+		archivedAt: row.archivedAt,
+		sessionId: row.sessionId,
+		status: row.sessionStatus,
+	}));
 }
 
 function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
@@ -304,24 +192,17 @@ type SessionPublicActions = {
 		sessionId: string,
 		title?: string
 	) => Promise<void>;
-	postMessage: (
+	sendMessage: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
-		content: string,
-		sandboxUrl?: string
-	) => Promise<void>;
-	replyPermission: (
-		ctx: SpaceRuntimeContext,
-		sessionId: string,
-		permissionId: string,
-		reply: "once" | "always" | "reject"
+		content: string
 	) => Promise<void>;
 	getTranscript: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
 		offset: number,
 		limit?: number
-	) => Promise<UniversalEvent[]>;
+	) => Promise<SessionEvent[]>;
 };
 
 type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
@@ -335,8 +216,7 @@ export const sessionDriver: SessionDriver = {
 	listTabs,
 	publicActions: {
 		ensureSession,
-		postMessage,
-		replyPermission,
+		sendMessage,
 		getTranscript,
 	},
 };

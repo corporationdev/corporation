@@ -1,10 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import {
-	integer,
-	primaryKey,
-	sqliteTable,
-	text,
-} from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const tabTypeValues = ["session", "terminal"] as const;
 export type TabType = (typeof tabTypeValues)[number];
@@ -32,27 +27,15 @@ export const sessions = sqliteTable("sessions", {
 		.notNull()
 		.unique()
 		.references(() => tabs.id, { onDelete: "cascade" }),
+	agent: text("agent").notNull().default("claude"),
+	agentSessionId: text("agent_session_id"),
+	lastConnectionId: text("last_connection_id"),
+	sessionInitJson: text("session_init_json"),
+	destroyedAt: integer("destroyed_at", { mode: "number" }),
 	status: text("status", { enum: sessionStatusValues }).notNull(),
 	createdAt: integer("created_at", { mode: "number" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
-
-export const sessionEvents = sqliteTable(
-	"session_events",
-	{
-		sessionId: text("session_id")
-			.notNull()
-			.references(() => sessions.id, { onDelete: "cascade" }),
-		sequence: integer("sequence").notNull(),
-		eventJson: text("event_json").notNull(),
-		createdAt: integer("created_at", { mode: "number" }).notNull(),
-	},
-	(table) => [
-		primaryKey({
-			columns: [table.sessionId, table.sequence],
-		}),
-	]
-);
 
 export const terminals = sqliteTable("terminals", {
 	id: text("id").primaryKey(),

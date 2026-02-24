@@ -6,6 +6,12 @@ const journal = {
 			tag: "0000_chief_monster_badoon",
 			breakpoints: true,
 		},
+		{
+			idx: 1,
+			when: 1_771_925_200_000,
+			tag: "0001_raw_acp_session_persistence",
+			breakpoints: true,
+		},
 	],
 };
 
@@ -51,6 +57,15 @@ CREATE TABLE \`terminals\` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX \`terminals_tab_id_unique\` ON \`terminals\` (\`tab_id\`);`,
+	m0001: `ALTER TABLE \`sessions\` ADD \`agent\` text DEFAULT 'claude' NOT NULL;
+--> statement-breakpoint
+ALTER TABLE \`sessions\` ADD \`agent_session_id\` text;
+--> statement-breakpoint
+ALTER TABLE \`sessions\` ADD \`last_connection_id\` text;
+--> statement-breakpoint
+ALTER TABLE \`sessions\` ADD \`session_init_json\` text;
+--> statement-breakpoint
+ALTER TABLE \`sessions\` ADD \`destroyed_at\` integer;`,
 };
 
 export default {
