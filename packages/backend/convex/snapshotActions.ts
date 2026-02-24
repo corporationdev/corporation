@@ -79,7 +79,7 @@ export const buildSnapshot = internalAction({
 						"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.1/install.sh | sh",
 						"sandbox-agent install-agent claude",
 						"sandbox-agent install-agent opencode",
-						`git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git /root/${repository.owner}-${repository.name} --branch ${repository.defaultBranch} --single-branch`,
+						`echo "cache-bust-${Date.now()}" && git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git /root/${repository.owner}-${repository.name} --branch ${repository.defaultBranch} --single-branch`,
 						`cd /root/${repository.owner}-${repository.name} && ${repository.setupCommand}`
 					)
 					.workdir(`/root/${repository.owner}-${repository.name}`),
@@ -111,8 +111,12 @@ export const deleteSnapshot = internalAction({
 			throw new Error("Missing DAYTONA_API_KEY env var");
 		}
 
-		const daytona = new Daytona({ apiKey: daytonaApiKey });
-		const snapshot = await daytona.snapshot.get(args.snapshotName);
-		await daytona.snapshot.delete(snapshot);
+		try {
+			const daytona = new Daytona({ apiKey: daytonaApiKey });
+			const snapshot = await daytona.snapshot.get(args.snapshotName);
+			await daytona.snapshot.delete(snapshot);
+		} catch (error) {
+			console.error(`Failed to delete snapshot ${args.snapshotName}:`, error);
+		}
 	},
 });
