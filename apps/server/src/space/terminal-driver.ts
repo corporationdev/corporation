@@ -260,6 +260,10 @@ async function getScrollback(
 	ctx: SpaceRuntimeContext,
 	terminalId: string
 ): Promise<number[]> {
+	if (!ctx.vars.terminalHandles.has(terminalId)) {
+		await ensureTerminal(ctx, terminalId);
+	}
+
 	const inMemory = ctx.vars.terminalBuffers.get(terminalId);
 	if (inMemory) {
 		return inMemory;
@@ -281,11 +285,13 @@ async function input(
 	terminalId: string,
 	data: number[]
 ): Promise<void> {
+	if (!ctx.vars.terminalHandles.has(terminalId)) {
+		await ensureTerminal(ctx, terminalId);
+	}
+
 	const handle = ctx.vars.terminalHandles.get(terminalId);
 	if (!handle) {
-		throw new Error(
-			"Terminal handle is not available, call ensureTerminal first"
-		);
+		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
 	await handle.sendInput(new Uint8Array(data));
@@ -297,16 +303,11 @@ async function resize(
 	cols: number,
 	rows: number
 ): Promise<void> {
-	await ctx.vars.db
-		.update(terminals)
-		.set({ cols, rows, updatedAt: Date.now() })
-		.where(eq(terminals.id, terminalId));
+	await ensureTerminal(ctx, terminalId, cols, rows);
 
 	const handle = ctx.vars.terminalHandles.get(terminalId);
 	if (!handle) {
-		throw new Error(
-			"Terminal handle is not available, call ensureTerminal first"
-		);
+		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
 	await handle.resize(cols, rows);
@@ -351,12 +352,6 @@ async function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 }
 
 type TerminalPublicActions = {
-	ensureTerminal: (
-		ctx: SpaceRuntimeContext,
-		terminalId: string,
-		cols?: number,
-		rows?: number
-	) => Promise<void>;
 	getScrollback: (
 		ctx: SpaceRuntimeContext,
 		terminalId: string
@@ -383,7 +378,6 @@ export const terminalDriver: TerminalDriver = {
 	onSleep,
 	listTabs,
 	publicActions: {
-		ensureTerminal,
 		getScrollback,
 		input,
 		resize,

@@ -149,11 +149,6 @@ function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 }
 
 type SessionPublicActions = {
-	ensureSession: (
-		ctx: SpaceRuntimeContext,
-		sessionId: string,
-		title?: string
-	) => Promise<void>;
 	sendMessage: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
@@ -176,7 +171,6 @@ export const sessionDriver: SessionDriver = {
 	onSleep,
 	listTabs,
 	publicActions: {
-		ensureSession,
 		sendMessage,
 		getTranscript,
 	},

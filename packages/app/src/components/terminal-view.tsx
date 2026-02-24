@@ -84,7 +84,6 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		let isCancelled = false;
 		const initialize = async () => {
 			try {
-				await actor.connection?.ensureTerminal(terminalId);
 				await actor.connection?.subscribeTerminal(terminalId);
 
 				const terminal = terminalRef.current;
