@@ -111,8 +111,12 @@ export const deleteSnapshot = internalAction({
 			throw new Error("Missing DAYTONA_API_KEY env var");
 		}
 
-		const daytona = new Daytona({ apiKey: daytonaApiKey });
-		const snapshot = await daytona.snapshot.get(args.snapshotName);
-		await daytona.snapshot.delete(snapshot);
+		try {
+			const daytona = new Daytona({ apiKey: daytonaApiKey });
+			const snapshot = await daytona.snapshot.get(args.snapshotName);
+			await daytona.snapshot.delete(snapshot);
+		} catch (error) {
+			console.error(`Failed to delete snapshot ${args.snapshotName}:`, error);
+		}
 	},
 });
