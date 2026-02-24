@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1771826608292,
-      "tag": "0000_chief_monster_badoon",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1771925200000,
-      "tag": "0001_raw_acp_session_persistence",
+      "when": 1771905713648,
+      "tag": "0000_glorious_darwin",
       "breakpoints": true
     }
   ]

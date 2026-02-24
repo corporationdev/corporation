@@ -1,7 +1,7 @@
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Session, SessionEvent } from "sandbox-agent";
-import { type SessionTab, sessions, tabs } from "../db/schema";
+import { type SessionTab, tabs } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
@@ -47,9 +47,9 @@ async function ensureSession(
 
 	await ctx.vars.db.transaction(async (tx) => {
 		const existing = await tx
-			.select({ id: sessions.id })
-			.from(sessions)
-			.where(eq(sessions.id, sessionId))
+			.select({ id: tabs.id })
+			.from(tabs)
+			.where(eq(tabs.sessionId, sessionId))
 			.limit(1);
 
 		if (existing.length === 0) {
@@ -57,17 +57,10 @@ async function ensureSession(
 				id: tabId,
 				type: "session",
 				title: nextTitle,
+				sessionId,
 				createdAt: now,
 				updatedAt: now,
 				archivedAt: null,
-			});
-
-			await tx.insert(sessions).values({
-				id: sessionId,
-				tabId,
-				status: "waiting",
-				createdAt: now,
-				updatedAt: now,
 			});
 			return;
 		}
@@ -76,7 +69,7 @@ async function ensureSession(
 			await tx
 				.update(tabs)
 				.set({ title, updatedAt: now })
-				.where(eq(tabs.id, tabId));
+				.where(eq(tabs.sessionId, sessionId));
 		}
 	});
 
@@ -115,32 +108,46 @@ async function getTranscript(
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
-	const rows = await ctx.vars.db
-		.select({
-			tabId: tabs.id,
-			type: tabs.type,
-			title: tabs.title,
-			createdAt: tabs.createdAt,
-			updatedAt: tabs.updatedAt,
-			archivedAt: tabs.archivedAt,
-			sessionId: sessions.id,
-			sessionStatus: sessions.status,
-		})
-		.from(tabs)
-		.innerJoin(sessions, eq(tabs.id, sessions.tabId))
-		.where(and(eq(tabs.type, "session"), isNull(tabs.archivedAt)))
-		.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt));
+	const persist = new RivetSessionPersistDriver(ctx);
 
-	return rows.map((row) => ({
-		id: row.tabId,
-		type: "session" as const,
-		title: row.title,
-		createdAt: row.createdAt,
-		updatedAt: row.updatedAt,
-		archivedAt: row.archivedAt,
-		sessionId: row.sessionId,
-		status: row.sessionStatus,
-	}));
+	const [rows, sessionsPage] = await Promise.all([
+		ctx.vars.db
+			.select({
+				tabId: tabs.id,
+				title: tabs.title,
+				sessionId: tabs.sessionId,
+				createdAt: tabs.createdAt,
+				updatedAt: tabs.updatedAt,
+				archivedAt: tabs.archivedAt,
+			})
+			.from(tabs)
+			.where(
+				and(
+					eq(tabs.type, "session"),
+					isNull(tabs.archivedAt),
+					isNotNull(tabs.sessionId)
+				)
+			)
+			.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt)),
+		persist.listSessions(),
+	]);
+
+	const sessionsByKey = new Map(sessionsPage.items.map((s) => [s.id, s]));
+
+	return rows.map((row) => {
+		const sessionId = row.sessionId as string;
+		const record = sessionsByKey.get(sessionId);
+		return {
+			id: row.tabId,
+			type: "session" as const,
+			title: row.title,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+			archivedAt: row.archivedAt,
+			sessionId,
+			agent: record?.agent ?? null,
+		};
+	});
 }
 
 function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
