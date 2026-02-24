@@ -125,9 +125,12 @@ async function writeEnvFiles(
 
 async function syncRepositoryOnSandbox(
 	sandbox: Sandbox,
-	repository: Space["environment"]["repository"],
+	environment: Space["environment"],
 	githubToken: string
 ): Promise<string | undefined> {
+	await writeEnvFiles(sandbox, environment);
+
+	const { repository } = environment;
 	const workdir = `/root/${repository.owner}-${repository.name}`;
 	await sandbox.process.executeCommand(
 		`cd ${workdir} && git remote set-url origin https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git && git pull origin ${repository.defaultBranch}`
@@ -167,7 +170,6 @@ async function provisionSandbox(
 		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
 	});
 	await bootSandboxAgent(sandbox);
-	await writeEnvFiles(sandbox, environment);
 
 	// Sync code to latest after creating from snapshot
 	const nangoSecretKey = process.env.NANGO_SECRET_KEY;
@@ -178,7 +180,7 @@ async function provisionSandbox(
 	const githubToken = await getGitHubToken(nango, environment.userId);
 	const lastSyncedCommitSha = await syncRepositoryOnSandbox(
 		sandbox,
-		environment.repository,
+		environment,
 		githubToken
 	);
 
@@ -395,7 +397,6 @@ export const syncRepository = internalAction({
 			throw new Error("Space has no sandbox to sync");
 		}
 
-		const { repository } = space.environment;
 		const nango = new Nango({ secretKey: nangoSecretKey });
 		const githubToken = await getGitHubToken(nango, space.environment.userId);
 
@@ -404,7 +405,7 @@ export const syncRepository = internalAction({
 
 		const lastSyncedCommitSha = await syncRepositoryOnSandbox(
 			sandbox,
-			repository,
+			space.environment,
 			githubToken
 		);
 

@@ -94,13 +94,7 @@ const SpaceSidebarContent: FC<{
 			});
 			const data = await res.json();
 			if ("url" in data) {
-				const previewId = nanoid();
-				await actor.connection?.ensurePreview(previewId, data.url, port);
-				navigate({
-					to: "/space/$spaceSlug",
-					params: { spaceSlug: space.slug },
-					search: { tab: serializeTab({ type: "preview", id: previewId }) },
-				});
+				window.open(data.url, "_blank");
 			}
 		},
 	});
