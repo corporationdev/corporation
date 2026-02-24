@@ -72,10 +72,9 @@ export const buildSnapshot = internalAction({
 					.workdir(`/root/${repository.owner}-${repository.name}`),
 			});
 
-			await ctx.runMutation(internal.environments.internalUpdate, {
+			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
 				id: args.environmentId,
 				snapshotName,
-				snapshotStatus: "ready",
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.environments.internalUpdate, {

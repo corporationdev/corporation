@@ -152,3 +152,75 @@ export const internalGet = internalQuery({
 		return { ...environment, repository };
 	},
 });
+
+export const internalListByRepository = internalQuery({
+	args: { repositoryId: v.id("repositories") },
+	handler: async (ctx, args) => {
+		return await ctx.db
+			.query("environments")
+			.withIndex("by_repository", (q) =>
+				q.eq("repositoryId", args.repositoryId)
+			)
+			.collect();
+	},
+});
+
+export const rebuildSnapshot = internalMutation({
+	args: { id: v.id("environments") },
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			throw new ConvexError("Environment not found");
+		}
+
+		if (environment.snapshotStatus === "building") {
+			await ctx.db.patch(args.id, {
+				needsSnapshotRebuild: true,
+				updatedAt: Date.now(),
+			});
+			return;
+		}
+
+		await ctx.db.patch(args.id, {
+			snapshotStatus: "building",
+			needsSnapshotRebuild: false,
+			updatedAt: Date.now(),
+		});
+
+		await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
+			environmentId: args.id,
+		});
+	},
+});
+
+export const completeSnapshotBuild = internalMutation({
+	args: {
+		id: v.id("environments"),
+		snapshotName: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			throw new ConvexError("Environment not found");
+		}
+
+		if (environment.needsSnapshotRebuild) {
+			await ctx.db.patch(args.id, {
+				snapshotName: args.snapshotName,
+				needsSnapshotRebuild: false,
+				updatedAt: Date.now(),
+			});
+
+			await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
+				environmentId: args.id,
+			});
+		} else {
+			await ctx.db.patch(args.id, {
+				snapshotName: args.snapshotName,
+				snapshotStatus: "ready",
+				needsSnapshotRebuild: false,
+				updatedAt: Date.now(),
+			});
+		}
+	},
+});

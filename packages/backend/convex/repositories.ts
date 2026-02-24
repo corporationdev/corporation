@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internalQuery } from "./_generated/server";
 import { createEnvironmentHelper } from "./environments";
 import { authedMutation, authedQuery } from "./functions";
 
@@ -263,3 +264,15 @@ const del = authedMutation({
 	},
 });
 export { del as delete };
+
+export const internalGetByGithubRepoId = internalQuery({
+	args: { githubRepoId: v.number() },
+	handler: async (ctx, args) => {
+		return await ctx.db
+			.query("repositories")
+			.withIndex("by_github_repo", (q) =>
+				q.eq("githubRepoId", args.githubRepoId)
+			)
+			.collect();
+	},
+});

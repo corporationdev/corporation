@@ -23,6 +23,7 @@ export default defineSchema(
 			name: v.string(),
 			snapshotName: v.optional(v.string()),
 			snapshotStatus: snapshotStatusValidator,
+			needsSnapshotRebuild: v.optional(v.boolean()),
 			serviceIds: v.array(v.id("services")),
 			createdAt: v.number(),
 			updatedAt: v.number(),
@@ -45,7 +46,8 @@ export default defineSchema(
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
-			.index("by_user_and_github_repo", ["userId", "githubRepoId"]),
+			.index("by_user_and_github_repo", ["userId", "githubRepoId"])
+			.index("by_github_repo", ["githubRepoId"]),
 
 		services: defineTable({
 			repositoryId: v.id("repositories"),
