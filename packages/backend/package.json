@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "",
   "scripts": {
-    "dev": "convex dev",
+    "dev": "if [ \"$CONVEX_LOCAL\" = \"1\" ]; then convex dev --local; else convex dev; fi",
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {
