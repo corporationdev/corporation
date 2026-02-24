@@ -1,11 +1,10 @@
 import { env } from "@corporation/env/web";
 import type { registry } from "@corporation/server/registry";
 import { createRivetKit } from "@rivetkit/react";
-
-const SERVER_URL = env.VITE_SERVER_URL;
+import { toAbsoluteUrl } from "./url";
 
 export const { useActor } = createRivetKit<typeof registry>({
-	endpoint: `${SERVER_URL}/api/rivet`,
+	endpoint: toAbsoluteUrl(`${env.VITE_SERVER_URL}/rivet`),
 	disableMetadataLookup: true,
 	devtools: false,
 });
