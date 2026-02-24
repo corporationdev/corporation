@@ -1,4 +1,4 @@
-ALTER TABLE `sessions` ADD `agent` text DEFAULT 'claude' NOT NULL;
+ALTER TABLE `sessions` ADD `agent` text DEFAULT 'opencode' NOT NULL;
 --> statement-breakpoint
 ALTER TABLE `sessions` ADD `agent_session_id` text;
 --> statement-breakpoint

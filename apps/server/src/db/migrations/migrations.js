@@ -57,7 +57,7 @@ CREATE TABLE \`terminals\` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX \`terminals_tab_id_unique\` ON \`terminals\` (\`tab_id\`);`,
-	m0001: `ALTER TABLE \`sessions\` ADD \`agent\` text DEFAULT 'claude' NOT NULL;
+	m0001: `ALTER TABLE \`sessions\` ADD \`agent\` text DEFAULT 'opencode' NOT NULL;
 --> statement-breakpoint
 ALTER TABLE \`sessions\` ADD \`agent_session_id\` text;
 --> statement-breakpoint

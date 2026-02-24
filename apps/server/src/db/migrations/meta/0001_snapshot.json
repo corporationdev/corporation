@@ -101,7 +101,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'claude'"
+          "default": "'opencode'"
         },
         "agent_session_id": {
           "name": "agent_session_id",

@@ -27,7 +27,7 @@ export const sessions = sqliteTable("sessions", {
 		.notNull()
 		.unique()
 		.references(() => tabs.id, { onDelete: "cascade" }),
-	agent: text("agent").notNull().default("claude"),
+	agent: text("agent").notNull().default("opencode"),
 	agentSessionId: text("agent_session_id"),
 	lastConnectionId: text("last_connection_id"),
 	sessionInitJson: text("session_init_json"),
