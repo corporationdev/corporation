@@ -3,9 +3,7 @@
 import { createHmac } from "node:crypto";
 import { v } from "convex/values";
 import { z } from "zod";
-import type { ActionCtx } from "./_generated/server";
 import { internalAction } from "./_generated/server";
-import { handleGitHubWebhook } from "./webhooks/github";
 
 const forwardedWebhookSchema = z.object({
 	from: z.string(),
@@ -30,13 +28,12 @@ function verifySignature(
 	return expected === signature;
 }
 
-async function handleForwardedWebhook(
-	ctx: ActionCtx,
-	webhook: z.infer<typeof forwardedWebhookSchema>
+// GitHub webhook handling removed — snapshots now rebuild on a schedule.
+// Retained for future provider integrations via Nango forwarded webhooks.
+function handleForwardedWebhook(
+	_webhook: z.infer<typeof forwardedWebhookSchema>
 ) {
-	if (webhook.from === "github") {
-		await handleGitHubWebhook(ctx, webhook.payload);
-	}
+	// no-op
 }
 
 export const handleWebhook = internalAction({
@@ -44,7 +41,7 @@ export const handleWebhook = internalAction({
 		body: v.string(),
 		signature: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: (_ctx, args) => {
 		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
 		if (!nangoSecretKey) {
 			throw new Error("Missing NANGO_SECRET_KEY env var");
@@ -62,7 +59,7 @@ export const handleWebhook = internalAction({
 		const webhook = parsed.data;
 
 		if (webhook.type === "forward") {
-			await handleForwardedWebhook(ctx, webhook);
+			handleForwardedWebhook(webhook);
 		}
 
 		return { status: "ok" as const };

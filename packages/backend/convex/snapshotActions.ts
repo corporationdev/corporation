@@ -5,28 +5,7 @@ import { Nango } from "@nangohq/node";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
-
-const GITHUB_PROVIDER_KEY = "github";
-
-async function getGitHubToken(nango: Nango, userId: string): Promise<string> {
-	const { connections } = await nango.listConnections({ userId });
-
-	const conn = connections.find(
-		(c) => c.provider_config_key === GITHUB_PROVIDER_KEY
-	);
-
-	if (!conn) {
-		throw new Error("No GitHub connection found for this user");
-	}
-
-	const token = await nango.getToken(GITHUB_PROVIDER_KEY, conn.connection_id);
-
-	if (typeof token !== "string") {
-		throw new Error("Unexpected token format for GitHub connection");
-	}
-
-	return token;
-}
+import { getGitHubToken } from "./lib/nango";
 
 export const buildSnapshot = internalAction({
 	args: {
@@ -94,6 +73,11 @@ export const buildSnapshot = internalAction({
 			await ctx.runMutation(internal.environments.internalUpdate, {
 				id: args.environmentId,
 				snapshotStatus: "error",
+			});
+
+			// Keep the rebuild schedule alive so the next attempt can succeed
+			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
+				id: args.environmentId,
 			});
 
 			throw error;

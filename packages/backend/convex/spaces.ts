@@ -145,6 +145,7 @@ export const internalUpdate = internalMutation({
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
 		sandboxUrl: v.optional(v.string()),
+		lastSyncedCommitSha: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...fields } = args;
@@ -284,6 +285,27 @@ export const archive = authedMutation({
 				sandboxId: space.sandboxId,
 			});
 		}
+	},
+});
+
+export const syncCode = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		if (space.status !== "started") {
+			throw new ConvexError("Space must be running to sync code");
+		}
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.syncRepository, {
+			spaceId: args.id,
+		});
 	},
 });
 

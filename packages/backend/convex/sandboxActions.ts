@@ -2,11 +2,13 @@
 
 import type { Sandbox } from "@daytonaio/sdk";
 import { Daytona } from "@daytonaio/sdk";
+import { Nango } from "@nangohq/node";
 import type { FunctionReturnType, GenericActionCtx } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
+import { getGitHubToken } from "./lib/nango";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -121,14 +123,41 @@ async function writeEnvFiles(
 	await sandbox.fs.uploadFiles(files);
 }
 
+async function syncRepositoryOnSandbox(
+	sandbox: Sandbox,
+	repository: Space["environment"]["repository"],
+	githubToken: string
+): Promise<string | undefined> {
+	const workdir = `/root/${repository.owner}-${repository.name}`;
+	await sandbox.process.executeCommand(
+		`cd ${workdir} && git remote set-url origin https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git && git pull origin ${repository.defaultBranch}`
+	);
+	await sandbox.process.executeCommand(
+		`cd ${workdir} && ${repository.setupCommand}`
+	);
+
+	// Read the HEAD commit SHA after pull
+	const shaResult = await sandbox.process.executeCommand(
+		`cd ${workdir} && git rev-parse HEAD`
+	);
+	return shaResult.exitCode === 0 ? shaResult.result.trim() : undefined;
+}
+
 async function provisionSandbox(
 	ctx: ActionCtx,
 	daytona: Daytona,
 	spaceId: Id<"spaces">,
 	snapshotName: string,
-	anthropicApiKey: string,
 	environment: Space["environment"]
-): Promise<{ sandboxId: string; sandboxUrl: string }> {
+): Promise<{
+	sandboxId: string;
+	sandboxUrl: string;
+	lastSyncedCommitSha?: string;
+}> {
+	const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+	if (!anthropicApiKey) {
+		throw new Error("Missing ANTHROPIC_API_KEY env var");
+	}
 	await ctx.runMutation(internal.spaces.internalUpdate, {
 		id: spaceId,
 		status: "creating" as const,
@@ -139,16 +168,33 @@ async function provisionSandbox(
 	});
 	await bootSandboxAgent(sandbox);
 	await writeEnvFiles(sandbox, environment);
+
+	// Sync code to latest after creating from snapshot
+	const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+	if (!nangoSecretKey) {
+		throw new Error("Missing NANGO_SECRET_KEY env var");
+	}
+	const nango = new Nango({ secretKey: nangoSecretKey });
+	const githubToken = await getGitHubToken(nango, environment.userId);
+	const lastSyncedCommitSha = await syncRepositoryOnSandbox(
+		sandbox,
+		environment.repository,
+		githubToken
+	);
+
 	const sandboxUrl = await getPreviewUrl(sandbox);
-	return { sandboxId: sandbox.id, sandboxUrl };
+	return { sandboxId: sandbox.id, sandboxUrl, lastSyncedCommitSha };
 }
 
 async function resolveSandbox(
 	ctx: ActionCtx,
 	daytona: Daytona,
-	space: Space,
-	anthropicApiKey: string
-): Promise<{ sandboxId: string; sandboxUrl?: string }> {
+	space: Space
+): Promise<{
+	sandboxId: string;
+	sandboxUrl?: string;
+	lastSyncedCommitSha?: string;
+}> {
 	const { snapshotName } = space.environment;
 
 	if (!snapshotName) {
@@ -161,7 +207,6 @@ async function resolveSandbox(
 			daytona,
 			space._id,
 			snapshotName,
-			anthropicApiKey,
 			space.environment
 		);
 	}
@@ -175,7 +220,6 @@ async function resolveSandbox(
 			daytona,
 			space._id,
 			snapshotName,
-			anthropicApiKey,
 			space.environment
 		);
 	}
@@ -202,7 +246,6 @@ async function resolveSandbox(
 		daytona,
 		space._id,
 		snapshotName,
-		anthropicApiKey,
 		space.environment
 	);
 }
@@ -301,9 +344,8 @@ export const ensureSandbox = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const daytonaApiKey = process.env.DAYTONA_API_KEY;
-		const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-		if (!(daytonaApiKey && anthropicApiKey)) {
-			throw new Error("Missing DAYTONA_API_KEY or ANTHROPIC_API_KEY env vars");
+		if (!daytonaApiKey) {
+			throw new Error("Missing DAYTONA_API_KEY env var");
 		}
 
 		const daytona = new Daytona({ apiKey: daytonaApiKey });
@@ -313,18 +355,15 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 			});
 
-			const { sandboxId, sandboxUrl } = await resolveSandbox(
-				ctx,
-				daytona,
-				space,
-				anthropicApiKey
-			);
+			const { sandboxId, sandboxUrl, lastSyncedCommitSha } =
+				await resolveSandbox(ctx, daytona, space);
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "started",
 				sandboxId,
 				sandboxUrl,
+				lastSyncedCommitSha,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -333,6 +372,47 @@ export const ensureSandbox = internalAction({
 			});
 
 			throw error;
+		}
+	},
+});
+
+export const syncRepository = internalAction({
+	args: {
+		spaceId: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+		if (!(daytonaApiKey && nangoSecretKey)) {
+			throw new Error("Missing DAYTONA_API_KEY or NANGO_SECRET_KEY env vars");
+		}
+
+		const space = await ctx.runQuery(internal.spaces.internalGet, {
+			id: args.spaceId,
+		});
+
+		if (!space.sandboxId) {
+			throw new Error("Space has no sandbox to sync");
+		}
+
+		const { repository } = space.environment;
+		const nango = new Nango({ secretKey: nangoSecretKey });
+		const githubToken = await getGitHubToken(nango, space.environment.userId);
+
+		const daytona = new Daytona({ apiKey: daytonaApiKey });
+		const sandbox = await daytona.get(space.sandboxId);
+
+		const lastSyncedCommitSha = await syncRepositoryOnSandbox(
+			sandbox,
+			repository,
+			githubToken
+		);
+
+		if (lastSyncedCommitSha) {
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: args.spaceId,
+				lastSyncedCommitSha,
+			});
 		}
 	},
 });

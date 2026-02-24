@@ -1,21 +1,28 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import {
-	useMutation,
-	useQuery as useTanstackQuery,
-} from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation as useConvexMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiClient } from "@/lib/api-client";
+import { useLatestShas } from "@/hooks/use-latest-shas";
+import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 	component: RepositoriesPage,
 });
+
+const MS_PER_HOUR = 3_600_000;
 
 function SnapshotStatusIndicator({
 	status,
@@ -86,31 +93,38 @@ function RepositoryCard({
 		defaultEnvironment: {
 			_id: Id<"environments">;
 			snapshotStatus: "building" | "ready" | "error";
+			rebuildIntervalMs?: number;
 		} | null;
 	};
 	isOutdated: boolean;
 	isChecking: boolean;
 }) {
-	const deleteRepo = useConvexMutation(api.repositories.delete);
-	const rebuildEnv = useConvexMutation(api.environments.rebuildSnapshot);
+	const { mutate: removeRepository, isPending: isDeleting } =
+		useConvexTanstackMutation(api.repositories.delete, {
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		});
 
-	const { mutate: removeRepository, isPending: isDeleting } = useMutation({
-		mutationFn: async (id: Id<"repositories">) => {
-			await deleteRepo({ id });
-		},
-		onError: (error) => {
-			toast.error(error.message);
-		},
-	});
+	const { mutate: rebuild, isPending: isRebuilding } =
+		useConvexTanstackMutation(api.environments.rebuildSnapshot, {
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		});
 
-	const { mutate: rebuild, isPending: isRebuilding } = useMutation({
-		mutationFn: async (id: Id<"environments">) => {
-			await rebuildEnv({ id });
-		},
-		onError: (error) => {
-			toast.error(error.message);
-		},
-	});
+	const { mutate: setInterval } = useConvexTanstackMutation(
+		api.environments.updateRebuildInterval,
+		{
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		}
+	);
+
+	const currentHours = repository.defaultEnvironment?.rebuildIntervalMs
+		? String(repository.defaultEnvironment.rebuildIntervalMs / MS_PER_HOUR)
+		: "0";
 
 	return (
 		<Card size="sm">
@@ -132,7 +146,7 @@ function RepositoryCard({
 								disabled={isRebuilding}
 								onClick={() => {
 									if (repository.defaultEnvironment) {
-										rebuild(repository.defaultEnvironment._id);
+										rebuild({ id: repository.defaultEnvironment._id });
 									}
 								}}
 								size="icon-sm"
@@ -151,7 +165,7 @@ function RepositoryCard({
 						</Link>
 						<Button
 							disabled={isDeleting}
-							onClick={() => removeRepository(repository._id)}
+							onClick={() => removeRepository({ id: repository._id })}
 							size="icon-sm"
 							variant="ghost"
 						>
@@ -160,6 +174,39 @@ function RepositoryCard({
 					</div>
 				</CardAction>
 			</CardHeader>
+			{repository.defaultEnvironment && (
+				<CardContent>
+					<div className="flex items-center gap-2">
+						<span className="text-muted-foreground text-xs">
+							Auto-rebuild every
+						</span>
+						<Input
+							className="h-7 w-16 text-xs"
+							defaultValue={currentHours}
+							min={0}
+							onBlur={(e) => {
+								if (!repository.defaultEnvironment) {
+									return;
+								}
+								const hours = Number.parseFloat(e.target.value);
+								const rebuildIntervalMs =
+									Number.isNaN(hours) || hours <= 0
+										? undefined
+										: Math.round(hours * MS_PER_HOUR);
+								setInterval({
+									id: repository.defaultEnvironment._id,
+									rebuildIntervalMs,
+								});
+							}}
+							step="any"
+							type="number"
+						/>
+						<span className="text-muted-foreground text-xs">
+							hours (0 to disable)
+						</span>
+					</div>
+				</CardContent>
+			)}
 		</Card>
 	);
 }
@@ -168,31 +215,19 @@ function RepositoriesPage() {
 	const repositories = useQuery(api.repositories.list);
 	const isLoading = repositories === undefined;
 
-	const { data: latestShas, isPending: shasPending } = useTanstackQuery({
-		queryKey: ["latest-shas", repositories?.map((r) => r._id)],
-		queryFn: async () => {
-			if (!repositories?.length) {
-				return {};
-			}
-			const res = await apiClient.github["latest-shas"].$get({
-				query: {
-					repos: JSON.stringify(
-						repositories.map((r) => ({
-							owner: r.owner,
-							name: r.name,
-							defaultBranch: r.defaultBranch,
-						}))
-					),
-				},
-			});
-			if (!res.ok) {
-				return {};
-			}
-			const data = await res.json();
-			return data.shas;
-		},
-		enabled: !!repositories?.length,
-	});
+	const repos = useMemo(
+		() =>
+			(repositories ?? []).map((r) => ({
+				owner: r.owner,
+				name: r.name,
+				defaultBranch: r.defaultBranch,
+			})),
+		[repositories]
+	);
+	const { data: latestShas, isPending: shasPending } = useLatestShas(
+		repos,
+		!!repositories?.length
+	);
 
 	return (
 		<div className="p-6">

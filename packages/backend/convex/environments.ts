@@ -170,16 +170,11 @@ async function rebuildSnapshotHelper(
 	environment: Doc<"environments">
 ) {
 	if (environment.snapshotStatus === "building") {
-		await ctx.db.patch(environment._id, {
-			needsSnapshotRebuild: true,
-			updatedAt: Date.now(),
-		});
 		return;
 	}
 
 	await ctx.db.patch(environment._id, {
 		snapshotStatus: "building",
-		needsSnapshotRebuild: false,
 		updatedAt: Date.now(),
 	});
 
@@ -196,6 +191,20 @@ export const rebuildSnapshot = authedMutation({
 			throw new ConvexError("Environment not found");
 		}
 		await requireOwnedEnvironment(ctx, environment);
+
+		// Cancel any existing scheduled rebuild — manual takes priority
+		if (environment.scheduledRebuildId) {
+			try {
+				await ctx.scheduler.cancel(environment.scheduledRebuildId);
+			} catch {
+				// Already executed or cancelled
+			}
+			await ctx.db.patch(args.id, {
+				scheduledRebuildId: undefined,
+				updatedAt: Date.now(),
+			});
+		}
+
 		await rebuildSnapshotHelper(ctx, environment);
 	},
 });
@@ -230,25 +239,123 @@ export const completeSnapshotBuild = internalMutation({
 			});
 		}
 
-		if (environment.needsSnapshotRebuild) {
-			await ctx.db.patch(args.id, {
-				snapshotName: args.snapshotName,
-				snapshotCommitSha: args.snapshotCommitSha,
-				needsSnapshotRebuild: false,
-				updatedAt: Date.now(),
-			});
+		const now = Date.now();
 
-			await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
-				environmentId: args.id,
-			});
-		} else {
+		await ctx.db.patch(args.id, {
+			snapshotName: args.snapshotName,
+			snapshotCommitSha: args.snapshotCommitSha,
+			snapshotStatus: "ready",
+			lastSnapshotBuildAt: now,
+			updatedAt: now,
+		});
+
+		// Schedule the next rebuild if an interval is configured
+		if (environment.rebuildIntervalMs) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.environments.scheduleNextRebuild,
+				{ id: args.id }
+			);
+		}
+	},
+});
+
+export const scheduleNextRebuild = internalMutation({
+	args: { id: v.id("environments") },
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			return;
+		}
+
+		const intervalMs = environment.rebuildIntervalMs;
+		if (!intervalMs) {
+			if (environment.scheduledRebuildId) {
+				await ctx.db.patch(args.id, {
+					scheduledRebuildId: undefined,
+					updatedAt: Date.now(),
+				});
+			}
+			return;
+		}
+
+		// Cancel any existing scheduled rebuild
+		if (environment.scheduledRebuildId) {
+			try {
+				await ctx.scheduler.cancel(environment.scheduledRebuildId);
+			} catch {
+				// Already executed or cancelled
+			}
+		}
+
+		const scheduledId = await ctx.scheduler.runAfter(
+			intervalMs,
+			internal.environments.executeScheduledRebuild,
+			{ id: args.id }
+		);
+
+		await ctx.db.patch(args.id, {
+			scheduledRebuildId: scheduledId,
+			updatedAt: Date.now(),
+		});
+	},
+});
+
+export const executeScheduledRebuild = internalMutation({
+	args: { id: v.id("environments") },
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			return;
+		}
+
+		if (!environment.rebuildIntervalMs) {
 			await ctx.db.patch(args.id, {
-				snapshotName: args.snapshotName,
-				snapshotCommitSha: args.snapshotCommitSha,
-				snapshotStatus: "ready",
-				needsSnapshotRebuild: false,
+				scheduledRebuildId: undefined,
 				updatedAt: Date.now(),
 			});
+			return;
+		}
+
+		// Trigger the rebuild — completeSnapshotBuild will schedule the next one
+		await rebuildSnapshotHelper(ctx, environment);
+	},
+});
+
+export const updateRebuildInterval = authedMutation({
+	args: {
+		id: v.id("environments"),
+		rebuildIntervalMs: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			throw new ConvexError("Environment not found");
+		}
+		await requireOwnedEnvironment(ctx, environment);
+
+		// Cancel existing scheduled rebuild
+		if (environment.scheduledRebuildId) {
+			try {
+				await ctx.scheduler.cancel(environment.scheduledRebuildId);
+			} catch {
+				// Already executed or cancelled
+			}
+		}
+
+		await ctx.db.patch(args.id, {
+			rebuildIntervalMs: args.rebuildIntervalMs,
+			scheduledRebuildId: undefined,
+			updatedAt: Date.now(),
+		});
+
+		// If a new interval is set, start the scheduling chain
+		if (args.rebuildIntervalMs) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.environments.scheduleNextRebuild,
+				{ id: args.id }
+			);
 		}
 	},
 });
