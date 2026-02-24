@@ -67,6 +67,7 @@ export default defineSchema(
 			sandboxUrl: v.optional(v.string()),
 			branchName: v.string(),
 			status: spaceStatusValidator,
+			archived: v.optional(v.boolean()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
