@@ -248,6 +248,53 @@ export const stopSandbox = internalAction({
 	},
 });
 
+export const archiveSandbox = internalAction({
+	args: {
+		sandboxId: v.string(),
+	},
+	handler: async (_ctx, args) => {
+		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		if (!daytonaApiKey) {
+			throw new Error("Missing DAYTONA_API_KEY env var");
+		}
+
+		const daytona = new Daytona({ apiKey: daytonaApiKey });
+
+		try {
+			const sandbox = await daytona.get(args.sandboxId);
+			if (sandbox.state === "started") {
+				await sandbox.stop();
+			}
+			if (sandbox.state !== "archived") {
+				await sandbox.archive();
+			}
+		} catch (error) {
+			console.error("Failed to archive sandbox in Daytona", error);
+		}
+	},
+});
+
+export const deleteSandbox = internalAction({
+	args: {
+		sandboxId: v.string(),
+	},
+	handler: async (_ctx, args) => {
+		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		if (!daytonaApiKey) {
+			throw new Error("Missing DAYTONA_API_KEY env var");
+		}
+
+		const daytona = new Daytona({ apiKey: daytonaApiKey });
+
+		try {
+			const sandbox = await daytona.get(args.sandboxId);
+			await sandbox.delete();
+		} catch (error) {
+			console.error("Failed to delete sandbox in Daytona", error);
+		}
+	},
+});
+
 export const ensureSandbox = internalAction({
 	args: {
 		spaceId: v.id("spaces"),

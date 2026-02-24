@@ -1,8 +1,9 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { BoxIcon, PlusIcon } from "lucide-react";
+import { ArchiveIcon, BoxIcon, PlusIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { FC } from "react";
 
@@ -28,9 +29,9 @@ export const SpaceList: FC = () => {
 			{spaces.map((space) => (
 				<SpaceListItem
 					branchName={space.branchName}
+					id={space._id}
 					key={space._id}
 					slug={space.slug}
-					status={space.status}
 				/>
 			))}
 		</div>
@@ -107,10 +108,10 @@ const SpaceListSkeleton: FC = () => {
 };
 
 const SpaceListItem: FC<{
+	id: Id<"spaces">;
 	slug: string;
 	branchName: string;
-	status: string;
-}> = ({ slug, branchName, status }) => {
+}> = ({ id, slug, branchName }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
 		from: "/_authenticated/space/$spaceSlug",
@@ -118,10 +119,20 @@ const SpaceListItem: FC<{
 	});
 	const isActive = match?.params.spaceSlug === slug;
 
+	const archiveSpace = useMutation(api.spaces.archive);
+	const archiveMutation = useTanstackMutation({
+		mutationFn: () => archiveSpace({ id }),
+		onSuccess: () => {
+			if (isActive) {
+				navigate({ to: "/space" });
+			}
+		},
+	});
+
 	return (
 		<div
 			className={cn(
-				"group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+				"group/item flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
 				isActive && "bg-muted"
 			)}
 		>
@@ -137,9 +148,14 @@ const SpaceListItem: FC<{
 			>
 				<BoxIcon className="size-3.5 shrink-0" />
 				<span className="truncate">{branchName}</span>
-				<span className="ml-auto shrink-0 text-muted-foreground text-xs">
-					{status}
-				</span>
+			</button>
+			<button
+				className="mr-1 flex size-6 shrink-0 items-center justify-center rounded opacity-0 transition-opacity hover:bg-accent group-hover/item:opacity-100"
+				disabled={archiveMutation.isPending}
+				onClick={() => archiveMutation.mutate()}
+				type="button"
+			>
+				<ArchiveIcon className="size-3.5" />
 			</button>
 		</div>
 	);

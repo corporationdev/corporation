@@ -6,6 +6,8 @@
   "author": "",
   "scripts": {
     "dev": "CMD='convex dev'; [ \"$CONVEX_LOCAL\" = '1' ] && CMD=\"$CMD --local\"; [ \"$SYNC_ENV\" = '1' ] && CMD=\"$CMD --run-sh 'sh ./sync-convex-env.sh'\"; eval $CMD",
+    "dev:sandbox": "CONVEX_LOCAL=1 bun run dev",
+    "dev:sandbox:sync": "CONVEX_LOCAL=1 SYNC_ENV=1 bun run dev",
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {

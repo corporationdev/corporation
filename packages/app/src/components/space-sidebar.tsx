@@ -9,6 +9,7 @@ import {
 	PlayIcon,
 	SquareIcon,
 	TerminalIcon,
+	Trash2Icon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useState } from "react";
@@ -78,6 +79,14 @@ const SpaceSidebarContent: FC<{
 
 	const stopMutation = useTanstackMutation({
 		mutationFn: () => stopSpace({ id: space._id }),
+	});
+
+	const deleteSpace = useMutation(api.spaces.delete);
+	const deleteMutation = useTanstackMutation({
+		mutationFn: () => deleteSpace({ id: space._id }),
+		onSuccess: () => {
+			navigate({ to: "/space" });
+		},
 	});
 
 	const previewMutation = useTanstackMutation({
@@ -204,6 +213,20 @@ const SpaceSidebarContent: FC<{
 					</Button>
 				</div>
 			)}
+			<Button
+				className="w-full justify-start gap-2"
+				disabled={deleteMutation.isPending}
+				onClick={() => deleteMutation.mutate()}
+				size="sm"
+				variant="destructive"
+			>
+				{deleteMutation.isPending ? (
+					<LoaderIcon className="size-4 animate-spin" />
+				) : (
+					<Trash2Icon className="size-4" />
+				)}
+				{deleteMutation.isPending ? "Deleting..." : "Delete Space"}
+			</Button>
 		</div>
 	);
 };

@@ -49,7 +49,7 @@ export const list = authedQuery({
 		).flat();
 
 		spaces.sort((a, b) => b.updatedAt - a.updatedAt);
-		return spaces;
+		return spaces.filter((s) => !s.archived);
 	},
 });
 
@@ -262,3 +262,50 @@ export const ensure = authedMutation({
 		return spaceId;
 	},
 });
+
+export const archive = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		await ctx.db.patch(args.id, {
+			archived: true,
+			updatedAt: Date.now(),
+		});
+
+		if (space.sandboxId) {
+			await ctx.scheduler.runAfter(0, internal.sandboxActions.archiveSandbox, {
+				sandboxId: space.sandboxId,
+			});
+		}
+	},
+});
+
+const del = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		const { sandboxId } = space;
+		await ctx.db.delete(args.id);
+
+		if (sandboxId) {
+			await ctx.scheduler.runAfter(0, internal.sandboxActions.deleteSandbox, {
+				sandboxId,
+			});
+		}
+	},
+});
+export { del as delete };
