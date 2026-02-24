@@ -67,7 +67,7 @@ export const buildSnapshot = internalAction({
 
 			await daytona.snapshot.create({
 				name: snapshotName,
-				resources: { cpu: 4, memory: 8, disk: 10 },
+				resources: { cpu: 2, memory: 4, disk: 8 },
 				image: Image.base("ubuntu:22.04")
 					.runCommands(
 						"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
