@@ -22,9 +22,9 @@ export function useConvexTanstackMutation<
 		"mutationFn"
 	>
 ) {
-	const mutationFn = useConvexMutation(mutation);
+	const convexMutation = useConvexMutation(mutation);
 	return useTanstackMutation({
-		mutationFn,
+		mutationFn: (args: FunctionArgs<Mutation>) => convexMutation(args),
 		...options,
 	});
 }
