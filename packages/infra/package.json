@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "alchemy dev",
+    "dev": "rm -rf .alchemy/pids && alchemy dev",
     "check-types": "tsc --noEmit",
     "deploy": "alchemy deploy",
     "destroy": "alchemy destroy"
