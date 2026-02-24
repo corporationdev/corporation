@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "",
   "scripts": {
-    "dev": "if [ \"$CONVEX_LOCAL\" = \"1\" ]; then convex dev --local; else convex dev; fi",
+    "dev": "CMD='convex dev'; [ \"$CONVEX_LOCAL\" = '1' ] && CMD=\"$CMD --local\"; [ \"$SYNC_ENV\" = '1' ] && CMD=\"$CMD --run-sh 'sh ./sync-convex-env.sh'\"; eval $CMD",
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {
