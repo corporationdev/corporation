@@ -1,58 +1,18 @@
 import type { InferSelectModel } from "drizzle-orm";
-import {
-	integer,
-	primaryKey,
-	sqliteTable,
-	text,
-} from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const tabTypeValues = ["session", "terminal"] as const;
 export type TabType = (typeof tabTypeValues)[number];
-
-export const sessionStatusValues = [
-	"running",
-	"waiting",
-	"stopped",
-	"error",
-] as const;
-export type SessionStatus = (typeof sessionStatusValues)[number];
 
 export const tabs = sqliteTable("tabs", {
 	id: text("id").primaryKey(),
 	type: text("type", { enum: tabTypeValues }).notNull(),
 	title: text("title").notNull(),
+	sessionId: text("session_id"),
 	createdAt: integer("created_at", { mode: "number" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 	archivedAt: integer("archived_at", { mode: "number" }),
 });
-
-export const sessions = sqliteTable("sessions", {
-	id: text("id").primaryKey(),
-	tabId: text("tab_id")
-		.notNull()
-		.unique()
-		.references(() => tabs.id, { onDelete: "cascade" }),
-	status: text("status", { enum: sessionStatusValues }).notNull(),
-	createdAt: integer("created_at", { mode: "number" }).notNull(),
-	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
-});
-
-export const sessionEvents = sqliteTable(
-	"session_events",
-	{
-		sessionId: text("session_id")
-			.notNull()
-			.references(() => sessions.id, { onDelete: "cascade" }),
-		sequence: integer("sequence").notNull(),
-		eventJson: text("event_json").notNull(),
-		createdAt: integer("created_at", { mode: "number" }).notNull(),
-	},
-	(table) => [
-		primaryKey({
-			columns: [table.sessionId, table.sequence],
-		}),
-	]
-);
 
 export const terminals = sqliteTable("terminals", {
 	id: text("id").primaryKey(),
@@ -69,7 +29,6 @@ export const terminals = sqliteTable("terminals", {
 });
 
 export type TabRow = InferSelectModel<typeof tabs>;
-export type SessionRow = InferSelectModel<typeof sessions>;
 export type TerminalRow = InferSelectModel<typeof terminals>;
 
 type SharedTabFields = Pick<
@@ -79,8 +38,8 @@ type SharedTabFields = Pick<
 
 export type SessionTab = SharedTabFields & {
 	type: "session";
-	sessionId: SessionRow["id"];
-	status: SessionRow["status"];
+	sessionId: string;
+	agent: string | null;
 };
 
 export type TerminalTab = SharedTabFields & {

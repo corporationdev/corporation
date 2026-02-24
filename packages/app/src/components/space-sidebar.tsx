@@ -79,13 +79,8 @@ const SpaceSidebarContent: FC<{
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
 		useStartSandbox(space.slug, space.status);
 
-	const handleNewTerminal = async () => {
-		if (!actor.connection) {
-			return;
-		}
-
+	const handleNewTerminal = () => {
 		const terminalId = nanoid();
-		await actor.connection.ensureTerminal(terminalId);
 		navigate({
 			to: "/space/$spaceSlug",
 			params: { spaceSlug: space.slug },
@@ -144,11 +139,7 @@ const SpaceSidebarContent: FC<{
 				disabled={
 					actor.connStatus !== "connected" || space.status !== "started"
 				}
-				onClick={() => {
-					handleNewTerminal().catch((error: unknown) => {
-						console.error("Failed to create terminal", error);
-					});
-				}}
+				onClick={handleNewTerminal}
 				size="sm"
 				variant="outline"
 			>

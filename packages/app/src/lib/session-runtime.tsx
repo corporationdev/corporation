@@ -132,13 +132,11 @@ function ConnectedSessionRuntime({
 		mutationFn: async (pending: {
 			text: string;
 			environmentId?: Id<"environments">;
-			spaceSlug?: string;
 		}) => {
 			await ensureSpace({
 				slug: spaceSlug,
 				environmentId: pending.environmentId,
 			});
-
 			pendingTextRef.current = pending.text;
 		},
 		onError: (error) => {
@@ -185,14 +183,10 @@ function ConnectedSessionRuntime({
 		}
 		pendingTextRef.current = null;
 
-		actor.connection
-			.ensureSession(sessionId, "New Chat")
-			.then(() =>
-				actor.connection?.postMessage(sessionId, text, space.sandboxUrl)
-			)
-			.catch((error: unknown) => {
-				console.error("Failed to send pending message", error);
-			});
+		const conn = actor.connection;
+		conn.sendMessage(sessionId, text).catch((error: unknown) => {
+			console.error("Failed to send pending message", error);
+		});
 	}, [actor.connStatus, actor.connection, sessionId, space?.sandboxUrl]);
 
 	const runtime = useExternalStoreRuntime({
@@ -204,12 +198,12 @@ function ConnectedSessionRuntime({
 
 			await ensureSpace({ slug: spaceSlug });
 
-			if (!space?.sandboxUrl) {
-				throw new Error("Space sandbox is not ready yet");
+			const conn = actor.connection;
+			if (!conn) {
+				throw new Error("Actor connection is unavailable");
 			}
 
-			await actor.connection?.ensureSession(sessionId, "New Chat");
-			await actor.connection?.postMessage(sessionId, text, space.sandboxUrl);
+			await conn.sendMessage(sessionId, text);
 		},
 	});
 

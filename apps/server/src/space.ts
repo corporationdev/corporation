@@ -1,19 +1,14 @@
 import { env } from "@corporation/env/server";
 import { Daytona } from "@daytonaio/sdk";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
+import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { actor } from "rivetkit";
 import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
-import {
-	type SpaceTab,
-	sessionEvents,
-	sessions,
-	tabs,
-	terminals,
-} from "./db/schema";
+import { type SpaceTab, tabs, terminals } from "./db/schema";
 import {
 	augmentContext,
 	collectDriverActions,
@@ -27,7 +22,6 @@ import {
 import type { PersistedState, SpaceVars } from "./space/types";
 
 export type {
-	SessionStatus,
 	SessionTab,
 	SpaceTab,
 	TabType,
@@ -52,6 +46,7 @@ export const space = actor({
 		return {
 			sandboxUrl: input?.sandboxUrl ?? null,
 			sandboxId: input?.sandboxId ?? null,
+			_sandboxAgentPersist: { sessions: {}, events: {} },
 		};
 	},
 
@@ -59,17 +54,21 @@ export const space = actor({
 		const db = drizzle(driverCtx.state.storage, {
 			schema: {
 				tabs,
-				sessions,
-				sessionEvents,
 				terminals,
 			},
 		});
 
 		await migrate(db, bundledMigrations);
 
-		const sandboxClient = c.state.sandboxUrl
-			? await SandboxAgentClient.connect({ baseUrl: c.state.sandboxUrl })
-			: null;
+		if (!c.state.sandboxUrl) {
+			throw new Error("Actor requires a sandboxUrl to initialize");
+		}
+
+		const persist = new RivetSessionPersistDriver(c);
+		const sandboxClient = await SandboxAgentClient.connect({
+			baseUrl: c.state.sandboxUrl,
+			persist,
+		});
 
 		return {
 			db,
@@ -96,17 +95,6 @@ export const space = actor({
 	},
 
 	actions: {
-		setSandboxContext: async (
-			c,
-			sandboxId: string | null,
-			sandboxUrl?: string | null
-		) => {
-			const ctx = augmentContext(c, lifecycleDrivers);
-			for (const driver of lifecycleDrivers) {
-				await driver.onSandboxContextChanged(ctx, { sandboxId, sandboxUrl });
-			}
-		},
-
 		listTabs: async (c): Promise<SpaceTab[]> => {
 			const ctx = augmentContext(c, lifecycleDrivers);
 			const allTabs = (

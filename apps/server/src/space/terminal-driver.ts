@@ -4,7 +4,7 @@ import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
-import type { SandboxContextUpdate, TabDriverLifecycle } from "./driver-types";
+import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
@@ -260,6 +260,10 @@ async function getScrollback(
 	ctx: SpaceRuntimeContext,
 	terminalId: string
 ): Promise<number[]> {
+	if (!ctx.vars.terminalHandles.has(terminalId)) {
+		await ensureTerminal(ctx, terminalId);
+	}
+
 	const inMemory = ctx.vars.terminalBuffers.get(terminalId);
 	if (inMemory) {
 		return inMemory;
@@ -281,11 +285,13 @@ async function input(
 	terminalId: string,
 	data: number[]
 ): Promise<void> {
+	if (!ctx.vars.terminalHandles.has(terminalId)) {
+		await ensureTerminal(ctx, terminalId);
+	}
+
 	const handle = ctx.vars.terminalHandles.get(terminalId);
 	if (!handle) {
-		throw new Error(
-			"Terminal handle is not available, call ensureTerminal first"
-		);
+		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
 	await handle.sendInput(new Uint8Array(data));
@@ -297,16 +303,11 @@ async function resize(
 	cols: number,
 	rows: number
 ): Promise<void> {
-	await ctx.vars.db
-		.update(terminals)
-		.set({ cols, rows, updatedAt: Date.now() })
-		.where(eq(terminals.id, terminalId));
+	await ensureTerminal(ctx, terminalId, cols, rows);
 
 	const handle = ctx.vars.terminalHandles.get(terminalId);
 	if (!handle) {
-		throw new Error(
-			"Terminal handle is not available, call ensureTerminal first"
-		);
+		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
 	await handle.resize(cols, rows);
@@ -350,25 +351,7 @@ async function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 	await disconnectAllTerminals(ctx);
 }
 
-async function onSandboxContextChanged(
-	ctx: SpaceRuntimeContext,
-	update: SandboxContextUpdate
-): Promise<void> {
-	if (update.sandboxId === ctx.state.sandboxId) {
-		return;
-	}
-
-	await disconnectAllTerminals(ctx);
-	ctx.state.sandboxId = update.sandboxId;
-}
-
 type TerminalPublicActions = {
-	ensureTerminal: (
-		ctx: SpaceRuntimeContext,
-		terminalId: string,
-		cols?: number,
-		rows?: number
-	) => Promise<void>;
 	getScrollback: (
 		ctx: SpaceRuntimeContext,
 		terminalId: string
@@ -393,10 +376,8 @@ type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
 export const terminalDriver: TerminalDriver = {
 	kind: "terminal",
 	onSleep,
-	onSandboxContextChanged,
 	listTabs,
 	publicActions: {
-		ensureTerminal,
 		getScrollback,
 		input,
 		resize,

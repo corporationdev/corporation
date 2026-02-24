@@ -128,7 +128,7 @@ async function provisionSandbox(
 	snapshotName: string,
 	anthropicApiKey: string,
 	environment: Space["environment"]
-): Promise<Sandbox> {
+): Promise<{ sandboxId: string; sandboxUrl: string }> {
 	await ctx.runMutation(internal.spaces.internalUpdate, {
 		id: spaceId,
 		status: "creating" as const,
@@ -139,7 +139,8 @@ async function provisionSandbox(
 	});
 	await bootSandboxAgent(sandbox);
 	await writeEnvFiles(sandbox, environment);
-	return sandbox;
+	const sandboxUrl = await getPreviewUrl(sandbox);
+	return { sandboxId: sandbox.id, sandboxUrl };
 }
 
 async function resolveSandbox(
@@ -147,7 +148,7 @@ async function resolveSandbox(
 	daytona: Daytona,
 	space: Space,
 	anthropicApiKey: string
-): Promise<Sandbox> {
+): Promise<{ sandboxId: string; sandboxUrl?: string }> {
 	const { snapshotName } = space.environment;
 
 	if (!snapshotName) {
@@ -183,7 +184,7 @@ async function resolveSandbox(
 
 	if (state === "started") {
 		await ensureSandboxAgentRunning(sandbox);
-		return sandbox;
+		return { sandboxId: sandbox.id };
 	}
 
 	if (state === "stopped" || state === "archived") {
@@ -193,7 +194,7 @@ async function resolveSandbox(
 		});
 		await sandbox.start();
 		await bootSandboxAgent(sandbox);
-		return sandbox;
+		return { sandboxId: sandbox.id };
 	}
 
 	return await provisionSandbox(
@@ -265,19 +266,17 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 			});
 
-			const sandbox = await resolveSandbox(
+			const { sandboxId, sandboxUrl } = await resolveSandbox(
 				ctx,
 				daytona,
 				space,
 				anthropicApiKey
 			);
 
-			const sandboxUrl = await getPreviewUrl(sandbox);
-
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "started",
-				sandboxId: sandbox.id,
+				sandboxId,
 				sandboxUrl,
 			});
 		} catch (error) {

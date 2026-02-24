@@ -3,7 +3,7 @@ import type { SpaceTab } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { PlusIcon } from "lucide-react";
-import { type FC, useEffect } from "react";
+import type { FC } from "react";
 import { SpaceListSidebar } from "@/components/assistant-ui/space-list-sidebar";
 import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
 import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
@@ -32,35 +32,19 @@ export function SpaceLayout() {
 	const isSpaceLoading = space === undefined;
 	const isSpaceMissing = !!spaceSlug && space === null;
 
+	const sandboxReady = !!space?.sandboxId && !!space?.sandboxUrl;
+
 	const actor = useActor({
 		name: "space",
 		key: spaceSlug ? [spaceSlug] : [],
-		createWithInput: space
+		createWithInput: sandboxReady
 			? {
 					sandboxId: space.sandboxId,
 					sandboxUrl: space.sandboxUrl,
 				}
 			: undefined,
-		enabled: !!spaceSlug,
+		enabled: !!spaceSlug && sandboxReady,
 	});
-
-	// sync do with convex
-	useEffect(() => {
-		if (
-			!spaceSlug ||
-			actor.connStatus !== "connected" ||
-			!actor.connection ||
-			!space
-		) {
-			return;
-		}
-
-		actor.connection
-			.setSandboxContext(space.sandboxId ?? null, space.sandboxUrl ?? null)
-			.catch((error: unknown) => {
-				console.error("Failed to sync sandbox context", error);
-			});
-	}, [spaceSlug, actor.connStatus, actor.connection, space]);
 
 	const tabs = useSpaceTabs(actor);
 
