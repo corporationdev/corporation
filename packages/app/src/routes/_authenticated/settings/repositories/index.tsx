@@ -130,7 +130,11 @@ function RepositoryCard({
 						{isOutdated && repository.defaultEnvironment ? (
 							<Button
 								disabled={isRebuilding}
-								onClick={() => rebuild(repository.defaultEnvironment._id)}
+								onClick={() => {
+									if (repository.defaultEnvironment) {
+										rebuild(repository.defaultEnvironment._id);
+									}
+								}}
 								size="icon-sm"
 								variant="ghost"
 							>
