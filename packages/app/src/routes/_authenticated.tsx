@@ -12,7 +12,7 @@ export type AuthenticatedContext = {
 export const Route = createFileRoute("/_authenticated")({
 	beforeLoad: async (): Promise<AuthenticatedContext> => {
 		const session = await authClient.getSession();
-		if (!session.data) {
+		if (!session.data?.user) {
 			throw redirect({ to: "/login" });
 		}
 
