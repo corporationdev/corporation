@@ -148,7 +148,7 @@ async function resolveSandbox(
 	daytona: Daytona,
 	space: Space,
 	anthropicApiKey: string
-): Promise<{ sandboxId: string; sandboxUrl: string | undefined }> {
+): Promise<{ sandboxId: string; sandboxUrl?: string }> {
 	const { snapshotName } = space.environment;
 
 	if (!snapshotName) {
