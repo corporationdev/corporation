@@ -82,6 +82,7 @@ export function SpaceLayout() {
 						actor,
 						tabId: tab?.id,
 						spaceSlug,
+						tabs,
 					})
 				)}
 			</SidebarInset>
