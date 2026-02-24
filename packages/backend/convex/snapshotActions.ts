@@ -49,6 +49,19 @@ export const buildSnapshot = internalAction({
 			const nango = new Nango({ secretKey: nangoSecretKey });
 			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
 
+			const branchRes = await fetch(
+				`https://api.github.com/repos/${repository.owner}/${repository.name}/branches/${repository.defaultBranch}`,
+				{
+					headers: {
+						Authorization: `Bearer ${githubToken}`,
+						Accept: "application/vnd.github+json",
+					},
+				}
+			);
+			const snapshotCommitSha = branchRes.ok
+				? ((await branchRes.json()) as { commit: { sha: string } }).commit.sha
+				: undefined;
+
 			const daytona = new Daytona({ apiKey: daytonaApiKey });
 			const snapshotName = `repo-${repository.owner}-${repository.name}-${Date.now()}`;
 
@@ -75,6 +88,7 @@ export const buildSnapshot = internalAction({
 			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
 				id: args.environmentId,
 				snapshotName,
+				snapshotCommitSha,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.environments.internalUpdate, {

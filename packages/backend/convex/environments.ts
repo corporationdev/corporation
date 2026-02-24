@@ -165,31 +165,49 @@ export const internalListByRepository = internalQuery({
 	},
 });
 
-export const rebuildSnapshot = internalMutation({
+async function rebuildSnapshotHelper(
+	ctx: MutationCtx,
+	environment: Doc<"environments">
+) {
+	if (environment.snapshotStatus === "building") {
+		await ctx.db.patch(environment._id, {
+			needsSnapshotRebuild: true,
+			updatedAt: Date.now(),
+		});
+		return;
+	}
+
+	await ctx.db.patch(environment._id, {
+		snapshotStatus: "building",
+		needsSnapshotRebuild: false,
+		updatedAt: Date.now(),
+	});
+
+	await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
+		environmentId: environment._id,
+	});
+}
+
+export const rebuildSnapshot = authedMutation({
 	args: { id: v.id("environments") },
 	handler: async (ctx, args) => {
 		const environment = await ctx.db.get(args.id);
 		if (!environment) {
 			throw new ConvexError("Environment not found");
 		}
+		await requireOwnedEnvironment(ctx, environment);
+		await rebuildSnapshotHelper(ctx, environment);
+	},
+});
 
-		if (environment.snapshotStatus === "building") {
-			await ctx.db.patch(args.id, {
-				needsSnapshotRebuild: true,
-				updatedAt: Date.now(),
-			});
-			return;
+export const internalRebuildSnapshot = internalMutation({
+	args: { id: v.id("environments") },
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			throw new ConvexError("Environment not found");
 		}
-
-		await ctx.db.patch(args.id, {
-			snapshotStatus: "building",
-			needsSnapshotRebuild: false,
-			updatedAt: Date.now(),
-		});
-
-		await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
-			environmentId: args.id,
-		});
+		await rebuildSnapshotHelper(ctx, environment);
 	},
 });
 
@@ -197,6 +215,7 @@ export const completeSnapshotBuild = internalMutation({
 	args: {
 		id: v.id("environments"),
 		snapshotName: v.string(),
+		snapshotCommitSha: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const environment = await ctx.db.get(args.id);
@@ -207,6 +226,7 @@ export const completeSnapshotBuild = internalMutation({
 		if (environment.needsSnapshotRebuild) {
 			await ctx.db.patch(args.id, {
 				snapshotName: args.snapshotName,
+				snapshotCommitSha: args.snapshotCommitSha,
 				needsSnapshotRebuild: false,
 				updatedAt: Date.now(),
 			});
@@ -217,6 +237,7 @@ export const completeSnapshotBuild = internalMutation({
 		} else {
 			await ctx.db.patch(args.id, {
 				snapshotName: args.snapshotName,
+				snapshotCommitSha: args.snapshotCommitSha,
 				snapshotStatus: "ready",
 				needsSnapshotRebuild: false,
 				updatedAt: Date.now(),

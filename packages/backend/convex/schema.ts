@@ -22,6 +22,7 @@ export default defineSchema(
 			repositoryId: v.id("repositories"),
 			name: v.string(),
 			snapshotName: v.optional(v.string()),
+			snapshotCommitSha: v.optional(v.string()),
 			snapshotStatus: snapshotStatusValidator,
 			needsSnapshotRebuild: v.optional(v.boolean()),
 			serviceIds: v.array(v.id("services")),
