@@ -25,6 +25,7 @@ async function ensurePreview(
 				id: tabId,
 				type: "preview",
 				title: `Preview :${port}`,
+				active: true,
 				createdAt: now,
 				updatedAt: now,
 				archivedAt: null,
@@ -46,7 +47,10 @@ async function ensurePreview(
 			.set({ url, updatedAt: now })
 			.where(eq(previews.id, previewId));
 
-		await tx.update(tabs).set({ updatedAt: now }).where(eq(tabs.id, tabId));
+		await tx
+			.update(tabs)
+			.set({ active: true, archivedAt: null, updatedAt: now })
+			.where(eq(tabs.id, tabId));
 	});
 
 	await ctx.broadcastTabsChanged();
@@ -57,6 +61,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<PreviewTab[]> {
 		.select({
 			tabId: tabs.id,
 			title: tabs.title,
+			active: tabs.active,
 			createdAt: tabs.createdAt,
 			updatedAt: tabs.updatedAt,
 			archivedAt: tabs.archivedAt,
@@ -66,13 +71,20 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<PreviewTab[]> {
 		})
 		.from(tabs)
 		.innerJoin(previews, eq(tabs.id, previews.tabId))
-		.where(and(eq(tabs.type, "preview"), isNull(tabs.archivedAt)))
+		.where(
+			and(
+				eq(tabs.type, "preview"),
+				eq(tabs.active, true),
+				isNull(tabs.archivedAt)
+			)
+		)
 		.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt));
 
 	return rows.map((row) => ({
 		id: row.tabId,
 		type: "preview" as const,
 		title: row.title,
+		active: row.active,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		archivedAt: row.archivedAt,

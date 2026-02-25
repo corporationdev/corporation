@@ -3,62 +3,98 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { ArchiveIcon, BoxIcon, PlusIcon } from "lucide-react";
+import type { FunctionReturnType } from "convex/server";
+import { ArchiveIcon, BoxIcon, FolderIcon, PlusIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { FC } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export const SpaceList: FC = () => {
-	const spaces = useQuery(api.spaces.list);
+	const groupedSpaces = useQuery(api.spaces.listByRepository);
 
-	if (spaces === undefined) {
+	if (groupedSpaces === undefined) {
 		return (
 			<div className="flex flex-col gap-1">
-				<NewSpaceButton />
 				<SpaceListSkeleton />
 			</div>
 		);
 	}
 
+	if (groupedSpaces.length === 0) {
+		return <NoRepositoriesState />;
+	}
+
 	return (
-		<div className="flex flex-col gap-1">
-			<NewSpaceButton />
-			{spaces.map((space) => (
-				<SpaceListItem
-					branchName={space.branchName}
-					id={space._id}
-					key={space._id}
-					slug={space.slug}
-				/>
+		<div className="flex flex-col gap-3">
+			{groupedSpaces.map((group) => (
+				<RepositorySpaceSection group={group} key={group.repository._id} />
 			))}
 		</div>
 	);
 };
 
-const NewSpaceButton: FC = () => {
+type RepositorySpaceGroup = FunctionReturnType<
+	typeof api.spaces.listByRepository
+>[number];
+
+const RepositorySpaceSection: FC<{
+	group: RepositorySpaceGroup;
+}> = ({ group }) => {
+	const { repository, spaces, defaultEnvironmentId } = group;
+
+	return (
+		<div className="flex flex-col gap-1">
+			<div className="flex items-center justify-between gap-2 px-2 text-muted-foreground text-sm">
+				<div className="flex min-w-0 items-center gap-2">
+					<FolderIcon className="size-3.5 shrink-0" />
+					<span className="truncate font-medium">
+						{repository.owner}/{repository.name}
+					</span>
+				</div>
+				{defaultEnvironmentId ? (
+					<NewSpaceButton
+						environmentId={defaultEnvironmentId}
+						repositoryName={repository.name}
+					/>
+				) : null}
+			</div>
+			<div className="ml-2 flex flex-col gap-1 border-l pl-2">
+				{spaces.length === 0 ? (
+					<div className="px-2 py-1 text-muted-foreground text-xs">
+						No spaces yet
+					</div>
+				) : (
+					spaces.map((space) => (
+						<SpaceListItem
+							branchName={space.branchName}
+							id={space._id}
+							key={space._id}
+							slug={space.slug}
+						/>
+					))
+				)}
+			</div>
+		</div>
+	);
+};
+
+const NewSpaceButton: FC<{
+	environmentId: Id<"environments">;
+	repositoryName: string;
+}> = ({ environmentId, repositoryName }) => {
 	const navigate = useNavigate();
 	const ensureSpace = useMutation(api.spaces.ensure);
-	const repositories = useQuery(api.repositories.list);
-	const firstRepo = repositories?.[0];
-	const environments = useQuery(
-		api.environments.listByRepository,
-		firstRepo ? { repositoryId: firstRepo._id } : "skip"
-	);
-	const firstEnv = environments?.[0];
 
 	const createSpaceMutation = useTanstackMutation({
 		mutationFn: async () => {
-			if (!firstEnv) {
-				throw new Error("No repository or environment configured");
-			}
-
 			const spaceSlug = nanoid();
 			await ensureSpace({
 				slug: spaceSlug,
-				environmentId: firstEnv._id,
+				environmentId,
 			});
 
 			return spaceSlug;
@@ -69,40 +105,69 @@ const NewSpaceButton: FC = () => {
 				params: { spaceSlug },
 			});
 		},
-		onError: (error: unknown) => {
-			console.error("Failed to create space", error);
+		onError: () => {
+			toast.error(`Failed to create a space in ${repositoryName}`);
 		},
 	});
 
 	return (
 		<Button
-			className="h-9 justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted"
+			className="size-6 rounded-sm p-0 hover:bg-muted"
 			disabled={createSpaceMutation.isPending}
 			onClick={() => createSpaceMutation.mutate()}
+			size="icon"
 			variant="outline"
 		>
-			<PlusIcon className="size-4" />
-			{createSpaceMutation.isPending ? "Creating..." : "New Space"}
+			<PlusIcon className="size-3.5" />
+			<span className="sr-only">
+				{createSpaceMutation.isPending
+					? "Creating space..."
+					: `New space in ${repositoryName}`}
+			</span>
 		</Button>
 	);
 };
 
 const SpaceListSkeleton: FC = () => {
-	const skeletonKeys = [
-		"skeleton-0",
-		"skeleton-1",
-		"skeleton-2",
-		"skeleton-3",
-		"skeleton-4",
+	const repositorySkeletonKeys = [
+		"repo-skeleton-0",
+		"repo-skeleton-1",
 	] as const;
+	const spaceSkeletonKeys = ["space-skeleton-0", "space-skeleton-1"] as const;
 
 	return (
-		<div className="flex flex-col gap-1">
-			{skeletonKeys.map((key) => (
-				<div className="flex h-9 items-center px-3" key={key}>
-					<Skeleton className="h-4 w-full" />
+		<div className="flex flex-col gap-3">
+			{repositorySkeletonKeys.map((repoKey) => (
+				<div className="flex flex-col gap-1" key={repoKey}>
+					<div className="flex h-6 items-center px-2">
+						<Skeleton className="h-4 w-28" />
+					</div>
+					{spaceSkeletonKeys.map((spaceKey) => (
+						<div className="flex h-9 items-center pl-4" key={spaceKey}>
+							<Skeleton className="h-4 w-full" />
+						</div>
+					))}
 				</div>
 			))}
+		</div>
+	);
+};
+
+const NoRepositoriesState: FC = () => {
+	const navigate = useNavigate();
+
+	return (
+		<div className="flex flex-col gap-2 px-2 py-3">
+			<p className="text-muted-foreground text-xs">
+				No repositories connected.
+			</p>
+			<Button
+				className="h-8 justify-start px-2 text-xs"
+				onClick={() => navigate({ to: "/settings/repositories/connect" })}
+				variant="outline"
+			>
+				Connect Repository
+			</Button>
 		</div>
 	);
 };

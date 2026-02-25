@@ -58,6 +58,7 @@ async function ensureSession(
 				type: "session",
 				title: nextTitle,
 				sessionId,
+				active: true,
 				createdAt: now,
 				updatedAt: now,
 				archivedAt: null,
@@ -65,12 +66,20 @@ async function ensureSession(
 			return;
 		}
 
+		const tabPatch: {
+			active: boolean;
+			archivedAt: null;
+			updatedAt: number;
+			title?: string;
+		} = {
+			active: true,
+			archivedAt: null,
+			updatedAt: now,
+		};
 		if (title) {
-			await tx
-				.update(tabs)
-				.set({ title, updatedAt: now })
-				.where(eq(tabs.sessionId, sessionId));
+			tabPatch.title = title;
 		}
+		await tx.update(tabs).set(tabPatch).where(eq(tabs.sessionId, sessionId));
 	});
 
 	await ctx.broadcastTabsChanged();
@@ -115,6 +124,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 			.select({
 				tabId: tabs.id,
 				title: tabs.title,
+				active: tabs.active,
 				sessionId: tabs.sessionId,
 				createdAt: tabs.createdAt,
 				updatedAt: tabs.updatedAt,
@@ -124,6 +134,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 			.where(
 				and(
 					eq(tabs.type, "session"),
+					eq(tabs.active, true),
 					isNull(tabs.archivedAt),
 					isNotNull(tabs.sessionId)
 				)
@@ -141,6 +152,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 			id: row.tabId,
 			type: "session" as const,
 			title: row.title,
+			active: row.active,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 			archivedAt: row.archivedAt,

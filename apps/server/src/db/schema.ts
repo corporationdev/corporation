@@ -9,6 +9,7 @@ export const tabs = sqliteTable("tabs", {
 	type: text("type", { enum: tabTypeValues }).notNull(),
 	title: text("title").notNull(),
 	sessionId: text("session_id"),
+	active: integer("active", { mode: "boolean" }).notNull().default(true),
 	createdAt: integer("created_at", { mode: "number" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 	archivedAt: integer("archived_at", { mode: "number" }),
@@ -46,7 +47,7 @@ export type PreviewRow = InferSelectModel<typeof previews>;
 
 type SharedTabFields = Pick<
 	TabRow,
-	"id" | "title" | "createdAt" | "updatedAt" | "archivedAt"
+	"id" | "title" | "active" | "createdAt" | "updatedAt" | "archivedAt"
 >;
 
 export type SessionTab = SharedTabFields & {
