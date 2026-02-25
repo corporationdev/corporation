@@ -2,8 +2,9 @@ import { env } from "@corporation/env/web";
 import type { AppType } from "@corporation/server/app";
 import { hc } from "hono/client";
 import { authClient } from "./auth-client";
+import { toAbsoluteUrl } from "./url";
 
-export const apiClient = hc<AppType>(`${env.VITE_SERVER_URL}/api`, {
+export const apiClient = hc<AppType>(toAbsoluteUrl(env.VITE_SERVER_URL), {
 	fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
 		const authHeaders = await getAuthHeaders();
 		const merged = new Headers(init?.headers);
@@ -17,7 +18,9 @@ export const apiClient = hc<AppType>(`${env.VITE_SERVER_URL}/api`, {
 	},
 });
 
-const CONVEX_TOKEN_URL = `${env.VITE_CONVEX_SITE_URL}/api/auth/convex/token`;
+const CONVEX_TOKEN_URL = toAbsoluteUrl(
+	`${env.VITE_CONVEX_SITE_URL}/api/auth/convex/token`
+);
 const TOKEN_REFRESH_BUFFER_MS = 30_000;
 
 let cachedToken: string | null = null;
