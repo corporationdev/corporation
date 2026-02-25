@@ -4,9 +4,9 @@ import type { CommandHandle, Sandbox } from "e2b";
 import type { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 
 export type PersistedState = RivetPersistState & {
-	sandboxUrl: string | null;
-	sandboxId: string | null;
-	workdir: string | null;
+	sandboxUrl: string;
+	sandboxId: string;
+	workdir: string;
 };
 
 export type SpaceDatabase = ReturnType<typeof drizzle>;
