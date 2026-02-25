@@ -6,11 +6,10 @@ import { ConvexReactClient } from "convex/react";
 
 import Loader from "@/components/loader";
 import { authClient } from "@/lib/auth-client";
-import { toAbsoluteUrl } from "@/lib/url";
 import { initAdapters } from "@/stores/adapter-store";
 import { routeTree } from "./routeTree.gen";
 
-const convex = new ConvexReactClient(toAbsoluteUrl(env.VITE_CONVEX_URL));
+const convex = new ConvexReactClient(env.VITE_CONVEX_URL);
 const queryClient = new QueryClient();
 
 const router = createRouter({
