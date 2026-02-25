@@ -1,27 +1,70 @@
 "use node";
 
-import { Daytona, Image } from "@daytonaio/sdk";
 import { Nango } from "@nangohq/node";
 import { v } from "convex/values";
+import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
+
+const BASE_TEMPLATE = "corporation-base";
+
+function truncateOutput(output: string, maxLength = 2000): string {
+	if (output.length <= maxLength) {
+		return output;
+	}
+	return `${output.slice(0, maxLength)}...`;
+}
+
+async function runRootCommand(
+	sandbox: Sandbox,
+	command: string,
+	envs?: Record<string, string>
+): Promise<void> {
+	try {
+		await sandbox.commands.run(command, {
+			user: "root",
+			timeoutMs: 30 * 60 * 1000,
+			envs,
+		});
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			throw new Error(
+				[
+					`Snapshot bootstrap command failed: ${command}`,
+					`Exit code: ${error.exitCode}`,
+					`stderr: ${truncateOutput(error.stderr)}`,
+					`stdout: ${truncateOutput(error.stdout)}`,
+				].join("\n")
+			);
+		}
+		throw error;
+	}
+}
 
 export const buildSnapshot = internalAction({
 	args: {
 		environmentId: v.id("environments"),
 	},
 	handler: async (ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		const e2bApiKey = process.env.E2B_API_KEY;
 		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!(daytonaApiKey && nangoSecretKey)) {
-			throw new Error("Missing DAYTONA_API_KEY or NANGO_SECRET_KEY env vars");
+		if (!(e2bApiKey && nangoSecretKey)) {
+			throw new Error("Missing E2B_API_KEY or NANGO_SECRET_KEY env vars");
 		}
-
+		const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+		if (!anthropicApiKey) {
+			throw new Error(
+				"Missing ANTHROPIC_API_KEY env var for sandbox-agent agent verification"
+			);
+		}
+		let buildSandbox: Sandbox | undefined;
 		try {
 			const envWithRepo = await ctx.runQuery(
 				internal.environments.internalGet,
-				{ id: args.environmentId }
+				{
+					id: args.environmentId,
+				}
 			);
 
 			const { repository } = envWithRepo;
@@ -41,32 +84,33 @@ export const buildSnapshot = internalAction({
 				? ((await branchRes.json()) as { commit: { sha: string } }).commit.sha
 				: undefined;
 
-			const daytona = new Daytona({ apiKey: daytonaApiKey });
-			const snapshotName = `repo-${repository.owner}-${repository.name}-${Date.now()}`;
-
-			await daytona.snapshot.create({
-				name: snapshotName,
-				resources: { cpu: 2, memory: 4, disk: 8 },
-				image: Image.base("ubuntu:22.04")
-					.runCommands(
-						"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
-						'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended',
-						"chsh -s $(which zsh)",
-						"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
-						"npm install -g yarn pnpm",
-						"curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun",
-						"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.1/install.sh | sh",
-						"sandbox-agent install-agent claude",
-						"sandbox-agent install-agent opencode",
-						`echo "cache-bust-${Date.now()}" && git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git /root/${repository.owner}-${repository.name} --branch ${repository.defaultBranch} --single-branch`,
-						`cd /root/${repository.owner}-${repository.name} && ${repository.setupCommand}`
-					)
-					.workdir(`/root/${repository.owner}-${repository.name}`),
+			const repoDir = `/root/${repository.owner}-${repository.name}`;
+			buildSandbox = await Sandbox.create(BASE_TEMPLATE, {
+				apiKey: e2bApiKey,
+				timeoutMs: 60 * 60 * 1000,
+				envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+				network: { allowPublicTraffic: true },
 			});
+
+			await runRootCommand(
+				buildSandbox,
+				`git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git ${repoDir} --branch ${repository.defaultBranch} --single-branch`
+			);
+			await runRootCommand(
+				buildSandbox,
+				`cd ${repoDir} && ${repository.setupCommand}`
+			);
+			await runRootCommand(
+				buildSandbox,
+				"sandbox-agent install-agent opencode --reinstall",
+				{ ANTHROPIC_API_KEY: anthropicApiKey }
+			);
+
+			const snapshot = await buildSandbox.createSnapshot({ apiKey: e2bApiKey });
 
 			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
 				id: args.environmentId,
-				snapshotName,
+				snapshotId: snapshot.snapshotId,
 				snapshotCommitSha,
 			});
 		} catch (error) {
@@ -75,32 +119,37 @@ export const buildSnapshot = internalAction({
 				snapshotStatus: "error",
 			});
 
-			// Keep the rebuild schedule alive so the next attempt can succeed
 			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
 				id: args.environmentId,
 			});
 
 			throw error;
+		} finally {
+			if (buildSandbox) {
+				try {
+					await buildSandbox.kill();
+				} catch {
+					// Best effort cleanup
+				}
+			}
 		}
 	},
 });
 
 export const deleteSnapshot = internalAction({
 	args: {
-		snapshotName: v.string(),
+		snapshotId: v.string(),
 	},
 	handler: async (_ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
-		if (!daytonaApiKey) {
-			throw new Error("Missing DAYTONA_API_KEY env var");
+		const e2bApiKey = process.env.E2B_API_KEY;
+		if (!e2bApiKey) {
+			throw new Error("Missing E2B_API_KEY env var");
 		}
 
 		try {
-			const daytona = new Daytona({ apiKey: daytonaApiKey });
-			const snapshot = await daytona.snapshot.get(args.snapshotName);
-			await daytona.snapshot.delete(snapshot);
+			await Sandbox.deleteSnapshot(args.snapshotId, { apiKey: e2bApiKey });
 		} catch (error) {
-			console.error(`Failed to delete snapshot ${args.snapshotName}:`, error);
+			console.error(`Failed to delete snapshot ${args.snapshotId}:`, error);
 		}
 	},
 });

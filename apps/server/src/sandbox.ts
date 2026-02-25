@@ -1,8 +1,6 @@
-import { Daytona } from "@daytonaio/sdk";
+import { Sandbox } from "e2b";
 import { Hono } from "hono";
 import { authMiddleware } from "./auth";
-
-const PREVIEW_URL_EXPIRY_SECONDS = 86_400;
 
 export const sandboxApp = new Hono<{ Bindings: Env }>()
 	.use(authMiddleware)
@@ -19,12 +17,10 @@ export const sandboxApp = new Hono<{ Bindings: Env }>()
 			return c.json({ error: "Invalid port" }, 400);
 		}
 
-		const daytona = new Daytona({ apiKey: c.env.DAYTONA_API_KEY });
-		const sandbox = await daytona.get(sandboxId);
-		const result = await sandbox.getSignedPreviewUrl(
-			port,
-			PREVIEW_URL_EXPIRY_SECONDS
-		);
+		const sandbox = await Sandbox.connect(sandboxId, {
+			apiKey: c.env.E2B_API_KEY,
+		});
+		const url = `https://${sandbox.getHost(port)}`;
 
-		return c.json({ url: result.url });
+		return c.json({ url });
 	});

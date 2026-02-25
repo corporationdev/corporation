@@ -12,7 +12,7 @@
       "@base-ui/react": "^1.0.0",
       "@cloudflare/workers-types": "^4.20251213.0",
       "@convex-dev/better-auth": "^0.10.9",
-      "@daytonaio/sdk": "^0.132.0",
+      "e2b": "^2.13.0",
       "@hono/zod-openapi": "^1.2.1",
       "@nangohq/node": "^0.69.31",
       "@radix-ui/react-slot": "^1.2.4",
@@ -89,11 +89,14 @@
     "destroy": "turbo -F @corporation/infra destroy",
     "check": "ultracite check",
     "fix": "ultracite fix",
-    "fix:force": "ultracite fix --unsafe"
+    "fix:force": "ultracite fix --unsafe",
+    "db:generate": "turbo db:generate"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.13",
     "@corporation/config": "workspace:*",
+    "dotenv": "catalog:",
+    "e2b": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:",
     "ultracite": "7.1.4"

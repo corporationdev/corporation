@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@convex-dev/better-auth": "catalog:",
-    "@daytonaio/sdk": "catalog:",
+    "e2b": "catalog:",
     "@nangohq/node": "catalog:",
     "better-auth": "catalog:",
     "convex": "catalog:",

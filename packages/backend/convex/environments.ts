@@ -122,7 +122,7 @@ export const create = authedMutation({
 export const internalUpdate = internalMutation({
 	args: {
 		id: v.id("environments"),
-		snapshotName: v.optional(v.string()),
+		snapshotId: v.optional(v.string()),
 		snapshotStatus: v.optional(snapshotStatusValidator),
 	},
 	handler: async (ctx, args) => {
@@ -223,7 +223,7 @@ export const internalRebuildSnapshot = internalMutation({
 export const completeSnapshotBuild = internalMutation({
 	args: {
 		id: v.id("environments"),
-		snapshotName: v.string(),
+		snapshotId: v.string(),
 		snapshotCommitSha: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -232,17 +232,17 @@ export const completeSnapshotBuild = internalMutation({
 			throw new ConvexError("Environment not found");
 		}
 
-		const oldSnapshotName = environment.snapshotName;
-		if (oldSnapshotName && oldSnapshotName !== args.snapshotName) {
+		const oldSnapshotId = environment.snapshotId;
+		if (oldSnapshotId && oldSnapshotId !== args.snapshotId) {
 			await ctx.scheduler.runAfter(0, internal.snapshotActions.deleteSnapshot, {
-				snapshotName: oldSnapshotName,
+				snapshotId: oldSnapshotId,
 			});
 		}
 
 		const now = Date.now();
 
 		await ctx.db.patch(args.id, {
-			snapshotName: args.snapshotName,
+			snapshotId: args.snapshotId,
 			snapshotCommitSha: args.snapshotCommitSha,
 			snapshotStatus: "ready",
 			lastSnapshotBuildAt: now,

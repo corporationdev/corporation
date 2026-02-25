@@ -17,7 +17,7 @@
     "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
-    "@daytonaio/sdk": "catalog:",
+    "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@nangohq/node": "catalog:",
     "@rivetkit/cloudflare-workers": "catalog:",

@@ -141,9 +141,12 @@ function RepositoryCard({
 				</div>
 				<CardAction>
 					<div className="flex items-center gap-1">
-						{isOutdated && repository.defaultEnvironment ? (
+						{repository.defaultEnvironment ? (
 							<Button
-								disabled={isRebuilding}
+								disabled={
+									isRebuilding ||
+									repository.defaultEnvironment.snapshotStatus === "building"
+								}
 								onClick={() => {
 									if (repository.defaultEnvironment) {
 										rebuild({ id: repository.defaultEnvironment._id });

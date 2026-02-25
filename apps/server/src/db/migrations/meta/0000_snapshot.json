@@ -1,9 +1,77 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6595bd52-7a72-4526-b3f1-1f821607ab65",
+  "id": "4aa0f30d-b7fc-430f-810b-826290dda3e2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
+    "previews": {
+      "name": "previews",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tab_id": {
+          "name": "tab_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "port": {
+          "name": "port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "previews_tab_id_unique": {
+          "name": "previews_tab_id_unique",
+          "columns": ["tab_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "previews_tab_id_tabs_id_fk": {
+          "name": "previews_tab_id_tabs_id_fk",
+          "tableFrom": "previews",
+          "tableTo": "tabs",
+          "columnsFrom": ["tab_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "tabs": {
       "name": "tabs",
       "columns": {
@@ -34,6 +102,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "active": {
+          "name": "active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -80,9 +156,9 @@
           "notNull": true,
           "autoincrement": false
         },
-        "pty_session_id": {
-          "name": "pty_session_id",
-          "type": "text",
+        "pty_pid": {
+          "name": "pty_pid",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

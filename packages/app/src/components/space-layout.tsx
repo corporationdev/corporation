@@ -41,6 +41,7 @@ export function SpaceLayout() {
 			? {
 					sandboxId: space.sandboxId,
 					sandboxUrl: space.sandboxUrl,
+					workdir: space.workdir,
 				}
 			: undefined,
 		enabled: !!spaceSlug && sandboxReady,

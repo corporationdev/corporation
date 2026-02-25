@@ -241,11 +241,11 @@ const del = authedMutation({
 			.collect();
 
 		for (const env of environments) {
-			if (env.snapshotName) {
+			if (env.snapshotId) {
 				await ctx.scheduler.runAfter(
 					0,
 					internal.snapshotActions.deleteSnapshot,
-					{ snapshotName: env.snapshotName }
+					{ snapshotId: env.snapshotId }
 				);
 			}
 			await ctx.db.delete(env._id);
