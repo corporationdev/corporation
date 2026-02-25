@@ -6,6 +6,7 @@ import type { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 export type PersistedState = RivetPersistState & {
 	sandboxUrl: string | null;
 	sandboxId: string | null;
+	workdir: string | null;
 };
 
 export type SpaceDatabase = ReturnType<typeof drizzle>;

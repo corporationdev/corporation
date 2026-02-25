@@ -36,6 +36,7 @@ export const space = actor({
 		input?: {
 			sandboxUrl?: string;
 			sandboxId?: string;
+			workdir?: string;
 		}
 	): PersistedState => {
 		const spaceSlug = c.key[0];
@@ -46,6 +47,7 @@ export const space = actor({
 		return {
 			sandboxUrl: input?.sandboxUrl ?? null,
 			sandboxId: input?.sandboxId ?? null,
+			workdir: input?.workdir ?? null,
 			_sandboxAgentPersist: { sessions: {}, events: {} },
 		};
 	},

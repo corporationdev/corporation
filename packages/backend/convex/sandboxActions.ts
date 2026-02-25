@@ -13,12 +13,6 @@ type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
-type CommandResult = {
-	exitCode: number;
-	stdout: string;
-	stderr: string;
-};
-
 const SANDBOX_AGENT_PORT = 5799;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
@@ -31,44 +25,19 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function runCommand(
-	sandbox: Sandbox,
-	cmd: string,
-	opts?: {
-		cwd?: string;
-		user?: string;
-		timeoutMs?: number;
-	}
-): Promise<CommandResult> {
-	try {
-		const result = await sandbox.commands.run(cmd, opts);
-		return {
-			exitCode: result.exitCode,
-			stdout: result.stdout,
-			stderr: result.stderr,
-		};
-	} catch (error) {
-		if (error instanceof CommandExitError) {
-			return {
-				exitCode: error.exitCode,
-				stdout: error.stdout,
-				stderr: error.stderr,
-			};
-		}
-		throw error;
-	}
-}
-
 async function waitForServerReady(sandbox: Sandbox): Promise<void> {
 	const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
 
 	while (Date.now() < deadline) {
-		const result = await runCommand(
-			sandbox,
-			`curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
-		);
-		if (result.exitCode === 0) {
+		try {
+			await sandbox.commands.run(
+				`curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
+			);
 			return;
+		} catch (error) {
+			if (!(error instanceof CommandExitError)) {
+				throw error;
+			}
 		}
 		await sleep(SERVER_POLL_INTERVAL_MS);
 	}
@@ -77,19 +46,24 @@ async function waitForServerReady(sandbox: Sandbox): Promise<void> {
 }
 
 async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
-	await runCommand(
-		sandbox,
+	await sandbox.commands.run(
 		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >/tmp/sandbox-agent.log 2>&1 &`
 	);
 	await waitForServerReady(sandbox);
 }
 
 async function isSandboxAgentHealthy(sandbox: Sandbox): Promise<boolean> {
-	const result = await runCommand(
-		sandbox,
-		`curl -sf --max-time 1 http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
-	);
-	return result.exitCode === 0;
+	try {
+		await sandbox.commands.run(
+			`curl -sf --max-time 1 http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
+		);
+		return true;
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			return false;
+		}
+		throw error;
+	}
 }
 
 async function ensureSandboxAgentRunning(sandbox: Sandbox): Promise<void> {
@@ -148,7 +122,8 @@ function resolvePreviewUrls(
 
 async function writeEnvFiles(
 	sandbox: Sandbox,
-	environment: Space["environment"]
+	environment: Space["environment"],
+	workdir: string
 ): Promise<void> {
 	const files: Array<{ path: string; data: string }> = [];
 
@@ -156,7 +131,7 @@ async function writeEnvFiles(
 	if (repoEnvVars && repoEnvVars.length > 0) {
 		const resolved = resolvePreviewUrls(sandbox, repoEnvVars);
 		files.push({
-			path: "./.env",
+			path: `${workdir}/.env`,
 			data: formatEnvContent(resolved),
 		});
 	}
@@ -166,7 +141,7 @@ async function writeEnvFiles(
 			const resolved = resolvePreviewUrls(sandbox, service.envVars);
 			const dir = service.path || ".";
 			files.push({
-				path: `${dir}/.env`,
+				path: `${workdir}/${dir}/.env`,
 				data: formatEnvContent(resolved),
 			});
 		}
@@ -184,26 +159,27 @@ async function syncRepositoryOnSandbox(
 	environment: Space["environment"],
 	githubToken: string
 ): Promise<string | undefined> {
-	await writeEnvFiles(sandbox, environment);
-
 	const { repository } = environment;
 	const workdir = `/root/${repository.owner}-${repository.name}`;
+
+	await writeEnvFiles(sandbox, environment, workdir);
 
 	await sandbox.commands.run(
 		`git remote set-url origin https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git && git pull origin ${repository.defaultBranch}`,
 		{ cwd: workdir, user: "root", timeoutMs: REPO_SYNC_TIMEOUT_MS }
 	);
+
 	await sandbox.commands.run(repository.setupCommand, {
 		cwd: workdir,
 		user: "root",
 		timeoutMs: REPO_SYNC_TIMEOUT_MS,
 	});
 
-	const shaResult = await runCommand(sandbox, "git rev-parse HEAD", {
+	const shaResult = await sandbox.commands.run("git rev-parse HEAD", {
 		cwd: workdir,
 		user: "root",
 	});
-	return shaResult.exitCode === 0 ? shaResult.stdout.trim() : undefined;
+	return shaResult.stdout.trim();
 }
 
 async function provisionSandbox(

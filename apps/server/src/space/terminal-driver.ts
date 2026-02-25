@@ -13,7 +13,6 @@ const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
 const MAX_SCROLLBACK_BYTES = 256 * 1024;
 const PTY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-
 function encodeBytes(bytes: number[]): string {
 	if (bytes.length === 0) {
 		return "";
@@ -63,7 +62,8 @@ async function connectOrCreatePty(
 	ptySessionId: string | null,
 	cols: number,
 	rows: number,
-	onData: (data: Uint8Array) => void
+	onData: (data: Uint8Array) => void,
+	cwd?: string
 ): Promise<{ handle: CommandHandle; sessionId: string }> {
 	if (ptySessionId) {
 		const pid = Number.parseInt(ptySessionId, 10);
@@ -87,6 +87,8 @@ async function connectOrCreatePty(
 		cols,
 		rows,
 		onData,
+		user: "root",
+		cwd,
 		timeoutMs: PTY_TIMEOUT_MS,
 	});
 
@@ -251,7 +253,8 @@ async function ensureTerminal(
 			terminalRow.ptySessionId,
 			terminalRow.cols,
 			terminalRow.rows,
-			onData
+			onData,
+			ctx.state.workdir ?? undefined
 		);
 
 		const terminalHandle: TerminalHandle = { sandbox, handle };

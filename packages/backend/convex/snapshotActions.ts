@@ -7,6 +7,8 @@ import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
 
+const BASE_TEMPLATE = "corporation-base";
+
 function truncateOutput(output: string, maxLength = 2000): string {
 	if (output.length <= maxLength) {
 		return output;
@@ -40,16 +42,6 @@ async function runRootCommand(
 	}
 }
 
-async function runRootCommands(
-	sandbox: Sandbox,
-	commands: string[],
-	envs?: Record<string, string>
-): Promise<void> {
-	for (const command of commands) {
-		await runRootCommand(sandbox, command, envs);
-	}
-}
-
 export const buildSnapshot = internalAction({
 	args: {
 		environmentId: v.id("environments"),
@@ -66,10 +58,7 @@ export const buildSnapshot = internalAction({
 				"Missing ANTHROPIC_API_KEY env var for sandbox-agent agent verification"
 			);
 		}
-		const anthropicAgentEnvs = { ANTHROPIC_API_KEY: anthropicApiKey };
-
 		let buildSandbox: Sandbox | undefined;
-
 		try {
 			const envWithRepo = await ctx.runQuery(
 				internal.environments.internalGet,
@@ -96,36 +85,25 @@ export const buildSnapshot = internalAction({
 				: undefined;
 
 			const repoDir = `/root/${repository.owner}-${repository.name}`;
-			buildSandbox = await Sandbox.create({
+			buildSandbox = await Sandbox.create(BASE_TEMPLATE, {
 				apiKey: e2bApiKey,
 				timeoutMs: 60 * 60 * 1000,
 				envs: { ANTHROPIC_API_KEY: anthropicApiKey },
 				network: { allowPublicTraffic: true },
 			});
 
-			await runRootCommands(buildSandbox, [
-				"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
-				"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
-				"if ! command -v yarn >/dev/null 2>&1; then npm install -g yarn; fi",
-				"if ! command -v pnpm >/dev/null 2>&1; then npm install -g pnpm; fi",
-				"if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun; fi",
-				"if ! command -v sandbox-agent >/dev/null 2>&1; then curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.1/install.sh | sh; fi",
-				`echo "cache-bust-${Date.now()}" && git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git ${repoDir} --branch ${repository.defaultBranch} --single-branch`,
-			]);
 			await runRootCommand(
 				buildSandbox,
-				`test -n "$ANTHROPIC_API_KEY" || (echo "ANTHROPIC_API_KEY is missing inside sandbox command env" >&2; exit 1)`,
-				anthropicAgentEnvs
+				`git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git ${repoDir} --branch ${repository.defaultBranch} --single-branch`
 			);
 			await runRootCommand(
 				buildSandbox,
-				`code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 8 https://api.anthropic.com/v1/messages || true); echo "anthropic_http_code=$code"; [ "$code" != "000" ] || (echo "Cannot reach api.anthropic.com from sandbox" >&2; exit 1)`,
-				anthropicAgentEnvs
+				`cd ${repoDir} && ${repository.setupCommand}`
 			);
 			await runRootCommand(
 				buildSandbox,
 				"sandbox-agent install-agent opencode --reinstall",
-				anthropicAgentEnvs
+				{ ANTHROPIC_API_KEY: anthropicApiKey }
 			);
 
 			const snapshot = await buildSandbox.createSnapshot({ apiKey: e2bApiKey });

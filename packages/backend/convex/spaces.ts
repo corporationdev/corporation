@@ -148,6 +148,7 @@ export const getBySlug = authedQuery({
 
 		return {
 			...space,
+			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
 				...environment,
 				repository,
@@ -177,6 +178,7 @@ export const get = authedQuery({
 
 		return {
 			...space,
+			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
 				...environment,
 				repository,
