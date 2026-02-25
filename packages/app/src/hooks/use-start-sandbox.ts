@@ -4,9 +4,10 @@ import { useMutation } from "convex/react";
 export function useStartSandbox(slug: string, status: string) {
 	const ensureSpace = useMutation(api.spaces.ensure);
 
-	const isStopped = status === "stopped" || status === "error";
-	const isStarted = status === "started";
-	const isTransitioning = status === "creating" || status === "starting";
+	const isStopped =
+		status === "paused" || status === "killed" || status === "error";
+	const isStarted = status === "running";
+	const isTransitioning = status === "creating";
 
 	const startSandbox = () => {
 		if (!isStopped) {
