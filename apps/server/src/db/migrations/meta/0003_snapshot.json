@@ -53,9 +53,7 @@
       "indexes": {
         "previews_tab_id_unique": {
           "name": "previews_tab_id_unique",
-          "columns": [
-            "tab_id"
-          ],
+          "columns": ["tab_id"],
           "isUnique": true
         }
       },
@@ -64,12 +62,8 @@
           "name": "previews_tab_id_tabs_id_fk",
           "tableFrom": "previews",
           "tableTo": "tabs",
-          "columnsFrom": [
-            "tab_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tab_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -208,9 +202,7 @@
       "indexes": {
         "terminals_tab_id_unique": {
           "name": "terminals_tab_id_unique",
-          "columns": [
-            "tab_id"
-          ],
+          "columns": ["tab_id"],
           "isUnique": true
         }
       },
@@ -219,12 +211,8 @@
           "name": "terminals_tab_id_tabs_id_fk",
           "tableFrom": "terminals",
           "tableTo": "tabs",
-          "columnsFrom": [
-            "tab_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tab_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
