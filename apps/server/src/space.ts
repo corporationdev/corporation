@@ -1,5 +1,4 @@
 import { env } from "@corporation/env/server";
-import { Daytona } from "@daytonaio/sdk";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { eq } from "drizzle-orm";
@@ -71,10 +70,13 @@ export const space = actor({
 			baseUrl: c.state.sandboxUrl,
 			persist,
 		});
+		if (!env.E2B_API_KEY) {
+			throw new Error("Missing E2B_API_KEY env var");
+		}
 
 		return {
 			db,
-			daytona: new Daytona({ apiKey: env.DAYTONA_API_KEY }),
+			e2bApiKey: env.E2B_API_KEY,
 			sandboxClient,
 			sessionStreams: new Map(),
 			terminalHandles: new Map(),

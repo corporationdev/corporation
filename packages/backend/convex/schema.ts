@@ -21,7 +21,7 @@ export default defineSchema(
 			userId: v.string(),
 			repositoryId: v.id("repositories"),
 			name: v.string(),
-			snapshotName: v.optional(v.string()),
+			snapshotId: v.optional(v.string()),
 			snapshotCommitSha: v.optional(v.string()),
 			snapshotStatus: snapshotStatusValidator,
 			rebuildIntervalMs: v.optional(v.number()),

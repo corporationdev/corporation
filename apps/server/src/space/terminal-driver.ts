@@ -1,18 +1,18 @@
 import { createLogger } from "@corporation/logger";
-import type { PtyHandle, Sandbox } from "@daytonaio/sdk";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import { nanoid } from "nanoid";
+import { type CommandHandle, Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
-import type { SpaceRuntimeContext } from "./types";
+import type { SpaceRuntimeContext, TerminalHandle } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
 const MAX_SCROLLBACK_BYTES = 256 * 1024;
+const PTY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 function encodeBytes(bytes: number[]): string {
 	if (bytes.length === 0) {
@@ -64,35 +64,38 @@ async function connectOrCreatePty(
 	cols: number,
 	rows: number,
 	onData: (data: Uint8Array) => void
-): Promise<{ handle: PtyHandle; sessionId: string }> {
+): Promise<{ handle: CommandHandle; sessionId: string }> {
 	if (ptySessionId) {
-		try {
-			const handle = await sandbox.process.connectPty(ptySessionId, { onData });
-			return { handle, sessionId: ptySessionId };
-		} catch {
-			log.warn(
-				{ ptySessionId },
-				"failed to reconnect pty session, creating a new one"
-			);
+		const pid = Number.parseInt(ptySessionId, 10);
+		if (!Number.isNaN(pid)) {
+			try {
+				const handle = await sandbox.pty.connect(pid, {
+					onData,
+					timeoutMs: PTY_TIMEOUT_MS,
+				});
+				return { handle, sessionId: ptySessionId };
+			} catch {
+				log.warn(
+					{ ptySessionId },
+					"failed to reconnect pty session, creating a new one"
+				);
+			}
 		}
 	}
 
-	const workDir = await sandbox.getWorkDir();
-	const nextPtySessionId = nanoid();
-	const handle = await sandbox.process.createPty({
-		id: nextPtySessionId,
-		cwd: workDir,
+	const handle = await sandbox.pty.create({
 		cols,
 		rows,
 		onData,
+		timeoutMs: PTY_TIMEOUT_MS,
 	});
 
-	return { handle, sessionId: nextPtySessionId };
+	return { handle, sessionId: String(handle.pid) };
 }
 
 async function disconnectAllTerminals(ctx: SpaceRuntimeContext): Promise<void> {
-	for (const ptyHandle of ctx.vars.terminalHandles.values()) {
-		await ptyHandle.disconnect();
+	for (const terminal of ctx.vars.terminalHandles.values()) {
+		await terminal.handle.disconnect();
 	}
 
 	await Promise.all(ctx.vars.terminalPersistWrites.values());
@@ -190,7 +193,9 @@ async function ensureTerminal(
 			throw new Error("Terminal not found");
 		}
 
-		const sandbox = await ctx.vars.daytona.get(ctx.state.sandboxId);
+		const sandbox = await Sandbox.connect(ctx.state.sandboxId, {
+			apiKey: ctx.vars.e2bApiKey,
+		});
 		const existingBuffer = decodeBytes(terminalRow.scrollbackBlob);
 		ctx.vars.terminalBuffers.set(terminalId, existingBuffer);
 
@@ -249,7 +254,8 @@ async function ensureTerminal(
 			onData
 		);
 
-		ctx.vars.terminalHandles.set(terminalId, handle);
+		const terminalHandle: TerminalHandle = { sandbox, handle };
+		ctx.vars.terminalHandles.set(terminalId, terminalHandle);
 
 		if (sessionId !== terminalRow.ptySessionId) {
 			await ctx.vars.db
@@ -295,12 +301,15 @@ async function input(
 		await ensureTerminal(ctx, terminalId);
 	}
 
-	const handle = ctx.vars.terminalHandles.get(terminalId);
-	if (!handle) {
+	const terminal = ctx.vars.terminalHandles.get(terminalId);
+	if (!terminal) {
 		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
-	await handle.sendInput(new Uint8Array(data));
+	await terminal.sandbox.pty.sendInput(
+		terminal.handle.pid,
+		new Uint8Array(data)
+	);
 }
 
 async function resize(
@@ -311,12 +320,12 @@ async function resize(
 ): Promise<void> {
 	await ensureTerminal(ctx, terminalId, cols, rows);
 
-	const handle = ctx.vars.terminalHandles.get(terminalId);
-	if (!handle) {
+	const terminal = ctx.vars.terminalHandles.get(terminalId);
+	if (!terminal) {
 		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
-	await handle.resize(cols, rows);
+	await terminal.sandbox.pty.resize(terminal.handle.pid, { cols, rows });
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {

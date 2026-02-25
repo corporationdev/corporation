@@ -35,8 +35,8 @@ function stripPrefix(pathname: string, prefix: string): string {
 
 /**
  * Buffer a proxied response and re-send it with Content-Length instead of
- * chunked transfer encoding. Works around a Daytona proxy bug where chunked
- * responses get corrupted after connection pool reuse.
+ * chunked transfer encoding. Prevents corrupted chunked responses through
+ * dev proxy connection reuse.
  */
 function bufferProxyResponse(
 	proxyRes: IncomingMessage,

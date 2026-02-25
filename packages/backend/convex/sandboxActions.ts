@@ -1,10 +1,9 @@
 "use node";
 
-import type { Sandbox } from "@daytonaio/sdk";
-import { Daytona } from "@daytonaio/sdk";
 import { Nango } from "@nangohq/node";
 import type { FunctionReturnType, GenericActionCtx } from "convex/server";
 import { v } from "convex/values";
+import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
@@ -14,10 +13,16 @@ type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
+type CommandResult = {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+};
+
 const SANDBOX_AGENT_PORT = 5799;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
-const PREVIEW_URL_EXPIRY_SECONDS = 86_400;
+const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
 const NEEDS_QUOTING_RE = /[\s"'#]/;
 const LOCALHOST_PORT_RE = /http:\/\/localhost:(\d+)/g;
 const TRAILING_SLASH_RE = /\/$/;
@@ -26,19 +31,44 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function runCommand(
+	sandbox: Sandbox,
+	cmd: string,
+	opts?: {
+		cwd?: string;
+		user?: string;
+		timeoutMs?: number;
+	}
+): Promise<CommandResult> {
+	try {
+		const result = await sandbox.commands.run(cmd, opts);
+		return {
+			exitCode: result.exitCode,
+			stdout: result.stdout,
+			stderr: result.stderr,
+		};
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			return {
+				exitCode: error.exitCode,
+				stdout: error.stdout,
+				stderr: error.stderr,
+			};
+		}
+		throw error;
+	}
+}
+
 async function waitForServerReady(sandbox: Sandbox): Promise<void> {
 	const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
 
 	while (Date.now() < deadline) {
-		try {
-			const result = await sandbox.process.executeCommand(
-				`curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
-			);
-			if (result.exitCode === 0) {
-				return;
-			}
-		} catch {
-			// Server not ready yet
+		const result = await runCommand(
+			sandbox,
+			`curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
+		);
+		if (result.exitCode === 0) {
+			return;
 		}
 		await sleep(SERVER_POLL_INTERVAL_MS);
 	}
@@ -47,21 +77,19 @@ async function waitForServerReady(sandbox: Sandbox): Promise<void> {
 }
 
 async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
-	await sandbox.process.executeCommand(
+	await runCommand(
+		sandbox,
 		`nohup sandbox-agent server --no-token --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >/tmp/sandbox-agent.log 2>&1 &`
 	);
 	await waitForServerReady(sandbox);
 }
 
 async function isSandboxAgentHealthy(sandbox: Sandbox): Promise<boolean> {
-	try {
-		const result = await sandbox.process.executeCommand(
-			`curl -sf --max-time 1 http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
-		);
-		return result.exitCode === 0;
-	} catch {
-		return false;
-	}
+	const result = await runCommand(
+		sandbox,
+		`curl -sf --max-time 1 http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
+	);
+	return result.exitCode === 0;
 }
 
 async function ensureSandboxAgentRunning(sandbox: Sandbox): Promise<void> {
@@ -71,12 +99,8 @@ async function ensureSandboxAgentRunning(sandbox: Sandbox): Promise<void> {
 	}
 }
 
-async function getPreviewUrl(sandbox: Sandbox): Promise<string> {
-	const result = await sandbox.getSignedPreviewUrl(
-		SANDBOX_AGENT_PORT,
-		PREVIEW_URL_EXPIRY_SECONDS
-	);
-	return result.url;
+function getPreviewUrl(sandbox: Sandbox, port: number): string {
+	return `https://${sandbox.getHost(port)}`;
 }
 
 function formatEnvContent(
@@ -92,10 +116,10 @@ function formatEnvContent(
 		.join("\n");
 }
 
-async function resolvePreviewUrls(
+function resolvePreviewUrls(
 	sandbox: Sandbox,
 	envVars: Array<{ key: string; value: string }>
-): Promise<Array<{ key: string; value: string }>> {
+): Array<{ key: string; value: string }> {
 	const ports = new Set<number>();
 	for (const { value } of envVars) {
 		for (const match of value.matchAll(LOCALHOST_PORT_RE)) {
@@ -109,11 +133,8 @@ async function resolvePreviewUrls(
 
 	const portToUrl = new Map<number, string>();
 	for (const port of ports) {
-		const result = await sandbox.getSignedPreviewUrl(
-			port,
-			PREVIEW_URL_EXPIRY_SECONDS
-		);
-		portToUrl.set(port, result.url.replace(TRAILING_SLASH_RE, ""));
+		const url = getPreviewUrl(sandbox, port);
+		portToUrl.set(port, url.replace(TRAILING_SLASH_RE, ""));
 	}
 
 	return envVars.map(({ key, value }) => ({
@@ -129,26 +150,24 @@ async function writeEnvFiles(
 	sandbox: Sandbox,
 	environment: Space["environment"]
 ): Promise<void> {
-	const files: Array<{ source: Buffer; destination: string }> = [];
+	const files: Array<{ path: string; data: string }> = [];
 
-	// Root .env from repository-level env vars
 	const repoEnvVars = environment.repository.envVars;
 	if (repoEnvVars && repoEnvVars.length > 0) {
-		const resolved = await resolvePreviewUrls(sandbox, repoEnvVars);
+		const resolved = resolvePreviewUrls(sandbox, repoEnvVars);
 		files.push({
-			source: Buffer.from(formatEnvContent(resolved)),
-			destination: "./.env",
+			path: "./.env",
+			data: formatEnvContent(resolved),
 		});
 	}
 
-	// Service-level .env files at their respective paths
 	for (const service of environment.services) {
 		if (service.envVars && service.envVars.length > 0) {
-			const resolved = await resolvePreviewUrls(sandbox, service.envVars);
+			const resolved = resolvePreviewUrls(sandbox, service.envVars);
 			const dir = service.path || ".";
 			files.push({
-				source: Buffer.from(formatEnvContent(resolved)),
-				destination: `${dir}/.env`,
+				path: `${dir}/.env`,
+				data: formatEnvContent(resolved),
 			});
 		}
 	}
@@ -157,7 +176,7 @@ async function writeEnvFiles(
 		return;
 	}
 
-	await sandbox.fs.uploadFiles(files);
+	await sandbox.files.writeFiles(files);
 }
 
 async function syncRepositoryOnSandbox(
@@ -169,25 +188,29 @@ async function syncRepositoryOnSandbox(
 
 	const { repository } = environment;
 	const workdir = `/root/${repository.owner}-${repository.name}`;
-	await sandbox.process.executeCommand(
-		`cd ${workdir} && git remote set-url origin https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git && git pull origin ${repository.defaultBranch}`
-	);
-	await sandbox.process.executeCommand(
-		`cd ${workdir} && ${repository.setupCommand}`
-	);
 
-	// Read the HEAD commit SHA after pull
-	const shaResult = await sandbox.process.executeCommand(
-		`cd ${workdir} && git rev-parse HEAD`
+	await sandbox.commands.run(
+		`git remote set-url origin https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git && git pull origin ${repository.defaultBranch}`,
+		{ cwd: workdir, user: "root", timeoutMs: REPO_SYNC_TIMEOUT_MS }
 	);
-	return shaResult.exitCode === 0 ? shaResult.result.trim() : undefined;
+	await sandbox.commands.run(repository.setupCommand, {
+		cwd: workdir,
+		user: "root",
+		timeoutMs: REPO_SYNC_TIMEOUT_MS,
+	});
+
+	const shaResult = await runCommand(sandbox, "git rev-parse HEAD", {
+		cwd: workdir,
+		user: "root",
+	});
+	return shaResult.exitCode === 0 ? shaResult.stdout.trim() : undefined;
 }
 
 async function provisionSandbox(
 	ctx: ActionCtx,
-	daytona: Daytona,
+	e2bApiKey: string,
 	spaceId: Id<"spaces">,
-	snapshotName: string,
+	snapshotId: string,
 	environment: Space["environment"]
 ): Promise<{
 	sandboxId: string;
@@ -198,17 +221,22 @@ async function provisionSandbox(
 	if (!anthropicApiKey) {
 		throw new Error("Missing ANTHROPIC_API_KEY env var");
 	}
+	const sandboxEnvs = { ANTHROPIC_API_KEY: anthropicApiKey };
+
 	await ctx.runMutation(internal.spaces.internalUpdate, {
 		id: spaceId,
 		status: "creating" as const,
 	});
-	const sandbox = await daytona.create({
-		snapshot: snapshotName,
-		envVars: { ANTHROPIC_API_KEY: anthropicApiKey },
+
+	const sandbox = await Sandbox.create(snapshotId, {
+		apiKey: e2bApiKey,
+		envs: sandboxEnvs,
+		allowInternetAccess: true,
+		network: { allowPublicTraffic: true },
 	});
+
 	await bootSandboxAgent(sandbox);
 
-	// Sync code to latest after creating from snapshot
 	const nangoSecretKey = process.env.NANGO_SECRET_KEY;
 	if (!nangoSecretKey) {
 		throw new Error("Missing NANGO_SECRET_KEY env var");
@@ -221,72 +249,59 @@ async function provisionSandbox(
 		githubToken
 	);
 
-	const sandboxUrl = await getPreviewUrl(sandbox);
-	return { sandboxId: sandbox.id, sandboxUrl, lastSyncedCommitSha };
+	const sandboxUrl = getPreviewUrl(sandbox, SANDBOX_AGENT_PORT);
+	return { sandboxId: sandbox.sandboxId, sandboxUrl, lastSyncedCommitSha };
 }
 
 async function resolveSandbox(
 	ctx: ActionCtx,
-	daytona: Daytona,
+	e2bApiKey: string,
 	space: Space
 ): Promise<{
 	sandboxId: string;
 	sandboxUrl?: string;
 	lastSyncedCommitSha?: string;
 }> {
-	const { snapshotName } = space.environment;
+	const { snapshotId } = space.environment;
 
-	if (!snapshotName) {
+	if (!snapshotId) {
 		throw new Error("Environment snapshot is not ready yet");
 	}
 
 	if (!space.sandboxId) {
 		return await provisionSandbox(
 			ctx,
-			daytona,
+			e2bApiKey,
 			space._id,
-			snapshotName,
+			snapshotId,
 			space.environment
 		);
 	}
 
-	let sandbox: Sandbox;
 	try {
-		sandbox = await daytona.get(space.sandboxId);
-	} catch {
-		return await provisionSandbox(
-			ctx,
-			daytona,
-			space._id,
-			snapshotName,
-			space.environment
-		);
-	}
-
-	const { state } = sandbox;
-
-	if (state === "started") {
-		await ensureSandboxAgentRunning(sandbox);
-		return { sandboxId: sandbox.id };
-	}
-
-	if (state === "stopped" || state === "archived") {
 		await ctx.runMutation(internal.spaces.internalUpdate, {
 			id: space._id,
 			status: "starting" as const,
 		});
-		await sandbox.start();
-		await bootSandboxAgent(sandbox);
-		return { sandboxId: sandbox.id };
-	}
 
-	return await provisionSandbox(
-		ctx,
-		daytona,
-		space._id,
-		snapshotName,
-		space.environment
-	);
+		const sandbox = await Sandbox.connect(space.sandboxId, {
+			apiKey: e2bApiKey,
+		});
+		await ensureSandboxAgentRunning(sandbox);
+
+		return {
+			sandboxId: sandbox.sandboxId,
+			sandboxUrl: getPreviewUrl(sandbox, SANDBOX_AGENT_PORT),
+		};
+	} catch {
+		return await provisionSandbox(
+			ctx,
+			e2bApiKey,
+			space._id,
+			snapshotId,
+			space.environment
+		);
+	}
 }
 
 export const stopSandbox = internalAction({
@@ -294,12 +309,10 @@ export const stopSandbox = internalAction({
 		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
-		if (!daytonaApiKey) {
-			throw new Error("Missing DAYTONA_API_KEY env var");
+		const e2bApiKey = process.env.E2B_API_KEY;
+		if (!e2bApiKey) {
+			throw new Error("Missing E2B_API_KEY env var");
 		}
-
-		const daytona = new Daytona({ apiKey: daytonaApiKey });
 
 		try {
 			const space = await ctx.runQuery(internal.spaces.internalGet, {
@@ -310,10 +323,7 @@ export const stopSandbox = internalAction({
 				throw new Error("Space has no sandbox to stop");
 			}
 
-			const sandbox = await daytona.get(space.sandboxId);
-			if (sandbox.state === "started") {
-				await sandbox.stop();
-			}
+			await Sandbox.betaPause(space.sandboxId, { apiKey: e2bApiKey });
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
@@ -335,23 +345,15 @@ export const archiveSandbox = internalAction({
 		sandboxId: v.string(),
 	},
 	handler: async (_ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
-		if (!daytonaApiKey) {
-			throw new Error("Missing DAYTONA_API_KEY env var");
+		const e2bApiKey = process.env.E2B_API_KEY;
+		if (!e2bApiKey) {
+			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const daytona = new Daytona({ apiKey: daytonaApiKey });
-
 		try {
-			const sandbox = await daytona.get(args.sandboxId);
-			if (sandbox.state === "started") {
-				await sandbox.stop();
-			}
-			if (sandbox.state !== "archived") {
-				await sandbox.archive();
-			}
+			await Sandbox.betaPause(args.sandboxId, { apiKey: e2bApiKey });
 		} catch (error) {
-			console.error("Failed to archive sandbox in Daytona", error);
+			console.error("Failed to pause sandbox in E2B", error);
 		}
 	},
 });
@@ -361,18 +363,15 @@ export const deleteSandbox = internalAction({
 		sandboxId: v.string(),
 	},
 	handler: async (_ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
-		if (!daytonaApiKey) {
-			throw new Error("Missing DAYTONA_API_KEY env var");
+		const e2bApiKey = process.env.E2B_API_KEY;
+		if (!e2bApiKey) {
+			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const daytona = new Daytona({ apiKey: daytonaApiKey });
-
 		try {
-			const sandbox = await daytona.get(args.sandboxId);
-			await sandbox.delete();
+			await Sandbox.kill(args.sandboxId, { apiKey: e2bApiKey });
 		} catch (error) {
-			console.error("Failed to delete sandbox in Daytona", error);
+			console.error("Failed to delete sandbox in E2B", error);
 		}
 	},
 });
@@ -382,12 +381,10 @@ export const ensureSandbox = internalAction({
 		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
-		if (!daytonaApiKey) {
-			throw new Error("Missing DAYTONA_API_KEY env var");
+		const e2bApiKey = process.env.E2B_API_KEY;
+		if (!e2bApiKey) {
+			throw new Error("Missing E2B_API_KEY env var");
 		}
-
-		const daytona = new Daytona({ apiKey: daytonaApiKey });
 
 		try {
 			const space = await ctx.runQuery(internal.spaces.internalGet, {
@@ -395,7 +392,7 @@ export const ensureSandbox = internalAction({
 			});
 
 			const { sandboxId, sandboxUrl, lastSyncedCommitSha } =
-				await resolveSandbox(ctx, daytona, space);
+				await resolveSandbox(ctx, e2bApiKey, space);
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
@@ -420,10 +417,10 @@ export const syncRepository = internalAction({
 		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		const e2bApiKey = process.env.E2B_API_KEY;
 		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!(daytonaApiKey && nangoSecretKey)) {
-			throw new Error("Missing DAYTONA_API_KEY or NANGO_SECRET_KEY env vars");
+		if (!(e2bApiKey && nangoSecretKey)) {
+			throw new Error("Missing E2B_API_KEY or NANGO_SECRET_KEY env vars");
 		}
 
 		const space = await ctx.runQuery(internal.spaces.internalGet, {
@@ -437,8 +434,9 @@ export const syncRepository = internalAction({
 		const nango = new Nango({ secretKey: nangoSecretKey });
 		const githubToken = await getGitHubToken(nango, space.environment.userId);
 
-		const daytona = new Daytona({ apiKey: daytonaApiKey });
-		const sandbox = await daytona.get(space.sandboxId);
+		const sandbox = await Sandbox.connect(space.sandboxId, {
+			apiKey: e2bApiKey,
+		});
 
 		const lastSyncedCommitSha = await syncRepositoryOnSandbox(
 			sandbox,

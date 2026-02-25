@@ -1,6 +1,6 @@
-import type { Daytona, PtyHandle } from "@daytonaio/sdk";
 import type { RivetPersistState } from "@sandbox-agent/persist-rivet";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
+import type { CommandHandle, Sandbox } from "e2b";
 import type { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 
 export type PersistedState = RivetPersistState & {
@@ -15,12 +15,17 @@ export type SubscriptionHub = {
 	connToChannels: Map<string, Set<string>>;
 };
 
+export type TerminalHandle = {
+	sandbox: Sandbox;
+	handle: CommandHandle;
+};
+
 export type SpaceVars = {
 	db: SpaceDatabase;
-	daytona: Daytona;
+	e2bApiKey: string;
 	sandboxClient: SandboxAgentClient;
 	sessionStreams: Map<string, () => void>;
-	terminalHandles: Map<string, PtyHandle>;
+	terminalHandles: Map<string, TerminalHandle>;
 	terminalBuffers: Map<string, number[]>;
 	terminalPersistWrites: Map<string, Promise<void>>;
 	subscriptions: SubscriptionHub;

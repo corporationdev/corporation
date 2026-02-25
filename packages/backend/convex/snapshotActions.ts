@@ -1,27 +1,81 @@
 "use node";
 
-import { Daytona, Image } from "@daytonaio/sdk";
 import { Nango } from "@nangohq/node";
 import { v } from "convex/values";
+import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
+
+function truncateOutput(output: string, maxLength = 2000): string {
+	if (output.length <= maxLength) {
+		return output;
+	}
+	return `${output.slice(0, maxLength)}...`;
+}
+
+async function runRootCommand(
+	sandbox: Sandbox,
+	command: string,
+	envs?: Record<string, string>
+): Promise<void> {
+	try {
+		await sandbox.commands.run(command, {
+			user: "root",
+			timeoutMs: 30 * 60 * 1000,
+			envs,
+		});
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			throw new Error(
+				[
+					`Snapshot bootstrap command failed: ${command}`,
+					`Exit code: ${error.exitCode}`,
+					`stderr: ${truncateOutput(error.stderr)}`,
+					`stdout: ${truncateOutput(error.stdout)}`,
+				].join("\n")
+			);
+		}
+		throw error;
+	}
+}
+
+async function runRootCommands(
+	sandbox: Sandbox,
+	commands: string[],
+	envs?: Record<string, string>
+): Promise<void> {
+	for (const command of commands) {
+		await runRootCommand(sandbox, command, envs);
+	}
+}
 
 export const buildSnapshot = internalAction({
 	args: {
 		environmentId: v.id("environments"),
 	},
 	handler: async (ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
+		const e2bApiKey = process.env.E2B_API_KEY;
 		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!(daytonaApiKey && nangoSecretKey)) {
-			throw new Error("Missing DAYTONA_API_KEY or NANGO_SECRET_KEY env vars");
+		if (!(e2bApiKey && nangoSecretKey)) {
+			throw new Error("Missing E2B_API_KEY or NANGO_SECRET_KEY env vars");
 		}
+		const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+		if (!anthropicApiKey) {
+			throw new Error(
+				"Missing ANTHROPIC_API_KEY env var for sandbox-agent agent verification"
+			);
+		}
+		const anthropicAgentEnvs = { ANTHROPIC_API_KEY: anthropicApiKey };
+
+		let buildSandbox: Sandbox | undefined;
 
 		try {
 			const envWithRepo = await ctx.runQuery(
 				internal.environments.internalGet,
-				{ id: args.environmentId }
+				{
+					id: args.environmentId,
+				}
 			);
 
 			const { repository } = envWithRepo;
@@ -41,32 +95,44 @@ export const buildSnapshot = internalAction({
 				? ((await branchRes.json()) as { commit: { sha: string } }).commit.sha
 				: undefined;
 
-			const daytona = new Daytona({ apiKey: daytonaApiKey });
-			const snapshotName = `repo-${repository.owner}-${repository.name}-${Date.now()}`;
-
-			await daytona.snapshot.create({
-				name: snapshotName,
-				resources: { cpu: 2, memory: 4, disk: 8 },
-				image: Image.base("ubuntu:22.04")
-					.runCommands(
-						"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
-						'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended',
-						"chsh -s $(which zsh)",
-						"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
-						"npm install -g yarn pnpm",
-						"curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun",
-						"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.1/install.sh | sh",
-						"sandbox-agent install-agent claude",
-						"sandbox-agent install-agent opencode",
-						`echo "cache-bust-${Date.now()}" && git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git /root/${repository.owner}-${repository.name} --branch ${repository.defaultBranch} --single-branch`,
-						`cd /root/${repository.owner}-${repository.name} && ${repository.setupCommand}`
-					)
-					.workdir(`/root/${repository.owner}-${repository.name}`),
+			const repoDir = `/root/${repository.owner}-${repository.name}`;
+			buildSandbox = await Sandbox.create({
+				apiKey: e2bApiKey,
+				timeoutMs: 60 * 60 * 1000,
+				envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+				network: { allowPublicTraffic: true },
 			});
+
+			await runRootCommands(buildSandbox, [
+				"apt-get update && apt-get install -y curl ca-certificates git unzip zsh",
+				"curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && apt-get install -y nodejs",
+				"if ! command -v yarn >/dev/null 2>&1; then npm install -g yarn; fi",
+				"if ! command -v pnpm >/dev/null 2>&1; then npm install -g pnpm; fi",
+				"if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun; fi",
+				"if ! command -v sandbox-agent >/dev/null 2>&1; then curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.1/install.sh | sh; fi",
+				`echo "cache-bust-${Date.now()}" && git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git ${repoDir} --branch ${repository.defaultBranch} --single-branch`,
+			]);
+			await runRootCommand(
+				buildSandbox,
+				`test -n "$ANTHROPIC_API_KEY" || (echo "ANTHROPIC_API_KEY is missing inside sandbox command env" >&2; exit 1)`,
+				anthropicAgentEnvs
+			);
+			await runRootCommand(
+				buildSandbox,
+				`code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 8 https://api.anthropic.com/v1/messages || true); echo "anthropic_http_code=$code"; [ "$code" != "000" ] || (echo "Cannot reach api.anthropic.com from sandbox" >&2; exit 1)`,
+				anthropicAgentEnvs
+			);
+			await runRootCommand(
+				buildSandbox,
+				"sandbox-agent install-agent opencode --reinstall",
+				anthropicAgentEnvs
+			);
+
+			const snapshot = await buildSandbox.createSnapshot({ apiKey: e2bApiKey });
 
 			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
 				id: args.environmentId,
-				snapshotName,
+				snapshotId: snapshot.snapshotId,
 				snapshotCommitSha,
 			});
 		} catch (error) {
@@ -75,32 +141,37 @@ export const buildSnapshot = internalAction({
 				snapshotStatus: "error",
 			});
 
-			// Keep the rebuild schedule alive so the next attempt can succeed
 			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
 				id: args.environmentId,
 			});
 
 			throw error;
+		} finally {
+			if (buildSandbox) {
+				try {
+					await buildSandbox.kill();
+				} catch {
+					// Best effort cleanup
+				}
+			}
 		}
 	},
 });
 
 export const deleteSnapshot = internalAction({
 	args: {
-		snapshotName: v.string(),
+		snapshotId: v.string(),
 	},
 	handler: async (_ctx, args) => {
-		const daytonaApiKey = process.env.DAYTONA_API_KEY;
-		if (!daytonaApiKey) {
-			throw new Error("Missing DAYTONA_API_KEY env var");
+		const e2bApiKey = process.env.E2B_API_KEY;
+		if (!e2bApiKey) {
+			throw new Error("Missing E2B_API_KEY env var");
 		}
 
 		try {
-			const daytona = new Daytona({ apiKey: daytonaApiKey });
-			const snapshot = await daytona.snapshot.get(args.snapshotName);
-			await daytona.snapshot.delete(snapshot);
+			await Sandbox.deleteSnapshot(args.snapshotId, { apiKey: e2bApiKey });
 		} catch (error) {
-			console.error(`Failed to delete snapshot ${args.snapshotName}:`, error);
+			console.error(`Failed to delete snapshot ${args.snapshotId}:`, error);
 		}
 	},
 });
