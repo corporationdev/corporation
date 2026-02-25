@@ -14,5 +14,5 @@ const apiApp = new Hono<{ Bindings: Env }>()
 
 const app = new Hono<{ Bindings: Env }>().route("/api", apiApp);
 
-export type AppType = typeof app;
+export type AppType = typeof apiApp;
 export { app };

@@ -3,7 +3,7 @@ import type { AppType } from "@corporation/server/app";
 import { hc } from "hono/client";
 import { authClient } from "./auth-client";
 
-export const apiClient = hc<AppType>(env.VITE_SERVER_URL, {
+export const apiClient = hc<AppType>(`${env.VITE_SERVER_URL}/api`, {
 	fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
 		const authHeaders = await getAuthHeaders();
 		const merged = new Headers(init?.headers);
