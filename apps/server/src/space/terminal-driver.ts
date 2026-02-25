@@ -1,18 +1,18 @@
 import { createLogger } from "@corporation/logger";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import { type CommandHandle, Sandbox } from "e2b";
+import type { CommandHandle, Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
-import type { SpaceRuntimeContext, TerminalHandle } from "./types";
+import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
 const MAX_SCROLLBACK_BYTES = 256 * 1024;
-const PTY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
 function encodeBytes(bytes: number[]): string {
 	if (bytes.length === 0) {
 		return "";
@@ -59,27 +59,23 @@ function appendAndTrimBuffer(base: number[], next: number[]): number[] {
 
 async function connectOrCreatePty(
 	sandbox: Sandbox,
-	ptySessionId: string | null,
+	existingPid: number | null,
 	cols: number,
 	rows: number,
 	onData: (data: Uint8Array) => void,
 	cwd?: string
-): Promise<{ handle: CommandHandle; sessionId: string }> {
-	if (ptySessionId) {
-		const pid = Number.parseInt(ptySessionId, 10);
-		if (!Number.isNaN(pid)) {
-			try {
-				const handle = await sandbox.pty.connect(pid, {
-					onData,
-					timeoutMs: PTY_TIMEOUT_MS,
-				});
-				return { handle, sessionId: ptySessionId };
-			} catch {
-				log.warn(
-					{ ptySessionId },
-					"failed to reconnect pty session, creating a new one"
-				);
-			}
+): Promise<{ handle: CommandHandle; pid: number }> {
+	if (existingPid !== null) {
+		try {
+			const handle = await sandbox.pty.connect(existingPid, {
+				onData,
+			});
+			return { handle, pid: existingPid };
+		} catch {
+			log.warn(
+				{ pid: existingPid },
+				"failed to reconnect pty, creating a new one"
+			);
 		}
 	}
 
@@ -89,15 +85,14 @@ async function connectOrCreatePty(
 		onData,
 		user: "root",
 		cwd,
-		timeoutMs: PTY_TIMEOUT_MS,
 	});
 
-	return { handle, sessionId: String(handle.pid) };
+	return { handle, pid: handle.pid };
 }
 
 async function disconnectAllTerminals(ctx: SpaceRuntimeContext): Promise<void> {
-	for (const terminal of ctx.vars.terminalHandles.values()) {
-		await terminal.handle.disconnect();
+	for (const handle of ctx.vars.terminalHandles.values()) {
+		await handle.disconnect();
 	}
 
 	await Promise.all(ctx.vars.terminalPersistWrites.values());
@@ -142,7 +137,7 @@ async function ensureTerminal(
 			await tx.insert(terminals).values({
 				id: terminalId,
 				tabId,
-				ptySessionId: null,
+				ptyPid: null,
 				cols: nextCols,
 				rows: nextRows,
 				scrollbackBlob: null,
@@ -175,13 +170,9 @@ async function ensureTerminal(
 
 	const existingHandle = ctx.vars.terminalHandles.get(terminalId);
 	if (!existingHandle) {
-		if (!ctx.state.sandboxId) {
-			throw new Error("Sandbox is not ready for terminal operations");
-		}
-
 		const row = await ctx.vars.db
 			.select({
-				ptySessionId: terminals.ptySessionId,
+				ptyPid: terminals.ptyPid,
 				cols: terminals.cols,
 				rows: terminals.rows,
 				scrollbackBlob: terminals.scrollbackBlob,
@@ -195,9 +186,6 @@ async function ensureTerminal(
 			throw new Error("Terminal not found");
 		}
 
-		const sandbox = await Sandbox.connect(ctx.state.sandboxId, {
-			apiKey: ctx.vars.e2bApiKey,
-		});
 		const existingBuffer = decodeBytes(terminalRow.scrollbackBlob);
 		ctx.vars.terminalBuffers.set(terminalId, existingBuffer);
 
@@ -248,22 +236,21 @@ async function ensureTerminal(
 			);
 		};
 
-		const { handle, sessionId } = await connectOrCreatePty(
-			sandbox,
-			terminalRow.ptySessionId,
+		const { handle, pid } = await connectOrCreatePty(
+			ctx.vars.sandbox,
+			terminalRow.ptyPid,
 			terminalRow.cols,
 			terminalRow.rows,
 			onData,
 			ctx.state.workdir ?? undefined
 		);
 
-		const terminalHandle: TerminalHandle = { sandbox, handle };
-		ctx.vars.terminalHandles.set(terminalId, terminalHandle);
+		ctx.vars.terminalHandles.set(terminalId, handle);
 
-		if (sessionId !== terminalRow.ptySessionId) {
+		if (pid !== terminalRow.ptyPid) {
 			await ctx.vars.db
 				.update(terminals)
-				.set({ ptySessionId: sessionId, updatedAt: Date.now() })
+				.set({ ptyPid: pid, updatedAt: Date.now() })
 				.where(eq(terminals.id, terminalId));
 		}
 	}
@@ -304,15 +291,12 @@ async function input(
 		await ensureTerminal(ctx, terminalId);
 	}
 
-	const terminal = ctx.vars.terminalHandles.get(terminalId);
-	if (!terminal) {
+	const handle = ctx.vars.terminalHandles.get(terminalId);
+	if (!handle) {
 		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
-	await terminal.sandbox.pty.sendInput(
-		terminal.handle.pid,
-		new Uint8Array(data)
-	);
+	await ctx.vars.sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
 }
 
 async function resize(
@@ -323,12 +307,12 @@ async function resize(
 ): Promise<void> {
 	await ensureTerminal(ctx, terminalId, cols, rows);
 
-	const terminal = ctx.vars.terminalHandles.get(terminalId);
-	if (!terminal) {
+	const handle = ctx.vars.terminalHandles.get(terminalId);
+	if (!handle) {
 		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
-	await terminal.sandbox.pty.resize(terminal.handle.pid, { cols, rows });
+	await ctx.vars.sandbox.pty.resize(handle.pid, { cols, rows });
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {

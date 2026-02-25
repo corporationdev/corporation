@@ -16,17 +16,12 @@ export type SubscriptionHub = {
 	connToChannels: Map<string, Set<string>>;
 };
 
-export type TerminalHandle = {
-	sandbox: Sandbox;
-	handle: CommandHandle;
-};
-
 export type SpaceVars = {
 	db: SpaceDatabase;
-	e2bApiKey: string;
+	sandbox: Sandbox;
 	sandboxClient: SandboxAgentClient;
 	sessionStreams: Map<string, () => void>;
-	terminalHandles: Map<string, TerminalHandle>;
+	terminalHandles: Map<string, CommandHandle>;
 	terminalBuffers: Map<string, number[]>;
 	terminalPersistWrites: Map<string, Promise<void>>;
 	subscriptions: SubscriptionHub;

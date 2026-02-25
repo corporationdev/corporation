@@ -21,7 +21,7 @@ export const terminals = sqliteTable("terminals", {
 		.notNull()
 		.unique()
 		.references(() => tabs.id, { onDelete: "cascade" }),
-	ptySessionId: text("pty_session_id"),
+	ptyPid: integer("pty_pid"),
 	cols: integer("cols").notNull(),
 	rows: integer("rows").notNull(),
 	scrollbackBlob: text("scrollback_blob"),

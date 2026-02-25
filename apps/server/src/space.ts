@@ -4,6 +4,7 @@ import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
+import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
 import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
@@ -66,19 +67,25 @@ export const space = actor({
 		if (!c.state.sandboxUrl) {
 			throw new Error("Actor requires a sandboxUrl to initialize");
 		}
+		if (!c.state.sandboxId) {
+			throw new Error("Actor requires a sandboxId to initialize");
+		}
+		if (!env.E2B_API_KEY) {
+			throw new Error("Missing E2B_API_KEY env var");
+		}
 
 		const persist = new RivetSessionPersistDriver(c);
 		const sandboxClient = await SandboxAgentClient.connect({
 			baseUrl: c.state.sandboxUrl,
 			persist,
 		});
-		if (!env.E2B_API_KEY) {
-			throw new Error("Missing E2B_API_KEY env var");
-		}
+		const sandbox = await Sandbox.connect(c.state.sandboxId, {
+			apiKey: env.E2B_API_KEY,
+		});
 
 		return {
 			db,
-			e2bApiKey: env.E2B_API_KEY,
+			sandbox,
 			sandboxClient,
 			sessionStreams: new Map(),
 			terminalHandles: new Map(),
