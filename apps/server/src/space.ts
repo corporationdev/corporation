@@ -114,11 +114,19 @@ export const space = actor({
 
 			return allTabs;
 		},
+		closeTab: async (c, tabId: string) => {
+			const ctx = augmentContext(c, lifecycleDrivers);
+			await ctx.vars.db
+				.update(tabs)
+				.set({ active: false, updatedAt: Date.now() })
+				.where(eq(tabs.id, tabId));
+			await ctx.broadcastTabsChanged();
+		},
 		archiveTab: async (c, tabId: string) => {
 			const ctx = augmentContext(c, lifecycleDrivers);
 			await ctx.vars.db
 				.update(tabs)
-				.set({ archivedAt: Date.now(), updatedAt: Date.now() })
+				.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
 				.where(eq(tabs.id, tabId));
 			await ctx.broadcastTabsChanged();
 		},

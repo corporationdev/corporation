@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
@@ -50,6 +50,78 @@ export const list = authedQuery({
 
 		spaces.sort((a, b) => b.updatedAt - a.updatedAt);
 		return spaces.filter((s) => !s.archived);
+	},
+});
+
+export const listByRepository = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		const [repositories, environments] = await Promise.all([
+			ctx.db
+				.query("repositories")
+				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+				.collect(),
+			ctx.db
+				.query("environments")
+				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+				.collect(),
+		]);
+
+		const environmentsByRepository = new Map<
+			Id<"repositories">,
+			Doc<"environments">[]
+		>();
+		for (const environment of environments) {
+			const repoEnvironments =
+				environmentsByRepository.get(environment.repositoryId) ?? [];
+			repoEnvironments.push(environment);
+			environmentsByRepository.set(environment.repositoryId, repoEnvironments);
+		}
+
+		const spacesByEnvironment = new Map<Id<"environments">, Doc<"spaces">[]>();
+		const environmentSpaces = await asyncMap(
+			environments,
+			async (environment) => ({
+				environmentId: environment._id,
+				spaces: await ctx.db
+					.query("spaces")
+					.withIndex("by_environment", (q) =>
+						q.eq("environmentId", environment._id)
+					)
+					.collect(),
+			})
+		);
+		for (const { environmentId, spaces } of environmentSpaces) {
+			spacesByEnvironment.set(environmentId, spaces);
+		}
+
+		const grouped = repositories.map((repository) => {
+			const repoEnvironments = [
+				...(environmentsByRepository.get(repository._id) ?? []),
+			];
+			repoEnvironments.sort((a, b) => a.createdAt - b.createdAt);
+			const defaultEnvironment = repoEnvironments[0] ?? null;
+
+			const spaces = repoEnvironments
+				.flatMap((environment) => {
+					return spacesByEnvironment.get(environment._id) ?? [];
+				})
+				.filter((space) => !space.archived);
+			spaces.sort((a, b) => b.updatedAt - a.updatedAt);
+
+			return {
+				repository,
+				defaultEnvironmentId: defaultEnvironment?._id ?? null,
+				spaces,
+			};
+		});
+
+		grouped.sort((a, b) => {
+			const aName = `${a.repository.owner}/${a.repository.name}`;
+			const bName = `${b.repository.owner}/${b.repository.name}`;
+			return aName.localeCompare(bName);
+		});
+		return grouped;
 	},
 });
 

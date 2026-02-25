@@ -128,6 +128,7 @@ async function ensureTerminal(
 				id: tabId,
 				type: "terminal",
 				title: "Terminal",
+				active: true,
 				createdAt: now,
 				updatedAt: now,
 				archivedAt: null,
@@ -160,6 +161,11 @@ async function ensureTerminal(
 				})
 				.where(eq(terminals.id, terminalId));
 		}
+
+		await tx
+			.update(tabs)
+			.set({ active: true, archivedAt: null, updatedAt: now })
+			.where(eq(tabs.id, tabId));
 	});
 
 	const existingHandle = ctx.vars.terminalHandles.get(terminalId);
@@ -319,6 +325,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {
 			tabId: tabs.id,
 			type: tabs.type,
 			title: tabs.title,
+			active: tabs.active,
 			createdAt: tabs.createdAt,
 			updatedAt: tabs.updatedAt,
 			archivedAt: tabs.archivedAt,
@@ -328,7 +335,13 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {
 		})
 		.from(tabs)
 		.innerJoin(terminals, eq(tabs.id, terminals.tabId))
-		.where(and(eq(tabs.type, "terminal"), isNull(tabs.archivedAt)))
+		.where(
+			and(
+				eq(tabs.type, "terminal"),
+				eq(tabs.active, true),
+				isNull(tabs.archivedAt)
+			)
+		)
 		.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt));
 
 	return rows.map((row) => {
@@ -336,6 +349,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {
 			id: row.tabId,
 			type: "terminal",
 			title: row.title,
+			active: row.active,
 			createdAt: row.createdAt,
 			updatedAt: row.updatedAt,
 			archivedAt: row.archivedAt,
