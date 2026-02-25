@@ -51,9 +51,7 @@ function bufferProxyResponse(
 		const body = Buffer.concat(chunks);
 		res.statusCode = proxyRes.statusCode ?? 200;
 		for (const [key, value] of Object.entries(proxyRes.headers)) {
-			if (key.toLowerCase() === "transfer-encoding") {
-				continue;
-			}
+			if (key.toLowerCase() === "transfer-encoding") continue;
 			if (value !== undefined) {
 				res.setHeader(key, value);
 			}
