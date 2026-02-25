@@ -9,9 +9,9 @@ export const snapshotStatusValidator = v.union(
 
 export const spaceStatusValidator = v.union(
 	v.literal("creating"),
-	v.literal("starting"),
-	v.literal("started"),
-	v.literal("stopped"),
+	v.literal("running"),
+	v.literal("paused"),
+	v.literal("killed"),
 	v.literal("error")
 );
 

@@ -1,85 +1,74 @@
 "use node";
 
+import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { z } from "zod";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
-const e2bWebhookPayloadSchema = z
-	.object({
-		type: z.string().optional(),
-		event: z.string().optional(),
-		state: z.string().optional(),
-		sandboxId: z.string().optional(),
-		sandboxID: z.string().optional(),
-		id: z.string().optional(),
-		data: z
-			.object({
-				type: z.string().optional(),
-				state: z.string().optional(),
-				sandboxId: z.string().optional(),
-				sandboxID: z.string().optional(),
-				id: z.string().optional(),
-			})
-			.passthrough()
-			.optional(),
-	})
-	.passthrough();
+const e2bEventType = z.enum([
+	"sandbox.lifecycle.created",
+	"sandbox.lifecycle.killed",
+	"sandbox.lifecycle.paused",
+	"sandbox.lifecycle.resumed",
+]);
 
-function resolveEvent(payload: z.infer<typeof e2bWebhookPayloadSchema>): {
-	eventType: string;
-	state: string;
-	sandboxId: string | undefined;
-} {
-	const data = payload.data;
-	const eventType = (
-		data?.type ??
-		payload.type ??
-		payload.event ??
-		""
-	).toLowerCase();
-	const state = (data?.state ?? payload.state ?? "").toLowerCase();
-	const sandboxId =
-		data?.sandboxId ??
-		data?.sandboxID ??
-		data?.id ??
-		payload.sandboxId ??
-		payload.sandboxID ??
-		payload.id;
+type E2BEventType = z.infer<typeof e2bEventType>;
 
-	return { eventType, state, sandboxId };
+const e2bWebhookPayloadSchema = z.object({
+	version: z.string(),
+	id: z.string(),
+	type: e2bEventType,
+	eventData: z.object({
+		sandbox_metadata: z.record(z.string(), z.string()).optional(),
+	}),
+	sandboxBuildId: z.string(),
+	sandboxExecutionId: z.string(),
+	sandboxId: z.string(),
+	sandboxTeamId: z.string(),
+	sandboxTemplateId: z.string(),
+	timestamp: z.string(),
+});
+
+const TRAILING_EQUALS = /=+$/;
+
+function verifySignature(
+	secret: string,
+	payload: string,
+	signature: string
+): boolean {
+	const expectedRaw = createHash("sha256")
+		.update(secret + payload)
+		.digest("base64");
+	const expected = expectedRaw.replace(TRAILING_EQUALS, "");
+	return expected === signature;
 }
 
-function mapSpaceStatus(
-	eventType: string,
-	state: string
-): "started" | "stopped" | null {
-	const becameStopped =
-		eventType.includes("paused") ||
-		eventType.includes("killed") ||
-		eventType.includes("expired") ||
-		state === "paused";
-	if (becameStopped) {
-		return "stopped";
-	}
-
-	const becameStarted =
-		eventType.includes("spawn") ||
-		eventType.includes("resume") ||
-		eventType.includes("running") ||
-		state === "running";
-	if (becameStarted) {
-		return "started";
-	}
-
-	return null;
-}
+const eventToStatus: Record<
+	E2BEventType,
+	"creating" | "running" | "paused" | "killed" | null
+> = {
+	"sandbox.lifecycle.created": "running",
+	"sandbox.lifecycle.resumed": "running",
+	"sandbox.lifecycle.paused": "paused",
+	"sandbox.lifecycle.killed": "killed",
+};
 
 export const handleWebhook = internalAction({
 	args: {
 		body: v.string(),
+		signature: v.string(),
 	},
 	handler: async (ctx, args) => {
+		const e2bWebhookSecret = process.env.E2B_WEBHOOK_SECRET;
+		if (!e2bWebhookSecret) {
+			throw new Error("Missing E2B_WEBHOOK_SECRET env var");
+		}
+
+		if (!verifySignature(e2bWebhookSecret, args.body, args.signature)) {
+			return { status: "invalid" as const };
+		}
+
 		let payload: unknown;
 		try {
 			payload = JSON.parse(args.body);
@@ -92,18 +81,13 @@ export const handleWebhook = internalAction({
 			return { status: "invalid" as const };
 		}
 
-		const { eventType, state, sandboxId } = resolveEvent(parsed.data);
-		if (!sandboxId) {
-			return { status: "ignored" as const };
-		}
-
-		const nextStatus = mapSpaceStatus(eventType, state);
+		const nextStatus = eventToStatus[parsed.data.type];
 		if (!nextStatus) {
 			return { status: "ignored" as const };
 		}
 
 		const space = await ctx.runQuery(internal.spaces.getBySandboxId, {
-			sandboxId,
+			sandboxId: parsed.data.sandboxId,
 		});
 
 		if (!space) {
