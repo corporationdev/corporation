@@ -74,8 +74,13 @@ export default defineConfig(({ mode }) => {
 				"/convex/api/auth": {
 					target: convexSiteProxyTarget,
 					changeOrigin: true,
-					ws: true,
 					rewrite: (pathname: string) => stripPrefix(pathname, "/convex"),
+					configure: (proxy) => {
+						proxy.on("proxyRes", (proxyRes) => {
+							delete proxyRes.headers["connection"];
+							proxyRes.headers["connection"] = "keep-alive";
+						});
+					},
 				},
 				"/convex": {
 					target: convexProxyTarget,
