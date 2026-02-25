@@ -19,6 +19,8 @@ const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 const PREVIEW_URL_EXPIRY_SECONDS = 86_400;
 const NEEDS_QUOTING_RE = /[\s"'#]/;
+const LOCALHOST_PORT_RE = /http:\/\/localhost:(\d+)/g;
+const TRAILING_SLASH_RE = /\/$/;
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -90,6 +92,39 @@ function formatEnvContent(
 		.join("\n");
 }
 
+async function resolvePreviewUrls(
+	sandbox: Sandbox,
+	envVars: Array<{ key: string; value: string }>
+): Promise<Array<{ key: string; value: string }>> {
+	const ports = new Set<number>();
+	for (const { value } of envVars) {
+		for (const match of value.matchAll(LOCALHOST_PORT_RE)) {
+			ports.add(Number.parseInt(match[1], 10));
+		}
+	}
+
+	if (ports.size === 0) {
+		return envVars;
+	}
+
+	const portToUrl = new Map<number, string>();
+	for (const port of ports) {
+		const result = await sandbox.getSignedPreviewUrl(
+			port,
+			PREVIEW_URL_EXPIRY_SECONDS
+		);
+		portToUrl.set(port, result.url.replace(TRAILING_SLASH_RE, ""));
+	}
+
+	return envVars.map(({ key, value }) => ({
+		key,
+		value: value.replace(LOCALHOST_PORT_RE, (_match, portStr) => {
+			const port = Number.parseInt(portStr, 10);
+			return portToUrl.get(port) ?? _match;
+		}),
+	}));
+}
+
 async function writeEnvFiles(
 	sandbox: Sandbox,
 	environment: Space["environment"]
@@ -99,8 +134,9 @@ async function writeEnvFiles(
 	// Root .env from repository-level env vars
 	const repoEnvVars = environment.repository.envVars;
 	if (repoEnvVars && repoEnvVars.length > 0) {
+		const resolved = await resolvePreviewUrls(sandbox, repoEnvVars);
 		files.push({
-			source: Buffer.from(formatEnvContent(repoEnvVars)),
+			source: Buffer.from(formatEnvContent(resolved)),
 			destination: "./.env",
 		});
 	}
@@ -108,9 +144,10 @@ async function writeEnvFiles(
 	// Service-level .env files at their respective paths
 	for (const service of environment.services) {
 		if (service.envVars && service.envVars.length > 0) {
+			const resolved = await resolvePreviewUrls(sandbox, service.envVars);
 			const dir = service.path || ".";
 			files.push({
-				source: Buffer.from(formatEnvContent(service.envVars)),
+				source: Buffer.from(formatEnvContent(resolved)),
 				destination: `${dir}/.env`,
 			});
 		}
