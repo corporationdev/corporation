@@ -303,7 +303,7 @@ export const ensure = authedMutation({
 			.unique();
 		if (existing) {
 			await requireOwnedSpace(ctx, existing);
-			if (existing.status !== "started") {
+			if (existing.status !== "running") {
 				await ctx.scheduler.runAfter(0, internal.sandboxActions.ensureSandbox, {
 					spaceId: existing._id,
 				});
@@ -373,7 +373,7 @@ export const syncCode = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		if (space.status !== "started") {
+		if (space.status !== "running") {
 			throw new ConvexError("Space must be running to sync code");
 		}
 

@@ -257,7 +257,7 @@ async function resolveSandbox(
 	try {
 		await ctx.runMutation(internal.spaces.internalUpdate, {
 			id: space._id,
-			status: "starting" as const,
+			status: "creating" as const,
 		});
 
 		const sandbox = await Sandbox.connect(space.sandboxId, {
@@ -303,7 +303,7 @@ export const stopSandbox = internalAction({
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
-				status: "stopped",
+				status: "paused",
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -372,7 +372,7 @@ export const ensureSandbox = internalAction({
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
-				status: "started",
+				status: "running",
 				sandboxId,
 				sandboxUrl,
 				lastSyncedCommitSha,

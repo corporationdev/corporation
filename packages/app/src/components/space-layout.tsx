@@ -55,7 +55,7 @@ export function SpaceLayout() {
 	const shouldWaitForSandboxStatus =
 		activeTabConfig.requiresSandbox && isSpaceLoading;
 	const shouldShowSandboxPaused =
-		activeTabConfig.requiresSandbox && !!space && space.status !== "started";
+		activeTabConfig.requiresSandbox && !!space && space.status !== "running";
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">

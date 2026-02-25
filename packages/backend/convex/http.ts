@@ -11,15 +11,22 @@ http.route({
 	path: "/webhooks/e2b",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {
+		const signature = request.headers.get("e2b-signature");
+
+		if (!signature) {
+			return new Response("Missing signature header", { status: 400 });
+		}
+
 		const body = await request.text();
 
 		try {
 			const result = await ctx.runAction(internal.e2bWebhook.handleWebhook, {
 				body,
+				signature,
 			});
 
 			if (result.status === "invalid") {
-				return new Response("Invalid webhook payload", { status: 400 });
+				return new Response("Webhook verification failed", { status: 400 });
 			}
 
 			return new Response("OK", { status: 200 });

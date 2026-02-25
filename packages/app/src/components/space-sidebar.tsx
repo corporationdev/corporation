@@ -162,14 +162,14 @@ const SpaceSidebarContent: FC<{
 					variant="outline"
 				>
 					<LoaderIcon className="size-4 animate-spin" />
-					{space.status === "creating" ? "Creating..." : "Starting..."}
+					Creating...
 				</Button>
 			)}
 			{isStarted && <SyncCodeButton space={space} />}
 			<Button
 				className="w-full justify-start gap-2"
 				disabled={
-					actor.connStatus !== "connected" || space.status !== "started"
+					actor.connStatus !== "connected" || space.status !== "running"
 				}
 				onClick={handleNewTerminal}
 				size="sm"
@@ -178,7 +178,7 @@ const SpaceSidebarContent: FC<{
 				<TerminalIcon className="size-4" />
 				New Terminal
 			</Button>
-			{space.sandboxId && space.status === "started" && (
+			{space.sandboxId && space.status === "running" && (
 				<div className="flex gap-2">
 					<Input
 						className="w-20"
