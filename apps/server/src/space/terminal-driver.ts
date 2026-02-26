@@ -12,6 +12,7 @@ const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
 const MAX_SCROLLBACK_BYTES = 256 * 1024;
+const PTY_TIMEOUT_MS = 0;
 
 function encodeBytes(bytes: number[]): string {
 	if (bytes.length === 0) {
@@ -57,6 +58,82 @@ function appendAndTrimBuffer(base: number[], next: number[]): number[] {
 	return combined.slice(combined.length - MAX_SCROLLBACK_BYTES);
 }
 
+function isProcessNotFoundError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+
+	return (
+		error.name === "NotFoundError" &&
+		error.message.includes("process with pid") &&
+		error.message.includes("not found")
+	);
+}
+
+async function recreateTerminalHandle(
+	ctx: SpaceRuntimeContext,
+	terminalId: string,
+	cols?: number,
+	rows?: number
+): Promise<CommandHandle> {
+	const previousHandle = ctx.vars.terminalHandles.get(terminalId);
+	if (previousHandle) {
+		try {
+			await previousHandle.disconnect();
+		} catch (error) {
+			log.warn(
+				{ terminalId, err: error },
+				"failed to disconnect stale terminal handle"
+			);
+		}
+	}
+	ctx.vars.terminalHandles.delete(terminalId);
+
+	await ensureTerminal(ctx, terminalId, cols, rows);
+
+	const refreshedHandle = ctx.vars.terminalHandles.get(terminalId);
+	if (!refreshedHandle) {
+		throw new Error("Terminal handle is not available after recreation");
+	}
+
+	return refreshedHandle;
+}
+
+function trackTerminalExit(
+	ctx: SpaceRuntimeContext,
+	terminalId: string,
+	handle: CommandHandle,
+	pid: number
+): void {
+	handle
+		.wait()
+		.catch((error) => {
+			log.info(
+				{ terminalId, pid, err: error },
+				"terminal pty process exited with error"
+			);
+		})
+		.then(async () => {
+			if (ctx.vars.terminalHandles.get(terminalId) !== handle) {
+				return;
+			}
+
+			ctx.vars.terminalHandles.delete(terminalId);
+			await ctx.vars.db
+				.update(terminals)
+				.set({ ptyPid: null, updatedAt: Date.now() })
+				.where(eq(terminals.id, terminalId));
+
+			log.info({ terminalId, pid }, "terminal pty process exited");
+		})
+		.catch((error) => {
+			log.warn(
+				{ terminalId, pid, err: error },
+				"failed to process terminal pty exit"
+			);
+		});
+}
+
 async function connectOrCreatePty(
 	sandbox: Sandbox,
 	existingPid: number | null,
@@ -69,6 +146,7 @@ async function connectOrCreatePty(
 		try {
 			const handle = await sandbox.pty.connect(existingPid, {
 				onData,
+				timeoutMs: PTY_TIMEOUT_MS,
 			});
 			return { handle, pid: existingPid };
 		} catch {
@@ -83,6 +161,7 @@ async function connectOrCreatePty(
 		cols,
 		rows,
 		onData,
+		timeoutMs: PTY_TIMEOUT_MS,
 		user: "root",
 		cwd,
 	});
@@ -246,6 +325,7 @@ async function ensureTerminal(
 		);
 
 		ctx.vars.terminalHandles.set(terminalId, handle);
+		trackTerminalExit(ctx, terminalId, handle, pid);
 
 		if (pid !== terminalRow.ptyPid) {
 			await ctx.vars.db
@@ -296,7 +376,23 @@ async function input(
 		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
-	await ctx.vars.sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
+	try {
+		await ctx.vars.sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
+	} catch (error) {
+		if (!isProcessNotFoundError(error)) {
+			throw error;
+		}
+
+		log.warn(
+			{ terminalId, pid: handle.pid, err: error },
+			"terminal pty pid not found during input, recreating handle"
+		);
+		const refreshedHandle = await recreateTerminalHandle(ctx, terminalId);
+		await ctx.vars.sandbox.pty.sendInput(
+			refreshedHandle.pid,
+			new Uint8Array(data)
+		);
+	}
 }
 
 async function resize(
@@ -312,7 +408,25 @@ async function resize(
 		throw new Error("Terminal handle is not available after ensureTerminal");
 	}
 
-	await ctx.vars.sandbox.pty.resize(handle.pid, { cols, rows });
+	try {
+		await ctx.vars.sandbox.pty.resize(handle.pid, { cols, rows });
+	} catch (error) {
+		if (!isProcessNotFoundError(error)) {
+			throw error;
+		}
+
+		log.warn(
+			{ terminalId, pid: handle.pid, cols, rows, err: error },
+			"terminal pty pid not found during resize, recreating handle"
+		);
+		const refreshedHandle = await recreateTerminalHandle(
+			ctx,
+			terminalId,
+			cols,
+			rows
+		);
+		await ctx.vars.sandbox.pty.resize(refreshedHandle.pid, { cols, rows });
+	}
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {
