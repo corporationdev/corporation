@@ -288,13 +288,6 @@ export const completeSnapshotBuild = internalMutation({
 			throw new ConvexError("Environment not found");
 		}
 
-		const oldSnapshotId = environment.snapshotId;
-		if (oldSnapshotId && oldSnapshotId !== args.snapshotId) {
-			await ctx.scheduler.runAfter(0, internal.snapshotActions.deleteSnapshot, {
-				snapshotId: oldSnapshotId,
-			});
-		}
-
 		const now = Date.now();
 
 		await ctx.db.patch(args.id, {

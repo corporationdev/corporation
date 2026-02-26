@@ -25,7 +25,6 @@ async function runRootCommand(
 	try {
 		await sandbox.commands.run(command, {
 			user: "root",
-			timeoutMs: 30 * 60 * 1000,
 			envs,
 		});
 	} catch (error) {
@@ -68,7 +67,6 @@ export const buildSnapshot = internalAction({
 			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
 
 			buildSandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
-				timeoutMs: 60 * 60 * 1000,
 				envs: { ANTHROPIC_API_KEY: anthropicApiKey },
 				network: { allowPublicTraffic: true },
 			});
@@ -104,14 +102,6 @@ export const buildSnapshot = internalAction({
 			});
 
 			throw error;
-		} finally {
-			if (buildSandbox) {
-				try {
-					await buildSandbox.kill();
-				} catch {
-					// Best effort cleanup
-				}
-			}
 		}
 	},
 });
@@ -137,7 +127,6 @@ export const rebuildSnapshot = internalAction({
 			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
 
 			buildSandbox = await Sandbox.betaCreate(args.snapshotId, {
-				timeoutMs: 60 * 60 * 1000,
 				network: { allowPublicTraffic: true },
 			});
 
@@ -166,14 +155,6 @@ export const rebuildSnapshot = internalAction({
 			});
 
 			throw error;
-		} finally {
-			if (buildSandbox) {
-				try {
-					await buildSandbox.kill();
-				} catch {
-					// Best effort cleanup
-				}
-			}
 		}
 	},
 });
@@ -206,19 +187,6 @@ export const overrideSnapshot = internalAction({
 			});
 
 			throw error;
-		}
-	},
-});
-
-export const deleteSnapshot = internalAction({
-	args: {
-		snapshotId: v.string(),
-	},
-	handler: async (_ctx, args) => {
-		try {
-			await Sandbox.deleteSnapshot(args.snapshotId);
-		} catch (error) {
-			console.error(`Failed to delete snapshot ${args.snapshotId}:`, error);
 		}
 	},
 });
