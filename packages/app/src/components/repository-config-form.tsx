@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 const QUOTED_VALUE_RE = /^(['"])(.*)\1$/;
 const LEADING_DOT_SLASH_RE = /^\.\/+/;
 const TRAILING_SLASH_RE = /\/+$/;
+const SECTION_HEADER_RE = /^\[(.*)\]$/;
 
 const envVarSchema = z.object({
 	key: z.string(),
@@ -141,6 +142,50 @@ export function envFilesFromEnvByPath(
 		path: path === "." ? "" : path,
 		envVars: Object.entries(envMap).map(([key, value]) => ({ key, value })),
 	}));
+}
+
+function parseEnvFilesContent(text: string): EnvFileValues[] | null {
+	const envByPath: EnvByPath = {};
+	let currentPath = ".";
+	let sawEnvVar = false;
+
+	for (const rawLine of text.split("\n")) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) {
+			continue;
+		}
+
+		const sectionMatch = line.match(SECTION_HEADER_RE);
+		if (sectionMatch) {
+			currentPath = normalizePath(sectionMatch[1]);
+			envByPath[currentPath] = envByPath[currentPath] ?? {};
+			continue;
+		}
+
+		const eqIndex = line.indexOf("=");
+		if (eqIndex === -1) {
+			return null;
+		}
+
+		const key = line.slice(0, eqIndex).trim();
+		if (!key) {
+			return null;
+		}
+
+		const rawValue = line.slice(eqIndex + 1).trim();
+		const value = rawValue.replace(QUOTED_VALUE_RE, "$2");
+		const normalizedPath = normalizePath(currentPath);
+		const pathEnvVars = envByPath[normalizedPath] ?? {};
+		pathEnvVars[key] = value;
+		envByPath[normalizedPath] = pathEnvVars;
+		sawEnvVar = true;
+	}
+
+	if (!sawEnvVar) {
+		return null;
+	}
+
+	return envFilesFromEnvByPath(envByPath);
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
@@ -299,67 +344,99 @@ export function RepositoryConfigForm({
 			</FieldGroup>
 
 			<form.Field mode="array" name="envFiles">
-				{(envFilesField: EnvFilesArrayFieldState) => (
-					<div className="flex flex-col gap-4">
-						<div className="flex items-center justify-between">
-							<FieldLabel>Env Files by Path</FieldLabel>
-							<Button
-								onClick={() => envFilesField.pushValue({ ...emptyEnvFile })}
-								size="xs"
-								type="button"
-								variant="ghost"
-							>
-								<Plus className="size-3" />
-								Add Path
-							</Button>
-						</div>
-						{envFilesField.state.value.map(
-							(_: EnvFileValues, index: number) => (
-								<div
-									className="relative flex flex-col gap-3 border p-4"
-									key={`env-file-${index.toString()}`}
-								>
+				{(envFilesField: EnvFilesArrayFieldState) =>
+					(() => {
+						const replaceEnvFiles = (nextEnvFiles: EnvFileValues[]) => {
+							for (let i = envFilesField.state.value.length - 1; i >= 0; i--) {
+								envFilesField.removeValue(i);
+							}
+							for (const envFile of nextEnvFiles) {
+								envFilesField.pushValue(envFile);
+							}
+						};
+
+						const handlePathPaste = (
+							e: React.ClipboardEvent<HTMLInputElement>
+						) => {
+							const text = e.clipboardData.getData("text");
+							if (!text.includes("\n")) {
+								return;
+							}
+							const parsed = parseEnvFilesContent(text);
+							if (!parsed) {
+								return;
+							}
+							e.preventDefault();
+							replaceEnvFiles(parsed);
+						};
+
+						return (
+							<div className="flex flex-col gap-4">
+								<div className="flex items-center justify-between">
+									<FieldLabel>Env Files by Path</FieldLabel>
 									<Button
-										className="absolute top-2 right-2"
-										onClick={() => envFilesField.removeValue(index)}
-										size="icon-sm"
+										onClick={() => envFilesField.pushValue({ ...emptyEnvFile })}
+										size="xs"
 										type="button"
 										variant="ghost"
 									>
-										<Trash2 className="size-3.5" />
+										<Plus className="size-3" />
+										Add Path
 									</Button>
-									<form.Field name={`envFiles[${index}].path`}>
-										{(field: FieldState) => {
-											const isInvalid =
-												field.state.meta.isTouched && !field.state.meta.isValid;
-											return (
-												<Field data-invalid={isInvalid}>
-													<FieldLabel htmlFor={field.name}>Path</FieldLabel>
-													<Input
-														aria-invalid={isInvalid}
-														id={field.name}
-														name={field.name}
-														onBlur={field.handleBlur}
-														onChange={(e) => field.handleChange(e.target.value)}
-														placeholder="Leave empty for repo root (.env)"
-														value={field.state.value}
-													/>
-													{isInvalid && (
-														<FieldError errors={field.state.meta.errors} />
-													)}
-												</Field>
-											);
-										}}
-									</form.Field>
-									<EnvVarsFields
-										form={form}
-										name={`envFiles[${index}].envVars`}
-									/>
 								</div>
-							)
-						)}
-					</div>
-				)}
+								{envFilesField.state.value.map(
+									(_: EnvFileValues, index: number) => (
+										<div
+											className="relative flex flex-col gap-3 border p-4"
+											key={`env-file-${index.toString()}`}
+										>
+											<Button
+												className="absolute top-2 right-2"
+												onClick={() => envFilesField.removeValue(index)}
+												size="icon-sm"
+												type="button"
+												variant="ghost"
+											>
+												<Trash2 className="size-3.5" />
+											</Button>
+											<form.Field name={`envFiles[${index}].path`}>
+												{(field: FieldState) => {
+													const isInvalid =
+														field.state.meta.isTouched &&
+														!field.state.meta.isValid;
+													return (
+														<Field data-invalid={isInvalid}>
+															<FieldLabel htmlFor={field.name}>Path</FieldLabel>
+															<Input
+																aria-invalid={isInvalid}
+																id={field.name}
+																name={field.name}
+																onBlur={field.handleBlur}
+																onChange={(e) =>
+																	field.handleChange(e.target.value)
+																}
+																onPaste={handlePathPaste}
+																placeholder="Leave empty for repo root (.env)"
+																value={field.state.value}
+															/>
+															{isInvalid && (
+																<FieldError errors={field.state.meta.errors} />
+															)}
+														</Field>
+													);
+												}}
+											</form.Field>
+											<EnvVarsFields
+												form={form}
+												name={`envFiles[${index}].envVars`}
+											/>
+										</div>
+									)
+								)}
+							</div>
+						);
+					})()
+				}
 			</form.Field>
 		</>
 	);
