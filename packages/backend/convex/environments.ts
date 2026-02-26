@@ -1,10 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import { asyncMap } from "convex-helpers";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { normalizeEnvByPath } from "./lib/envByPath";
 import { snapshotStatusValidator } from "./schema";
 
 async function requireOwnedEnvironment(
@@ -42,7 +42,11 @@ export const update = authedMutation({
 	args: {
 		id: v.id("environments"),
 		name: v.optional(v.string()),
-		serviceIds: v.optional(v.array(v.id("services"))),
+		setupCommand: v.optional(v.string()),
+		devCommand: v.optional(v.string()),
+		envByPath: v.optional(
+			v.record(v.string(), v.record(v.string(), v.string()))
+		),
 	},
 	handler: async (ctx, args) => {
 		const environment = await ctx.db.get(args.id);
@@ -51,20 +55,15 @@ export const update = authedMutation({
 		}
 		await requireOwnedEnvironment(ctx, environment);
 
-		if (args.serviceIds) {
-			for (const serviceId of args.serviceIds) {
-				const service = await ctx.db.get(serviceId);
-				if (!service || service.repositoryId !== environment.repositoryId) {
-					throw new ConvexError("Invalid service ID");
-				}
-			}
-		}
-
-		const { id, ...fields } = args;
+		const { id, envByPath, ...fields } = args;
+		const normalizedEnvByPath =
+			envByPath === undefined ? undefined : normalizeEnvByPath(envByPath);
 		const patch = Object.fromEntries(
-			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
-				([, v]) => v !== undefined
-			)
+			Object.entries({
+				...fields,
+				envByPath: normalizedEnvByPath,
+				updatedAt: Date.now(),
+			}).filter(([, v]) => v !== undefined)
 		);
 
 		await ctx.db.patch(id, patch);
@@ -76,7 +75,9 @@ export async function createEnvironmentHelper(
 	args: {
 		repositoryId: Id<"repositories">;
 		name: string;
-		serviceIds: Id<"services">[];
+		setupCommand: string;
+		devCommand: string;
+		envByPath?: Record<string, Record<string, string>>;
 	}
 ): Promise<Id<"environments">> {
 	const now = Date.now();
@@ -84,8 +85,10 @@ export async function createEnvironmentHelper(
 		userId: ctx.userId,
 		repositoryId: args.repositoryId,
 		name: args.name,
+		setupCommand: args.setupCommand,
+		devCommand: args.devCommand,
+		envByPath: normalizeEnvByPath(args.envByPath),
 		snapshotStatus: "building",
-		serviceIds: args.serviceIds,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -101,19 +104,16 @@ export const create = authedMutation({
 	args: {
 		repositoryId: v.id("repositories"),
 		name: v.string(),
-		serviceIds: v.array(v.id("services")),
+		setupCommand: v.string(),
+		devCommand: v.string(),
+		envByPath: v.optional(
+			v.record(v.string(), v.record(v.string(), v.string()))
+		),
 	},
 	handler: async (ctx, args) => {
 		const repository = await ctx.db.get(args.repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
 			throw new ConvexError("Repository not found");
-		}
-
-		for (const serviceId of args.serviceIds) {
-			const service = await ctx.db.get(serviceId);
-			if (!service || service.repositoryId !== args.repositoryId) {
-				throw new ConvexError("Invalid service ID");
-			}
 		}
 
 		return await createEnvironmentHelper(ctx, args);
@@ -150,11 +150,7 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Repository not found");
 		}
 
-		const services = (
-			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
-		).filter((s): s is Doc<"services"> => s !== null);
-
-		return { ...environment, repository, services };
+		return { ...environment, repository };
 	},
 });
 
@@ -290,13 +286,6 @@ export const completeSnapshotBuild = internalMutation({
 		const environment = await ctx.db.get(args.id);
 		if (!environment) {
 			throw new ConvexError("Environment not found");
-		}
-
-		const oldSnapshotId = environment.snapshotId;
-		if (oldSnapshotId && oldSnapshotId !== args.snapshotId) {
-			await ctx.scheduler.runAfter(0, internal.snapshotActions.deleteSnapshot, {
-				snapshotId: oldSnapshotId,
-			});
 		}
 
 		const now = Date.now();

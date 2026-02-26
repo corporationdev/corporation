@@ -6,6 +6,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 
 import {
+	buildEnvByPath,
+	envFilesFromEnvByPath,
 	RepositoryConfigForm,
 	repositoryConfigSchema,
 } from "@/components/repository-config-form";
@@ -31,47 +33,55 @@ function EditRepositoryPage() {
 		);
 	}
 
-	return <EditRepositoryForm repository={repository} />;
+	if (!repository.defaultEnvironment) {
+		return (
+			<div className="p-6">
+				<p className="text-muted-foreground text-sm">
+					Repository configuration is unavailable.
+				</p>
+			</div>
+		);
+	}
+
+	return (
+		<EditRepositoryForm
+			defaultEnvironment={repository.defaultEnvironment}
+			repository={repository}
+		/>
+	);
 }
 
 function EditRepositoryForm({
+	defaultEnvironment,
 	repository,
 }: {
+	defaultEnvironment: NonNullable<
+		NonNullable<
+			ReturnType<typeof useQuery<typeof api.repositories.get>>
+		>["defaultEnvironment"]
+	>;
 	repository: NonNullable<
 		ReturnType<typeof useQuery<typeof api.repositories.get>>
 	>;
 }) {
 	const navigate = useNavigate();
-	const updateRepository = useMutation(api.repositories.update);
+	const updateEnvironment = useMutation(api.environments.update);
 
 	const form = useForm({
 		defaultValues: {
-			setupCommand: repository.setupCommand ?? "",
-			devCommand: repository.devCommand ?? "",
-			envVars: repository.envVars?.length
-				? repository.envVars
-				: [{ key: "", value: "" }],
-			services: repository.services.map((s) => ({
-				path: s.path,
-				envVars: s.envVars?.length ? s.envVars : [{ key: "", value: "" }],
-			})),
+			setupCommand: defaultEnvironment.setupCommand,
+			devCommand: defaultEnvironment.devCommand,
+			envFiles: envFilesFromEnvByPath(defaultEnvironment.envByPath),
 		},
 		validators: {
 			onSubmit: repositoryConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
-			const envVars = value.envVars.filter((v) => v.key.trim() !== "");
-			const services = value.services.map((s) => ({
-				...s,
-				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
-			}));
-
-			await updateRepository({
-				id: repository._id,
+			await updateEnvironment({
+				id: defaultEnvironment._id,
 				setupCommand: value.setupCommand,
 				devCommand: value.devCommand,
-				envVars: envVars.length > 0 ? envVars : undefined,
-				services,
+				envByPath: buildEnvByPath(value.envFiles),
 			});
 
 			navigate({ to: "/settings/repositories" });

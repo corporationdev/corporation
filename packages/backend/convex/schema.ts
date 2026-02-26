@@ -21,13 +21,17 @@ export default defineSchema(
 			userId: v.string(),
 			repositoryId: v.id("repositories"),
 			name: v.string(),
+			setupCommand: v.string(),
+			devCommand: v.string(),
+			envByPath: v.optional(
+				v.record(v.string(), v.record(v.string(), v.string()))
+			),
 			snapshotId: v.optional(v.string()),
 			snapshotCommitSha: v.optional(v.string()),
 			snapshotStatus: snapshotStatusValidator,
 			rebuildIntervalMs: v.optional(v.number()),
 			scheduledRebuildId: v.optional(v.id("_scheduled_functions")),
 			lastSnapshotBuildAt: v.optional(v.number()),
-			serviceIds: v.array(v.id("services")),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
@@ -40,27 +44,12 @@ export default defineSchema(
 			owner: v.string(),
 			name: v.string(),
 			defaultBranch: v.string(),
-			setupCommand: v.string(),
-			devCommand: v.string(),
-			envVars: v.optional(
-				v.array(v.object({ key: v.string(), value: v.string() }))
-			),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
 			.index("by_user_and_github_repo", ["userId", "githubRepoId"])
 			.index("by_github_repo", ["githubRepoId"]),
-
-		services: defineTable({
-			repositoryId: v.id("repositories"),
-			path: v.string(),
-			envVars: v.optional(
-				v.array(v.object({ key: v.string(), value: v.string() }))
-			),
-			createdAt: v.number(),
-			updatedAt: v.number(),
-		}).index("by_repository", ["repositoryId"]),
 
 		spaces: defineTable({
 			slug: v.string(),

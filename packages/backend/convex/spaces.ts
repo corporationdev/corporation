@@ -142,17 +142,12 @@ export const getBySlug = authedQuery({
 			throw new ConvexError("Repository not found");
 		}
 
-		const services = (
-			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
-		).filter((s): s is Doc<"services"> => s !== null);
-
 		return {
 			...space,
 			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
 				...environment,
 				repository,
-				services,
 			},
 		};
 	},
@@ -172,17 +167,12 @@ export const get = authedQuery({
 			throw new ConvexError("Repository not found");
 		}
 
-		const services = (
-			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
-		).filter((s): s is Doc<"services"> => s !== null);
-
 		return {
 			...space,
 			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
 				...environment,
 				repository,
-				services,
 			},
 		};
 	},
@@ -250,13 +240,9 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Repository not found");
 		}
 
-		const services = (
-			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
-		).filter((s): s is Doc<"services"> => s !== null);
-
 		return {
 			...space,
-			environment: { ...environment, repository, services },
+			environment: { ...environment, repository },
 		};
 	},
 });

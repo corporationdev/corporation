@@ -12,13 +12,9 @@ export type SandboxEnv = {
 		owner: string;
 		name: string;
 		defaultBranch: string;
-		setupCommand: string;
-		envVars?: EnvVar[] | null;
 	};
-	services: Array<{
-		path: string;
-		envVars?: EnvVar[] | null;
-	}>;
+	setupCommand: string;
+	envByPath?: Record<string, Record<string, string>> | null;
 };
 
 function getPreviewUrl(sandbox: Sandbox, port: number): string {
@@ -63,31 +59,32 @@ function resolvePreviewUrls(sandbox: Sandbox, envVars: EnvVar[]): EnvVar[] {
 	}));
 }
 
+function envMapToPairs(envMap: Record<string, string>): EnvVar[] {
+	return Object.entries(envMap)
+		.filter(([key]) => key.trim().length > 0)
+		.map(([key, value]) => ({ key, value }));
+}
+
 async function writeEnvFiles(
 	sandbox: Sandbox,
 	env: SandboxEnv,
 	workdir: string
 ): Promise<void> {
 	const files: Array<{ path: string; data: string }> = [];
+	const envByPath = env.envByPath ?? {};
 
-	const repoEnvVars = env.repository.envVars;
-	if (repoEnvVars && repoEnvVars.length > 0) {
-		const resolved = resolvePreviewUrls(sandbox, repoEnvVars);
+	for (const [rawPath, envMap] of Object.entries(envByPath)) {
+		const envVars = envMapToPairs(envMap);
+		if (envVars.length === 0) {
+			continue;
+		}
+
+		const resolved = resolvePreviewUrls(sandbox, envVars);
+		const path = rawPath === "." ? workdir : `${workdir}/${rawPath}`;
 		files.push({
-			path: `${workdir}/.env`,
+			path: `${path}/.env`,
 			data: formatEnvContent(resolved),
 		});
-	}
-
-	for (const service of env.services) {
-		if (service.envVars && service.envVars.length > 0) {
-			const resolved = resolvePreviewUrls(sandbox, service.envVars);
-			const dir = service.path || ".";
-			files.push({
-				path: `${workdir}/${dir}/.env`,
-				data: formatEnvContent(resolved),
-			});
-		}
 	}
 
 	if (files.length === 0) {
@@ -128,7 +125,7 @@ export async function setupSandbox(
 
 	await writeEnvFiles(sandbox, env, workdir);
 
-	await sandbox.commands.run(repository.setupCommand, {
+	await sandbox.commands.run(env.setupCommand, {
 		cwd: workdir,
 		user: "root",
 		timeoutMs: REPO_SYNC_TIMEOUT_MS,
