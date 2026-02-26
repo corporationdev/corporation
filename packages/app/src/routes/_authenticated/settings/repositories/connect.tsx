@@ -8,9 +8,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import {
+	buildEnvByPath,
+	type EnvFileValues,
 	RepositoryConfigForm,
 	repositoryConfigSchema,
-	type ServiceValues,
 } from "@/components/repository-config-form";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
@@ -43,28 +44,24 @@ function ConnectRepositoryPage() {
 		mutationFn: async (value: {
 			setupCommand: string;
 			devCommand: string;
-			envVars: { key: string; value: string }[];
-			services: ServiceValues[];
+			envFiles: EnvFileValues[];
 		}) => {
 			if (!selectedRepo) {
 				throw new Error("No repository selected");
 			}
 
-			const envVars = value.envVars.filter((v) => v.key.trim() !== "");
-			const services = value.services.map((s) => ({
-				...s,
-				envVars: s.envVars.filter((v) => v.key.trim() !== ""),
-			}));
+			const envByPath = buildEnvByPath(value.envFiles);
 
 			await createRepo({
 				githubRepoId: selectedRepo.id,
 				owner: selectedRepo.owner,
 				name: selectedRepo.name,
 				defaultBranch: selectedRepo.defaultBranch,
-				setupCommand: value.setupCommand,
-				devCommand: value.devCommand,
-				envVars: envVars.length > 0 ? envVars : undefined,
-				services,
+				environmentConfig: {
+					setupCommand: value.setupCommand,
+					devCommand: value.devCommand,
+					envByPath,
+				},
 			});
 		},
 		onError: (error) => {
@@ -79,8 +76,7 @@ function ConnectRepositoryPage() {
 		defaultValues: {
 			setupCommand: "",
 			devCommand: "",
-			envVars: [{ key: "", value: "" }],
-			services: [] as ServiceValues[],
+			envFiles: [{ path: "", envVars: [{ key: "", value: "" }] }],
 		},
 		validators: {
 			onSubmit: repositoryConfigSchema,

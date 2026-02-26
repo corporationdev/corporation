@@ -1,10 +1,11 @@
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import { internalQuery } from "./_generated/server";
 import { createEnvironmentHelper } from "./environments";
 import { authedMutation, authedQuery } from "./functions";
+import { normalizeEnvByPath } from "./lib/envByPath";
 
 function requireOwnedRepository(
 	userId: string,
@@ -53,13 +54,11 @@ export const get = authedQuery({
 			.query("environments")
 			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
 			.collect();
+		environments.sort((a, b) => a.createdAt - b.createdAt);
 
-		const services = await ctx.db
-			.query("services")
-			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
-			.collect();
+		const defaultEnvironment = environments[0] ?? null;
 
-		return { ...repo, environments, services };
+		return { ...repo, environments, defaultEnvironment };
 	},
 });
 
@@ -69,19 +68,14 @@ export const create = authedMutation({
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
-		setupCommand: v.string(),
-		devCommand: v.string(),
-		envVars: v.optional(
-			v.array(v.object({ key: v.string(), value: v.string() }))
-		),
-		services: v.array(
-			v.object({
-				path: v.string(),
-				envVars: v.optional(
-					v.array(v.object({ key: v.string(), value: v.string() }))
-				),
-			})
-		),
+		environmentConfig: v.object({
+			name: v.optional(v.string()),
+			setupCommand: v.string(),
+			devCommand: v.string(),
+			envByPath: v.optional(
+				v.record(v.string(), v.record(v.string(), v.string()))
+			),
+		}),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -96,6 +90,9 @@ export const create = authedMutation({
 		}
 
 		const now = Date.now();
+		const normalizedEnvByPath = normalizeEnvByPath(
+			args.environmentConfig.envByPath
+		);
 
 		const repositoryId = await ctx.db.insert("repositories", {
 			userId: ctx.userId,
@@ -103,29 +100,16 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
-			setupCommand: args.setupCommand,
-			devCommand: args.devCommand,
-			envVars: args.envVars,
 			createdAt: now,
 			updatedAt: now,
 		});
 
-		const serviceIds: Id<"services">[] = [];
-		for (const service of args.services) {
-			const serviceId = await ctx.db.insert("services", {
-				repositoryId,
-				path: service.path,
-				envVars: service.envVars,
-				createdAt: now,
-				updatedAt: now,
-			});
-			serviceIds.push(serviceId);
-		}
-
 		await createEnvironmentHelper(ctx, {
 			repositoryId,
-			name: "Default",
-			serviceIds,
+			name: args.environmentConfig.name ?? "Default",
+			setupCommand: args.environmentConfig.setupCommand,
+			devCommand: args.environmentConfig.devCommand,
+			envByPath: normalizedEnvByPath,
 		});
 
 		return repositoryId;
@@ -135,26 +119,7 @@ export const create = authedMutation({
 export const update = authedMutation({
 	args: {
 		id: v.id("repositories"),
-		setupCommand: v.optional(v.string()),
-		devCommand: v.optional(v.string()),
-		envVars: v.optional(
-			v.array(v.object({ key: v.string(), value: v.string() }))
-		),
-		services: v.optional(
-			v.array(
-				v.object({
-					path: v.string(),
-					envVars: v.optional(
-						v.array(v.object({ key: v.string(), value: v.string() }))
-					),
-				})
-			)
-		),
-		environment: v.optional(
-			v.object({
-				name: v.optional(v.string()),
-			})
-		),
+		defaultBranch: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const repo = await ctx.db.get(args.id);
@@ -163,64 +128,14 @@ export const update = authedMutation({
 		}
 		requireOwnedRepository(ctx.userId, repo);
 
-		const now = Date.now();
-
-		// Update repository fields
-		const repoPatch: Record<string, unknown> = { updatedAt: now };
-		if (args.setupCommand !== undefined) {
-			repoPatch.setupCommand = args.setupCommand;
-		}
-		if (args.devCommand !== undefined) {
-			repoPatch.devCommand = args.devCommand;
-		}
-		if (args.envVars !== undefined) {
-			repoPatch.envVars = args.envVars;
-		}
-		await ctx.db.patch(args.id, repoPatch);
-
-		// Replace services if provided
-		let newServiceIds: Id<"services">[] | undefined;
-		if (args.services) {
-			const existingServices = await ctx.db
-				.query("services")
-				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
-				.collect();
-
-			for (const service of existingServices) {
-				await ctx.db.delete(service._id);
-			}
-
-			newServiceIds = [];
-			for (const service of args.services) {
-				const serviceId = await ctx.db.insert("services", {
-					repositoryId: args.id,
-					path: service.path,
-					envVars: service.envVars,
-					createdAt: now,
-					updatedAt: now,
-				});
-				newServiceIds.push(serviceId);
-			}
+		const patch: { defaultBranch?: string; updatedAt: number } = {
+			updatedAt: Date.now(),
+		};
+		if (args.defaultBranch !== undefined) {
+			patch.defaultBranch = args.defaultBranch;
 		}
 
-		// Update environments if services changed or environment fields provided
-		if (newServiceIds || args.environment) {
-			const environments = await ctx.db
-				.query("environments")
-				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
-				.collect();
-
-			for (const env of environments) {
-				const envPatch: Record<string, unknown> = { updatedAt: now };
-				if (newServiceIds) {
-					envPatch.serviceIds = newServiceIds;
-				}
-				if (args.environment?.name !== undefined) {
-					envPatch.name = args.environment.name;
-				}
-				await ctx.db.patch(env._id, envPatch);
-			}
-		}
+		await ctx.db.patch(args.id, patch);
 	},
 });
 
@@ -249,15 +164,6 @@ const del = authedMutation({
 				);
 			}
 			await ctx.db.delete(env._id);
-		}
-
-		const services = await ctx.db
-			.query("services")
-			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
-			.collect();
-
-		for (const service of services) {
-			await ctx.db.delete(service._id);
 		}
 
 		await ctx.db.delete(args.id);
