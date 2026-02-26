@@ -6,6 +6,7 @@ import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
+import { setupSandbox } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
 
@@ -47,17 +48,13 @@ export const buildSnapshot = internalAction({
 		environmentId: v.id("environments"),
 	},
 	handler: async (ctx, args) => {
-		const e2bApiKey = process.env.E2B_API_KEY;
 		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!(e2bApiKey && nangoSecretKey)) {
-			throw new Error("Missing E2B_API_KEY or NANGO_SECRET_KEY env vars");
-		}
 		const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-		if (!anthropicApiKey) {
-			throw new Error(
-				"Missing ANTHROPIC_API_KEY env var for sandbox-agent agent verification"
-			);
+
+		if (!(nangoSecretKey && anthropicApiKey)) {
+			throw new Error("Missing NANGO_SECRET_KEY or ANTHROPIC_API_KEY env vars");
 		}
+
 		let buildSandbox: Sandbox | undefined;
 		try {
 			const envWithRepo = await ctx.runQuery(
@@ -67,46 +64,29 @@ export const buildSnapshot = internalAction({
 				}
 			);
 
-			const { repository } = envWithRepo;
 			const nango = new Nango({ secretKey: nangoSecretKey });
 			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
 
-			const branchRes = await fetch(
-				`https://api.github.com/repos/${repository.owner}/${repository.name}/branches/${repository.defaultBranch}`,
-				{
-					headers: {
-						Authorization: `Bearer ${githubToken}`,
-						Accept: "application/vnd.github+json",
-					},
-				}
-			);
-			const snapshotCommitSha = branchRes.ok
-				? ((await branchRes.json()) as { commit: { sha: string } }).commit.sha
-				: undefined;
-
-			const repoDir = `/root/${repository.owner}-${repository.name}`;
-			buildSandbox = await Sandbox.create(BASE_TEMPLATE, {
-				apiKey: e2bApiKey,
+			buildSandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
 				timeoutMs: 60 * 60 * 1000,
 				envs: { ANTHROPIC_API_KEY: anthropicApiKey },
 				network: { allowPublicTraffic: true },
 			});
 
-			await runRootCommand(
+			const snapshotCommitSha = await setupSandbox(
 				buildSandbox,
-				`git clone https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git ${repoDir} --branch ${repository.defaultBranch} --single-branch`
+				envWithRepo,
+				githubToken,
+				"clone"
 			);
-			await runRootCommand(
-				buildSandbox,
-				`cd ${repoDir} && ${repository.setupCommand}`
-			);
+
 			await runRootCommand(
 				buildSandbox,
 				"sandbox-agent install-agent opencode --reinstall",
 				{ ANTHROPIC_API_KEY: anthropicApiKey }
 			);
 
-			const snapshot = await buildSandbox.createSnapshot({ apiKey: e2bApiKey });
+			const snapshot = await buildSandbox.createSnapshot();
 
 			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
 				id: args.environmentId,
@@ -136,18 +116,107 @@ export const buildSnapshot = internalAction({
 	},
 });
 
+export const rebuildSnapshot = internalAction({
+	args: {
+		environmentId: v.id("environments"),
+		snapshotId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+		if (!nangoSecretKey) {
+			throw new Error("Missing NANGO_SECRET_KEY env var");
+		}
+
+		const envWithRepo = await ctx.runQuery(internal.environments.internalGet, {
+			id: args.environmentId,
+		});
+
+		let buildSandbox: Sandbox | undefined;
+		try {
+			const nango = new Nango({ secretKey: nangoSecretKey });
+			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
+
+			buildSandbox = await Sandbox.betaCreate(args.snapshotId, {
+				timeoutMs: 60 * 60 * 1000,
+				network: { allowPublicTraffic: true },
+			});
+
+			const snapshotCommitSha = await setupSandbox(
+				buildSandbox,
+				envWithRepo,
+				githubToken,
+				"pull"
+			);
+
+			const snapshot = await buildSandbox.createSnapshot();
+
+			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
+				id: args.environmentId,
+				snapshotId: snapshot.snapshotId,
+				snapshotCommitSha,
+			});
+		} catch (error) {
+			await ctx.runMutation(internal.environments.internalUpdate, {
+				id: args.environmentId,
+				snapshotStatus: "error",
+			});
+
+			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
+				id: args.environmentId,
+			});
+
+			throw error;
+		} finally {
+			if (buildSandbox) {
+				try {
+					await buildSandbox.kill();
+				} catch {
+					// Best effort cleanup
+				}
+			}
+		}
+	},
+});
+
+export const overrideSnapshot = internalAction({
+	args: {
+		environmentId: v.id("environments"),
+		sandboxId: v.string(),
+		snapshotCommitSha: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		try {
+			const sandbox = await Sandbox.connect(args.sandboxId);
+
+			const snapshot = await sandbox.createSnapshot();
+
+			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
+				id: args.environmentId,
+				snapshotId: snapshot.snapshotId,
+				snapshotCommitSha: args.snapshotCommitSha,
+			});
+		} catch (error) {
+			await ctx.runMutation(internal.environments.internalUpdate, {
+				id: args.environmentId,
+				snapshotStatus: "error",
+			});
+
+			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
+				id: args.environmentId,
+			});
+
+			throw error;
+		}
+	},
+});
+
 export const deleteSnapshot = internalAction({
 	args: {
 		snapshotId: v.string(),
 	},
 	handler: async (_ctx, args) => {
-		const e2bApiKey = process.env.E2B_API_KEY;
-		if (!e2bApiKey) {
-			throw new Error("Missing E2B_API_KEY env var");
-		}
-
 		try {
-			await Sandbox.deleteSnapshot(args.snapshotId, { apiKey: e2bApiKey });
+			await Sandbox.deleteSnapshot(args.snapshotId);
 		} catch (error) {
 			console.error(`Failed to delete snapshot ${args.snapshotId}:`, error);
 		}

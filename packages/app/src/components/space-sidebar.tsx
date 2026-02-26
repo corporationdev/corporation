@@ -6,12 +6,14 @@ import {
 	GlobeIcon,
 	LoaderIcon,
 	PlayIcon,
+	SaveIcon,
 	SquareIcon,
 	TerminalIcon,
 	Trash2Icon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -99,6 +101,18 @@ const SpaceSidebarContent: FC<{
 		},
 	});
 
+	const overrideSnapshotMutation = useConvexTanstackMutation(
+		api.environments.overrideSnapshot,
+		{
+			onSuccess: () => {
+				toast.success("Sandbox saved as base snapshot");
+			},
+			onError: (error) => {
+				toast.error(`Failed to save snapshot: ${error.message}`);
+			},
+		}
+	);
+
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
 		useStartSandbox(space.slug, space.status);
 
@@ -166,6 +180,29 @@ const SpaceSidebarContent: FC<{
 				</Button>
 			)}
 			{isStarted && <SyncCodeButton space={space} />}
+			{isStarted && (
+				<Button
+					className="w-full justify-start gap-2"
+					disabled={
+						overrideSnapshotMutation.isPending ||
+						space.environment.snapshotStatus === "building"
+					}
+					onClick={() =>
+						overrideSnapshotMutation.mutate({ spaceId: space._id })
+					}
+					size="sm"
+					variant="outline"
+				>
+					{overrideSnapshotMutation.isPending ? (
+						<LoaderIcon className="size-4 animate-spin" />
+					) : (
+						<SaveIcon className="size-4" />
+					)}
+					{overrideSnapshotMutation.isPending
+						? "Saving..."
+						: "Save as Base Snapshot"}
+				</Button>
+			)}
 			<Button
 				className="w-full justify-start gap-2"
 				disabled={

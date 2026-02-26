@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { asyncMap } from "convex-helpers";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -149,7 +150,11 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Repository not found");
 		}
 
-		return { ...environment, repository };
+		const services = (
+			await asyncMap(environment.serviceIds, (id) => ctx.db.get(id))
+		).filter((s): s is Doc<"services"> => s !== null);
+
+		return { ...environment, repository, services };
 	},
 });
 
@@ -165,22 +170,53 @@ export const internalListByRepository = internalQuery({
 	},
 });
 
-async function rebuildSnapshotHelper(
+/**
+ * Cancels any pending scheduled rebuild and transitions to "building" status.
+ * Throws if a build is already in progress.
+ */
+async function transitionToBuilding(
 	ctx: MutationCtx,
 	environment: Doc<"environments">
-) {
+): Promise<void> {
 	if (environment.snapshotStatus === "building") {
-		return;
+		throw new ConvexError("A snapshot build is already in progress");
+	}
+
+	if (environment.scheduledRebuildId) {
+		try {
+			await ctx.scheduler.cancel(environment.scheduledRebuildId);
+		} catch {
+			// Already executed or cancelled
+		}
 	}
 
 	await ctx.db.patch(environment._id, {
+		scheduledRebuildId: undefined,
 		snapshotStatus: "building",
 		updatedAt: Date.now(),
 	});
+}
 
-	await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
-		environmentId: environment._id,
-	});
+/**
+ * Transitions to "building" and schedules the appropriate snapshot action
+ * (incremental rebuild if a snapshot exists, otherwise full build).
+ */
+async function scheduleSnapshotRebuild(
+	ctx: MutationCtx,
+	environment: Doc<"environments">
+): Promise<void> {
+	await transitionToBuilding(ctx, environment);
+
+	if (environment.snapshotId) {
+		await ctx.scheduler.runAfter(0, internal.snapshotActions.rebuildSnapshot, {
+			environmentId: environment._id,
+			snapshotId: environment.snapshotId,
+		});
+	} else {
+		await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
+			environmentId: environment._id,
+		});
+	}
 }
 
 export const rebuildSnapshot = authedMutation({
@@ -192,31 +228,55 @@ export const rebuildSnapshot = authedMutation({
 		}
 		await requireOwnedEnvironment(ctx, environment);
 
-		// Cancel any existing scheduled rebuild — manual takes priority
-		if (environment.scheduledRebuildId) {
-			try {
-				await ctx.scheduler.cancel(environment.scheduledRebuildId);
-			} catch {
-				// Already executed or cancelled
-			}
-			await ctx.db.patch(args.id, {
-				scheduledRebuildId: undefined,
-				updatedAt: Date.now(),
-			});
-		}
-
-		await rebuildSnapshotHelper(ctx, environment);
+		await scheduleSnapshotRebuild(ctx, environment);
 	},
 });
 
-export const internalRebuildSnapshot = internalMutation({
+export const fullBuildSnapshot = authedMutation({
 	args: { id: v.id("environments") },
 	handler: async (ctx, args) => {
 		const environment = await ctx.db.get(args.id);
 		if (!environment) {
 			throw new ConvexError("Environment not found");
 		}
-		await rebuildSnapshotHelper(ctx, environment);
+		await requireOwnedEnvironment(ctx, environment);
+
+		await transitionToBuilding(ctx, environment);
+
+		await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
+			environmentId: args.id,
+		});
+	},
+});
+
+export const overrideSnapshot = authedMutation({
+	args: { spaceId: v.id("spaces") },
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.spaceId);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+
+		const environment = await ctx.db.get(space.environmentId);
+		if (!environment || environment.userId !== ctx.userId) {
+			throw new ConvexError("Environment not found");
+		}
+
+		if (!space.sandboxId) {
+			throw new ConvexError("Space has no running sandbox");
+		}
+
+		if (space.status !== "running") {
+			throw new ConvexError("Space must be running to save as base snapshot");
+		}
+
+		await transitionToBuilding(ctx, environment);
+
+		await ctx.scheduler.runAfter(0, internal.snapshotActions.overrideSnapshot, {
+			environmentId: environment._id,
+			sandboxId: space.sandboxId,
+			snapshotCommitSha: space.lastSyncedCommitSha,
+		});
 	},
 });
 
@@ -249,14 +309,9 @@ export const completeSnapshotBuild = internalMutation({
 			updatedAt: now,
 		});
 
-		// Schedule the next rebuild if an interval is configured
-		if (environment.rebuildIntervalMs) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.environments.scheduleNextRebuild,
-				{ id: args.id }
-			);
-		}
+		await ctx.scheduler.runAfter(0, internal.environments.scheduleNextRebuild, {
+			id: args.id,
+		});
 	},
 });
 
@@ -277,15 +332,6 @@ export const scheduleNextRebuild = internalMutation({
 				});
 			}
 			return;
-		}
-
-		// Cancel any existing scheduled rebuild
-		if (environment.scheduledRebuildId) {
-			try {
-				await ctx.scheduler.cancel(environment.scheduledRebuildId);
-			} catch {
-				// Already executed or cancelled
-			}
 		}
 
 		const scheduledId = await ctx.scheduler.runAfter(
@@ -317,8 +363,7 @@ export const executeScheduledRebuild = internalMutation({
 			return;
 		}
 
-		// Trigger the rebuild — completeSnapshotBuild will schedule the next one
-		await rebuildSnapshotHelper(ctx, environment);
+		await scheduleSnapshotRebuild(ctx, environment);
 	},
 });
 
@@ -334,7 +379,6 @@ export const updateRebuildInterval = authedMutation({
 		}
 		await requireOwnedEnvironment(ctx, environment);
 
-		// Cancel existing scheduled rebuild
 		if (environment.scheduledRebuildId) {
 			try {
 				await ctx.scheduler.cancel(environment.scheduledRebuildId);
@@ -349,13 +393,8 @@ export const updateRebuildInterval = authedMutation({
 			updatedAt: Date.now(),
 		});
 
-		// If a new interval is set, start the scheduling chain
-		if (args.rebuildIntervalMs) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.environments.scheduleNextRebuild,
-				{ id: args.id }
-			);
-		}
+		await ctx.scheduler.runAfter(0, internal.environments.scheduleNextRebuild, {
+			id: args.id,
+		});
 	},
 });

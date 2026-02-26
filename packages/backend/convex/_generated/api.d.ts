@@ -15,6 +15,7 @@ import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
 import type * as lib_nango from "../lib/nango.js";
+import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
 import type * as repositories from "../repositories.js";
 import type * as sandboxActions from "../sandboxActions.js";
@@ -35,6 +36,7 @@ declare const fullApi: ApiFromModules<{
   healthCheck: typeof healthCheck;
   http: typeof http;
   "lib/nango": typeof lib_nango;
+  "lib/sandbox": typeof lib_sandbox;
   nangoWebhook: typeof nangoWebhook;
   repositories: typeof repositories;
   sandboxActions: typeof sandboxActions;

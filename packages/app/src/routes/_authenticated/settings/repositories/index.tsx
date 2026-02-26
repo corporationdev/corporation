@@ -2,7 +2,7 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Hammer, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useLatestShas } from "@/hooks/use-latest-shas";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
@@ -113,6 +118,13 @@ function RepositoryCard({
 			},
 		});
 
+	const { mutate: fullBuild, isPending: isFullBuilding } =
+		useConvexTanstackMutation(api.environments.fullBuildSnapshot, {
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		});
+
 	const { mutate: setInterval } = useConvexTanstackMutation(
 		api.environments.updateRebuildInterval,
 		{
@@ -142,21 +154,52 @@ function RepositoryCard({
 				<CardAction>
 					<div className="flex items-center gap-1">
 						{repository.defaultEnvironment ? (
-							<Button
-								disabled={
-									isRebuilding ||
-									repository.defaultEnvironment.snapshotStatus === "building"
-								}
-								onClick={() => {
-									if (repository.defaultEnvironment) {
-										rebuild({ id: repository.defaultEnvironment._id });
-									}
-								}}
-								size="icon-sm"
-								variant="ghost"
-							>
-								<RefreshCw className="size-4" />
-							</Button>
+							<>
+								<Tooltip>
+									<Button
+										disabled={
+											isRebuilding ||
+											repository.defaultEnvironment.snapshotStatus ===
+												"building"
+										}
+										onClick={() => {
+											if (repository.defaultEnvironment) {
+												rebuild({
+													id: repository.defaultEnvironment._id,
+												});
+											}
+										}}
+										render={<TooltipTrigger />}
+										size="icon-sm"
+										variant="ghost"
+									>
+										<RefreshCw className="size-4" />
+									</Button>
+									<TooltipContent>Rebuild snapshot</TooltipContent>
+								</Tooltip>
+								<Tooltip>
+									<Button
+										disabled={
+											isFullBuilding ||
+											repository.defaultEnvironment.snapshotStatus ===
+												"building"
+										}
+										onClick={() => {
+											if (repository.defaultEnvironment) {
+												fullBuild({
+													id: repository.defaultEnvironment._id,
+												});
+											}
+										}}
+										render={<TooltipTrigger />}
+										size="icon-sm"
+										variant="ghost"
+									>
+										<Hammer className="size-4" />
+									</Button>
+									<TooltipContent>Build snapshot</TooltipContent>
+								</Tooltip>
+							</>
 						) : null}
 						<Link
 							params={{ repositoryId: repository._id }}
