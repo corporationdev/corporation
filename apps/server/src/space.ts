@@ -34,10 +34,10 @@ const driverActions = collectDriverActions(lifecycleDrivers);
 export const space = actor({
 	createState: (
 		c,
-		input?: {
-			sandboxUrl?: string;
-			sandboxId?: string;
-			workdir?: string;
+		input: {
+			sandboxUrl: string;
+			sandboxId: string;
+			workdir: string;
 		}
 	): PersistedState => {
 		const spaceSlug = c.key[0];
@@ -46,9 +46,9 @@ export const space = actor({
 		}
 
 		return {
-			sandboxUrl: input?.sandboxUrl ?? null,
-			sandboxId: input?.sandboxId ?? null,
-			workdir: input?.workdir ?? null,
+			sandboxUrl: input.sandboxUrl,
+			sandboxId: input.sandboxId,
+			workdir: input.workdir,
 			_sandboxAgentPersist: { sessions: {}, events: {} },
 		};
 	},
@@ -64,12 +64,6 @@ export const space = actor({
 
 		await migrate(db, bundledMigrations);
 
-		if (!c.state.sandboxUrl) {
-			throw new Error("Actor requires a sandboxUrl to initialize");
-		}
-		if (!c.state.sandboxId) {
-			throw new Error("Actor requires a sandboxId to initialize");
-		}
 		if (!env.E2B_API_KEY) {
 			throw new Error("Missing E2B_API_KEY env var");
 		}

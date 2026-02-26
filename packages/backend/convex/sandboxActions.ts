@@ -204,11 +204,12 @@ async function provisionSandbox(
 		status: "creating" as const,
 	});
 
-	const sandbox = await Sandbox.create(snapshotId, {
+	const sandbox = await Sandbox.betaCreate(snapshotId, {
 		apiKey: e2bApiKey,
 		envs: sandboxEnvs,
 		allowInternetAccess: true,
 		network: { allowPublicTraffic: true },
+		autoPause: true,
 	});
 
 	await bootSandboxAgent(sandbox);

@@ -168,6 +168,7 @@ function ConnectedSessionRuntime({
 		actor,
 	});
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: initMutation.isSuccess is intentionally included to re-trigger this effect when the mutation completes, since it sets pendingTextRef (a ref that doesn't cause re-renders on its own).
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
@@ -187,7 +188,13 @@ function ConnectedSessionRuntime({
 		conn.sendMessage(sessionId, text).catch((error: unknown) => {
 			console.error("Failed to send pending message", error);
 		});
-	}, [actor.connStatus, actor.connection, sessionId, space?.sandboxUrl]);
+	}, [
+		actor.connStatus,
+		actor.connection,
+		sessionId,
+		space?.sandboxUrl,
+		initMutation.isSuccess,
+	]);
 
 	const runtime = useExternalStoreRuntime({
 		isRunning: sessionState.isRunning,

@@ -4,9 +4,9 @@ import { useStartSandbox } from "@/hooks/use-start-sandbox";
 
 const statusLabelByValue: Record<string, string> = {
 	creating: "Creating",
-	starting: "Starting",
-	started: "Running",
-	stopped: "Stopped",
+	running: "Running",
+	paused: "Paused",
+	killed: "Killed",
 	error: "Error",
 };
 

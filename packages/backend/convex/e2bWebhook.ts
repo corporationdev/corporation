@@ -19,15 +19,14 @@ const e2bWebhookPayloadSchema = z.object({
 	version: z.string(),
 	id: z.string(),
 	type: e2bEventType,
-	eventData: z.object({
-		sandbox_metadata: z.record(z.string(), z.string()).optional(),
-	}),
-	sandboxBuildId: z.string(),
-	sandboxExecutionId: z.string(),
-	sandboxId: z.string(),
-	sandboxTeamId: z.string(),
-	sandboxTemplateId: z.string(),
 	timestamp: z.string(),
+	event_category: z.string(),
+	event_label: z.string(),
+	sandbox_id: z.string(),
+	sandbox_execution_id: z.string(),
+	sandbox_build_id: z.string(),
+	sandbox_team_id: z.string(),
+	sandbox_template_id: z.string(),
 });
 
 const TRAILING_EQUALS = /=+$/;
@@ -87,7 +86,7 @@ export const handleWebhook = internalAction({
 		}
 
 		const space = await ctx.runQuery(internal.spaces.getBySandboxId, {
-			sandboxId: parsed.data.sandboxId,
+			sandboxId: parsed.data.sandbox_id,
 		});
 
 		if (!space) {

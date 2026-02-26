@@ -39,9 +39,9 @@ type SpaceSidebarProps = {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
 	creating: { label: "Creating", className: "bg-yellow-500" },
-	starting: { label: "Starting", className: "bg-yellow-500" },
-	started: { label: "Running", className: "bg-green-500" },
-	stopped: { label: "Stopped", className: "bg-muted-foreground" },
+	running: { label: "Running", className: "bg-green-500" },
+	paused: { label: "Paused", className: "bg-muted-foreground" },
+	killed: { label: "Killed", className: "bg-destructive" },
 	error: { label: "Error", className: "bg-destructive" },
 };
 
