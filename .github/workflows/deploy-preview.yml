@@ -61,6 +61,7 @@ jobs:
         run: |
           CONVEX_DEV_DEPLOY_KEY=$(op read "op://corporation-dev/Convex/deploy-key")
           CONVEX_DEPLOY_KEY="$CONVEX_DEV_DEPLOY_KEY" npx convex export --path /tmp/seed.zip
+          zip -d /tmp/seed.zip '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'
           npx convex import /tmp/seed.zip \
             --preview-name "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" \
             --replace --yes
