@@ -18,7 +18,7 @@ if [ "$MODE" = "--sandbox" ]; then
   (
     set -a; source packages/backend/.env; set +a
     SEED_ZIP="/tmp/convex-seed-$$.zip"
-    npx convex export --path "$SEED_ZIP" --deployment-name dev:hip-impala-208 \
+    npx convex export --path "$SEED_ZIP" \
       && cd packages/backend \
       && npx convex dev --local --once --run-sh "npx convex import $SEED_ZIP --replace --yes"
     rm -f "$SEED_ZIP"
