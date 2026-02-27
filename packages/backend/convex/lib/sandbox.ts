@@ -5,8 +5,19 @@ const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
 const NEEDS_QUOTING_RE = /[\s"'#]/;
 const LOCALHOST_PORT_RE = /http:\/\/localhost:(\d+)/g;
 const TRAILING_SLASH_RE = /\/$/;
+const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 
 type EnvVar = { key: string; value: string };
+type CommandExitErrorLike = {
+	exitCode: number;
+	stderr: string;
+	stdout: string;
+};
+type RunRootCommandOptions = {
+	cwd?: string;
+	timeoutMs?: number;
+	envs?: Record<string, string>;
+};
 
 export type SandboxEnv = {
 	repository: {
@@ -66,6 +77,54 @@ function envMapToPairs(envMap: Record<string, string>): EnvVar[] {
 		.map(([key, value]) => ({ key, value }));
 }
 
+function truncateOutput(
+	output: string,
+	maxLength = COMMAND_OUTPUT_MAX_LENGTH
+): string {
+	if (output.length <= maxLength) {
+		return output;
+	}
+	return `${output.slice(0, maxLength)}...`;
+}
+
+function isCommandExitError(error: unknown): error is CommandExitErrorLike {
+	if (!error || typeof error !== "object") {
+		return false;
+	}
+	const candidate = error as Record<string, unknown>;
+	return (
+		typeof candidate.exitCode === "number" &&
+		typeof candidate.stderr === "string" &&
+		typeof candidate.stdout === "string"
+	);
+}
+
+export async function runRootCommand(
+	sandbox: Sandbox,
+	command: string,
+	options: RunRootCommandOptions = {}
+) {
+	try {
+		return await sandbox.commands.run(command, {
+			...options,
+			user: "root",
+		});
+	} catch (error) {
+		if (isCommandExitError(error)) {
+			const cwdMessage = options.cwd ? ` (cwd: ${options.cwd})` : "";
+			throw new Error(
+				[
+					`Sandbox command failed${cwdMessage}: ${command}`,
+					`Exit code: ${error.exitCode}`,
+					`stderr: ${truncateOutput(error.stderr)}`,
+					`stdout: ${truncateOutput(error.stdout)}`,
+				].join("\n")
+			);
+		}
+		throw error;
+	}
+}
+
 async function writeEnvFiles(
 	sandbox: Sandbox,
 	env: SandboxEnv,
@@ -116,28 +175,28 @@ export async function setupSandbox(
 	const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
 
 	if (mode === "clone") {
-		await sandbox.commands.run(
+		await runRootCommand(
+			sandbox,
 			`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
-			{ user: "root", timeoutMs: REPO_SYNC_TIMEOUT_MS }
+			{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
 		);
 	} else {
-		await sandbox.commands.run(
+		await runRootCommand(
+			sandbox,
 			`git remote set-url origin ${safeRepoUrl} && git pull origin ${safeDefaultBranch}`,
-			{ cwd: workdir, user: "root", timeoutMs: REPO_SYNC_TIMEOUT_MS }
+			{ cwd: workdir, timeoutMs: REPO_SYNC_TIMEOUT_MS }
 		);
 	}
 
 	await writeEnvFiles(sandbox, env, workdir);
 
-	await sandbox.commands.run(env.setupCommand, {
+	await runRootCommand(sandbox, env.setupCommand, {
 		cwd: workdir,
-		user: "root",
 		timeoutMs: REPO_SYNC_TIMEOUT_MS,
 	});
 
-	const shaResult = await sandbox.commands.run("git rev-parse HEAD", {
+	const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
 		cwd: workdir,
-		user: "root",
 	});
 	return shaResult.stdout.trim() || undefined;
 }
@@ -164,24 +223,24 @@ export async function pushBranch(
 	const safeAuthorEmail = quoteShellArg(author.email);
 	const safeCompareRange = quoteShellArg(`${repository.defaultBranch}..HEAD`);
 
-	await sandbox.commands.run(`git remote set-url origin ${safeRepoUrl}`, {
+	await runRootCommand(sandbox, `git remote set-url origin ${safeRepoUrl}`, {
 		cwd: workdir,
-		user: "root",
 	});
 
-	await sandbox.commands.run("git add -A", {
+	await runRootCommand(sandbox, "git add -A", {
 		cwd: workdir,
-		user: "root",
 	});
 
-	await sandbox.commands.run(
+	await runRootCommand(
+		sandbox,
 		`git diff --cached --quiet || git -c user.name=${safeAuthorName} -c user.email=${safeAuthorEmail} commit -m 'Update from Corporation'`,
-		{ cwd: workdir, user: "root" }
+		{ cwd: workdir }
 	);
 
-	const diffResult = await sandbox.commands.run(
+	const diffResult = await runRootCommand(
+		sandbox,
 		`git log ${safeCompareRange} --oneline`,
-		{ cwd: workdir, user: "root" }
+		{ cwd: workdir }
 	);
 	const hasCommits = diffResult.stdout.trim().length > 0;
 
@@ -189,9 +248,8 @@ export async function pushBranch(
 		return false;
 	}
 
-	await sandbox.commands.run(`git push origin ${safeBranchName}`, {
+	await runRootCommand(sandbox, `git push origin ${safeBranchName}`, {
 		cwd: workdir,
-		user: "root",
 		timeoutMs: REPO_SYNC_TIMEOUT_MS,
 	});
 
