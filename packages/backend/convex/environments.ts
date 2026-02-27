@@ -125,6 +125,7 @@ export const internalUpdate = internalMutation({
 		id: v.id("environments"),
 		snapshotId: v.optional(v.string()),
 		snapshotStatus: v.optional(snapshotStatusValidator),
+		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...fields } = args;
@@ -189,6 +190,7 @@ async function transitionToBuilding(
 	await ctx.db.patch(environment._id, {
 		scheduledRebuildId: undefined,
 		snapshotStatus: "building",
+		error: undefined,
 		updatedAt: Date.now(),
 	});
 }
@@ -294,6 +296,7 @@ export const completeSnapshotBuild = internalMutation({
 			snapshotId: args.snapshotId,
 			snapshotCommitSha: args.snapshotCommitSha,
 			snapshotStatus: "ready",
+			error: undefined,
 			lastSnapshotBuildAt: now,
 			updatedAt: now,
 		});
