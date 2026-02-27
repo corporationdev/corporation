@@ -93,7 +93,7 @@
     "setup": "bash scripts/setup.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.13",
+    "@biomejs/biome": "2.4.4",
     "@corporation/config": "workspace:*",
     "dotenv": "catalog:",
     "e2b": "catalog:",
