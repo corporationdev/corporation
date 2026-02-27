@@ -48,7 +48,8 @@ jobs:
 
       - name: Deploy Convex preview
         run: |
-          npx convex deploy --preview-create "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}"
+          npx convex deploy --preview-create "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" \
+            --cmd 'echo "CONVEX_URL=$CONVEX_URL" >> "$GITHUB_ENV" && echo "CONVEX_SITE_URL=${CONVEX_URL/.cloud/.site}" >> "$GITHUB_ENV"'
         working-directory: packages/backend
 
       - name: Sync Convex environment variables
