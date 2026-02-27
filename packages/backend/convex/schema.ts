@@ -29,6 +29,7 @@ export default defineSchema(
 			snapshotId: v.optional(v.string()),
 			snapshotCommitSha: v.optional(v.string()),
 			snapshotStatus: snapshotStatusValidator,
+			error: v.optional(v.string()),
 			rebuildIntervalMs: v.optional(v.number()),
 			scheduledRebuildId: v.optional(v.id("_scheduled_functions")),
 			lastSnapshotBuildAt: v.optional(v.number()),

@@ -2,44 +2,26 @@
 
 import { Nango } from "@nangohq/node";
 import { v } from "convex/values";
-import { CommandExitError, Sandbox } from "e2b";
+import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
-import { setupSandbox } from "./lib/sandbox";
+import { runRootCommand, setupSandbox } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
+const ENVIRONMENT_ERROR_MAX_LENGTH = 2000;
 
-function truncateOutput(output: string, maxLength = 2000): string {
-	if (output.length <= maxLength) {
-		return output;
+function formatEnvironmentError(error: unknown): string {
+	const message =
+		error instanceof Error
+			? error.message
+			: typeof error === "string"
+				? error
+				: "Unknown snapshot build error";
+	if (message.length <= ENVIRONMENT_ERROR_MAX_LENGTH) {
+		return message;
 	}
-	return `${output.slice(0, maxLength)}...`;
-}
-
-async function runRootCommand(
-	sandbox: Sandbox,
-	command: string,
-	envs?: Record<string, string>
-): Promise<void> {
-	try {
-		await sandbox.commands.run(command, {
-			user: "root",
-			envs,
-		});
-	} catch (error) {
-		if (error instanceof CommandExitError) {
-			throw new Error(
-				[
-					`Snapshot bootstrap command failed: ${command}`,
-					`Exit code: ${error.exitCode}`,
-					`stderr: ${truncateOutput(error.stderr)}`,
-					`stdout: ${truncateOutput(error.stdout)}`,
-				].join("\n")
-			);
-		}
-		throw error;
-	}
+	return `${message.slice(0, ENVIRONMENT_ERROR_MAX_LENGTH)}...`;
 }
 
 export const buildSnapshot = internalAction({
@@ -81,7 +63,7 @@ export const buildSnapshot = internalAction({
 			await runRootCommand(
 				buildSandbox,
 				"sandbox-agent install-agent opencode --reinstall",
-				{ ANTHROPIC_API_KEY: anthropicApiKey }
+				{ envs: { ANTHROPIC_API_KEY: anthropicApiKey } }
 			);
 
 			const snapshot = await buildSandbox.createSnapshot();
@@ -95,6 +77,7 @@ export const buildSnapshot = internalAction({
 			await ctx.runMutation(internal.environments.internalUpdate, {
 				id: args.environmentId,
 				snapshotStatus: "error",
+				error: formatEnvironmentError(error),
 			});
 
 			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
@@ -148,6 +131,7 @@ export const rebuildSnapshot = internalAction({
 			await ctx.runMutation(internal.environments.internalUpdate, {
 				id: args.environmentId,
 				snapshotStatus: "error",
+				error: formatEnvironmentError(error),
 			});
 
 			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
@@ -180,6 +164,7 @@ export const overrideSnapshot = internalAction({
 			await ctx.runMutation(internal.environments.internalUpdate, {
 				id: args.environmentId,
 				snapshotStatus: "error",
+				error: formatEnvironmentError(error),
 			});
 
 			await ctx.runMutation(internal.environments.scheduleNextRebuild, {

@@ -98,6 +98,7 @@ function RepositoryCard({
 		defaultEnvironment: {
 			_id: Id<"environments">;
 			snapshotStatus: "building" | "ready" | "error";
+			error?: string;
 			rebuildIntervalMs?: number;
 		} | null;
 	};
@@ -251,6 +252,12 @@ function RepositoryCard({
 							hours (0 to disable)
 						</span>
 					</div>
+					{repository.defaultEnvironment.snapshotStatus === "error" &&
+						repository.defaultEnvironment.error && (
+							<p className="mt-2 whitespace-pre-wrap break-words text-destructive text-xs">
+								{repository.defaultEnvironment.error}
+							</p>
+						)}
 				</CardContent>
 			)}
 		</Card>
