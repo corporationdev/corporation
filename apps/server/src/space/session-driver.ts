@@ -95,6 +95,9 @@ async function sendMessage(
 	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
 		id: sessionId,
 		agent: DEFAULT_AGENT,
+		sessionInit: {
+			cwd: ctx.state.workdir,
+		},
 	});
 	ensureEventListener(ctx, session);
 
