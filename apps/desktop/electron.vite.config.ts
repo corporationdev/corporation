@@ -4,7 +4,10 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 
-const appPackageSrc = path.resolve(__dirname, "../../packages/app/src");
+const appPackageSrc = path.resolve(
+	import.meta.dirname,
+	"../../packages/app/src"
+);
 
 export default defineConfig({
 	main: {
