@@ -121,10 +121,9 @@ for (const examplePath of envExamples) {
 	});
 
 	const renderedBody = renderedLines.join("\n");
+	const stageBlock = `# Stage\nSTAGE=${stage}`;
 	const rendered =
-		renderedBody.length > 0
-			? `STAGE=${stage}\n${renderedBody}`
-			: `STAGE=${stage}`;
+		renderedBody.length > 0 ? `${stageBlock}\n\n${renderedBody}` : stageBlock;
 	writeFileSync(outputPath, `${rendered}\n`, "utf8");
 	outputPaths.push(outputPath);
 }
