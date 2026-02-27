@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolveRuntimeContext } from "@corporation/config/runtime";
+import { getStageKind } from "@corporation/config/stage";
 import { parse as parseDotEnv } from "dotenv";
 
 const envFilePath = resolve(import.meta.dirname, ".env");
@@ -25,6 +26,16 @@ if (!stage) {
 	);
 }
 const runtime = resolveRuntimeContext(stage);
+const stageKind = getStageKind(stage);
+
+// Build deployment target flags for the Convex CLI.
+// Preview deployments require --preview-name, production requires --prod.
+const deploymentFlags: string[] = [];
+if (stageKind === "preview") {
+	deploymentFlags.push("--preview-name", stage);
+} else if (stageKind === "production") {
+	deploymentFlags.push("--prod");
+}
 
 const mergedEnv = {
 	...secretsEnv,
@@ -38,10 +49,14 @@ for (const [key, value] of Object.entries(mergedEnv)) {
 	}
 
 	console.log(`Setting ${key}`);
-	const result = spawnSync("bunx", ["convex", "env", "set", key, value], {
-		cwd: import.meta.dirname,
-		stdio: "inherit",
-	});
+	const result = spawnSync(
+		"bunx",
+		["convex", "env", "set", ...deploymentFlags, key, value],
+		{
+			cwd: import.meta.dirname,
+			stdio: "inherit",
+		}
+	);
 	if (result.status !== 0) {
 		console.error(`Failed to set ${key}. Continuing.`);
 	}
