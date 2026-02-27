@@ -1,4 +1,4 @@
-import { CommandExitError, type Sandbox } from "e2b";
+import type { Sandbox } from "e2b";
 import { normalizeBranchName, quoteShellArg } from "./git";
 
 const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
@@ -8,6 +8,11 @@ const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 
 type EnvVar = { key: string; value: string };
+type CommandExitErrorLike = {
+	exitCode: number;
+	stderr: string;
+	stdout: string;
+};
 type RunRootCommandOptions = {
 	cwd?: string;
 	timeoutMs?: number;
@@ -82,6 +87,18 @@ function truncateOutput(
 	return `${output.slice(0, maxLength)}...`;
 }
 
+function isCommandExitError(error: unknown): error is CommandExitErrorLike {
+	if (!error || typeof error !== "object") {
+		return false;
+	}
+	const candidate = error as Record<string, unknown>;
+	return (
+		typeof candidate.exitCode === "number" &&
+		typeof candidate.stderr === "string" &&
+		typeof candidate.stdout === "string"
+	);
+}
+
 export async function runRootCommand(
 	sandbox: Sandbox,
 	command: string,
@@ -93,7 +110,7 @@ export async function runRootCommand(
 			user: "root",
 		});
 	} catch (error) {
-		if (error instanceof CommandExitError) {
+		if (isCommandExitError(error)) {
 			const cwdMessage = options.cwd ? ` (cwd: ${options.cwd})` : "";
 			throw new Error(
 				[
