@@ -56,6 +56,19 @@ jobs:
         run: bun run sync-convex-env.ts
         working-directory: packages/backend
 
+      - name: Seed preview with dev data
+        continue-on-error: true
+        run: |
+          CONVEX_DEV_DEPLOY_KEY=$(op read "op://corporation-dev/Convex/deploy-key")
+          npx convex export --path /tmp/seed.zip --deploy-key "$CONVEX_DEV_DEPLOY_KEY"
+          npx convex import /tmp/seed.zip \
+            --preview-name "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" \
+            --replace --yes
+          rm -f /tmp/seed.zip
+        working-directory: packages/backend
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
       - name: Deploy Alchemy (Cloudflare Workers + Web)
         run: bun run --filter @corporation/infra deploy
 

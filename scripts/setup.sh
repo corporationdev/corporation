@@ -12,3 +12,15 @@ echo "Running setup (mode: $MODE)"
 
 bun install
 bun secrets:inject "$MODE"
+
+if [ "$MODE" = "--sandbox" ]; then
+  echo "Seeding local Convex from dev deployment..."
+  (
+    set -a; source packages/backend/.env; set +a
+    SEED_ZIP="/tmp/convex-seed-$$.zip"
+    npx convex export --path "$SEED_ZIP" --deployment-name dev:hip-impala-208 \
+      && cd packages/backend \
+      && npx convex dev --local --once --run-sh "npx convex import $SEED_ZIP --replace --yes"
+    rm -f "$SEED_ZIP"
+  ) || echo "[seed] Seed failed (non-fatal), continuing with empty database"
+fi
