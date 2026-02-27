@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "",
   "scripts": {
-    "dev": "STAGE_VALUE=${STAGE:-$(awk -F= '/^STAGE=/{print $2; exit}' .env 2>/dev/null)}; case \"$STAGE_VALUE\" in sandbox|sandbox-*) if [ \"$SYNC_ENV\" = '1' ]; then CONVEX_AGENT_MODE=anonymous convex dev --local --run-sh 'bun ./sync-convex-env.ts'; else CONVEX_AGENT_MODE=anonymous convex dev --local; fi ;; *) if [ \"$SYNC_ENV\" = '1' ]; then convex dev --run-sh 'bun ./sync-convex-env.ts'; else convex dev; fi ;; esac",
+    "dev": "STAGE_VALUE=${STAGE:-$(awk -F= '/^STAGE=/{print $2; exit}' .env 2>/dev/null)}; case \"$STAGE_VALUE\" in sandbox|sandbox-*) CONVEX_AGENT_MODE=anonymous convex dev --local ;; *) convex dev ;; esac",
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {

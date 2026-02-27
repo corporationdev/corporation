@@ -32,3 +32,15 @@ if [ "$MODE" = "--sandbox" ]; then
     ) || echo "[seed] Seed failed (non-fatal), continuing with empty database"
   fi
 fi
+
+# Sync environment variables to Convex deployment
+echo "Syncing environment variables to Convex..."
+(
+  set -a; source packages/backend/.env; set +a
+  cd packages/backend
+  if [ "$MODE" = "--sandbox" ]; then
+    CONVEX_AGENT_MODE=anonymous npx convex dev --local --once --run-sh 'bun ./sync-convex-env.ts'
+  else
+    npx convex dev --once --run-sh 'bun ./sync-convex-env.ts'
+  fi
+)
