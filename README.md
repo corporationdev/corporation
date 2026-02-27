@@ -1,5 +1,29 @@
 # corporation
 
+## Env Setup
+
+Inject environment files from 1Password:
+
+```bash
+bun secrets:inject
+```
+
+Stage-aware variants:
+
+```bash
+bun secrets:inject            # auto mode (sandbox env -> sandbox stage, else dev stage)
+bun secrets:inject --dev      # force dev stage: dev-<user>-<hash>
+bun secrets:inject --sandbox  # force sandbox stage: sandbox-<user>-<id/hash>
+```
+
+This command reads `.env.op`, discovers all `.env.example` files, and writes service `.env` files.
+
+Adding a new secret:
+
+1. Add it in `.env.op`.
+2. Add the key in the target service `.env.example`.
+3. Re-run `bun secrets:inject`.
+
 This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Router, Convex, and more.
 
 ## Features

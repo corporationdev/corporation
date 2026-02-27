@@ -1,0 +1,29 @@
+name: Clean Branch Name
+description: Sanitize a branch name into a valid stage suffix
+
+inputs:
+  branch:
+    description: "The branch name to clean"
+    required: true
+
+outputs:
+  clean_branch_name:
+    description: "The sanitized branch name"
+    value: ${{ steps.clean.outputs.clean_branch_name }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: clean
+      shell: bash
+      run: |
+        branch_name="${{ inputs.branch }}"
+
+        clean_branch_name=$(echo "$branch_name" | tr '[:upper:]' '[:lower:]')
+        clean_branch_name="${clean_branch_name//[^a-z0-9-]/-}"
+        clean_branch_name=$(echo "$clean_branch_name" | sed 's/-\{2,\}/-/g; s/^-//; s/-$//')
+        clean_branch_name="${clean_branch_name:0:16}"
+        clean_branch_name=$(echo "$clean_branch_name" | sed 's/-$//')
+
+        echo "clean_branch_name=${clean_branch_name}" >> $GITHUB_OUTPUT
+        echo "CLEAN_BRANCH_NAME=${clean_branch_name}" >> $GITHUB_ENV

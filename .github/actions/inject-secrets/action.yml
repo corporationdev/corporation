@@ -1,0 +1,32 @@
+name: Inject Secrets
+description: Resolve 1Password secrets and export to environment
+
+inputs:
+  op-service-account-token:
+    description: "1Password Service Account Token"
+    required: true
+  env-tier:
+    description: "Environment tier (dev, preview, prod)"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: 1password/install-cli-action@v1
+
+    - name: Inject secrets from 1Password
+      shell: bash
+      run: |
+        op inject -i .env.op -o .env.tmp
+        envsubst < .env.tmp > .env.resolved
+        rm .env.tmp
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.op-service-account-token }}
+        ENV_TIER: ${{ inputs.env-tier }}
+
+    - name: Export secrets to environment
+      shell: bash
+      run: |
+        bun i --no-save @actions/core dotenv
+        bun .github/actions/inject-secrets/export-secrets.js
+        rm .env.resolved
