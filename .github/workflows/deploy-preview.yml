@@ -65,6 +65,7 @@ jobs:
         working-directory: packages/backend
 
       - name: Restore preview data from previous deployment
+        id: restore-preview
         if: steps.export-preview.outcome == 'success'
         continue-on-error: true
         run: |
@@ -75,7 +76,7 @@ jobs:
         working-directory: packages/backend
 
       - name: Seed preview with dev data (first run)
-        if: steps.export-preview.outcome != 'success'
+        if: steps.export-preview.outcome != 'success' || steps.restore-preview.outcome != 'success'
         continue-on-error: true
         run: |
           CONVEX_DEV_DEPLOY_KEY=$(op read "op://corporation-dev/Convex/deploy-key")
