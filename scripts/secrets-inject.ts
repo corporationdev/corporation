@@ -9,6 +9,7 @@ const repoRoot = resolve(import.meta.dirname, "..");
 const templatePath = resolve(repoRoot, ".env.op");
 const envAssignmentRegex =
 	/^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)$/;
+const relativePathPrefixRegex = /^\.\//;
 const stageVariableRegex = /\$\{STAGE\}/g;
 const envTierVariableRegex = /\$\{ENV_TIER\}/g;
 const argv = process.argv.slice(2);
@@ -52,7 +53,7 @@ const secrets = parseDotEnv(injectOutput);
 rmSync(tempDirectory, { recursive: true, force: true });
 
 const findExamplesOutput =
-	await $`rg --files --hidden -g '**/.env.example' -g '!**/node_modules/**' -g '!**/.git/**'`
+	await $`find . -type f -name '.env.example' -not -path '*/node_modules/*' -not -path '*/.git/*'`
 		.cwd(repoRoot)
 		.quiet()
 		.text();
@@ -61,6 +62,7 @@ const envExamples = findExamplesOutput
 	.split("\n")
 	.map((line) => line.trim())
 	.filter((line) => line.length > 0)
+	.map((line) => line.replace(relativePathPrefixRegex, ""))
 	.map((line) => resolve(repoRoot, line))
 	.sort();
 
