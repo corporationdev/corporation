@@ -19,7 +19,7 @@ if [ "$MODE" = "--sandbox" ]; then
     set -a; source packages/backend/.env; set +a
     SEED_ZIP="/tmp/convex-seed-$$.zip"
     npx convex export --path "$SEED_ZIP" \
-      && zip -d "$SEED_ZIP" '_components/betterAuth/jwks/*' '_components/betterAuth/session/*' \
+      && (zip -d "$SEED_ZIP" '_components/betterAuth/jwks/*' '_components/betterAuth/session/*' || test $? -eq 12) \
       && cd packages/backend \
       && npx convex dev --local --once --run-sh "npx convex import $SEED_ZIP --replace --yes"
     rm -f "$SEED_ZIP"
