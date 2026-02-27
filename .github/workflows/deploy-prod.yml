@@ -1,0 +1,44 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+env:
+  STAGE: production
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+
+    environment: Production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
+        with:
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          env-tier: prod
+
+      - name: Deploy Convex production
+        run: npx convex deploy
+        working-directory: packages/backend
+
+      - name: Sync Convex environment variables
+        run: bun run sync-convex-env.ts
+        working-directory: packages/backend
+
+      - name: Deploy Alchemy (Cloudflare Workers + Web)
+        run: bun run --filter @corporation/infra deploy

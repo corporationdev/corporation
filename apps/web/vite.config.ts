@@ -17,9 +17,6 @@ export default defineConfig(({ mode }) => {
 	}
 	const runtime = resolveRuntimeContext(stage);
 	const { webClientEnv, webDevProxyEnv } = runtime;
-	const serverProxyTarget = webDevProxyEnv.DEV_SERVER_PROXY_TARGET;
-	const convexProxyTarget = webDevProxyEnv.DEV_CONVEX_PROXY_TARGET;
-	const convexSiteProxyTarget = webDevProxyEnv.DEV_CONVEX_SITE_PROXY_TARGET;
 
 	Object.assign(process.env, webClientEnv);
 
@@ -41,24 +38,28 @@ export default defineConfig(({ mode }) => {
 			host: "0.0.0.0",
 			port: 3001,
 			allowedHosts: true,
-			proxy: {
-				"/api": {
-					target: serverProxyTarget,
-					changeOrigin: true,
-					ws: true,
-				},
-				"/convex/api/auth": {
-					target: convexSiteProxyTarget,
-					changeOrigin: true,
-					rewrite: (pathname: string) => pathname.replace("/convex", "") || "/",
-				},
-				"/convex": {
-					target: convexProxyTarget,
-					changeOrigin: true,
-					ws: true,
-					rewrite: (pathname: string) => pathname.replace("/convex", "") || "/",
-				},
-			},
+			proxy: webDevProxyEnv
+				? {
+						"/api": {
+							target: webDevProxyEnv.DEV_SERVER_PROXY_TARGET,
+							changeOrigin: true,
+							ws: true,
+						},
+						"/convex/api/auth": {
+							target: webDevProxyEnv.DEV_CONVEX_SITE_PROXY_TARGET,
+							changeOrigin: true,
+							rewrite: (pathname: string) =>
+								pathname.replace("/convex", "") || "/",
+						},
+						"/convex": {
+							target: webDevProxyEnv.DEV_CONVEX_PROXY_TARGET,
+							changeOrigin: true,
+							ws: true,
+							rewrite: (pathname: string) =>
+								pathname.replace("/convex", "") || "/",
+						},
+					}
+				: undefined,
 		},
 	};
 });

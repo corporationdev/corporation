@@ -5,13 +5,9 @@ import { resolveRuntimeContext } from "@corporation/config/runtime";
 import { parse as parseDotEnv } from "dotenv";
 
 const envFilePath = resolve(import.meta.dirname, ".env");
-if (!existsSync(envFilePath)) {
-	throw new Error(
-		"Missing packages/backend/.env. Run `bun secrets:inject` first."
-	);
-}
-
-const fileEnv = parseDotEnv(readFileSync(envFilePath, "utf8"));
+const fileEnv = existsSync(envFilePath)
+	? parseDotEnv(readFileSync(envFilePath, "utf8"))
+	: {};
 const stage = (fileEnv.STAGE ?? process.env.STAGE)?.trim();
 if (!stage) {
 	throw new Error(

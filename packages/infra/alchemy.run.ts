@@ -1,4 +1,5 @@
 import { resolveRuntimeContext } from "@corporation/config/runtime";
+import { getStageKind } from "@corporation/config/stage";
 import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
@@ -6,19 +7,27 @@ import {
 	Vite,
 	Worker,
 } from "alchemy/cloudflare";
+import { CloudflareStateStore } from "alchemy/state";
 import { config } from "dotenv";
 
-config({ path: "../../apps/server/.env" });
-config({ path: "../../apps/web/.env" });
+// In local dev, load from .env files. In CI, env vars are already set.
+config({ path: "../../apps/server/.env", override: false });
+config({ path: "../../apps/web/.env", override: false });
 const stage = process.env.STAGE?.trim();
 if (!stage) {
 	throw new Error(
 		"Missing STAGE for infra runtime. Run `bun secrets:inject` first."
 	);
 }
+const stageKind = getStageKind(stage);
 const runtime = resolveRuntimeContext(stage);
 
-const app = await alchemy("corporation", { stage });
+const app = await alchemy("corporation", {
+	stage,
+	stateStore: process.env.CI
+		? (scope) => new CloudflareStateStore(scope)
+		: undefined,
+});
 
 const actorDO = DurableObjectNamespace("actor-do", {
 	className: "ActorHandler",
@@ -46,11 +55,30 @@ export const server = await Worker("agent-server", {
 
 console.log(`Agent server -> ${server.url}`);
 
+// Resolve custom domain for deployed stages
+function getWebDomain(): string | undefined {
+	if (stageKind === "production") {
+		return "app.corporation.dev";
+	}
+	if (stageKind === "preview") {
+		return `${stage}.corporation.dev`;
+	}
+	return undefined;
+}
+
+const webDomain = getWebDomain();
+
 export const web = await Vite("web", {
 	cwd: "../../apps/web",
-	assets: "dist",
+	entrypoint: "worker/index.ts",
+	assets: {
+		directory: "dist",
+		run_worker_first: ["/api/*"],
+	},
+	domains: webDomain ? [webDomain] : undefined,
 	bindings: {
 		...runtime.webClientEnv,
+		API: server,
 	},
 });
 

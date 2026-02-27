@@ -1,0 +1,140 @@
+name: Deploy Preview
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+concurrency:
+  group: preview-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+
+    if: ${{ github.event.pull_request.head.ref != 'main' }}
+
+    environment: Preview
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Clean branch name
+        id: clean-branch-name
+        uses: ./.github/actions/clean-branch-name
+        with:
+          branch: ${{ github.event.pull_request.head.ref }}
+
+      - name: Set stage
+        run: |
+          echo "STAGE=preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" >> $GITHUB_ENV
+
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
+        with:
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          env-tier: preview
+
+      - name: Deploy Convex preview
+        run: |
+          npx convex deploy --preview-create "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}"
+        working-directory: packages/backend
+
+      - name: Sync Convex environment variables
+        run: bun run sync-convex-env.ts
+        working-directory: packages/backend
+
+      - name: Deploy Alchemy (Cloudflare Workers + Web)
+        run: bun run --filter @corporation/infra deploy
+
+      - name: Comment PR - Success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const webUrl = 'https://${{ env.STAGE }}.corporation.dev';
+            const commentBody = [
+              '## Preview Deployment',
+              '',
+              `**URL:** ${webUrl}`,
+              '',
+              `_Updated: ${new Date().toUTCString()}_`
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Preview Deployment')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody,
+              });
+            }
+
+      - name: Comment PR - Failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commentBody = [
+              '## Preview Deployment Failed',
+              '',
+              `[View logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`,
+              '',
+              `_Updated: ${new Date().toUTCString()}_`
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Preview Deployment')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody,
+              });
+            }
