@@ -1,3 +1,4 @@
+import { resolveRuntimeContext } from "@corporation/config/runtime";
 import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
@@ -9,8 +10,15 @@ import { config } from "dotenv";
 
 config({ path: "../../apps/server/.env" });
 config({ path: "../../apps/web/.env" });
+const stage = process.env.STAGE?.trim();
+if (!stage) {
+	throw new Error(
+		"Missing STAGE for infra runtime. Run `bun secrets:inject` first."
+	);
+}
+const runtime = resolveRuntimeContext(stage);
 
-const app = await alchemy("corporation");
+const app = await alchemy("corporation", { stage });
 
 const actorDO = DurableObjectNamespace("actor-do", {
 	className: "ActorHandler",
@@ -27,8 +35,7 @@ export const server = await Worker("agent-server", {
 		E2B_API_KEY: alchemy.secret(process.env.E2B_API_KEY),
 		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
-		CONVEX_SITE_URL: alchemy.env("CONVEX_SITE_URL"),
-		CONVEX_URL: alchemy.env("CONVEX_URL"),
+		...runtime.serverBindings,
 		ACTOR_DO: actorDO,
 		ACTOR_KV: actorKV,
 	},
@@ -43,7 +50,7 @@ export const web = await Vite("web", {
 	cwd: "../../apps/web",
 	assets: "dist",
 	bindings: {
-		VITE_SERVER_URL: alchemy.env.VITE_SERVER_URL ?? "",
+		...runtime.webClientEnv,
 	},
 });
 
