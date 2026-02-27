@@ -6,7 +6,7 @@
     "dev": "rm -rf .alchemy/pids && alchemy dev",
     "check-types": "tsc --noEmit",
     "deploy": "alchemy deploy",
-    "destroy": "alchemy destroy"
+    "destroy": "ALLOW_MISSING_PREVIEW_CONVEX=1 alchemy destroy"
   },
   "dependencies": {
     "dotenv": "catalog:"
