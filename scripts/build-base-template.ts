@@ -23,7 +23,7 @@ const template = Template()
 	.setUser("root")
 	.aptInstall(["ca-certificates", "git", "unzip", "zsh", "curl"])
 	.runCmd(
-		"set -euo pipefail; OP_VERSION=2.31.0; ARCH=$(dpkg --print-architecture); case \"$ARCH\" in amd64) OP_ARCH=amd64 ;; arm64) OP_ARCH=arm64 ;; *) echo \"Unsupported architecture: $ARCH\" >&2; exit 1 ;; esac; curl -fsSL \"https://cache.agilebits.com/dist/1P/op2/pkg/v${OP_VERSION}/op_linux_${OP_ARCH}_v${OP_VERSION}.zip\" -o /tmp/op.zip; unzip -q /tmp/op.zip -d /tmp; install -m 0755 /tmp/op /usr/local/bin/op; rm -f /tmp/op /tmp/op.zip; op --version"
+		'set -euo pipefail; OP_VERSION=2.31.0; ARCH=$(dpkg --print-architecture); case "$ARCH" in amd64) OP_ARCH=amd64 ;; arm64) OP_ARCH=arm64 ;; *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; esac; curl -fsSL "https://cache.agilebits.com/dist/1P/op2/pkg/v$OP_VERSION/op_linux_$OP_ARCH_v$OP_VERSION.zip" -o /tmp/op.zip; unzip -q /tmp/op.zip -d /tmp; install -m 0755 /tmp/op /usr/local/bin/op; rm -f /tmp/op /tmp/op.zip; op --version'
 	)
 	.runCmd("npm install -g --force yarn pnpm")
 	.runCmd(
