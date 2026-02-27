@@ -89,11 +89,12 @@
     "fix": "ultracite fix",
     "fix:force": "ultracite fix --unsafe",
     "db:generate": "turbo db:generate",
-    "setup": "bash scripts/setup.sh"
+    "setup": "bun scripts/setup.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",
     "@corporation/config": "workspace:*",
+    "@types/bun": "^1.3.9",
     "dotenv": "catalog:",
     "e2b": "catalog:",
     "turbo": "catalog:",
