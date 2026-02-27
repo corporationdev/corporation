@@ -10,7 +10,7 @@
     "./space": "./src/space.ts"
   },
   "scripts": {
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc -b",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts"
   },
   "dependencies": {

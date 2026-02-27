@@ -1,4 +1,4 @@
-import { getStageKind } from "./stage.ts";
+import { getStageKind } from "@corporation/config/stage";
 
 export type RuntimeContext = {
 	webClientEnv: {
