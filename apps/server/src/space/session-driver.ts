@@ -97,6 +97,7 @@ async function sendMessage(
 		agent: DEFAULT_AGENT,
 		sessionInit: {
 			cwd: ctx.state.workdir,
+			mcpServers: [],
 		},
 	});
 	ensureEventListener(ctx, session);
