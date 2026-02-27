@@ -6,6 +6,7 @@ import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { generateBranchName } from "./lib/branchName";
+import { normalizeBranchName } from "./lib/git";
 import { spaceStatusValidator } from "./schema";
 
 async function requireOwnedSpace(
@@ -185,6 +186,7 @@ export const update = authedMutation({
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
 		sandboxUrl: v.optional(v.string()),
+		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const space = await ctx.db.get(args.id);
@@ -211,6 +213,9 @@ export const internalUpdate = internalMutation({
 		sandboxId: v.optional(v.string()),
 		sandboxUrl: v.optional(v.string()),
 		lastSyncedCommitSha: v.optional(v.string()),
+		prUrl: v.optional(v.string()),
+		error: v.optional(v.string()),
+		branchName: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...fields } = args;
@@ -383,28 +388,87 @@ export const updateBranchName = authedMutation({
 		await requireOwnedSpace(ctx, space);
 
 		const oldBranchName = space.branchName;
-		const newBranchName = args.branchName.trim();
-
-		if (!newBranchName) {
-			throw new ConvexError("Branch name cannot be empty");
+		let newBranchName: string;
+		try {
+			newBranchName = normalizeBranchName(args.branchName);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Invalid branch name";
+			throw new ConvexError(message);
 		}
 
 		if (oldBranchName === newBranchName) {
 			return;
 		}
 
-		await ctx.db.patch(args.id, {
-			branchName: newBranchName,
-			updatedAt: Date.now(),
-		});
-
 		if (space.sandboxId && space.status === "running") {
+			await ctx.db.patch(args.id, {
+				error: "",
+				updatedAt: Date.now(),
+			});
 			await ctx.scheduler.runAfter(0, internal.sandboxActions.renameBranch, {
 				spaceId: args.id,
 				oldBranchName,
 				newBranchName,
 			});
+			return;
 		}
+
+		await ctx.db.patch(args.id, {
+			branchName: newBranchName,
+			error: "",
+			updatedAt: Date.now(),
+		});
+	},
+});
+
+export const createPullRequest = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		if (space.status !== "running") {
+			throw new ConvexError("Space must be running to create a pull request");
+		}
+
+		if (space.prUrl) {
+			throw new ConvexError("Pull request already exists");
+		}
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.pushAndCreatePR, {
+			spaceId: args.id,
+		});
+	},
+});
+
+export const pushCode = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		if (space.status !== "running") {
+			throw new ConvexError("Space must be running to push code");
+		}
+
+		if (!space.prUrl) {
+			throw new ConvexError("No pull request exists yet");
+		}
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.pushCode, {
+			spaceId: args.id,
+		});
 	},
 });
 

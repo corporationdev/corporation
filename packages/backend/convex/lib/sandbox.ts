@@ -1,4 +1,5 @@
 import type { Sandbox } from "e2b";
+import { normalizeBranchName, quoteShellArg } from "./git";
 
 const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
 const NEEDS_QUOTING_RE = /[\s"'#]/;
@@ -110,15 +111,18 @@ export async function setupSandbox(
 	const { repository } = env;
 	const workdir = `/root/${repository.owner}-${repository.name}`;
 	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
+	const safeRepoUrl = quoteShellArg(repoUrl);
+	const safeWorkdir = quoteShellArg(workdir);
+	const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
 
 	if (mode === "clone") {
 		await sandbox.commands.run(
-			`git clone ${repoUrl} ${workdir} --branch ${repository.defaultBranch} --single-branch`,
+			`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
 			{ user: "root", timeoutMs: REPO_SYNC_TIMEOUT_MS }
 		);
 	} else {
 		await sandbox.commands.run(
-			`git remote set-url origin ${repoUrl} && git pull origin ${repository.defaultBranch}`,
+			`git remote set-url origin ${safeRepoUrl} && git pull origin ${safeDefaultBranch}`,
 			{ cwd: workdir, user: "root", timeoutMs: REPO_SYNC_TIMEOUT_MS }
 		);
 	}
@@ -136,4 +140,60 @@ export async function setupSandbox(
 		user: "root",
 	});
 	return shaResult.stdout.trim() || undefined;
+}
+
+/**
+ * Pushes the current branch to the remote. Stages and commits any
+ * uncommitted changes first (as the given author). Returns whether
+ * there were any commits to push (i.e. the branch diverged from
+ * the default branch).
+ */
+export async function pushBranch(
+	sandbox: Sandbox,
+	env: SandboxEnv,
+	githubToken: string,
+	branchName: string,
+	author: { name: string; email: string }
+): Promise<boolean> {
+	const { repository } = env;
+	const workdir = `/root/${repository.owner}-${repository.name}`;
+	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
+	const safeBranchName = quoteShellArg(normalizeBranchName(branchName));
+	const safeRepoUrl = quoteShellArg(repoUrl);
+	const safeAuthorName = quoteShellArg(author.name);
+	const safeAuthorEmail = quoteShellArg(author.email);
+	const safeCompareRange = quoteShellArg(`${repository.defaultBranch}..HEAD`);
+
+	await sandbox.commands.run(`git remote set-url origin ${safeRepoUrl}`, {
+		cwd: workdir,
+		user: "root",
+	});
+
+	await sandbox.commands.run("git add -A", {
+		cwd: workdir,
+		user: "root",
+	});
+
+	await sandbox.commands.run(
+		`git diff --cached --quiet || git -c user.name=${safeAuthorName} -c user.email=${safeAuthorEmail} commit -m 'Update from Corporation'`,
+		{ cwd: workdir, user: "root" }
+	);
+
+	const diffResult = await sandbox.commands.run(
+		`git log ${safeCompareRange} --oneline`,
+		{ cwd: workdir, user: "root" }
+	);
+	const hasCommits = diffResult.stdout.trim().length > 0;
+
+	if (!hasCommits) {
+		return false;
+	}
+
+	await sandbox.commands.run(`git push origin ${safeBranchName}`, {
+		cwd: workdir,
+		user: "root",
+		timeoutMs: REPO_SYNC_TIMEOUT_MS,
+	});
+
+	return true;
 }
