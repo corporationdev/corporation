@@ -14,6 +14,7 @@ import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as lib_branchName from "../lib/branchName.js";
 import type * as lib_envByPath from "../lib/envByPath.js";
 import type * as lib_nango from "../lib/nango.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  "lib/branchName": typeof lib_branchName;
   "lib/envByPath": typeof lib_envByPath;
   "lib/nango": typeof lib_nango;
   "lib/sandbox": typeof lib_sandbox;

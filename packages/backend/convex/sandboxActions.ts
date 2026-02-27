@@ -74,6 +74,22 @@ function getPreviewUrl(sandbox: Sandbox, port: number): string {
 	return `https://${sandbox.getHost(port)}`;
 }
 
+async function ensureBranchCheckedOut(
+	sandbox: Sandbox,
+	workdir: string,
+	branchName: string,
+	defaultBranch: string
+): Promise<void> {
+	if (branchName === defaultBranch) {
+		return;
+	}
+
+	await sandbox.commands.run(`git checkout -B ${branchName}`, {
+		cwd: workdir,
+		user: "root",
+	});
+}
+
 async function provisionSandbox(
 	ctx: ActionCtx,
 	spaceId: Id<"spaces">,
@@ -209,6 +225,16 @@ export const ensureSandbox = internalAction({
 
 			const { sandboxId, sandboxUrl } = await resolveSandbox(ctx, space);
 
+			const sandbox = await Sandbox.connect(sandboxId);
+			const { repository } = space.environment;
+			const workdir = `/root/${repository.owner}-${repository.name}`;
+			await ensureBranchCheckedOut(
+				sandbox,
+				workdir,
+				space.branchName,
+				repository.defaultBranch
+			);
+
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "running",
@@ -262,5 +288,31 @@ export const syncRepository = internalAction({
 				lastSyncedCommitSha,
 			});
 		}
+	},
+});
+
+export const renameBranch = internalAction({
+	args: {
+		spaceId: v.id("spaces"),
+		oldBranchName: v.string(),
+		newBranchName: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.runQuery(internal.spaces.internalGet, {
+			id: args.spaceId,
+		});
+
+		if (!space.sandboxId) {
+			throw new Error("Space has no sandbox");
+		}
+
+		const sandbox = await Sandbox.connect(space.sandboxId);
+		const { repository } = space.environment;
+		const workdir = `/root/${repository.owner}-${repository.name}`;
+
+		await sandbox.commands.run(
+			`git branch -m ${args.oldBranchName} ${args.newBranchName}`,
+			{ cwd: workdir, user: "root" }
+		);
 	},
 });

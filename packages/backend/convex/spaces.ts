@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { generateBranchName } from "./lib/branchName";
 import { spaceStatusValidator } from "./schema";
 
 async function requireOwnedSpace(
@@ -310,7 +311,7 @@ export const ensure = authedMutation({
 		const spaceId = await ctx.db.insert("spaces", {
 			slug,
 			environmentId: args.environmentId,
-			branchName: "main",
+			branchName: generateBranchName(),
 			status: "creating",
 			createdAt: now,
 			updatedAt: now,
@@ -366,6 +367,44 @@ export const syncCode = authedMutation({
 		await ctx.scheduler.runAfter(0, internal.sandboxActions.syncRepository, {
 			spaceId: args.id,
 		});
+	},
+});
+
+export const updateBranchName = authedMutation({
+	args: {
+		id: v.id("spaces"),
+		branchName: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		const oldBranchName = space.branchName;
+		const newBranchName = args.branchName.trim();
+
+		if (!newBranchName) {
+			throw new ConvexError("Branch name cannot be empty");
+		}
+
+		if (oldBranchName === newBranchName) {
+			return;
+		}
+
+		await ctx.db.patch(args.id, {
+			branchName: newBranchName,
+			updatedAt: Date.now(),
+		});
+
+		if (space.sandboxId && space.status === "running") {
+			await ctx.scheduler.runAfter(0, internal.sandboxActions.renameBranch, {
+				spaceId: args.id,
+				oldBranchName,
+				newBranchName,
+			});
+		}
 	},
 });
 
