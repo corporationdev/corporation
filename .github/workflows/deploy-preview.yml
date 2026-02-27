@@ -46,6 +46,14 @@ jobs:
           op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           env-tier: preview
 
+      - name: Export existing preview data
+        id: export-preview
+        continue-on-error: true
+        run: |
+          npx convex export --path /tmp/seed.zip \
+            --preview-name "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}"
+        working-directory: packages/backend
+
       - name: Deploy Convex preview
         run: |
           npx convex deploy --preview-create "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" \
@@ -56,7 +64,18 @@ jobs:
         run: bun run sync-convex-env.ts
         working-directory: packages/backend
 
-      - name: Seed preview with dev data
+      - name: Restore preview data from previous deployment
+        if: steps.export-preview.outcome == 'success'
+        continue-on-error: true
+        run: |
+          npx convex import /tmp/seed.zip \
+            --preview-name "preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" \
+            --replace --yes
+          rm -f /tmp/seed.zip
+        working-directory: packages/backend
+
+      - name: Seed preview with dev data (first run)
+        if: steps.export-preview.outcome != 'success'
         continue-on-error: true
         run: |
           CONVEX_DEV_DEPLOY_KEY=$(op read "op://corporation-dev/Convex/deploy-key")
