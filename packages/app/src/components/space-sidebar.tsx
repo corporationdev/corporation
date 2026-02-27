@@ -83,9 +83,10 @@ const SpaceSidebarContent: FC<{
 	const [previewPort, setPreviewPort] = useState("3001");
 
 	const updateMutation = useConvexTanstackMutation(api.spaces.update);
+	const { mutate } = updateMutation;
 	const clearError = useCallback(
-		() => updateMutation.mutate({ id: space._id, error: "" }),
-		[updateMutation.mutate, space._id]
+		() => mutate({ id: space._id, error: "" }),
+		[mutate, space._id]
 	);
 	useErrorToast(space.error, clearError);
 
