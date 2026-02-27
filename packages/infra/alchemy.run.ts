@@ -20,7 +20,11 @@ if (!stage) {
 	);
 }
 const stageKind = getStageKind(stage);
-const runtime = resolveRuntimeContext(stage);
+const allowMissingPreviewConvex =
+	process.env.ALLOW_MISSING_PREVIEW_CONVEX === "1";
+const runtime = resolveRuntimeContext(stage, {
+	allowMissingPreviewConvex,
+});
 
 const app = await alchemy("corporation", {
 	stage,

@@ -1,5 +1,9 @@
 import { getStageKind } from "@corporation/config/stage";
 
+type ResolveRuntimeContextOptions = {
+	allowMissingPreviewConvex?: boolean;
+};
+
 export type RuntimeContext = {
 	webClientEnv: {
 		VITE_SERVER_URL: string;
@@ -21,7 +25,10 @@ export type RuntimeContext = {
 	};
 };
 
-export function resolveRuntimeContext(stage: string): RuntimeContext {
+export function resolveRuntimeContext(
+	stage: string,
+	options: ResolveRuntimeContextOptions = {}
+): RuntimeContext {
 	const stageKind = getStageKind(stage);
 
 	if (stageKind === "dev") {
@@ -75,8 +82,16 @@ export function resolveRuntimeContext(stage: string): RuntimeContext {
 	}
 
 	if (stageKind === "preview") {
-		const CONVEX_URL = process.env.CONVEX_URL;
-		const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
+		const CONVEX_URL =
+			process.env.CONVEX_URL ??
+			(options.allowMissingPreviewConvex
+				? "https://missing-preview-convex-url.invalid"
+				: undefined);
+		const CONVEX_SITE_URL =
+			process.env.CONVEX_SITE_URL ??
+			(options.allowMissingPreviewConvex
+				? "https://missing-preview-convex-site-url.invalid"
+				: undefined);
 		if (!(CONVEX_URL && CONVEX_SITE_URL)) {
 			throw new Error(
 				`Missing CONVEX_URL or CONVEX_SITE_URL for preview stage "${stage}". These are set by \`npx convex deploy\` in CI.`
