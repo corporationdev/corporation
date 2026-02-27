@@ -1,6 +1,8 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { $ } from "bun";
+
+const envLineRegex = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)/;
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const argv = process.argv.slice(2);
@@ -35,7 +37,7 @@ if (useSandbox) {
 			await $`zip -d ${seedZip} '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'`
 				.cwd(repoRoot)
 				.nothrow();
-			await $`npx convex dev --local --once --run-sh ${"npx convex import " + seedZip + " --replace --yes"}`
+			await $`npx convex dev --local --once --run-sh ${`npx convex import ${seedZip} --replace --yes`}`
 				.env(await loadBackendEnv())
 				.cwd(resolve(repoRoot, "packages/backend"));
 		} catch {
@@ -62,16 +64,15 @@ if (sync) {
 	}
 }
 
-async function loadBackendEnv() {
+function loadBackendEnv() {
 	const envPath = resolve(repoRoot, "packages/backend/.env");
-	const envFile = Bun.file(envPath);
-	const text = await envFile.text();
+	const text = readFileSync(envPath, "utf8");
 	const env: Record<string, string> = { ...process.env } as Record<
 		string,
 		string
 	>;
 	for (const line of text.split("\n")) {
-		const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)/);
+		const match = line.match(envLineRegex);
 		if (match) {
 			env[match[1]] = match[2];
 		}
