@@ -34,14 +34,11 @@ jobs:
         run: |
           echo "STAGE=preview-${{ steps.clean-branch-name.outputs.clean_branch_name }}" >> $GITHUB_ENV
 
-      - name: Load secrets
-        uses: 1password/load-secrets-action@v3
+      - name: Inject secrets
+        uses: ./.github/actions/inject-secrets
         with:
-          export-env: true
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          CLOUDFLARE_API_TOKEN: op://corporation-preview/Cloudflare/api-token
-          ALCHEMY_PASSWORD: op://corporation-preview/Alchemy/password
+          op-service-account-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          env-tier: preview
 
       - name: Destroy Alchemy resources
         run: bun run --filter @corporation/infra destroy
