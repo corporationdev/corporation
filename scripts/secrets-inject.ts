@@ -1,8 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { deriveEnvTier, resolveStage } from "@corporation/config/stage";
+import { $ } from "bun";
 import { parse as parseDotEnv } from "dotenv";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -36,52 +36,28 @@ const resolvedTemplate = template
 	.replace(envTierVariableRegex, tier);
 writeFileSync(resolvedTemplatePath, resolvedTemplate, "utf8");
 
-const injectResult = spawnSync("op", ["inject", "-i", resolvedTemplatePath], {
-	cwd: repoRoot,
-	encoding: "utf8",
-	env: {
-		...process.env,
-		STAGE: stage,
-		ENV_TIER: tier,
-	},
-});
-if (injectResult.status !== 0) {
-	const stderr = injectResult.stderr?.trim();
-	const stdout = injectResult.stdout?.trim();
+let injectOutput: string;
+try {
+	injectOutput = await $`op inject -i ${resolvedTemplatePath}`
+		.env({ ...process.env, STAGE: stage, ENV_TIER: tier })
+		.cwd(repoRoot)
+		.quiet()
+		.text();
+} catch (error) {
 	rmSync(tempDirectory, { recursive: true, force: true });
-	throw new Error(
-		`op inject failed (${injectResult.status}). ${stderr || stdout || "No output"}`
-	);
+	throw new Error(`op inject failed. ${error}`);
 }
 
-const secrets = parseDotEnv(injectResult.stdout ?? "");
+const secrets = parseDotEnv(injectOutput);
 rmSync(tempDirectory, { recursive: true, force: true });
 
-const findExamplesResult = spawnSync(
-	"rg",
-	[
-		"--files",
-		"--hidden",
-		"-g",
-		"**/.env.example",
-		"-g",
-		"!**/node_modules/**",
-		"-g",
-		"!**/.git/**",
-	],
-	{
-		cwd: repoRoot,
-		encoding: "utf8",
-	}
-);
-if (findExamplesResult.status !== 0) {
-	const stderr = findExamplesResult.stderr?.trim();
-	throw new Error(
-		`Failed to find .env.example files. ${stderr || "No output"}`
-	);
-}
+const findExamplesOutput =
+	await $`rg --files --hidden -g '**/.env.example' -g '!**/node_modules/**' -g '!**/.git/**'`
+		.cwd(repoRoot)
+		.quiet()
+		.text();
 
-const envExamples = findExamplesResult.stdout
+const envExamples = findExamplesOutput
 	.split("\n")
 	.map((line) => line.trim())
 	.filter((line) => line.length > 0)
