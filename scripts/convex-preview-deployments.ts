@@ -28,6 +28,12 @@ const stageArg =
 	stageArgIndex >= 0 && stageArgIndex + 1 < argv.length
 		? argv[stageArgIndex + 1]
 		: undefined;
+if (
+	stageArgIndex >= 0 &&
+	(!stageArg || stageArg.trim().length === 0 || stageArg.trim().startsWith("-"))
+) {
+	throw new Error("Missing value for --stage. Pass --stage <preview-id>.");
+}
 
 const envFile = process.env.CONVEX_PREVIEW_ENV_FILE?.trim() || DEFAULT_ENV_FILE;
 const resolvedEnvPath = resolve(process.cwd(), envFile);

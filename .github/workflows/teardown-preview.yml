@@ -44,4 +44,5 @@ jobs:
         run: bun run --filter @corporation/infra destroy
 
       - name: Delete Convex preview deployment
+        if: ${{ always() }}
         run: bun scripts/convex-preview-deployments.ts
