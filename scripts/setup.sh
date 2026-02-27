@@ -3,10 +3,12 @@ set -euo pipefail
 
 MODE="--dev"
 RESEED=false
+SYNC=false
 for arg in "$@"; do
   case "$arg" in
     --sandbox) MODE="--sandbox" ;;
     --reseed)  RESEED=true ;;
+    --sync)    SYNC=true ;;
   esac
 done
 
@@ -33,14 +35,16 @@ if [ "$MODE" = "--sandbox" ]; then
   fi
 fi
 
-# Sync environment variables to Convex deployment
-echo "Syncing environment variables to Convex..."
-(
-  set -a; source packages/backend/.env; set +a
-  cd packages/backend
-  if [ "$MODE" = "--sandbox" ]; then
-    CONVEX_AGENT_MODE=anonymous npx convex dev --local --once --run-sh 'bun ./sync-convex-env.ts'
-  else
-    npx convex dev --once --run-sh 'bun ./sync-convex-env.ts'
-  fi
-)
+if [ "$SYNC" = true ]; then
+  # Sync environment variables to Convex deployment
+  echo "Syncing environment variables to Convex..."
+  (
+    set -a; source packages/backend/.env; set +a
+    cd packages/backend
+    if [ "$MODE" = "--sandbox" ]; then
+      CONVEX_AGENT_MODE=anonymous npx convex dev --local --once --run-sh 'bun ./sync-convex-env.ts'
+    else
+      npx convex dev --once --run-sh 'bun ./sync-convex-env.ts'
+    fi
+  )
+fi
