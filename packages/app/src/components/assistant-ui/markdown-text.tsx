@@ -70,6 +70,23 @@ const useCopyToClipboard = ({
 	return { isCopied, copyToClipboard };
 };
 
+const Code = ({
+	className,
+	...props
+}: React.ComponentPropsWithoutRef<"code">) => {
+	const isCodeBlock = useIsMarkdownCodeBlock();
+	return (
+		<code
+			className={cn(
+				!isCodeBlock &&
+					"aui-md-inline-code rounded border bg-muted font-semibold",
+				className
+			)}
+			{...props}
+		/>
+	);
+};
+
 const defaultComponents = memoizeMarkdownComponents({
 	h1: ({ className, ...props }) => (
 		<h1
@@ -215,18 +232,6 @@ const defaultComponents = memoizeMarkdownComponents({
 			{...props}
 		/>
 	),
-	code({ className, ...props }) {
-		const isCodeBlock = useIsMarkdownCodeBlock();
-		return (
-			<code
-				className={cn(
-					!isCodeBlock &&
-						"aui-md-inline-code rounded border bg-muted font-semibold",
-					className
-				)}
-				{...props}
-			/>
-		);
-	},
+	code: Code,
 	CodeHeader,
 });

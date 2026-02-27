@@ -16,7 +16,7 @@ jobs:
     name: Deploy Preview
     runs-on: ubuntu-latest
 
-    if: ${{ github.event.pull_request.head.ref != 'main' }}
+    if: ${{ github.event.pull_request.head.ref != 'main' && github.actor != 'dependabot[bot]' }}
 
     environment: Preview
 
