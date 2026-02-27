@@ -71,6 +71,7 @@ const webDomain = getWebDomain();
 export const web = await Vite("web", {
 	cwd: "../../apps/web",
 	entrypoint: "worker/index.ts",
+	build: "bunx --bun vite build",
 	assets: {
 		directory: "dist",
 		run_worker_first: ["/api/*"],
