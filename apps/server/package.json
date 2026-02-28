@@ -7,16 +7,17 @@
     ".": "./src/index.ts",
     "./app": "./src/app.ts",
     "./registry": "./src/registry.ts",
-    "./space": "./src/space.ts"
+    "./space": "./src/space/index.ts"
   },
   "scripts": {
     "check-types": "tsc -b",
-    "db:generate": "drizzle-kit generate --config=drizzle.config.ts && drizzle-kit generate --config=drizzle.environment.config.ts"
+    "db:generate": "drizzle-kit generate --config=drizzle.space.config.ts && drizzle-kit generate --config=drizzle.environment.config.ts"
   },
   "dependencies": {
     "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
+    "@corporation/shared": "workspace:*",
     "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@nangohq/node": "catalog:",

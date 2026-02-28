@@ -218,6 +218,7 @@
       "name": "@corporation/shared",
       "version": "0.0.0",
       "dependencies": {
+        "@nangohq/node": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {

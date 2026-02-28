@@ -11,8 +11,6 @@ export type BuildReporter = {
 	appendLog: (chunk: string) => void;
 };
 
-export type PersistedState = Record<string, never>;
-
 export type EnvironmentVars = {
 	db: EnvironmentDatabase;
 };

@@ -7,6 +7,5 @@ CREATE TABLE `builds` (
 	`error` text,
 	`snapshot_id` text,
 	`started_at` integer NOT NULL,
-	`completed_at` integer,
-	`duration_ms` integer
+	`completed_at` integer
 );

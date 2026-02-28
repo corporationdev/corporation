@@ -26,7 +26,6 @@ export const builds = sqliteTable("builds", {
 	snapshotId: text("snapshot_id"),
 	startedAt: integer("started_at", { mode: "number" }).notNull(),
 	completedAt: integer("completed_at", { mode: "number" }),
-	durationMs: integer("duration_ms", { mode: "number" }),
 });
 
 export type BuildRow = InferSelectModel<typeof builds>;

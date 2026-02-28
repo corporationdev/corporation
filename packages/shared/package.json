@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./api/environments": "./src/api/environments.ts"
+    "./api/environments": "./src/api/environments.ts",
+    "./lib/nango": "./src/lib/nango.ts"
   },
   "dependencies": {
+    "@nangohq/node": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

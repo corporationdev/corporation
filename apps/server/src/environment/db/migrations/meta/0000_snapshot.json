@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c53ef206-0fba-4f60-ba15-9e11673217f1",
+  "id": "1af4d60e-08c3-43bb-8111-0c149db34e38",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "builds": {
@@ -66,13 +66,6 @@
         },
         "completed_at": {
           "name": "completed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "duration_ms": {
-          "name": "duration_ms",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

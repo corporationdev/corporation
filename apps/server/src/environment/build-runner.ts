@@ -119,15 +119,19 @@ export type BuildResult = {
  * Runs a full build: creates sandbox from base template, clones repo,
  * runs setup command, installs agent, creates snapshot.
  */
-export async function executeBuild(
-	buildConfig: BuildConfig,
+export async function executeBuild({
+	buildConfig,
+	envVars,
+	reporter,
+}: {
+	buildConfig: BuildConfig;
 	envVars: {
 		nangoSecretKey: string;
 		anthropicApiKey: string;
 		e2bApiKey: string;
-	},
-	reporter: BuildReporter
-): Promise<BuildResult> {
+	};
+	reporter: BuildReporter;
+}): Promise<BuildResult> {
 	const { config } = buildConfig;
 	const { repository } = config;
 	const workdir = `/root/${repository.owner}-${repository.name}`;
