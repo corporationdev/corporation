@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, mutation } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { normalizeEnvByPath } from "./lib/envByPath";
 import { snapshotStatusValidator } from "./schema";
@@ -125,7 +125,6 @@ export const internalUpdate = internalMutation({
 		id: v.id("environments"),
 		snapshotId: v.optional(v.string()),
 		snapshotStatus: v.optional(snapshotStatusValidator),
-		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...fields } = args;
@@ -190,7 +189,6 @@ async function transitionToBuilding(
 	await ctx.db.patch(environment._id, {
 		scheduledRebuildId: undefined,
 		snapshotStatus: "building",
-		error: undefined,
 		updatedAt: Date.now(),
 	});
 }
@@ -296,7 +294,6 @@ export const completeSnapshotBuild = internalMutation({
 			snapshotId: args.snapshotId,
 			snapshotCommitSha: args.snapshotCommitSha,
 			snapshotStatus: "ready",
-			error: undefined,
 			lastSnapshotBuildAt: now,
 			updatedAt: now,
 		});
@@ -304,6 +301,67 @@ export const completeSnapshotBuild = internalMutation({
 		await ctx.scheduler.runAfter(0, internal.environments.scheduleNextRebuild, {
 			id: args.id,
 		});
+	},
+});
+
+/**
+ * Called by the environment DO (via ConvexHttpClient) when a build completes.
+ * Uses INTERNAL_API_KEY for auth since this is server-to-server.
+ */
+export const completeBuildFromServer = mutation({
+	args: {
+		internalKey: v.string(),
+		id: v.id("environments"),
+		status: v.union(v.literal("success"), v.literal("error")),
+		snapshotId: v.optional(v.string()),
+		snapshotCommitSha: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		if (args.internalKey !== process.env.INTERNAL_API_KEY) {
+			throw new ConvexError("Unauthorized");
+		}
+
+		const environment = await ctx.db.get(args.id);
+		if (!environment) {
+			throw new ConvexError("Environment not found");
+		}
+
+		if (environment.snapshotStatus !== "building") {
+			throw new ConvexError("Environment is not in building state");
+		}
+
+		const now = Date.now();
+
+		if (args.status === "success") {
+			if (!args.snapshotId) {
+				throw new ConvexError("snapshotId required for success status");
+			}
+
+			await ctx.db.patch(args.id, {
+				snapshotId: args.snapshotId,
+				snapshotCommitSha: args.snapshotCommitSha,
+				snapshotStatus: "ready",
+				lastSnapshotBuildAt: now,
+				updatedAt: now,
+			});
+
+			await ctx.scheduler.runAfter(
+				0,
+				internal.environments.scheduleNextRebuild,
+				{ id: args.id }
+			);
+		} else {
+			await ctx.db.patch(args.id, {
+				snapshotStatus: "error",
+				updatedAt: now,
+			});
+
+			await ctx.scheduler.runAfter(
+				0,
+				internal.environments.scheduleNextRebuild,
+				{ id: args.id }
+			);
+		}
 	},
 });
 

@@ -1,27 +1,37 @@
 "use node";
 
-import { Nango } from "@nangohq/node";
+import type { BuildRequest } from "@corporation/shared/api/environments";
 import { v } from "convex/values";
-import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
-import { getGitHubToken } from "./lib/nango";
-import { runRootCommand, setupSandbox } from "./lib/sandbox";
 
-const BASE_TEMPLATE = "corporation-base";
-const ENVIRONMENT_ERROR_MAX_LENGTH = 2000;
+async function triggerServerBuild(
+	environmentId: string,
+	body: BuildRequest
+): Promise<void> {
+	const serverUrl = process.env.SERVER_URL;
+	const internalApiKey = process.env.INTERNAL_API_KEY;
 
-function formatEnvironmentError(error: unknown): string {
-	const message =
-		error instanceof Error
-			? error.message
-			: typeof error === "string"
-				? error
-				: "Unknown snapshot build error";
-	if (message.length <= ENVIRONMENT_ERROR_MAX_LENGTH) {
-		return message;
+	if (!(serverUrl && internalApiKey)) {
+		throw new Error("Missing SERVER_URL or INTERNAL_API_KEY env vars");
 	}
-	return `${message.slice(0, ENVIRONMENT_ERROR_MAX_LENGTH)}...`;
+
+	const res = await fetch(
+		`${serverUrl}/api/environments/${environmentId}/build`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${internalApiKey}`,
+			},
+			body: JSON.stringify(body),
+		}
+	);
+
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		throw new Error(`Build trigger failed (${res.status}): ${text}`);
+	}
 }
 
 export const buildSnapshot = internalAction({
@@ -29,61 +39,29 @@ export const buildSnapshot = internalAction({
 		environmentId: v.id("environments"),
 	},
 	handler: async (ctx, args) => {
-		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+		const envWithRepo = await ctx.runQuery(internal.environments.internalGet, {
+			id: args.environmentId,
+		});
 
-		if (!(nangoSecretKey && anthropicApiKey)) {
-			throw new Error("Missing NANGO_SECRET_KEY or ANTHROPIC_API_KEY env vars");
-		}
-
-		let buildSandbox: Sandbox | undefined;
 		try {
-			const envWithRepo = await ctx.runQuery(
-				internal.environments.internalGet,
-				{
-					id: args.environmentId,
-				}
-			);
-
-			const nango = new Nango({ secretKey: nangoSecretKey });
-			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
-
-			buildSandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
-				envs: { ANTHROPIC_API_KEY: anthropicApiKey },
-				network: { allowPublicTraffic: true },
-			});
-
-			const snapshotCommitSha = await setupSandbox(
-				buildSandbox,
-				envWithRepo,
-				githubToken,
-				"clone"
-			);
-
-			await runRootCommand(
-				buildSandbox,
-				"sandbox-agent install-agent opencode --reinstall",
-				{ envs: { ANTHROPIC_API_KEY: anthropicApiKey } }
-			);
-
-			const snapshot = await buildSandbox.createSnapshot();
-
-			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
-				id: args.environmentId,
-				snapshotId: snapshot.snapshotId,
-				snapshotCommitSha,
+			await triggerServerBuild(args.environmentId, {
+				type: "build",
+				userId: envWithRepo.userId,
+				config: {
+					repository: {
+						owner: envWithRepo.repository.owner,
+						name: envWithRepo.repository.name,
+						defaultBranch: envWithRepo.repository.defaultBranch,
+					},
+					setupCommand: envWithRepo.setupCommand,
+					envByPath: envWithRepo.envByPath,
+				},
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.environments.internalUpdate, {
 				id: args.environmentId,
 				snapshotStatus: "error",
-				error: formatEnvironmentError(error),
 			});
-
-			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
-				id: args.environmentId,
-			});
-
 			throw error;
 		}
 	},
@@ -95,49 +73,30 @@ export const rebuildSnapshot = internalAction({
 		snapshotId: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!nangoSecretKey) {
-			throw new Error("Missing NANGO_SECRET_KEY env var");
-		}
-
 		const envWithRepo = await ctx.runQuery(internal.environments.internalGet, {
 			id: args.environmentId,
 		});
 
-		let buildSandbox: Sandbox | undefined;
 		try {
-			const nango = new Nango({ secretKey: nangoSecretKey });
-			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
-
-			buildSandbox = await Sandbox.betaCreate(args.snapshotId, {
-				network: { allowPublicTraffic: true },
-			});
-
-			const snapshotCommitSha = await setupSandbox(
-				buildSandbox,
-				envWithRepo,
-				githubToken,
-				"pull"
-			);
-
-			const snapshot = await buildSandbox.createSnapshot();
-
-			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
-				id: args.environmentId,
-				snapshotId: snapshot.snapshotId,
-				snapshotCommitSha,
+			await triggerServerBuild(args.environmentId, {
+				type: "rebuild",
+				userId: envWithRepo.userId,
+				config: {
+					repository: {
+						owner: envWithRepo.repository.owner,
+						name: envWithRepo.repository.name,
+						defaultBranch: envWithRepo.repository.defaultBranch,
+					},
+					setupCommand: envWithRepo.setupCommand,
+					envByPath: envWithRepo.envByPath,
+				},
+				snapshotId: args.snapshotId,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.environments.internalUpdate, {
 				id: args.environmentId,
 				snapshotStatus: "error",
-				error: formatEnvironmentError(error),
 			});
-
-			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
-				id: args.environmentId,
-			});
-
 			throw error;
 		}
 	},
@@ -150,27 +109,31 @@ export const overrideSnapshot = internalAction({
 		snapshotCommitSha: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		const envWithRepo = await ctx.runQuery(internal.environments.internalGet, {
+			id: args.environmentId,
+		});
+
 		try {
-			const sandbox = await Sandbox.connect(args.sandboxId);
-
-			const snapshot = await sandbox.createSnapshot();
-
-			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
-				id: args.environmentId,
-				snapshotId: snapshot.snapshotId,
+			await triggerServerBuild(args.environmentId, {
+				type: "override",
+				userId: envWithRepo.userId,
+				config: {
+					repository: {
+						owner: envWithRepo.repository.owner,
+						name: envWithRepo.repository.name,
+						defaultBranch: envWithRepo.repository.defaultBranch,
+					},
+					setupCommand: envWithRepo.setupCommand,
+					envByPath: envWithRepo.envByPath,
+				},
+				sandboxId: args.sandboxId,
 				snapshotCommitSha: args.snapshotCommitSha,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.environments.internalUpdate, {
 				id: args.environmentId,
 				snapshotStatus: "error",
-				error: formatEnvironmentError(error),
 			});
-
-			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
-				id: args.environmentId,
-			});
-
 			throw error;
 		}
 	},

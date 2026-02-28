@@ -22,6 +22,7 @@ export type RuntimeContext = {
 	convexSyncEnv: {
 		WEB_URL: string;
 		DESKTOP_URL: string;
+		SERVER_URL: string;
 	};
 };
 
@@ -52,6 +53,7 @@ export function resolveRuntimeContext(
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
 				DESKTOP_URL: "http://localhost:5173",
+				SERVER_URL: "http://localhost:3001/api",
 			},
 		};
 	}
@@ -77,6 +79,7 @@ export function resolveRuntimeContext(
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
 				DESKTOP_URL: "http://localhost:5173",
+				SERVER_URL: "http://localhost:3001/api",
 			},
 		};
 	}
@@ -111,6 +114,7 @@ export function resolveRuntimeContext(
 			convexSyncEnv: {
 				WEB_URL: `https://${stage}.corporation.dev`,
 				DESKTOP_URL: "http://localhost:5173",
+				SERVER_URL: `https://${stage}.corporation.dev/api`,
 			},
 		};
 	}
@@ -132,6 +136,7 @@ export function resolveRuntimeContext(
 			convexSyncEnv: {
 				WEB_URL: "https://app.corporation.dev",
 				DESKTOP_URL: "http://localhost:5173",
+				SERVER_URL: "https://app.corporation.dev/api",
 			},
 		};
 	}

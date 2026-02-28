@@ -1,11 +1,11 @@
 import { createLogger } from "@corporation/logger";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { CommandHandle, Sandbox } from "e2b";
+import { createTabChannel, createTabId } from "../channels";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
-import { createTabChannel, createTabId } from "./channels";
-import type { TabDriverLifecycle } from "./driver-types";
-import { publishToChannel } from "./subscriptions";
-import type { SpaceRuntimeContext } from "./types";
+import { publishToChannel } from "../subscriptions";
+import type { SpaceRuntimeContext } from "../types";
+import type { TabDriverLifecycle } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";

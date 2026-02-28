@@ -1,4 +1,5 @@
 import { setup } from "rivetkit";
+import { environment } from "./environment";
 import { space } from "./space";
 
 // Workaround: rivetkit's Registry constructor calls setTimeout() which is
@@ -8,6 +9,6 @@ import { space } from "./space";
 const _setTimeout = globalThis.setTimeout;
 globalThis.setTimeout = (() => 0) as unknown as typeof globalThis.setTimeout;
 export const registry = setup({
-	use: { space },
+	use: { space, environment },
 });
 globalThis.setTimeout = _setTimeout;

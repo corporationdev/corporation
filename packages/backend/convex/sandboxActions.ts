@@ -1,6 +1,6 @@
 "use node";
 
-import { Nango } from "@nangohq/node";
+import { getGitHubToken } from "@corporation/shared/lib/nango";
 import type { FunctionReturnType, GenericActionCtx } from "convex/server";
 import { v } from "convex/values";
 import { CommandExitError, Sandbox } from "e2b";
@@ -8,7 +8,6 @@ import { internal } from "./_generated/api";
 import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { normalizeBranchName, quoteShellArg } from "./lib/git";
-import { getGitHubToken } from "./lib/nango";
 import { pushBranch, setupSandbox } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
@@ -288,8 +287,10 @@ export const syncRepository = internalAction({
 			throw new Error("Space has no sandbox to sync");
 		}
 
-		const nango = new Nango({ secretKey: nangoSecretKey });
-		const githubToken = await getGitHubToken(nango, space.environment.userId);
+		const githubToken = await getGitHubToken(
+			nangoSecretKey,
+			space.environment.userId
+		);
 
 		const sandbox = await Sandbox.connect(space.sandboxId);
 
@@ -403,8 +404,10 @@ async function resolveSpaceForGitOp(
 		throw new Error("Space has no sandbox");
 	}
 
-	const nango = new Nango({ secretKey: nangoSecretKey });
-	const githubToken = await getGitHubToken(nango, space.environment.userId);
+	const githubToken = await getGitHubToken(
+		nangoSecretKey,
+		space.environment.userId
+	);
 	const author = await getGitHubUser(githubToken);
 	const sandbox = await Sandbox.connect(space.sandboxId);
 

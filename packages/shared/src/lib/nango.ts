@@ -1,11 +1,12 @@
-import type { Nango } from "@nangohq/node";
+import { Nango } from "@nangohq/node";
 
 const GITHUB_PROVIDER_KEY = "github";
 
 export async function getGitHubToken(
-	nango: Nango,
+	nangoSecretKey: string,
 	userId: string
 ): Promise<string> {
+	const nango = new Nango({ secretKey: nangoSecretKey });
 	const { connections } = await nango.listConnections({ userId });
 
 	const conn = connections.find(

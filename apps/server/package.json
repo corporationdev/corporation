@@ -11,7 +11,7 @@
   },
   "scripts": {
     "check-types": "tsc -b",
-    "db:generate": "drizzle-kit generate --config=drizzle.config.ts"
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts && drizzle-kit generate --config=drizzle.environment.config.ts"
   },
   "dependencies": {
     "@corporation/backend": "workspace:*",

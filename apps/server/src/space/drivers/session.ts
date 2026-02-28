@@ -1,11 +1,11 @@
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Session, SessionEvent } from "sandbox-agent";
+import { createTabChannel, createTabId } from "../channels";
 import { type SessionTab, tabs } from "../db/schema";
-import { createTabChannel, createTabId } from "./channels";
-import type { TabDriverLifecycle } from "./driver-types";
-import { publishToChannel } from "./subscriptions";
-import type { SpaceRuntimeContext } from "./types";
+import { publishToChannel } from "../subscriptions";
+import type { SpaceRuntimeContext } from "../types";
+import type { TabDriverLifecycle } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
 const DEFAULT_AGENT = "opencode";

@@ -1,0 +1,16 @@
+{
+  "name": "@corporation/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./api/environments": "./src/api/environments.ts"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@corporation/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

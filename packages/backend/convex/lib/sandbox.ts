@@ -48,7 +48,10 @@ function resolvePreviewUrls(sandbox: Sandbox, envVars: EnvVar[]): EnvVar[] {
 	const ports = new Set<number>();
 	for (const { value } of envVars) {
 		for (const match of value.matchAll(LOCALHOST_PORT_RE)) {
-			ports.add(Number.parseInt(match[1], 10));
+			const portStr = match[1];
+			if (portStr) {
+				ports.add(Number.parseInt(portStr, 10));
+			}
 		}
 	}
 

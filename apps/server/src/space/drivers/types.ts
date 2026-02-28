@@ -1,5 +1,5 @@
 import type { SpaceTab, TabType } from "../db/schema";
-import type { SpaceRuntimeContext } from "./types";
+import type { SpaceRuntimeContext } from "../types";
 
 export type DriverAction = (
 	ctx: SpaceRuntimeContext,

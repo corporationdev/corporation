@@ -1,6 +1,6 @@
-import { previewDriver } from "./preview-driver";
-import { sessionDriver } from "./session-driver";
-import { terminalDriver } from "./terminal-driver";
+import { previewDriver } from "./preview";
+import { sessionDriver } from "./session";
+import { terminalDriver } from "./terminal";
 
 export const driverRegistry = {
 	session: sessionDriver,

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { environmentsInternalApp } from "./environments";
 import { githubApp } from "./github";
 import { integrationsApp } from "./integrations";
 import { sandboxApp } from "./sandbox";
@@ -10,7 +11,8 @@ const apiApp = new Hono<{ Bindings: Env }>()
 	.get("/health", (c) => c.text("OK"))
 	.route("/integrations", integrationsApp)
 	.route("/github", githubApp)
-	.route("/sandbox", sandboxApp);
+	.route("/sandbox", sandboxApp)
+	.route("/environments", environmentsInternalApp);
 
 const app = new Hono<{ Bindings: Env }>().route("/api", apiApp);
 

@@ -1,8 +1,8 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { createTabId } from "../channels";
 import { type PreviewTab, previews, tabs } from "../db/schema";
-import { createTabId } from "./channels";
-import type { TabDriverLifecycle } from "./driver-types";
-import type { SpaceRuntimeContext } from "./types";
+import type { SpaceRuntimeContext } from "../types";
+import type { TabDriverLifecycle } from "./types";
 
 async function ensurePreview(
 	ctx: SpaceRuntimeContext,

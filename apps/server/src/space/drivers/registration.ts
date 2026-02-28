@@ -1,12 +1,12 @@
+import { createTabChannel } from "../channels";
 import type { SpaceTab, TabType } from "../db/schema";
-import { createTabChannel } from "./channels";
+import { subscribeToChannel, unsubscribeFromChannel } from "../subscriptions";
+import type { SpaceRuntimeContext } from "../types";
 import type {
 	DriverAction,
 	DriverActionMap,
 	TabDriverLifecycle,
-} from "./driver-types";
-import { subscribeToChannel, unsubscribeFromChannel } from "./subscriptions";
-import type { SpaceRuntimeContext } from "./types";
+} from "./types";
 
 async function getAllTabs(
 	drivers: readonly TabDriverLifecycle<DriverActionMap>[],

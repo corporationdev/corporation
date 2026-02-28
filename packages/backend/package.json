@@ -9,6 +9,7 @@
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {
+    "@corporation/shared": "workspace:*",
     "@convex-dev/better-auth": "catalog:",
     "e2b": "catalog:",
     "@nangohq/node": "catalog:",

@@ -51,6 +51,7 @@
         "@corporation/backend": "workspace:*",
         "@corporation/env": "workspace:*",
         "@corporation/logger": "workspace:*",
+        "@corporation/shared": "workspace:*",
         "@hono/zod-openapi": "catalog:",
         "@nangohq/node": "catalog:",
         "@rivetkit/cloudflare-workers": "catalog:",
@@ -155,6 +156,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@convex-dev/better-auth": "catalog:",
+        "@corporation/shared": "workspace:*",
         "@nangohq/node": "catalog:",
         "better-auth": "catalog:",
         "convex": "catalog:",
@@ -206,6 +208,17 @@
       "dependencies": {
         "pino": "catalog:",
         "pino-pretty": "catalog:",
+      },
+      "devDependencies": {
+        "@corporation/config": "workspace:*",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/shared": {
+      "name": "@corporation/shared",
+      "version": "0.0.0",
+      "dependencies": {
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@corporation/config": "workspace:*",
@@ -532,6 +545,8 @@
     "@corporation/logger": ["@corporation/logger@workspace:packages/logger"],
 
     "@corporation/server": ["@corporation/server@workspace:apps/server"],
+
+    "@corporation/shared": ["@corporation/shared@workspace:packages/shared"],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 

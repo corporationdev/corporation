@@ -9,17 +9,14 @@ import { actor } from "rivetkit";
 import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
 import { previews, type SpaceTab, tabs, terminals } from "./db/schema";
-import {
-	augmentContext,
-	collectDriverActions,
-} from "./space/action-registration";
-import { lifecycleDrivers } from "./space/driver-registry";
+import { augmentContext, collectDriverActions } from "./drivers/registration";
+import { lifecycleDrivers } from "./drivers/registry";
 import {
 	clearSubscriptions,
 	createSubscriptionHub,
 	unsubscribeConnection,
-} from "./space/subscriptions";
-import type { PersistedState, SpaceVars } from "./space/types";
+} from "./subscriptions";
+import type { PersistedState, SpaceVars } from "./types";
 
 export type {
 	PreviewTab,
