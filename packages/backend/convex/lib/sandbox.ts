@@ -13,11 +13,10 @@ type CommandExitErrorLike = {
 	stderr: string;
 	stdout: string;
 };
-type RunRootCommandOptions = {
-	cwd?: string;
-	timeoutMs?: number;
-	envs?: Record<string, string>;
-};
+type RunRootCommandOptions = Omit<
+	NonNullable<Parameters<Sandbox["commands"]["run"]>[1]>,
+	"user"
+>;
 
 export type SandboxEnv = {
 	repository: {
@@ -165,8 +164,9 @@ export async function setupSandbox(
 	sandbox: Sandbox,
 	env: SandboxEnv,
 	githubToken: string,
-	mode: "clone" | "pull"
-): Promise<string | undefined> {
+	mode: "clone" | "pull",
+	appendLog?: (chunk: string) => void
+): Promise<string> {
 	const { repository } = env;
 	const workdir = `/root/${repository.owner}-${repository.name}`;
 	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
@@ -178,27 +178,39 @@ export async function setupSandbox(
 		await runRootCommand(
 			sandbox,
 			`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
-			{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
+			{
+				timeoutMs: REPO_SYNC_TIMEOUT_MS,
+				onStdout: appendLog,
+				onStderr: appendLog,
+			}
 		);
 	} else {
 		await runRootCommand(
 			sandbox,
 			`git remote set-url origin ${safeRepoUrl} && git pull origin ${safeDefaultBranch}`,
-			{ cwd: workdir, timeoutMs: REPO_SYNC_TIMEOUT_MS }
+			{
+				cwd: workdir,
+				timeoutMs: REPO_SYNC_TIMEOUT_MS,
+				onStdout: appendLog,
+				onStderr: appendLog,
+			}
 		);
 	}
 
 	await writeEnvFiles(sandbox, env, workdir);
+	appendLog?.("Environment files written.\n");
 
 	await runRootCommand(sandbox, env.setupCommand, {
 		cwd: workdir,
 		timeoutMs: REPO_SYNC_TIMEOUT_MS,
+		onStdout: appendLog,
+		onStderr: appendLog,
 	});
 
 	const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
 		cwd: workdir,
 	});
-	return shaResult.stdout.trim() || undefined;
+	return shaResult.stdout.trim();
 }
 
 /**

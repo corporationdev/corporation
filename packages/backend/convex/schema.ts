@@ -7,7 +7,7 @@ export const snapshotStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const snapshotRunTypeValidator = v.union(
+export const snapshotTypeValidator = v.union(
 	v.literal("build"),
 	v.literal("rebuild"),
 	v.literal("override")
@@ -74,7 +74,7 @@ export default defineSchema(
 
 		snapshots: defineTable({
 			environmentId: v.id("environments"),
-			type: snapshotRunTypeValidator,
+			type: snapshotTypeValidator,
 			status: snapshotStatusValidator,
 			logs: v.string(),
 			logsTruncated: v.optional(v.boolean()),

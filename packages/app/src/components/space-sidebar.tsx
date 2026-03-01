@@ -114,7 +114,7 @@ const SpaceSidebarContent: FC<{
 	});
 
 	const createSnapshotMutation = useConvexTanstackMutation(
-		api.environments.createSnapshot,
+		api.snapshot.createSnapshot,
 		{
 			onSuccess: () => {
 				toast.success("Sandbox saved as base snapshot");
@@ -197,24 +197,26 @@ const SpaceSidebarContent: FC<{
 				<Button
 					className="w-full justify-start gap-2"
 					disabled={
-						overrideSnapshotMutation.isPending ||
+						createSnapshotMutation.isPending ||
 						space.environment.snapshotStatus === "building"
 					}
 					onClick={() =>
 						createSnapshotMutation.mutate({
-							type: "override",
-							spaceId: space._id,
+							request: {
+								type: "override",
+								spaceId: space._id,
+							},
 						})
 					}
 					size="sm"
 					variant="outline"
 				>
-					{overrideSnapshotMutation.isPending ? (
+					{createSnapshotMutation.isPending ? (
 						<LoaderIcon className="size-4 animate-spin" />
 					) : (
 						<SaveIcon className="size-4" />
 					)}
-					{overrideSnapshotMutation.isPending
+					{createSnapshotMutation.isPending
 						? "Saving..."
 						: "Save as Base Snapshot"}
 				</Button>

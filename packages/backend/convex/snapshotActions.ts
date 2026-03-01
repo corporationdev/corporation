@@ -4,142 +4,214 @@ import { Nango } from "@nangohq/node";
 import { v } from "convex/values";
 import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
-import { internalAction } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { type ActionCtx, internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
 import { runRootCommand, setupSandbox } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
-const ENVIRONMENT_ERROR_MAX_LENGTH = 2000;
+const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
+const LOG_FLUSH_INTERVAL_MS = 2500;
 
-function formatEnvironmentError(error: unknown): string {
+type SnapshotReporter = {
+	appendLog: (chunk: string) => void;
+	close: () => Promise<void>;
+};
+
+type SnapshotResult = {
+	snapshotId: string;
+	snapshotCommitSha?: string;
+};
+
+function formatSnapshotError(error: unknown): string {
 	const message =
 		error instanceof Error
 			? error.message
 			: typeof error === "string"
 				? error
 				: "Unknown snapshot build error";
-	if (message.length <= ENVIRONMENT_ERROR_MAX_LENGTH) {
+	if (message.length <= SNAPSHOT_ERROR_MAX_LENGTH) {
 		return message;
 	}
-	return `${message.slice(0, ENVIRONMENT_ERROR_MAX_LENGTH)}...`;
+	return `${message.slice(0, SNAPSHOT_ERROR_MAX_LENGTH)}...`;
+}
+
+function createSnapshotReporter(
+	ctx: ActionCtx,
+	snapshotId: Id<"snapshots">
+): SnapshotReporter {
+	let logBuffer = "";
+	let queue = Promise.resolve();
+
+	const enqueueProgress = (args: { logChunk?: string }) => {
+		queue = queue.then(async () => {
+			await ctx.runMutation(internal.snapshot.reportSnapshotProgress, {
+				snapshotId,
+				...args,
+			});
+		});
+		return queue;
+	};
+
+	const flushLogs = async () => {
+		if (logBuffer.length === 0) {
+			return;
+		}
+		const chunk = logBuffer;
+		logBuffer = "";
+		await enqueueProgress({ logChunk: chunk });
+	};
+
+	const interval = setInterval(() => {
+		flushLogs().catch((error: unknown) => {
+			console.error("Failed to flush snapshot logs", error);
+		});
+	}, LOG_FLUSH_INTERVAL_MS);
+
+	return {
+		appendLog: (chunk: string) => {
+			logBuffer += chunk;
+		},
+		close: async () => {
+			clearInterval(interval);
+			await flushLogs();
+			await queue;
+		},
+	};
+}
+
+async function runTrackedSnapshot(
+	ctx: ActionCtx,
+	args: {
+		environmentId: Id<"environments">;
+		type: "build" | "rebuild" | "override";
+		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
+	}
+): Promise<void> {
+	const snapshotId = await ctx.runMutation(internal.snapshot.startSnapshot, {
+		environmentId: args.environmentId,
+		type: args.type,
+	});
+
+	const reporter = createSnapshotReporter(ctx, snapshotId);
+
+	try {
+		const result = await args.execute(reporter);
+		await ctx.runMutation(internal.snapshot.completeSnapshot, {
+			snapshotId,
+			completion: {
+				status: "ready",
+				snapshotId: result.snapshotId,
+				snapshotCommitSha: result.snapshotCommitSha,
+			},
+		});
+	} catch (error) {
+		await ctx.runMutation(internal.snapshot.completeSnapshot, {
+			snapshotId,
+			completion: {
+				status: "error",
+				error: formatSnapshotError(error),
+			},
+		});
+		throw error;
+	} finally {
+		await reporter.close();
+
+		await ctx.runMutation(internal.environments.scheduleNextRebuild, {
+			id: args.environmentId,
+		});
+	}
 }
 
 export const buildSnapshot = internalAction({
 	args: {
-		environmentId: v.id("environments"),
+		request: v.union(
+			v.object({
+				environmentId: v.id("environments"),
+				type: v.literal("build"),
+			}),
+			v.object({
+				environmentId: v.id("environments"),
+				type: v.literal("rebuild"),
+				snapshotId: v.string(),
+			})
+		),
 	},
 	handler: async (ctx, args) => {
-		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-
-		if (!(nangoSecretKey && anthropicApiKey)) {
-			throw new Error("Missing NANGO_SECRET_KEY or ANTHROPIC_API_KEY env vars");
-		}
-
-		let buildSandbox: Sandbox | undefined;
-		try {
-			const envWithRepo = await ctx.runQuery(
-				internal.environments.internalGet,
-				{
-					id: args.environmentId,
+		const request = args.request;
+		await runTrackedSnapshot(ctx, {
+			environmentId: request.environmentId,
+			type: request.type,
+			execute: async (reporter) => {
+				const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+				const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+				if (!(nangoSecretKey && anthropicApiKey)) {
+					throw new Error(
+						"Missing NANGO_SECRET_KEY or ANTHROPIC_API_KEY env var"
+					);
 				}
-			);
 
-			const nango = new Nango({ secretKey: nangoSecretKey });
-			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
+				const environment = await ctx.runQuery(
+					internal.environments.internalGet,
+					{
+						id: request.environmentId,
+					}
+				);
+				const nango = new Nango({ secretKey: nangoSecretKey });
+				const githubToken = await getGitHubToken(nango, environment.userId);
 
-			buildSandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
-				envs: { ANTHROPIC_API_KEY: anthropicApiKey },
-				network: { allowPublicTraffic: true },
-			});
+				const shouldUseRebuildBase = request.type === "rebuild";
+				const template = shouldUseRebuildBase
+					? request.snapshotId
+					: BASE_TEMPLATE;
 
-			const snapshotCommitSha = await setupSandbox(
-				buildSandbox,
-				envWithRepo,
-				githubToken,
-				"clone"
-			);
+				const sandbox = await Sandbox.betaCreate(template, {
+					envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+					network: { allowPublicTraffic: true },
+				});
 
-			await runRootCommand(
-				buildSandbox,
-				"sandbox-agent install-agent opencode --reinstall",
-				{ envs: { ANTHROPIC_API_KEY: anthropicApiKey } }
-			);
+				try {
+					const snapshotCommitSha = await setupSandbox(
+						sandbox,
+						environment,
+						githubToken,
+						shouldUseRebuildBase ? "pull" : "clone",
+						(chunk) => {
+							reporter.appendLog(chunk);
+						}
+					);
 
-			const snapshot = await buildSandbox.createSnapshot();
+					if (!shouldUseRebuildBase) {
+						await runRootCommand(
+							sandbox,
+							"sandbox-agent install-agent opencode --reinstall",
+							{
+								envs: anthropicApiKey
+									? { ANTHROPIC_API_KEY: anthropicApiKey }
+									: undefined,
+								onStdout: (data: string) => reporter.appendLog(data),
+								onStderr: (data: string) => reporter.appendLog(data),
+							}
+						);
+					}
 
-			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
-				id: args.environmentId,
-				snapshotId: snapshot.snapshotId,
-				snapshotCommitSha,
-			});
-		} catch (error) {
-			await ctx.runMutation(internal.environments.internalUpdate, {
-				id: args.environmentId,
-				snapshotStatus: "error",
-				error: formatEnvironmentError(error),
-			});
+					reporter.appendLog("Creating snapshot...\n");
+					const snapshot = await sandbox.createSnapshot();
+					reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);
 
-			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
-				id: args.environmentId,
-			});
-
-			throw error;
-		}
-	},
-});
-
-export const rebuildSnapshot = internalAction({
-	args: {
-		environmentId: v.id("environments"),
-		snapshotId: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!nangoSecretKey) {
-			throw new Error("Missing NANGO_SECRET_KEY env var");
-		}
-
-		const envWithRepo = await ctx.runQuery(internal.environments.internalGet, {
-			id: args.environmentId,
+					return {
+						snapshotId: snapshot.snapshotId,
+						snapshotCommitSha,
+					};
+				} finally {
+					try {
+						await sandbox.kill();
+					} catch {
+						// Best-effort cleanup
+					}
+				}
+			},
 		});
-
-		let buildSandbox: Sandbox | undefined;
-		try {
-			const nango = new Nango({ secretKey: nangoSecretKey });
-			const githubToken = await getGitHubToken(nango, envWithRepo.userId);
-
-			buildSandbox = await Sandbox.betaCreate(args.snapshotId, {
-				network: { allowPublicTraffic: true },
-			});
-
-			const snapshotCommitSha = await setupSandbox(
-				buildSandbox,
-				envWithRepo,
-				githubToken,
-				"pull"
-			);
-
-			const snapshot = await buildSandbox.createSnapshot();
-
-			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
-				id: args.environmentId,
-				snapshotId: snapshot.snapshotId,
-				snapshotCommitSha,
-			});
-		} catch (error) {
-			await ctx.runMutation(internal.environments.internalUpdate, {
-				id: args.environmentId,
-				snapshotStatus: "error",
-				error: formatEnvironmentError(error),
-			});
-
-			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
-				id: args.environmentId,
-			});
-
-			throw error;
-		}
 	},
 });
 
@@ -150,28 +222,21 @@ export const overrideSnapshot = internalAction({
 		snapshotCommitSha: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		try {
-			const sandbox = await Sandbox.connect(args.sandboxId);
+		await runTrackedSnapshot(ctx, {
+			environmentId: args.environmentId,
+			type: "override",
+			execute: async (reporter) => {
+				reporter.appendLog("Connecting to running sandbox...\n");
+				const sandbox = await Sandbox.connect(args.sandboxId);
+				reporter.appendLog("Creating snapshot from running sandbox...\n");
+				const snapshot = await sandbox.createSnapshot();
+				reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);
 
-			const snapshot = await sandbox.createSnapshot();
-
-			await ctx.runMutation(internal.environments.completeSnapshotBuild, {
-				id: args.environmentId,
-				snapshotId: snapshot.snapshotId,
-				snapshotCommitSha: args.snapshotCommitSha,
-			});
-		} catch (error) {
-			await ctx.runMutation(internal.environments.internalUpdate, {
-				id: args.environmentId,
-				snapshotStatus: "error",
-				error: formatEnvironmentError(error),
-			});
-
-			await ctx.runMutation(internal.environments.scheduleNextRebuild, {
-				id: args.environmentId,
-			});
-
-			throw error;
-		}
+				return {
+					snapshotId: snapshot.snapshotId,
+					snapshotCommitSha: args.snapshotCommitSha,
+				};
+			},
+		});
 	},
 });

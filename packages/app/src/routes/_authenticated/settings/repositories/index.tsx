@@ -112,7 +112,7 @@ function RepositoryCard({
 		});
 
 	const { mutate: createSnapshot, isPending: isSnapshotting } =
-		useConvexTanstackMutation(api.environments.createSnapshot, {
+		useConvexTanstackMutation(api.snapshot.createSnapshot, {
 			onError: (error) => {
 				toast.error(error.message);
 			},
@@ -158,8 +158,10 @@ function RepositoryCard({
 										onClick={() => {
 											if (repository.defaultEnvironment) {
 												createSnapshot({
-													type: "rebuild",
-													environmentId: repository.defaultEnvironment._id,
+													request: {
+														type: "rebuild",
+														environmentId: repository.defaultEnvironment._id,
+													},
 												});
 											}
 										}}
@@ -181,8 +183,10 @@ function RepositoryCard({
 										onClick={() => {
 											if (repository.defaultEnvironment) {
 												createSnapshot({
-													type: "build",
-													environmentId: repository.defaultEnvironment._id,
+													request: {
+														type: "build",
+														environmentId: repository.defaultEnvironment._id,
+													},
 												});
 											}
 										}}

@@ -10,7 +10,6 @@
 
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
-import type * as environmentBuilds from "../environmentBuilds.js";
 import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
@@ -23,6 +22,7 @@ import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
 import type * as repositories from "../repositories.js";
 import type * as sandboxActions from "../sandboxActions.js";
+import type * as snapshot from "../snapshot.js";
 import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaces from "../spaces.js";
 
@@ -35,7 +35,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
-  environmentBuilds: typeof environmentBuilds;
   environments: typeof environments;
   functions: typeof functions;
   healthCheck: typeof healthCheck;
@@ -48,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   nangoWebhook: typeof nangoWebhook;
   repositories: typeof repositories;
   sandboxActions: typeof sandboxActions;
+  snapshot: typeof snapshot;
   snapshotActions: typeof snapshotActions;
   spaces: typeof spaces;
 }>;
