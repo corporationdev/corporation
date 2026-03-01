@@ -19,7 +19,7 @@ type SnapshotReporter = {
 };
 
 type SnapshotResult = {
-	snapshotId: string;
+	externalSnapshotId: string;
 	snapshotCommitSha?: string;
 };
 
@@ -46,7 +46,7 @@ function createSnapshotReporter(
 	const enqueueProgress = (args: { logChunk?: string }) => {
 		queue = queue.then(async () => {
 			await ctx.runMutation(internal.snapshot.reportSnapshotProgress, {
-				snapshotId,
+				id: snapshotId,
 				...args,
 			});
 		});
@@ -83,8 +83,8 @@ function createSnapshotReporter(
 async function runTrackedSnapshot(
 	ctx: ActionCtx,
 	args: {
-		environmentId: Id<"environments">;
 		type: "build" | "rebuild" | "override";
+		environmentId: Id<"environments">;
 		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
 	}
 ): Promise<void> {
@@ -99,19 +99,15 @@ async function runTrackedSnapshot(
 		const result = await args.execute(reporter);
 		await ctx.runMutation(internal.snapshot.completeSnapshot, {
 			snapshotId,
-			completion: {
-				status: "ready",
-				snapshotId: result.snapshotId,
-				snapshotCommitSha: result.snapshotCommitSha,
-			},
+			environmentId: args.environmentId,
+			status: "ready",
+			...result,
 		});
 	} catch (error) {
 		await ctx.runMutation(internal.snapshot.completeSnapshot, {
 			snapshotId,
-			completion: {
-				status: "error",
-				error: formatSnapshotError(error),
-			},
+			status: "error",
+			error: formatSnapshotError(error),
 		});
 		throw error;
 	} finally {
@@ -127,21 +123,21 @@ export const buildSnapshot = internalAction({
 	args: {
 		request: v.union(
 			v.object({
-				environmentId: v.id("environments"),
 				type: v.literal("build"),
+				environmentId: v.id("environments"),
 			}),
 			v.object({
-				environmentId: v.id("environments"),
 				type: v.literal("rebuild"),
-				snapshotId: v.string(),
+				environmentId: v.id("environments"),
+				oldExternalSnapshotId: v.string(),
 			})
 		),
 	},
 	handler: async (ctx, args) => {
 		const request = args.request;
 		await runTrackedSnapshot(ctx, {
-			environmentId: request.environmentId,
 			type: request.type,
+			environmentId: request.environmentId,
 			execute: async (reporter) => {
 				const nangoSecretKey = process.env.NANGO_SECRET_KEY;
 				const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -162,7 +158,7 @@ export const buildSnapshot = internalAction({
 
 				const shouldUseRebuildBase = request.type === "rebuild";
 				const template = shouldUseRebuildBase
-					? request.snapshotId
+					? request.oldExternalSnapshotId
 					: BASE_TEMPLATE;
 
 				const sandbox = await Sandbox.betaCreate(template, {
@@ -200,7 +196,7 @@ export const buildSnapshot = internalAction({
 					reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);
 
 					return {
-						snapshotId: snapshot.snapshotId,
+						externalSnapshotId: snapshot.snapshotId,
 						snapshotCommitSha,
 					};
 				} finally {
@@ -233,7 +229,7 @@ export const overrideSnapshot = internalAction({
 				reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);
 
 				return {
-					snapshotId: snapshot.snapshotId,
+					externalSnapshotId: snapshot.snapshotId,
 					snapshotCommitSha: args.snapshotCommitSha,
 				};
 			},

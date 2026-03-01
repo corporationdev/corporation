@@ -79,7 +79,7 @@ export default defineSchema(
 			logs: v.string(),
 			logsTruncated: v.optional(v.boolean()),
 			error: v.optional(v.string()),
-			snapshotId: v.optional(v.string()),
+			externalSnapshotId: v.optional(v.string()),
 			snapshotCommitSha: v.optional(v.string()),
 			startedAt: v.number(),
 			completedAt: v.optional(v.number()),

@@ -32,13 +32,13 @@ if (useSandbox) {
 		const seedZip = `/tmp/convex-seed-${process.pid}.zip`;
 		try {
 			await $`npx convex export --path ${seedZip}`
-				.env(await loadBackendEnv())
+				.env(loadBackendEnv())
 				.cwd(repoRoot);
 			await $`zip -d ${seedZip} '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'`
 				.cwd(repoRoot)
 				.nothrow();
 			await $`npx convex dev --local --once --run-sh ${`npx convex import ${seedZip} --replace --yes`}`
-				.env(await loadBackendEnv())
+				.env(loadBackendEnv())
 				.cwd(resolve(repoRoot, "packages/backend"));
 		} catch {
 			console.log(
@@ -55,11 +55,11 @@ if (sync) {
 	const backendDir = resolve(repoRoot, "packages/backend");
 	if (useSandbox) {
 		await $`CONVEX_AGENT_MODE=anonymous npx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
-			.env(await loadBackendEnv())
+			.env(loadBackendEnv())
 			.cwd(backendDir);
 	} else {
 		await $`npx convex dev --once --run-sh ${"bun ./sync-convex-env.ts"}`
-			.env(await loadBackendEnv())
+			.env(loadBackendEnv())
 			.cwd(backendDir);
 	}
 }

@@ -204,6 +204,7 @@ const SpaceSidebarContent: FC<{
 						createSnapshotMutation.mutate({
 							request: {
 								type: "override",
+								environmentId: space.environmentId,
 								spaceId: space._id,
 							},
 						})

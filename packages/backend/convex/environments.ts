@@ -5,7 +5,7 @@ import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { normalizeEnvByPath } from "./lib/envByPath";
-import { scheduleSnapshotBuild } from "./snapshot";
+import { scheduleSnapshot } from "./snapshot";
 
 export const listByRepository = authedQuery({
 	args: {
@@ -71,7 +71,7 @@ export async function createEnvironmentHelper(
 	}
 ): Promise<Id<"environments">> {
 	const now = Date.now();
-	const envId = await ctx.db.insert("environments", {
+	const environmentId = await ctx.db.insert("environments", {
 		userId: ctx.userId,
 		repositoryId: args.repositoryId,
 		name: args.name,
@@ -84,12 +84,12 @@ export async function createEnvironmentHelper(
 
 	await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
 		request: {
-			environmentId: envId,
+			environmentId,
 			type: "build",
 		},
 	});
 
-	return envId;
+	return environmentId;
 }
 
 export const create = authedMutation({
@@ -209,7 +209,7 @@ export const executeScheduledRebuild = internalMutation({
 			return;
 		}
 
-		await scheduleSnapshotBuild(ctx, environment, "rebuild");
+		await scheduleSnapshot(ctx, environment, { type: "rebuild" });
 	},
 });
 
