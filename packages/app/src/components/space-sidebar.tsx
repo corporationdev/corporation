@@ -113,8 +113,8 @@ const SpaceSidebarContent: FC<{
 		},
 	});
 
-	const overrideSnapshotMutation = useConvexTanstackMutation(
-		api.environments.overrideSnapshot,
+	const createSnapshotMutation = useConvexTanstackMutation(
+		api.environments.createSnapshot,
 		{
 			onSuccess: () => {
 				toast.success("Sandbox saved as base snapshot");
@@ -201,7 +201,10 @@ const SpaceSidebarContent: FC<{
 						space.environment.snapshotStatus === "building"
 					}
 					onClick={() =>
-						overrideSnapshotMutation.mutate({ spaceId: space._id })
+						createSnapshotMutation.mutate({
+							type: "override",
+							spaceId: space._id,
+						})
 					}
 					size="sm"
 					variant="outline"

@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
+import type * as environmentBuilds from "../environmentBuilds.js";
 import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
@@ -34,6 +35,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
+  environmentBuilds: typeof environmentBuilds;
   environments: typeof environments;
   functions: typeof functions;
   healthCheck: typeof healthCheck;

@@ -98,7 +98,6 @@ function RepositoryCard({
 		defaultEnvironment: {
 			_id: Id<"environments">;
 			snapshotStatus: "building" | "ready" | "error";
-			error?: string;
 			rebuildIntervalMs?: number;
 		} | null;
 	};
@@ -112,15 +111,8 @@ function RepositoryCard({
 			},
 		});
 
-	const { mutate: rebuild, isPending: isRebuilding } =
-		useConvexTanstackMutation(api.environments.rebuildSnapshot, {
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		});
-
-	const { mutate: fullBuild, isPending: isFullBuilding } =
-		useConvexTanstackMutation(api.environments.fullBuildSnapshot, {
+	const { mutate: createSnapshot, isPending: isSnapshotting } =
+		useConvexTanstackMutation(api.environments.createSnapshot, {
 			onError: (error) => {
 				toast.error(error.message);
 			},
@@ -159,14 +151,15 @@ function RepositoryCard({
 								<Tooltip>
 									<Button
 										disabled={
-											isRebuilding ||
+											isSnapshotting ||
 											repository.defaultEnvironment.snapshotStatus ===
 												"building"
 										}
 										onClick={() => {
 											if (repository.defaultEnvironment) {
-												rebuild({
-													id: repository.defaultEnvironment._id,
+												createSnapshot({
+													type: "rebuild",
+													environmentId: repository.defaultEnvironment._id,
 												});
 											}
 										}}
@@ -181,14 +174,15 @@ function RepositoryCard({
 								<Tooltip>
 									<Button
 										disabled={
-											isFullBuilding ||
+											isSnapshotting ||
 											repository.defaultEnvironment.snapshotStatus ===
 												"building"
 										}
 										onClick={() => {
 											if (repository.defaultEnvironment) {
-												fullBuild({
-													id: repository.defaultEnvironment._id,
+												createSnapshot({
+													type: "build",
+													environmentId: repository.defaultEnvironment._id,
 												});
 											}
 										}}
@@ -252,12 +246,6 @@ function RepositoryCard({
 							hours (0 to disable)
 						</span>
 					</div>
-					{repository.defaultEnvironment.snapshotStatus === "error" &&
-						repository.defaultEnvironment.error && (
-							<p className="mt-2 whitespace-pre-wrap break-words text-destructive text-xs">
-								{repository.defaultEnvironment.error}
-							</p>
-						)}
 				</CardContent>
 			)}
 		</Card>

@@ -24,6 +24,42 @@ async function requireOwnedSpace(
 	return { space, environment };
 }
 
+async function getActiveSnapshotForEnvironment(
+	ctx: QueryCtx,
+	environment: Doc<"environments">
+): Promise<Doc<"snapshots"> | null> {
+	if (environment.activeSnapshotId) {
+		const active = await ctx.db.get(environment.activeSnapshotId);
+		if (active && active.environmentId === environment._id) {
+			return active;
+		}
+	}
+
+	return await ctx.db
+		.query("snapshots")
+		.withIndex("by_environment_and_startedAt", (q) =>
+			q.eq("environmentId", environment._id)
+		)
+		.order("desc")
+		.first();
+}
+
+async function withDerivedSnapshotState(
+	ctx: QueryCtx,
+	environment: Doc<"environments">
+) {
+	const activeSnapshot = await getActiveSnapshotForEnvironment(
+		ctx,
+		environment
+	);
+	return {
+		...environment,
+		snapshotStatus: activeSnapshot?.status ?? "building",
+		snapshotId: activeSnapshot?.snapshotId,
+		snapshotCommitSha: activeSnapshot?.snapshotCommitSha,
+	};
+}
+
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -143,12 +179,16 @@ export const getBySlug = authedQuery({
 		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
+		const environmentWithSnapshot = await withDerivedSnapshotState(
+			ctx,
+			environment
+		);
 
 		return {
 			...space,
 			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
-				...environment,
+				...environmentWithSnapshot,
 				repository,
 			},
 		};
@@ -168,12 +208,16 @@ export const get = authedQuery({
 		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
+		const environmentWithSnapshot = await withDerivedSnapshotState(
+			ctx,
+			environment
+		);
 
 		return {
 			...space,
 			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
-				...environment,
+				...environmentWithSnapshot,
 				repository,
 			},
 		};
@@ -245,10 +289,14 @@ export const internalGet = internalQuery({
 		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
+		const environmentWithSnapshot = await withDerivedSnapshotState(
+			ctx,
+			environment
+		);
 
 		return {
 			...space,
-			environment: { ...environment, repository },
+			environment: { ...environmentWithSnapshot, repository },
 		};
 	},
 });
