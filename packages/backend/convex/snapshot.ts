@@ -222,20 +222,14 @@ export const reportSnapshotProgress = internalMutation({
 });
 
 export const completeSnapshot = internalMutation({
-	args: v.union(
-		v.object({
-			snapshotId: v.id("snapshots"),
-			status: v.literal("ready"),
-			environmentId: v.id("environments"),
-			externalSnapshotId: v.string(),
-			snapshotCommitSha: v.optional(v.string()),
-		}),
-		v.object({
-			snapshotId: v.id("snapshots"),
-			status: v.literal("error"),
-			error: v.string(),
-		})
-	),
+	args: {
+		snapshotId: v.id("snapshots"),
+		status: v.union(v.literal("ready"), v.literal("error")),
+		environmentId: v.optional(v.id("environments")),
+		externalSnapshotId: v.optional(v.string()),
+		snapshotCommitSha: v.optional(v.string()),
+		error: v.optional(v.string()),
+	},
 	handler: async (ctx, args) => {
 		const snapshot = await ctx.db.get(args.snapshotId);
 		if (!snapshot) {
@@ -247,12 +241,21 @@ export const completeSnapshot = internalMutation({
 		}
 
 		if (args.status === "error") {
+			if (!args.error) {
+				throw new ConvexError("error is required when status is error");
+			}
 			await ctx.db.patch(args.snapshotId, {
 				status: "error",
 				completedAt: Date.now(),
 				error: args.error,
 			});
 			return;
+		}
+
+		if (!(args.environmentId && args.externalSnapshotId)) {
+			throw new ConvexError(
+				"environmentId and externalSnapshotId are required when status is ready"
+			);
 		}
 
 		if (snapshot.environmentId !== args.environmentId) {
