@@ -33,6 +33,7 @@ import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { useLayoutStore } from "@/stores/layout-store";
+import { SandboxCountdown } from "./sandbox-countdown";
 import { SyncCodeButton } from "./sync-code-button";
 
 export type Space = NonNullable<
@@ -268,6 +269,9 @@ const SpaceSidebarContent: FC<{
 						{previewMutation.isPending ? "Loading..." : "Open Preview"}
 					</Button>
 				</div>
+			)}
+			{isStarted && (
+				<SandboxCountdown actor={actor} expiresAt={space.sandboxExpiresAt} />
 			)}
 			<Button
 				className="w-full justify-start gap-2"

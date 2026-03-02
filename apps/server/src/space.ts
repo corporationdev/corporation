@@ -142,6 +142,10 @@ export const space = actor({
 				.where(eq(tabs.id, tabId));
 			await ctx.broadcastTabsChanged();
 		},
+		resetTimeout: (c) => {
+			c.vars.lastTimeoutRefreshAt = 0;
+			augmentContext(c, lifecycleDrivers);
+		},
 		...driverActions,
 	},
 });

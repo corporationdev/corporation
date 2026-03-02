@@ -14,7 +14,7 @@ const log = createLogger("space:keepalive");
 
 // Keep in sync with SANDBOX_TIMEOUT_MS in packages/backend/convex/sandboxActions.ts
 const SANDBOX_TIMEOUT_MS = 900_000;
-const SANDBOX_KEEPALIVE_DEBOUNCE_MS = 300_000;
+const SANDBOX_KEEPALIVE_DEBOUNCE_MS = 60_000;
 
 export function refreshSandboxTimeout(runtime: SpaceRuntimeContext): void {
 	const now = Date.now();
