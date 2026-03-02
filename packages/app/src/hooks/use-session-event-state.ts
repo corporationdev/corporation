@@ -13,6 +13,8 @@ type SessionState = {
 	isRunning: boolean;
 };
 
+const TRANSCRIPT_PAGE_SIZE = 200;
+
 function isActorConnDisposedError(error: unknown): boolean {
 	if (!(error instanceof Error)) {
 		return false;
@@ -80,11 +82,27 @@ export function useSessionEventState({
 		const conn = actor.connection;
 		(async () => {
 			await conn.subscribeSession(sessionId);
-			const events = await conn.getTranscript(sessionId, 0);
+			const events: SessionEvent[] = [];
+			let offset = 0;
+			while (true) {
+				const page = await conn.getTranscript(
+					sessionId,
+					offset,
+					TRANSCRIPT_PAGE_SIZE
+				);
+				if (page.length === 0) {
+					break;
+				}
+				events.push(...page);
+				offset += page.length;
+				if (page.length < TRANSCRIPT_PAGE_SIZE) {
+					break;
+				}
+			}
 			if (isCancelled) {
 				return;
 			}
-			applyEvents(await events);
+			applyEvents(events);
 			applyEvents(bufferRef.current);
 			bufferRef.current = [];
 			caughtUpRef.current = true;

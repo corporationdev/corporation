@@ -15,6 +15,7 @@ import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
 import type * as lib_branchName from "../lib/branchName.js";
+import type * as lib_devPort from "../lib/devPort.js";
 import type * as lib_envByPath from "../lib/envByPath.js";
 import type * as lib_git from "../lib/git.js";
 import type * as lib_nango from "../lib/nango.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   healthCheck: typeof healthCheck;
   http: typeof http;
   "lib/branchName": typeof lib_branchName;
+  "lib/devPort": typeof lib_devPort;
   "lib/envByPath": typeof lib_envByPath;
   "lib/git": typeof lib_git;
   "lib/nango": typeof lib_nango;
