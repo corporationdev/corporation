@@ -21,11 +21,19 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+	Sheet,
+	SheetContent,
+	SheetDescription,
+	SheetHeader,
+	SheetTitle,
+} from "@/components/ui/sheet";
+import {
 	Sidebar,
 	SidebarContent,
 	SidebarProvider,
 } from "@/components/ui/sidebar";
 import { useErrorToast } from "@/hooks/use-error-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import { apiClient } from "@/lib/api-client";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
@@ -57,6 +65,25 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor, tabs }) => {
 	const isOpen = useLayoutStore((s) => s.rightSidebarOpen);
 	const setIsOpen = useLayoutStore((s) => s.setRightSidebarOpen);
+	const isMobile = useIsMobile();
+
+	const content = space ? (
+		<SpaceSidebarContent actor={actor} space={space} tabs={tabs} />
+	) : null;
+
+	if (isMobile) {
+		return (
+			<Sheet onOpenChange={setIsOpen} open={isOpen}>
+				<SheetContent className="w-[18rem] overflow-auto p-4" side="right">
+					<SheetHeader className="sr-only">
+						<SheetTitle>Space Sidebar</SheetTitle>
+						<SheetDescription>Space controls and actions.</SheetDescription>
+					</SheetHeader>
+					{content}
+				</SheetContent>
+			</Sheet>
+		);
+	}
 
 	return (
 		<SidebarProvider
@@ -65,11 +92,7 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor, tabs }) => {
 			open={isOpen}
 		>
 			<Sidebar collapsible="offcanvas" side="right">
-				<SidebarContent className="p-4">
-					{space ? (
-						<SpaceSidebarContent actor={actor} space={space} tabs={tabs} />
-					) : null}
-				</SidebarContent>
+				<SidebarContent className="p-4">{content}</SidebarContent>
 			</Sidebar>
 		</SidebarProvider>
 	);
