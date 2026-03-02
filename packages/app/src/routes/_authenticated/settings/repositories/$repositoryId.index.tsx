@@ -1,7 +1,7 @@
 // biome-ignore-all lint/style/useFilenamingConvention: TanStack Router uses `$` for dynamic route params
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
 	AlertTriangle,
@@ -98,6 +98,8 @@ function RepositoryDetail({
 	repository: Repository;
 	defaultEnvironment: Environment;
 }) {
+	const navigate = useNavigate();
+
 	const { mutate: createSnapshot, isPending: isSnapshotting } =
 		useConvexTanstackMutation(api.snapshot.createSnapshot, {
 			onError: (error) => {
@@ -109,6 +111,7 @@ function RepositoryDetail({
 		useConvexTanstackMutation(api.repositories.delete, {
 			onSuccess: () => {
 				toast.success("Repository deleted");
+				navigate({ to: "/settings/repositories" });
 			},
 			onError: (error) => {
 				toast.error(error.message);

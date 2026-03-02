@@ -1,6 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
@@ -89,8 +89,14 @@ function RepositoryCard({
 	isOutdated: boolean;
 	isChecking: boolean;
 }) {
+	const navigate = useNavigate();
+
 	const { mutate: removeRepository, isPending: isDeleting } =
 		useConvexTanstackMutation(api.repositories.delete, {
+			onSuccess: () => {
+				toast.success("Repository deleted");
+				navigate({ to: "/settings/repositories" });
+			},
 			onError: (error) => {
 				toast.error(error.message);
 			},
