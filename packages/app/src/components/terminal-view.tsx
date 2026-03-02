@@ -5,6 +5,9 @@ import { useEffect, useRef } from "react";
 import type { SpaceActor } from "@/lib/rivetkit";
 import "@xterm/xterm/css/xterm.css";
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ESC sequence for terminal mouse tracking
+const MOUSE_TRACKING_RE = /\x1b\[\?100[0-6][hl]/g;
+
 type TerminalViewProps = {
 	terminalId: string;
 	actor: SpaceActor;
@@ -32,6 +35,21 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 			},
 		});
 
+		// Let browser handle Cmd/Ctrl+C (when text selected) and Cmd/Ctrl+V
+		terminal.attachCustomKeyEventHandler((event) => {
+			if (event.type !== "keydown") {
+				return true;
+			}
+			const isMeta = event.metaKey || event.ctrlKey;
+			if (isMeta && event.key === "c" && terminal.hasSelection()) {
+				return false;
+			}
+			if (isMeta && event.key === "v") {
+				return false;
+			}
+			return true;
+		});
+
 		const fitAddon = new FitAddon();
 		terminal.loadAddon(fitAddon);
 		terminal.loadAddon(new WebLinksAddon());
@@ -55,6 +73,7 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		};
 	}, []);
 
+	// Forward keyboard input and resize events to the PTY
 	useEffect(() => {
 		const terminal = terminalRef.current;
 		if (!(terminal && actor.connection)) {
@@ -74,6 +93,35 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 			dataDisposable.dispose();
 			resizeDisposable.dispose();
 		};
+	}, [actor.connection, terminalId]);
+
+	// Intercept wheel events and send them as SGR mouse scroll sequences to
+	// tmux (which has mouse on). We prevent xterm.js from seeing the wheel
+	// event so it doesn't convert it to arrow-key input.
+	useEffect(() => {
+		const container = containerRef.current;
+		if (!(container && actor.connection)) {
+			return;
+		}
+
+		const conn = actor.connection;
+		const handleWheel = (e: WheelEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const lines = Math.max(1, Math.ceil(Math.abs(e.deltaY) / 40));
+			// SGR mouse: 64 = scroll up, 65 = scroll down
+			const button = e.deltaY > 0 ? 65 : 64;
+			const seq = `\x1b[<${button};1;1M`.repeat(lines);
+			const bytes = Array.from(new TextEncoder().encode(seq));
+			conn.input(terminalId, bytes);
+		};
+
+		container.addEventListener("wheel", handleWheel, {
+			capture: true,
+			passive: false,
+		});
+		return () =>
+			container.removeEventListener("wheel", handleWheel, { capture: true });
 	}, [actor.connection, terminalId]);
 
 	useEffect(() => {
@@ -110,12 +158,20 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		};
 	}, [actor.connStatus, actor.connection, terminalId]);
 
+	// Strip mouse tracking escape sequences from tmux output so xterm.js
+	// doesn't enter mouse-reporting mode. This lets xterm.js handle text
+	// selection natively while we forward wheel events manually above.
 	actor.useEvent("terminal.output", (payload: unknown) => {
 		const event = payload as { terminalId: string; data: number[] };
 		if (event.terminalId !== terminalId) {
 			return;
 		}
-		terminalRef.current?.write(new Uint8Array(event.data));
+		const raw = new Uint8Array(event.data);
+		const text = new TextDecoder().decode(raw);
+		const filtered = text.replace(MOUSE_TRACKING_RE, "");
+		terminalRef.current?.write(
+			filtered.length !== text.length ? new TextEncoder().encode(filtered) : raw
+		);
 	});
 
 	return (
