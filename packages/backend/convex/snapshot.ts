@@ -16,7 +16,7 @@ export const getActive = authedQuery({
 			throw new ConvexError("Environment not found");
 		}
 
-		return getActiveSnapshotForEnvironment(ctx, environment);
+		return getLatestSnapshotForEnvironment(ctx, environment);
 	},
 });
 
@@ -113,17 +113,10 @@ export async function getScheduledRebuildCleanupPatch(
 	return { scheduledRebuildId: undefined };
 }
 
-export async function getActiveSnapshotForEnvironment(
+export async function getLatestSnapshotForEnvironment(
 	ctx: DbCtx,
 	environment: Doc<"environments">
 ): Promise<Doc<"snapshots"> | null> {
-	if (environment.activeSnapshotId) {
-		const active = await ctx.db.get(environment.activeSnapshotId);
-		if (active && active.environmentId === environment._id) {
-			return active;
-		}
-	}
-
 	return await ctx.db
 		.query("snapshots")
 		.withIndex("by_environment_and_startedAt", (q) =>
@@ -137,17 +130,17 @@ export async function withDerivedSnapshotState(
 	ctx: DbCtx,
 	environment: Doc<"environments">
 ) {
-	const activeSnapshot = await getActiveSnapshotForEnvironment(
+	const latestSnapshot = await getLatestSnapshotForEnvironment(
 		ctx,
 		environment
 	);
 
 	return {
 		...environment,
-		snapshotStatus: activeSnapshot?.status,
-		snapshotId: activeSnapshot?._id,
-		snapshotCommitSha: activeSnapshot?.snapshotCommitSha,
-		externalSnapshotId: activeSnapshot?.externalSnapshotId,
+		snapshotStatus: latestSnapshot?.status,
+		snapshotId: latestSnapshot?._id,
+		snapshotCommitSha: latestSnapshot?.snapshotCommitSha,
+		externalSnapshotId: latestSnapshot?.externalSnapshotId,
 	};
 }
 
@@ -155,14 +148,27 @@ export async function scheduleSnapshot(
 	ctx: MutationCtx,
 	environment: Doc<"environments">,
 	request: ScheduleSnapshotRequest
-): Promise<void> {
-	const activeSnapshot = await getActiveSnapshotForEnvironment(
-		ctx,
-		environment
-	);
-	if (activeSnapshot?.status === "building") {
+): Promise<Id<"snapshots">> {
+	const latestSnapshot = await ctx.db
+		.query("snapshots")
+		.withIndex("by_environment_and_startedAt", (q) =>
+			q.eq("environmentId", environment._id)
+		)
+		.order("desc")
+		.first();
+	if (latestSnapshot?.status === "building") {
 		throw new ConvexError("A snapshot build is already in progress");
 	}
+
+	const buildRequest =
+		request.type === "rebuild" && latestSnapshot?.externalSnapshotId
+			? {
+					type: "rebuild" as const,
+					oldExternalSnapshotId: latestSnapshot.externalSnapshotId,
+				}
+			: { type: "build" as const };
+	const snapshotType =
+		request.type === "override" ? "override" : buildRequest.type;
 
 	const scheduledRebuildPatch = await getScheduledRebuildCleanupPatch(
 		ctx,
@@ -170,34 +176,39 @@ export async function scheduleSnapshot(
 		environment.scheduledRebuildId
 	);
 
+	const now = Date.now();
+	const snapshotId = await ctx.db.insert("snapshots", {
+		environmentId: environment._id,
+		type: snapshotType,
+		status: "building",
+		logs: "",
+		startedAt: now,
+	});
+
 	await ctx.db.patch(environment._id, {
 		...scheduledRebuildPatch,
-		updatedAt: Date.now(),
+		updatedAt: now,
 	});
 
 	if (request.type === "override") {
 		await ctx.scheduler.runAfter(0, internal.snapshotActions.overrideSnapshot, {
 			environmentId: environment._id,
+			snapshotId,
 			sandboxId: request.sandboxId,
 			snapshotCommitSha: request.snapshotCommitSha,
 		});
-		return;
+		return snapshotId;
 	}
-
-	const buildRequest =
-		request.type === "rebuild" && activeSnapshot?.externalSnapshotId
-			? {
-					type: "rebuild" as const,
-					oldExternalSnapshotId: activeSnapshot.externalSnapshotId,
-				}
-			: { type: "build" as const };
 
 	await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
 		request: {
 			environmentId: environment._id,
+			snapshotId,
 			...buildRequest,
 		},
 	});
+
+	return snapshotId;
 }
 
 export const createSnapshot = authedMutation({
@@ -258,24 +269,26 @@ export const createSnapshot = authedMutation({
 
 export const startSnapshot = internalMutation({
 	args: {
+		snapshotId: v.id("snapshots"),
 		environmentId: v.id("environments"),
 		type: snapshotTypeValidator,
 	},
 	handler: async (ctx, args) => {
-		const snapshotId = await ctx.db.insert("snapshots", {
-			environmentId: args.environmentId,
-			type: args.type,
-			status: "building",
-			logs: "",
-			startedAt: Date.now(),
-		});
+		const snapshot = await ctx.db.get(args.snapshotId);
+		if (!snapshot) {
+			throw new ConvexError("Snapshot not found");
+		}
+		if (snapshot.environmentId !== args.environmentId) {
+			throw new ConvexError("Snapshot does not belong to environment");
+		}
+		if (snapshot.type !== args.type) {
+			throw new ConvexError("Snapshot type mismatch");
+		}
+		if (snapshot.status !== "building") {
+			throw new ConvexError("Snapshot is not building");
+		}
 
-		await ctx.db.patch(args.environmentId, {
-			activeSnapshotId: snapshotId,
-			updatedAt: Date.now(),
-		});
-
-		return snapshotId;
+		return snapshot._id;
 	},
 });
 
@@ -356,10 +369,6 @@ export const completeSnapshot = internalMutation({
 		if (snapshot.environmentId !== args.environmentId) {
 			throw new ConvexError("Snapshot does not belong to environment");
 		}
-		await ctx.db.patch(args.environmentId, {
-			activeSnapshotId: args.snapshotId,
-			updatedAt: Date.now(),
-		});
 		await ctx.db.patch(args.snapshotId, {
 			status: "ready",
 			completedAt: Date.now(),

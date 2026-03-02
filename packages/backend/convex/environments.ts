@@ -82,12 +82,12 @@ export async function createEnvironmentHelper(
 		updatedAt: now,
 	});
 
-	await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
-		request: {
-			environmentId,
-			type: "build",
-		},
-	});
+	const environment = await ctx.db.get(environmentId);
+	if (!environment) {
+		throw new ConvexError("Environment not found");
+	}
+
+	await scheduleSnapshot(ctx, environment, { type: "build" });
 
 	return environmentId;
 }

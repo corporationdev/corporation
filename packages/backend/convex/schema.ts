@@ -32,7 +32,6 @@ export default defineSchema(
 			envByPath: v.optional(
 				v.record(v.string(), v.record(v.string(), v.string()))
 			),
-			activeSnapshotId: v.optional(v.id("snapshots")),
 			rebuildIntervalMs: v.optional(v.number()),
 			scheduledRebuildId: v.optional(v.id("_scheduled_functions")),
 			createdAt: v.number(),

@@ -83,12 +83,14 @@ function createSnapshotReporter(
 async function runTrackedSnapshot(
 	ctx: ActionCtx,
 	args: {
+		snapshotId: Id<"snapshots">;
 		type: "build" | "rebuild" | "override";
 		environmentId: Id<"environments">;
 		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
 	}
 ): Promise<void> {
 	const snapshotId = await ctx.runMutation(internal.snapshot.startSnapshot, {
+		snapshotId: args.snapshotId,
 		environmentId: args.environmentId,
 		type: args.type,
 	});
@@ -141,10 +143,12 @@ export const buildSnapshot = internalAction({
 			v.object({
 				type: v.literal("build"),
 				environmentId: v.id("environments"),
+				snapshotId: v.id("snapshots"),
 			}),
 			v.object({
 				type: v.literal("rebuild"),
 				environmentId: v.id("environments"),
+				snapshotId: v.id("snapshots"),
 				oldExternalSnapshotId: v.string(),
 			})
 		),
@@ -152,6 +156,7 @@ export const buildSnapshot = internalAction({
 	handler: async (ctx, args) => {
 		const request = args.request;
 		await runTrackedSnapshot(ctx, {
+			snapshotId: request.snapshotId,
 			type: request.type,
 			environmentId: request.environmentId,
 			execute: async (reporter) => {
@@ -230,11 +235,13 @@ export const buildSnapshot = internalAction({
 export const overrideSnapshot = internalAction({
 	args: {
 		environmentId: v.id("environments"),
+		snapshotId: v.id("snapshots"),
 		sandboxId: v.string(),
 		snapshotCommitSha: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await runTrackedSnapshot(ctx, {
+			snapshotId: args.snapshotId,
 			environmentId: args.environmentId,
 			type: "override",
 			execute: async (reporter) => {
