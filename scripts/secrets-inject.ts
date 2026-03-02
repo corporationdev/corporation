@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { deriveEnvTier, resolveStage } from "@corporation/config/stage";
@@ -37,10 +43,17 @@ const resolvedTemplate = template
 	.replace(envTierVariableRegex, tier);
 writeFileSync(resolvedTemplatePath, resolvedTemplate, "utf8");
 
+// Load the root .env if it exists so that OP_SERVICE_ACCOUNT_TOKEN
+// (written by writeEnvFiles in sandbox builds) is available to op inject.
+const rootEnvPath = resolve(repoRoot, ".env");
+const rootEnv = existsSync(rootEnvPath)
+	? parseDotEnv(readFileSync(rootEnvPath, "utf8"))
+	: {};
+
 let injectOutput: string;
 try {
 	injectOutput = await $`op inject -i ${resolvedTemplatePath}`
-		.env({ ...process.env, STAGE: stage, ENV_TIER: tier })
+		.env({ ...process.env, ...rootEnv, STAGE: stage, ENV_TIER: tier })
 		.cwd(repoRoot)
 		.quiet()
 		.text();
