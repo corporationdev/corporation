@@ -34,7 +34,7 @@ export function useSessionEventState({
 	actor: SpaceActor;
 }): SessionState {
 	const eventStateRef = useRef<EventState>(createEventState());
-	const lastSequenceRef = useRef(0);
+	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<SessionEvent[]>([]);
 	const [sessionState, setSessionState] = useState<SessionState>({
@@ -46,12 +46,12 @@ export function useSessionEventState({
 		let lastResult: SessionState | null = null;
 
 		for (const event of events) {
-			if (event.eventIndex <= lastSequenceRef.current) {
+			if (seenEventIdsRef.current.has(event.id)) {
 				continue;
 			}
+			seenEventIdsRef.current.add(event.id);
 
 			lastResult = processEvent(event, eventStateRef.current);
-			lastSequenceRef.current = event.eventIndex;
 		}
 
 		if (lastResult) {
@@ -64,7 +64,7 @@ export function useSessionEventState({
 			return;
 		}
 		eventStateRef.current = createEventState();
-		lastSequenceRef.current = 0;
+		seenEventIdsRef.current = new Set();
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 		setSessionState({ messages: [], isRunning: false });
@@ -102,6 +102,15 @@ export function useSessionEventState({
 			if (isCancelled) {
 				return;
 			}
+			events.sort((left, right) => {
+				if (left.createdAt !== right.createdAt) {
+					return left.createdAt - right.createdAt;
+				}
+				if (left.eventIndex !== right.eventIndex) {
+					return left.eventIndex - right.eventIndex;
+				}
+				return left.id.localeCompare(right.id);
+			});
 			applyEvents(events);
 			applyEvents(bufferRef.current);
 			bufferRef.current = [];

@@ -18,7 +18,7 @@ type TurnState = {
 	fallbackUserParts: MessagePart[];
 	userParts: MessagePart[];
 	assistantParts: MessagePart[];
-	toolParts: Map<string, ToolCallPart>;
+	toolPartsById: Map<string, ToolCallPart>;
 	completed: boolean;
 	stopReason?: string;
 };
@@ -83,7 +83,7 @@ function handlePromptRequest(
 		fallbackUserParts,
 		userParts: [],
 		assistantParts: [],
-		toolParts: new Map<string, ToolCallPart>(),
+		toolPartsById: new Map<string, ToolCallPart>(),
 		completed: false,
 	};
 
@@ -242,9 +242,6 @@ function appendAssistantMessage(
 	turn: TurnState
 ): void {
 	const assistantContent: MessagePart[] = [...turn.assistantParts];
-	for (const toolPart of turn.toolParts.values()) {
-		assistantContent.push(toolPart as MessagePart);
-	}
 
 	if (assistantContent.length === 0 && turn.completed) {
 		return;
@@ -272,7 +269,7 @@ function createSyntheticTurn(
 		fallbackUserParts: [],
 		userParts: [],
 		assistantParts: [],
-		toolParts: new Map<string, ToolCallPart>(),
+		toolPartsById: new Map<string, ToolCallPart>(),
 		completed: false,
 	};
 	state.turnById.set(turn.id, turn);
@@ -302,13 +299,17 @@ function upsertToolCall(
 		return;
 	}
 
-	const existing = turn.toolParts.get(update.toolCallId);
+	const existing = turn.toolPartsById.get(update.toolCallId);
 	const nextToolPart: ToolCallPart = existing ?? {
 		type: "tool-call",
 		toolCallId: update.toolCallId,
 		toolName: typeof update.title === "string" ? update.title : "tool",
 		args: {},
 	};
+	if (!existing) {
+		turn.assistantParts.push(nextToolPart as MessagePart);
+		turn.toolPartsById.set(nextToolPart.toolCallId, nextToolPart);
+	}
 
 	if (typeof update.title === "string" && update.title.length > 0) {
 		nextToolPart.toolName = update.title;
@@ -323,7 +324,7 @@ function upsertToolCall(
 		nextToolPart.result = result;
 	}
 
-	turn.toolParts.set(nextToolPart.toolCallId, nextToolPart);
+	turn.toolPartsById.set(nextToolPart.toolCallId, nextToolPart);
 }
 
 function extractToolCallResult(
