@@ -89,7 +89,8 @@
     "fix": "ultracite fix",
     "fix:force": "ultracite fix --unsafe",
     "db:generate": "turbo db:generate",
-    "setup": "bun scripts/setup.ts"
+    "setup": "bun scripts/setup.ts",
+    "rebuild:template": "bun scripts/build-base-template.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",

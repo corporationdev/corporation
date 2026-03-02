@@ -1,4 +1,5 @@
-// Build the E2B base template with Node 22, common package managers, and sandbox-agent.
+// Build the E2B base template with Node 22, common package managers,
+// sandbox-agent, and preinstalled coding agents.
 //
 // Usage:
 //   bun scripts/build-base-template.ts
@@ -32,6 +33,9 @@ const template = Template()
 	)
 	.runCmd(
 		"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.1/install.sh | sh"
+	)
+	.runCmd(
+		"sandbox-agent install-agent claude && sandbox-agent install-agent codex && sandbox-agent install-agent opencode && sandbox-agent install-agent amp && sandbox-agent install-agent pi"
 	);
 
 console.log("Building base template…");

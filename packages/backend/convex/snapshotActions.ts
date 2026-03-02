@@ -7,12 +7,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type ActionCtx, internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
-import {
-	killDevServer,
-	runRootCommand,
-	setupSandbox,
-	startDevServer,
-} from "./lib/sandbox";
+import { killDevServer, setupSandbox, startDevServer } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
@@ -202,20 +197,6 @@ export const buildSnapshot = internalAction({
 							reporter.appendLog(chunk);
 						}
 					);
-
-					if (!shouldUseRebuildBase) {
-						await runRootCommand(
-							sandbox,
-							"sandbox-agent install-agent opencode --reinstall",
-							{
-								envs: anthropicApiKey
-									? { ANTHROPIC_API_KEY: anthropicApiKey }
-									: undefined,
-								onStdout: (data: string) => reporter.appendLog(data),
-								onStderr: (data: string) => reporter.appendLog(data),
-							}
-						);
-					}
 
 					if (shouldUseRebuildBase) {
 						await killDevServer(sandbox);
