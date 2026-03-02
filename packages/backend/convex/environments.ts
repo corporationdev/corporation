@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { assertValidDevPort } from "./lib/devPort";
 import { normalizeEnvByPath } from "./lib/envByPath";
 import { getScheduledRebuildCleanupPatch, scheduleSnapshot } from "./snapshot";
 
@@ -45,6 +46,7 @@ export const update = authedMutation({
 		if (environment.userId !== ctx.userId) {
 			throw new ConvexError("Environment not found");
 		}
+		assertValidDevPort(args.devPort);
 
 		const { id, envByPath, ...fields } = args;
 		const normalizedEnvByPath =
@@ -72,6 +74,8 @@ export async function createEnvironmentHelper(
 		envByPath?: Record<string, Record<string, string>>;
 	}
 ): Promise<Id<"environments">> {
+	assertValidDevPort(args.devPort);
+
 	const now = Date.now();
 	const environmentId = await ctx.db.insert("environments", {
 		userId: ctx.userId,

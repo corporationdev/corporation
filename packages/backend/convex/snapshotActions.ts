@@ -222,7 +222,7 @@ export const buildSnapshot = internalAction({
 					}
 
 					reporter.appendLog(
-						`[dev-server] devCommand=${environment.devCommand ?? "(unset)"} devPort=${environment.devPort ?? "(unset)"}\n`
+						`[dev-server] running dev command devPort=${environment.devPort}\n`
 					);
 					await startDevServer(sandbox, environment, (chunk) => {
 						reporter.appendLog(chunk);
