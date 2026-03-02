@@ -15,6 +15,10 @@ const PTY_TIMEOUT_MS = 0;
 const TMUX_HISTORY_LIMIT = 50_000;
 const DEV_SERVER_TERMINAL_ID = "devserver";
 
+function quoteShellArg(value: string): string {
+	return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function isProcessNotFoundError(error: unknown): boolean {
 	if (!(error instanceof Error)) {
 		return false;
@@ -32,7 +36,9 @@ async function hasTmuxSession(
 	sessionName: string
 ): Promise<boolean> {
 	try {
-		await sandbox.commands.run(`tmux has-session -t ${sessionName}`);
+		await sandbox.commands.run(
+			`tmux has-session -t ${quoteShellArg(sessionName)}`
+		);
 		return true;
 	} catch (error) {
 		if (error instanceof CommandExitError) {
@@ -52,9 +58,10 @@ async function ensureTmuxSession(
 		return;
 	}
 
-	const cwdFlag = cwd ? ` -c '${cwd}'` : "";
+	const safeSessionName = quoteShellArg(sessionName);
+	const cwdFlag = cwd ? ` -c ${quoteShellArg(cwd)}` : "";
 	await sandbox.commands.run(
-		`tmux new-session -d -s ${sessionName}${cwdFlag} \\; set-option -t ${sessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${sessionName} mouse on \\; set-option -t ${sessionName} status off`
+		`tmux new-session -d -s ${safeSessionName}${cwdFlag} \\; set-option -t ${safeSessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeSessionName} mouse on \\; set-option -t ${safeSessionName} status off`
 	);
 }
 
@@ -73,7 +80,7 @@ async function createTmuxPty(
 		user: "root",
 	});
 
-	const attachCmd = `exec tmux attach-session -t ${sessionName}\n`;
+	const attachCmd = `exec tmux attach-session -t ${quoteShellArg(sessionName)}\n`;
 	await sandbox.pty.sendInput(handle.pid, new TextEncoder().encode(attachCmd));
 
 	return { handle, pid: handle.pid };
@@ -410,6 +417,11 @@ async function startDevServerAction(
 	ctx: SpaceRuntimeContext,
 	devCommand: string
 ): Promise<void> {
+	const trimmedDevCommand = devCommand.trim();
+	if (!trimmedDevCommand) {
+		throw new Error("Dev command must not be empty");
+	}
+
 	const exists = await hasTmuxSession(ctx.vars.sandbox, DEV_SERVER_TERMINAL_ID);
 	if (exists) {
 		// Already running — just ensure the tab + PTY are attached
@@ -417,15 +429,19 @@ async function startDevServerAction(
 		return;
 	}
 
-	const workdir = ctx.state.workdir ?? undefined;
-	const cwdFlag = workdir ? ` -c '${workdir}'` : "";
-	await ctx.vars.sandbox.commands.run(
-		`tmux new-session -d -s ${DEV_SERVER_TERMINAL_ID}${cwdFlag} \\; set-option -t ${DEV_SERVER_TERMINAL_ID} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${DEV_SERVER_TERMINAL_ID} mouse on \\; set-option -t ${DEV_SERVER_TERMINAL_ID} status off`
+	const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
+	await ensureTmuxSession(
+		ctx.vars.sandbox,
+		DEV_SERVER_TERMINAL_ID,
+		ctx.state.workdir ?? undefined
 	);
 
-	// Send the dev command into the tmux session so it runs inside the shell
+	// Send the dev command literally to avoid shell expansion in the wrapper shell.
 	await ctx.vars.sandbox.commands.run(
-		`tmux send-keys -t ${DEV_SERVER_TERMINAL_ID} ${JSON.stringify(devCommand)} Enter`
+		`tmux send-keys -t ${safeSessionName} -l -- ${quoteShellArg(trimmedDevCommand)}`
+	);
+	await ctx.vars.sandbox.commands.run(
+		`tmux send-keys -t ${safeSessionName} Enter`
 	);
 
 	await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
@@ -445,8 +461,9 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 
 	// Kill the tmux session
 	try {
+		const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
 		await ctx.vars.sandbox.commands.run(
-			`tmux kill-session -t ${DEV_SERVER_TERMINAL_ID}`
+			`tmux kill-session -t ${safeSessionName}`
 		);
 	} catch (error) {
 		if (!(error instanceof CommandExitError)) {
@@ -474,37 +491,63 @@ async function onWake(vars: SpaceVars): Promise<void> {
 	const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
 	const now = Date.now();
 
-	const existingTab = await vars.db
-		.select({ id: tabs.id })
-		.from(tabs)
-		.where(eq(tabs.id, tabId))
-		.limit(1);
+	vars.db.transaction((tx) => {
+		const existingTab = tx
+			.select({ id: tabs.id })
+			.from(tabs)
+			.where(eq(tabs.id, tabId))
+			.limit(1)
+			.all();
+		const existingTerminal = tx
+			.select({ id: terminals.id, tabId: terminals.tabId })
+			.from(terminals)
+			.where(eq(terminals.id, DEV_SERVER_TERMINAL_ID))
+			.limit(1)
+			.all();
 
-	if (existingTab.length === 0) {
-		await vars.db.insert(tabs).values({
-			id: tabId,
-			type: "terminal",
-			title: "Dev Server",
-			active: true,
-			createdAt: now,
-			updatedAt: now,
-			archivedAt: null,
-		});
-		await vars.db.insert(terminals).values({
-			id: DEV_SERVER_TERMINAL_ID,
-			tabId,
-			ptyPid: null,
-			cols: DEFAULT_TERMINAL_COLS,
-			rows: DEFAULT_TERMINAL_ROWS,
-			createdAt: now,
-			updatedAt: now,
-		});
-	} else {
-		await vars.db
-			.update(tabs)
-			.set({ active: true, archivedAt: null, updatedAt: now })
-			.where(eq(tabs.id, tabId));
-	}
+		if (existingTab.length === 0) {
+			tx.insert(tabs)
+				.values({
+					id: tabId,
+					type: "terminal",
+					title: "Dev Server",
+					active: true,
+					createdAt: now,
+					updatedAt: now,
+					archivedAt: null,
+				})
+				.run();
+		} else {
+			tx.update(tabs)
+				.set({
+					title: "Dev Server",
+					active: true,
+					archivedAt: null,
+					updatedAt: now,
+				})
+				.where(eq(tabs.id, tabId))
+				.run();
+		}
+
+		if (existingTerminal.length === 0) {
+			tx.insert(terminals)
+				.values({
+					id: DEV_SERVER_TERMINAL_ID,
+					tabId,
+					ptyPid: null,
+					cols: DEFAULT_TERMINAL_COLS,
+					rows: DEFAULT_TERMINAL_ROWS,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		} else if (existingTerminal[0]?.tabId !== tabId) {
+			tx.update(terminals)
+				.set({ tabId, updatedAt: now })
+				.where(eq(terminals.id, DEV_SERVER_TERMINAL_ID))
+				.run();
+		}
+	});
 
 	log.info("auto-discovered devserver tmux session on wake");
 }
