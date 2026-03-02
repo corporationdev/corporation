@@ -7,6 +7,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { generateBranchName } from "./lib/branchName";
 import { normalizeBranchName } from "./lib/git";
+import { getSandboxWorkdir } from "./lib/sandbox";
 import { spaceStatusValidator } from "./schema";
 import { withDerivedSnapshotState } from "./snapshot";
 
@@ -151,7 +152,7 @@ export const getBySlug = authedQuery({
 
 		return {
 			...space,
-			workdir: `/root/${repository.owner}-${repository.name}`,
+			workdir: getSandboxWorkdir(repository),
 			environment: {
 				...environmentWithSnapshot,
 				repository,
@@ -180,7 +181,7 @@ export const get = authedQuery({
 
 		return {
 			...space,
-			workdir: `/root/${repository.owner}-${repository.name}`,
+			workdir: getSandboxWorkdir(repository),
 			environment: {
 				...environmentWithSnapshot,
 				repository,
@@ -194,7 +195,7 @@ export const update = authedMutation({
 		id: v.id("spaces"),
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
-		sandboxUrl: v.optional(v.string()),
+		agentUrl: v.optional(v.string()),
 		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -220,7 +221,7 @@ export const internalUpdate = internalMutation({
 		id: v.id("spaces"),
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
-		sandboxUrl: v.optional(v.string()),
+		agentUrl: v.optional(v.string()),
 		lastSyncedCommitSha: v.optional(v.string()),
 		prUrl: v.optional(v.string()),
 		error: v.optional(v.string()),

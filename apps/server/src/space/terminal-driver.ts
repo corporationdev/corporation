@@ -1,61 +1,22 @@
 import { createLogger } from "@corporation/logger";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import type { CommandHandle, Sandbox } from "e2b";
+import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
-import type { SpaceRuntimeContext } from "./types";
+import type { SpaceRuntimeContext, SpaceVars } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
-const MAX_SCROLLBACK_BYTES = 256 * 1024;
 const PTY_TIMEOUT_MS = 0;
+const TMUX_HISTORY_LIMIT = 50_000;
+const DEV_SERVER_TERMINAL_ID = "devserver";
 
-function encodeBytes(bytes: number[]): string {
-	if (bytes.length === 0) {
-		return "";
-	}
-
-	let binary = "";
-	const chunkSize = 8192;
-
-	for (let index = 0; index < bytes.length; index += chunkSize) {
-		const chunk = bytes.slice(index, index + chunkSize);
-		for (const value of chunk) {
-			binary += String.fromCharCode(value);
-		}
-	}
-
-	return btoa(binary);
-}
-
-function decodeBytes(encoded: string | null): number[] {
-	if (!encoded) {
-		return [];
-	}
-
-	const binary = atob(encoded);
-	const bytes: number[] = new Array(binary.length);
-	for (let index = 0; index < binary.length; index++) {
-		bytes[index] = binary.charCodeAt(index);
-	}
-	return bytes;
-}
-
-function appendAndTrimBuffer(base: number[], next: number[]): number[] {
-	if (next.length === 0) {
-		return base;
-	}
-
-	const combined = base.concat(next);
-	if (combined.length <= MAX_SCROLLBACK_BYTES) {
-		return combined;
-	}
-
-	return combined.slice(combined.length - MAX_SCROLLBACK_BYTES);
+function quoteShellArg(value: string): string {
+	return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function isProcessNotFoundError(error: unknown): boolean {
@@ -68,6 +29,89 @@ function isProcessNotFoundError(error: unknown): boolean {
 		error.message.includes("process with pid") &&
 		error.message.includes("not found")
 	);
+}
+
+async function hasTmuxSession(
+	sandbox: Sandbox,
+	sessionName: string
+): Promise<boolean> {
+	try {
+		await sandbox.commands.run(
+			`tmux has-session -t ${quoteShellArg(sessionName)}`
+		);
+		return true;
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+async function ensureTmuxSession(
+	sandbox: Sandbox,
+	sessionName: string,
+	cwd?: string
+): Promise<void> {
+	const safeSessionName = quoteShellArg(sessionName);
+	const cwdFlag = cwd ? ` -c ${quoteShellArg(cwd)}` : "";
+	try {
+		await sandbox.commands.run(
+			`tmux new-session -d -s ${safeSessionName}${cwdFlag} \\; set-option -t ${safeSessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeSessionName} mouse on \\; set-option -t ${safeSessionName} status off`
+		);
+	} catch (error) {
+		if (
+			error instanceof CommandExitError &&
+			error.message.includes("duplicate session")
+		) {
+			return;
+		}
+		throw error;
+	}
+}
+
+async function createTmuxPty(
+	sandbox: Sandbox,
+	sessionName: string,
+	cols: number,
+	rows: number,
+	onData: (data: Uint8Array) => void
+): Promise<{ handle: CommandHandle; pid: number }> {
+	const handle = await sandbox.pty.create({
+		cols,
+		rows,
+		onData,
+		timeoutMs: PTY_TIMEOUT_MS,
+		user: "root",
+	});
+
+	const attachCmd = `exec tmux attach-session -t ${quoteShellArg(sessionName)}\n`;
+	await sandbox.pty.sendInput(handle.pid, new TextEncoder().encode(attachCmd));
+
+	return { handle, pid: handle.pid };
+}
+
+async function connectOrCreatePty(
+	sandbox: Sandbox,
+	sessionName: string,
+	existingPid: number | null,
+	cols: number,
+	rows: number,
+	onData: (data: Uint8Array) => void,
+	cwd?: string
+): Promise<{ handle: CommandHandle; pid: number }> {
+	// Kill stale PTY if it exists — we always create a fresh one
+	// to avoid duplicate tmux attach sessions.
+	if (existingPid !== null) {
+		try {
+			await sandbox.pty.kill(existingPid);
+		} catch {
+			// Best-effort: process may already be gone
+		}
+	}
+
+	await ensureTmuxSession(sandbox, sessionName, cwd);
+	return await createTmuxPty(sandbox, sessionName, cols, rows, onData);
 }
 
 async function recreateTerminalHandle(
@@ -134,50 +178,12 @@ function trackTerminalExit(
 		});
 }
 
-async function connectOrCreatePty(
-	sandbox: Sandbox,
-	existingPid: number | null,
-	cols: number,
-	rows: number,
-	onData: (data: Uint8Array) => void,
-	cwd?: string
-): Promise<{ handle: CommandHandle; pid: number }> {
-	if (existingPid !== null) {
-		try {
-			const handle = await sandbox.pty.connect(existingPid, {
-				onData,
-				timeoutMs: PTY_TIMEOUT_MS,
-			});
-			return { handle, pid: existingPid };
-		} catch {
-			log.warn(
-				{ pid: existingPid },
-				"failed to reconnect pty, creating a new one"
-			);
-		}
-	}
-
-	const handle = await sandbox.pty.create({
-		cols,
-		rows,
-		onData,
-		timeoutMs: PTY_TIMEOUT_MS,
-		user: "root",
-		cwd,
-	});
-
-	return { handle, pid: handle.pid };
-}
-
 async function disconnectAllTerminals(ctx: SpaceRuntimeContext): Promise<void> {
 	for (const handle of ctx.vars.terminalHandles.values()) {
 		await handle.disconnect();
 	}
 
-	await Promise.all(ctx.vars.terminalPersistWrites.values());
 	ctx.vars.terminalHandles.clear();
-	ctx.vars.terminalBuffers.clear();
-	ctx.vars.terminalPersistWrites.clear();
 }
 
 async function ensureTerminal(
@@ -203,10 +209,12 @@ async function ensureTerminal(
 			.limit(1);
 
 		if (existing.length === 0) {
+			const title =
+				terminalId === DEV_SERVER_TERMINAL_ID ? "Dev Server" : "Terminal";
 			await tx.insert(tabs).values({
 				id: tabId,
 				type: "terminal",
-				title: "Terminal",
+				title,
 				active: true,
 				createdAt: now,
 				updatedAt: now,
@@ -219,7 +227,6 @@ async function ensureTerminal(
 				ptyPid: null,
 				cols: nextCols,
 				rows: nextRows,
-				scrollbackBlob: null,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -254,7 +261,6 @@ async function ensureTerminal(
 				ptyPid: terminals.ptyPid,
 				cols: terminals.cols,
 				rows: terminals.rows,
-				scrollbackBlob: terminals.scrollbackBlob,
 			})
 			.from(terminals)
 			.where(eq(terminals.id, terminalId))
@@ -265,14 +271,8 @@ async function ensureTerminal(
 			throw new Error("Terminal not found");
 		}
 
-		const existingBuffer = decodeBytes(terminalRow.scrollbackBlob);
-		ctx.vars.terminalBuffers.set(terminalId, existingBuffer);
-
 		const onData = (chunk: Uint8Array) => {
 			const bytes = Array.from(chunk);
-			const currentBuffer = ctx.vars.terminalBuffers.get(terminalId) ?? [];
-			const nextBuffer = appendAndTrimBuffer(currentBuffer, bytes);
-			ctx.vars.terminalBuffers.set(terminalId, nextBuffer);
 
 			publishToChannel(
 				ctx,
@@ -283,40 +283,11 @@ async function ensureTerminal(
 					data: bytes,
 				}
 			);
-
-			const previousWrite =
-				ctx.vars.terminalPersistWrites.get(terminalId) ?? Promise.resolve();
-			const persistWrite = previousWrite
-				.catch(() => undefined)
-				.then(async () => {
-					const latestBuffer = ctx.vars.terminalBuffers.get(terminalId) ?? [];
-					await ctx.vars.db
-						.update(terminals)
-						.set({
-							scrollbackBlob: encodeBytes(latestBuffer),
-							updatedAt: Date.now(),
-						})
-						.where(eq(terminals.id, terminalId));
-				})
-				.catch((error) => {
-					log.error(
-						{ terminalId, err: error },
-						"failed to persist terminal scrollback"
-					);
-				});
-
-			ctx.vars.terminalPersistWrites.set(terminalId, persistWrite);
-			ctx.waitUntil(
-				persistWrite.finally(() => {
-					if (ctx.vars.terminalPersistWrites.get(terminalId) === persistWrite) {
-						ctx.vars.terminalPersistWrites.delete(terminalId);
-					}
-				})
-			);
 		};
 
 		const { handle, pid } = await connectOrCreatePty(
 			ctx.vars.sandbox,
+			terminalId,
 			terminalRow.ptyPid,
 			terminalRow.cols,
 			terminalRow.rows,
@@ -336,30 +307,6 @@ async function ensureTerminal(
 	}
 
 	await ctx.broadcastTabsChanged();
-}
-
-async function getScrollback(
-	ctx: SpaceRuntimeContext,
-	terminalId: string
-): Promise<number[]> {
-	if (!ctx.vars.terminalHandles.has(terminalId)) {
-		await ensureTerminal(ctx, terminalId);
-	}
-
-	const inMemory = ctx.vars.terminalBuffers.get(terminalId);
-	if (inMemory) {
-		return inMemory;
-	}
-
-	const rows = await ctx.vars.db
-		.select({ scrollbackBlob: terminals.scrollbackBlob })
-		.from(terminals)
-		.where(eq(terminals.id, terminalId))
-		.limit(1);
-
-	const bytes = decodeBytes(rows[0]?.scrollbackBlob ?? null);
-	ctx.vars.terminalBuffers.set(terminalId, bytes);
-	return bytes;
 }
 
 async function input(
@@ -471,15 +418,158 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {
 	});
 }
 
+async function startDevServerAction(
+	ctx: SpaceRuntimeContext,
+	devCommand: string
+): Promise<void> {
+	const trimmedDevCommand = devCommand.trim();
+	if (!trimmedDevCommand) {
+		throw new Error("Dev command must not be empty");
+	}
+
+	const exists = await hasTmuxSession(ctx.vars.sandbox, DEV_SERVER_TERMINAL_ID);
+	if (exists) {
+		// Already running — just ensure the tab + PTY are attached
+		await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
+		return;
+	}
+
+	const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
+	await ensureTmuxSession(
+		ctx.vars.sandbox,
+		DEV_SERVER_TERMINAL_ID,
+		ctx.state.workdir ?? undefined
+	);
+
+	// Send the dev command literally to avoid shell expansion in the wrapper shell.
+	await ctx.vars.sandbox.commands.run(
+		`tmux send-keys -t ${safeSessionName} -l -- ${quoteShellArg(trimmedDevCommand)}`
+	);
+	await ctx.vars.sandbox.commands.run(
+		`tmux send-keys -t ${safeSessionName} Enter`
+	);
+
+	await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
+}
+
+async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
+	// Disconnect the PTY handle first
+	const handle = ctx.vars.terminalHandles.get(DEV_SERVER_TERMINAL_ID);
+	if (handle) {
+		try {
+			await handle.disconnect();
+		} catch {
+			// Best-effort
+		}
+		ctx.vars.terminalHandles.delete(DEV_SERVER_TERMINAL_ID);
+	}
+
+	// Kill the tmux session
+	try {
+		const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
+		await ctx.vars.sandbox.commands.run(
+			`tmux kill-session -t ${safeSessionName}`
+		);
+	} catch (error) {
+		if (!(error instanceof CommandExitError)) {
+			throw error;
+		}
+		// Session already gone
+	}
+
+	// Archive the tab
+	const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
+	await ctx.vars.db
+		.update(tabs)
+		.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
+		.where(eq(tabs.id, tabId));
+
+	await ctx.broadcastTabsChanged();
+}
+
+async function onWake(vars: SpaceVars): Promise<void> {
+	const exists = await hasTmuxSession(vars.sandbox, DEV_SERVER_TERMINAL_ID);
+	if (!exists) {
+		// Clean up stale tab if tmux session is gone (e.g. sandbox restart)
+		const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
+		const now = Date.now();
+		vars.db
+			.update(tabs)
+			.set({ active: false, archivedAt: now, updatedAt: now })
+			.where(eq(tabs.id, tabId))
+			.run();
+		return;
+	}
+
+	const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
+	const now = Date.now();
+
+	vars.db.transaction((tx) => {
+		const existingTab = tx
+			.select({ id: tabs.id })
+			.from(tabs)
+			.where(eq(tabs.id, tabId))
+			.limit(1)
+			.all();
+		const existingTerminal = tx
+			.select({ id: terminals.id, tabId: terminals.tabId })
+			.from(terminals)
+			.where(eq(terminals.id, DEV_SERVER_TERMINAL_ID))
+			.limit(1)
+			.all();
+
+		if (existingTab.length === 0) {
+			tx.insert(tabs)
+				.values({
+					id: tabId,
+					type: "terminal",
+					title: "Dev Server",
+					active: true,
+					createdAt: now,
+					updatedAt: now,
+					archivedAt: null,
+				})
+				.run();
+		} else {
+			tx.update(tabs)
+				.set({
+					title: "Dev Server",
+					active: true,
+					archivedAt: null,
+					updatedAt: now,
+				})
+				.where(eq(tabs.id, tabId))
+				.run();
+		}
+
+		if (existingTerminal.length === 0) {
+			tx.insert(terminals)
+				.values({
+					id: DEV_SERVER_TERMINAL_ID,
+					tabId,
+					ptyPid: null,
+					cols: DEFAULT_TERMINAL_COLS,
+					rows: DEFAULT_TERMINAL_ROWS,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		} else if (existingTerminal[0]?.tabId !== tabId) {
+			tx.update(terminals)
+				.set({ tabId, updatedAt: now })
+				.where(eq(terminals.id, DEV_SERVER_TERMINAL_ID))
+				.run();
+		}
+	});
+
+	log.info("auto-discovered devserver tmux session on wake");
+}
+
 async function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 	await disconnectAllTerminals(ctx);
 }
 
 type TerminalPublicActions = {
-	getScrollback: (
-		ctx: SpaceRuntimeContext,
-		terminalId: string
-	) => Promise<number[]>;
 	input: (
 		ctx: SpaceRuntimeContext,
 		terminalId: string,
@@ -491,6 +581,11 @@ type TerminalPublicActions = {
 		cols: number,
 		rows: number
 	) => Promise<void>;
+	startDevServer: (
+		ctx: SpaceRuntimeContext,
+		devCommand: string
+	) => Promise<void>;
+	killDevServer: (ctx: SpaceRuntimeContext) => Promise<void>;
 };
 
 type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
@@ -499,11 +594,13 @@ type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
 
 export const terminalDriver: TerminalDriver = {
 	kind: "terminal",
+	onWake,
 	onSleep,
 	listTabs,
 	publicActions: {
-		getScrollback,
 		input,
 		resize,
+		startDevServer: startDevServerAction,
+		killDevServer: killDevServerAction,
 	},
 };

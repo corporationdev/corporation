@@ -6,6 +6,7 @@ const envLineRegex = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)/;
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const argv = process.argv.slice(2);
+const backendDir = resolve(repoRoot, "packages/backend");
 
 const useSandbox = argv.includes("--sandbox");
 const sync = argv.includes("--sync");
@@ -33,13 +34,13 @@ if (useSandbox) {
 		try {
 			await $`bunx convex export --path ${seedZip}`
 				.env(loadBackendEnv())
-				.cwd(repoRoot);
+				.cwd(backendDir);
 			await $`zip -d ${seedZip} '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'`
 				.cwd(repoRoot)
 				.nothrow();
 			await $`bunx convex dev --local --once --run-sh ${`bunx convex import ${seedZip} --replace --yes`}`
 				.env(loadBackendEnv())
-				.cwd(resolve(repoRoot, "packages/backend"));
+				.cwd(backendDir);
 		} catch {
 			console.log(
 				"[seed] Seed failed (non-fatal), continuing with empty database"
@@ -52,11 +53,19 @@ if (useSandbox) {
 
 if (sync) {
 	console.log("Syncing environment variables to Convex...");
-	const backendDir = resolve(repoRoot, "packages/backend");
 	if (useSandbox) {
-		await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
-			.env(loadBackendEnv())
-			.cwd(backendDir);
+		const localBackendRunning =
+			(await $`lsof -i :3210 -t`.nothrow().quiet()).exitCode === 0;
+		if (localBackendRunning) {
+			console.log(
+				"Local backend already running, syncing env vars directly..."
+			);
+			await $`bun ./sync-convex-env.ts`.env(loadBackendEnv()).cwd(backendDir);
+		} else {
+			await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
+				.env(loadBackendEnv())
+				.cwd(backendDir);
+		}
 	} else {
 		await $`bunx convex dev --once --run-sh ${"bun ./sync-convex-env.ts"}`
 			.env(loadBackendEnv())

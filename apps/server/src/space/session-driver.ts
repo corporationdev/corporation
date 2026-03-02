@@ -45,24 +45,27 @@ async function ensureSession(
 	const tabId = createTabId("session", sessionId);
 	const nextTitle = title ?? DEFAULT_SESSION_TITLE;
 
-	await ctx.vars.db.transaction(async (tx) => {
-		const existing = await tx
+	await ctx.vars.db.transaction((tx) => {
+		const existing = tx
 			.select({ id: tabs.id })
 			.from(tabs)
 			.where(eq(tabs.sessionId, sessionId))
-			.limit(1);
+			.limit(1)
+			.all();
 
 		if (existing.length === 0) {
-			await tx.insert(tabs).values({
-				id: tabId,
-				type: "session",
-				title: nextTitle,
-				sessionId,
-				active: true,
-				createdAt: now,
-				updatedAt: now,
-				archivedAt: null,
-			});
+			tx.insert(tabs)
+				.values({
+					id: tabId,
+					type: "session",
+					title: nextTitle,
+					sessionId,
+					active: true,
+					createdAt: now,
+					updatedAt: now,
+					archivedAt: null,
+				})
+				.run();
 			return;
 		}
 
@@ -79,7 +82,7 @@ async function ensureSession(
 		if (title) {
 			tabPatch.title = title;
 		}
-		await tx.update(tabs).set(tabPatch).where(eq(tabs.sessionId, sessionId));
+		tx.update(tabs).set(tabPatch).where(eq(tabs.sessionId, sessionId)).run();
 	});
 
 	await ctx.broadcastTabsChanged();

@@ -81,7 +81,6 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 			return;
 		}
 
-		let isCancelled = false;
 		const initialize = async () => {
 			try {
 				await actor.connection?.subscribeTerminal(terminalId);
@@ -94,12 +93,6 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 						terminal.rows
 					);
 				}
-
-				const data = await actor.connection?.getScrollback(terminalId);
-				if (isCancelled || !data || data.length === 0) {
-					return;
-				}
-				terminalRef.current?.write(new Uint8Array(data));
 			} catch (error: unknown) {
 				console.error("Failed to initialize terminal", error);
 			}
@@ -109,7 +102,6 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		});
 
 		return () => {
-			isCancelled = true;
 			actor.connection
 				?.unsubscribeTerminal(terminalId)
 				.catch((error: unknown) => {

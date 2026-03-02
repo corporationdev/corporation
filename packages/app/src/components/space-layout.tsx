@@ -32,7 +32,7 @@ export function SpaceLayout() {
 	const isSpaceLoading = space === undefined;
 	const isSpaceMissing = !!spaceSlug && space === null;
 
-	const sandboxReady = !!space?.sandboxId && !!space?.sandboxUrl;
+	const sandboxReady = !!space?.sandboxId && !!space?.agentUrl;
 
 	const actor = useActor({
 		name: "space",
@@ -40,7 +40,7 @@ export function SpaceLayout() {
 		createWithInput: sandboxReady
 			? {
 					sandboxId: space.sandboxId,
-					sandboxUrl: space.sandboxUrl,
+					agentUrl: space.agentUrl,
 					workdir: space.workdir,
 				}
 			: undefined,
@@ -92,7 +92,7 @@ export function SpaceLayout() {
 					})
 				)}
 			</SidebarInset>
-			<SpaceSidebar actor={actor} space={space} />
+			<SpaceSidebar actor={actor} space={space} tabs={tabs} />
 		</div>
 	);
 }

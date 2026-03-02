@@ -13,44 +13,61 @@ async function ensurePreview(
 	const now = Date.now();
 	const tabId = createTabId("preview", previewId);
 
-	await ctx.vars.db.transaction(async (tx) => {
-		const existing = await tx
-			.select({ id: previews.id })
+	await ctx.vars.db.transaction((tx) => {
+		const existingPreview = tx
+			.select({ id: previews.id, tabId: previews.tabId })
 			.from(previews)
 			.where(eq(previews.id, previewId))
-			.limit(1);
+			.limit(1)
+			.all();
+		const existingTab = tx
+			.select({ id: tabs.id })
+			.from(tabs)
+			.where(eq(tabs.id, tabId))
+			.limit(1)
+			.all();
 
-		if (existing.length === 0) {
-			await tx.insert(tabs).values({
-				id: tabId,
-				type: "preview",
-				title: `Preview :${port}`,
-				active: true,
-				createdAt: now,
-				updatedAt: now,
-				archivedAt: null,
-			});
-
-			await tx.insert(previews).values({
-				id: previewId,
-				tabId,
-				url,
-				port,
-				createdAt: now,
-				updatedAt: now,
-			});
-			return;
+		if (existingTab.length === 0) {
+			tx.insert(tabs)
+				.values({
+					id: tabId,
+					type: "preview",
+					title: `Preview :${port}`,
+					active: true,
+					createdAt: now,
+					updatedAt: now,
+					archivedAt: null,
+				})
+				.run();
+		} else {
+			tx.update(tabs)
+				.set({
+					title: `Preview :${port}`,
+					active: true,
+					archivedAt: null,
+					updatedAt: now,
+				})
+				.where(eq(tabs.id, tabId))
+				.run();
 		}
 
-		await tx
-			.update(previews)
-			.set({ url, updatedAt: now })
-			.where(eq(previews.id, previewId));
-
-		await tx
-			.update(tabs)
-			.set({ active: true, archivedAt: null, updatedAt: now })
-			.where(eq(tabs.id, tabId));
+		if (existingPreview.length === 0) {
+			tx.insert(previews)
+				.values({
+					id: previewId,
+					tabId,
+					url,
+					port,
+					createdAt: now,
+					updatedAt: now,
+				})
+				.run();
+		} else {
+			tx.update(previews)
+				.set({ tabId, url, port, updatedAt: now })
+				.where(eq(previews.id, previewId))
+				.run();
+		}
 	});
 
 	await ctx.broadcastTabsChanged();

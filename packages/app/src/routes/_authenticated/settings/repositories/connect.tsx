@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
 	buildEnvByPath,
 	type EnvFileValues,
+	parseDevPort,
 	RepositoryConfigForm,
 	repositoryConfigSchema,
 } from "@/components/repository-config-form";
@@ -44,6 +45,7 @@ function ConnectRepositoryPage() {
 		mutationFn: async (value: {
 			setupCommand: string;
 			devCommand: string;
+			devPort: string | number;
 			envFiles: EnvFileValues[];
 		}) => {
 			if (!selectedRepo) {
@@ -51,6 +53,7 @@ function ConnectRepositoryPage() {
 			}
 
 			const envByPath = buildEnvByPath(value.envFiles);
+			const devPort = parseDevPort(value.devPort);
 
 			await createRepo({
 				githubRepoId: selectedRepo.id,
@@ -60,6 +63,7 @@ function ConnectRepositoryPage() {
 				environmentConfig: {
 					setupCommand: value.setupCommand,
 					devCommand: value.devCommand,
+					devPort,
 					envByPath,
 				},
 			});
@@ -76,6 +80,7 @@ function ConnectRepositoryPage() {
 		defaultValues: {
 			setupCommand: "",
 			devCommand: "",
+			devPort: "",
 			envFiles: [{ path: "", envVars: [{ key: "", value: "" }] }],
 		},
 		validators: {

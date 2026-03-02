@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { assertValidDevPort } from "./lib/devPort";
 import { normalizeEnvByPath } from "./lib/envByPath";
 import { getScheduledRebuildCleanupPatch, scheduleSnapshot } from "./snapshot";
 
@@ -32,6 +33,7 @@ export const update = authedMutation({
 		name: v.optional(v.string()),
 		setupCommand: v.optional(v.string()),
 		devCommand: v.optional(v.string()),
+		devPort: v.number(),
 		envByPath: v.optional(
 			v.record(v.string(), v.record(v.string(), v.string()))
 		),
@@ -44,6 +46,7 @@ export const update = authedMutation({
 		if (environment.userId !== ctx.userId) {
 			throw new ConvexError("Environment not found");
 		}
+		assertValidDevPort(args.devPort);
 
 		const { id, envByPath, ...fields } = args;
 		const normalizedEnvByPath =
@@ -67,9 +70,12 @@ export async function createEnvironmentHelper(
 		name: string;
 		setupCommand: string;
 		devCommand: string;
+		devPort: number;
 		envByPath?: Record<string, Record<string, string>>;
 	}
 ): Promise<Id<"environments">> {
+	assertValidDevPort(args.devPort);
+
 	const now = Date.now();
 	const environmentId = await ctx.db.insert("environments", {
 		userId: ctx.userId,
@@ -77,6 +83,7 @@ export async function createEnvironmentHelper(
 		name: args.name,
 		setupCommand: args.setupCommand,
 		devCommand: args.devCommand,
+		devPort: args.devPort,
 		envByPath: normalizeEnvByPath(args.envByPath),
 		createdAt: now,
 		updatedAt: now,
@@ -98,6 +105,7 @@ export const create = authedMutation({
 		name: v.string(),
 		setupCommand: v.string(),
 		devCommand: v.string(),
+		devPort: v.number(),
 		envByPath: v.optional(
 			v.record(v.string(), v.record(v.string(), v.string()))
 		),

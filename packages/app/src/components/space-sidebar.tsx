@@ -1,4 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { SpaceTab } from "@corporation/server/space";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { FunctionReturnType } from "convex/server";
@@ -41,6 +42,7 @@ export type Space = NonNullable<
 type SpaceSidebarProps = {
 	space?: Space | null;
 	actor: SpaceActor;
+	tabs: SpaceTab[];
 };
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -51,7 +53,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 	error: { label: "Error", className: "bg-destructive" },
 };
 
-export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor }) => {
+export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor, tabs }) => {
 	const isOpen = useLayoutStore((s) => s.rightSidebarOpen);
 	const setIsOpen = useLayoutStore((s) => s.setRightSidebarOpen);
 
@@ -63,7 +65,9 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor }) => {
 		>
 			<Sidebar collapsible="offcanvas" side="right">
 				<SidebarContent className="p-4">
-					{space ? <SpaceSidebarContent actor={actor} space={space} /> : null}
+					{space ? (
+						<SpaceSidebarContent actor={actor} space={space} tabs={tabs} />
+					) : null}
 				</SidebarContent>
 			</Sidebar>
 		</SidebarProvider>
@@ -73,7 +77,8 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor }) => {
 const SpaceSidebarContent: FC<{
 	space: Space;
 	actor: SpaceActor;
-}> = ({ space, actor }) => {
+	tabs: SpaceTab[];
+}> = ({ space, actor, tabs }) => {
 	const navigate = useNavigate();
 	const config = statusConfig[space.status] ?? {
 		label: space.status,
@@ -222,6 +227,9 @@ const SpaceSidebarContent: FC<{
 						: "Save as Base Snapshot"}
 				</Button>
 			)}
+			{isStarted && (
+				<DevServerButtons actor={actor} space={space} tabs={tabs} />
+			)}
 			<Button
 				className="w-full justify-start gap-2"
 				disabled={
@@ -276,6 +284,72 @@ const SpaceSidebarContent: FC<{
 				{deleteMutation.isPending ? "Deleting..." : "Delete Space"}
 			</Button>
 		</div>
+	);
+};
+
+const DevServerButtons: FC<{
+	space: Space;
+	actor: SpaceActor;
+	tabs: SpaceTab[];
+}> = ({ space, actor, tabs }) => {
+	const devServerMutation = useTanstackMutation({
+		mutationFn: async (action: "start" | "kill") => {
+			if (!actor.connection) {
+				throw new Error("Not connected to sandbox");
+			}
+			if (action === "start") {
+				await actor.connection.startDevServer(space.environment.devCommand);
+			} else {
+				await actor.connection.killDevServer();
+			}
+		},
+	});
+
+	const hasDevCommand = !!space.environment.devCommand;
+	const isDevServerRunning = tabs.some(
+		(tab) => tab.type === "terminal" && tab.terminalId === "devserver"
+	);
+
+	if (!hasDevCommand) {
+		return null;
+	}
+
+	if (isDevServerRunning) {
+		return (
+			<Button
+				className="w-full justify-start gap-2"
+				disabled={
+					devServerMutation.isPending || actor.connStatus !== "connected"
+				}
+				onClick={() => devServerMutation.mutate("kill")}
+				size="sm"
+				variant="outline"
+			>
+				{devServerMutation.isPending ? (
+					<LoaderIcon className="size-4 animate-spin" />
+				) : (
+					<SquareIcon className="size-4" />
+				)}
+				{devServerMutation.isPending ? "Stopping..." : "Kill Dev Server"}
+			</Button>
+		);
+	}
+
+	return (
+		<Button
+			className="w-full justify-start gap-2"
+			disabled={devServerMutation.isPending || actor.connStatus !== "connected"}
+			onClick={() => devServerMutation.mutate("start")}
+			size="sm"
+			variant="outline"
+		>
+			{devServerMutation.isPending ? (
+				<LoaderIcon className="size-4 animate-spin" />
+			) : (
+				<PlayIcon className="size-4" />
+			)}
+			{devServerMutation.isPending ? "Starting..." : "Start Dev Server"}
+		</Button>
 	);
 };
 

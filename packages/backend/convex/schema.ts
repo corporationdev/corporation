@@ -29,6 +29,7 @@ export default defineSchema(
 			name: v.string(),
 			setupCommand: v.string(),
 			devCommand: v.string(),
+			devPort: v.number(),
 			envByPath: v.optional(
 				v.record(v.string(), v.record(v.string(), v.string()))
 			),
@@ -57,7 +58,7 @@ export default defineSchema(
 			slug: v.string(),
 			environmentId: v.id("environments"),
 			sandboxId: v.optional(v.string()),
-			sandboxUrl: v.optional(v.string()),
+			agentUrl: v.optional(v.string()),
 			branchName: v.string(),
 			status: spaceStatusValidator,
 			lastSyncedCommitSha: v.optional(v.string()),

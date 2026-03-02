@@ -7,7 +7,12 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type ActionCtx, internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
-import { runRootCommand, setupSandbox } from "./lib/sandbox";
+import {
+	killDevServer,
+	runRootCommand,
+	setupSandbox,
+	startDevServer,
+} from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
@@ -211,6 +216,17 @@ export const buildSnapshot = internalAction({
 							}
 						);
 					}
+
+					if (shouldUseRebuildBase) {
+						await killDevServer(sandbox);
+					}
+
+					reporter.appendLog(
+						`[dev-server] running dev command devPort=${environment.devPort}\n`
+					);
+					await startDevServer(sandbox, environment, (chunk) => {
+						reporter.appendLog(chunk);
+					});
 
 					reporter.appendLog("Creating snapshot...\n");
 					const snapshot = await sandbox.createSnapshot();

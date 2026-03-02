@@ -4,7 +4,7 @@ import type { CommandHandle, Sandbox } from "e2b";
 import type { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 
 export type PersistedState = RivetPersistState & {
-	sandboxUrl: string;
+	agentUrl: string;
 	sandboxId: string;
 	workdir: string;
 };
@@ -22,8 +22,6 @@ export type SpaceVars = {
 	sandboxClient: SandboxAgentClient;
 	sessionStreams: Map<string, () => void>;
 	terminalHandles: Map<string, CommandHandle>;
-	terminalBuffers: Map<string, number[]>;
-	terminalPersistWrites: Map<string, Promise<void>>;
 	subscriptions: SubscriptionHub;
 };
 

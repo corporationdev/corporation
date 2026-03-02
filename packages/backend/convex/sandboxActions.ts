@@ -9,7 +9,7 @@ import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { normalizeBranchName, quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
-import { pushBranch, setupSandbox } from "./lib/sandbox";
+import { getSandboxWorkdir, pushBranch, setupSandbox } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -114,7 +114,7 @@ async function provisionSandbox(
 	snapshotId: string
 ): Promise<{
 	sandboxId: string;
-	sandboxUrl: string;
+	agentUrl: string;
 }> {
 	const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 	if (!anthropicApiKey) {
@@ -135,8 +135,8 @@ async function provisionSandbox(
 
 	await bootSandboxAgent(sandbox);
 
-	const sandboxUrl = getPreviewUrl(sandbox, SANDBOX_AGENT_PORT);
-	return { sandboxId: sandbox.sandboxId, sandboxUrl };
+	const agentUrl = getPreviewUrl(sandbox, SANDBOX_AGENT_PORT);
+	return { sandboxId: sandbox.sandboxId, agentUrl };
 }
 
 async function resolveSandbox(
@@ -144,16 +144,16 @@ async function resolveSandbox(
 	space: Space
 ): Promise<{
 	sandboxId: string;
-	sandboxUrl?: string;
+	agentUrl?: string;
 }> {
-	const { snapshotId } = space.environment;
+	const { externalSnapshotId } = space.environment;
 
-	if (!snapshotId) {
+	if (!externalSnapshotId) {
 		throw new Error("Environment snapshot is not ready yet");
 	}
 
 	if (!space.sandboxId) {
-		return await provisionSandbox(ctx, space._id, snapshotId);
+		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
 
 	try {
@@ -167,10 +167,10 @@ async function resolveSandbox(
 
 		return {
 			sandboxId: sandbox.sandboxId,
-			sandboxUrl: getPreviewUrl(sandbox, SANDBOX_AGENT_PORT),
+			agentUrl: getPreviewUrl(sandbox, SANDBOX_AGENT_PORT),
 		};
 	} catch {
-		return await provisionSandbox(ctx, space._id, snapshotId);
+		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
 }
 
@@ -241,11 +241,11 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 			});
 
-			const { sandboxId, sandboxUrl } = await resolveSandbox(ctx, space);
+			const { sandboxId, agentUrl } = await resolveSandbox(ctx, space);
 
 			const sandbox = await Sandbox.connect(sandboxId);
 			const { repository } = space.environment;
-			const workdir = `/root/${repository.owner}-${repository.name}`;
+			const workdir = getSandboxWorkdir(repository);
 			await ensureBranchCheckedOut(
 				sandbox,
 				workdir,
@@ -257,7 +257,7 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 				status: "running",
 				sandboxId,
-				sandboxUrl,
+				agentUrl,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -332,7 +332,7 @@ export const renameBranch = internalAction({
 
 			const sandbox = await Sandbox.connect(space.sandboxId);
 			const { repository } = space.environment;
-			const workdir = `/root/${repository.owner}-${repository.name}`;
+			const workdir = getSandboxWorkdir(repository);
 			const safeOldBranchName = quoteShellArg(args.oldBranchName);
 			const normalizedNewBranchName = normalizeBranchName(args.newBranchName);
 			const safeNewBranchName = quoteShellArg(normalizedNewBranchName);
