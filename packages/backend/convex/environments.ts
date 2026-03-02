@@ -5,7 +5,7 @@ import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { normalizeEnvByPath } from "./lib/envByPath";
-import { scheduleSnapshot } from "./snapshot";
+import { getScheduledRebuildCleanupPatch, scheduleSnapshot } from "./snapshot";
 
 export const listByRepository = authedQuery({
 	args: {
@@ -227,17 +227,15 @@ export const updateRebuildInterval = authedMutation({
 			throw new ConvexError("Environment not found");
 		}
 
-		if (environment.scheduledRebuildId) {
-			try {
-				await ctx.scheduler.cancel(environment.scheduledRebuildId);
-			} catch {
-				// Already executed or cancelled
-			}
-		}
+		const scheduledRebuildPatch = await getScheduledRebuildCleanupPatch(
+			ctx,
+			args.id,
+			environment.scheduledRebuildId
+		);
 
 		await ctx.db.patch(args.id, {
 			rebuildIntervalMs: args.rebuildIntervalMs,
-			scheduledRebuildId: undefined,
+			...scheduledRebuildPatch,
 			updatedAt: Date.now(),
 		});
 

@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
@@ -70,6 +70,48 @@ type ScheduleSnapshotRequest =
 	| { type: "override"; sandboxId: string; snapshotCommitSha?: string };
 
 const MAX_SNAPSHOT_LOG_CHARS = 200_000;
+const TERMINAL_SCHEDULED_FUNCTION_STATES = ["success", "failed", "canceled"];
+
+function isTerminalScheduledFunctionState(kind: string): boolean {
+	return TERMINAL_SCHEDULED_FUNCTION_STATES.includes(kind);
+}
+
+export async function getScheduledRebuildCleanupPatch(
+	ctx: MutationCtx,
+	environmentId: Id<"environments">,
+	scheduledRebuildId: Id<"_scheduled_functions"> | undefined
+): Promise<{ scheduledRebuildId?: undefined }> {
+	if (!scheduledRebuildId) {
+		return {};
+	}
+
+	const scheduledFunction = await ctx.db.system.get(scheduledRebuildId);
+	if (
+		scheduledFunction &&
+		!isTerminalScheduledFunctionState(scheduledFunction.state.kind)
+	) {
+		try {
+			await ctx.scheduler.cancel(scheduledRebuildId);
+		} catch (error) {
+			const latestScheduledFunction =
+				await ctx.db.system.get(scheduledRebuildId);
+			if (
+				latestScheduledFunction &&
+				!isTerminalScheduledFunctionState(latestScheduledFunction.state.kind)
+			) {
+				console.error("Failed to cancel scheduled rebuild", {
+					environmentId,
+					scheduledRebuildId,
+					state: latestScheduledFunction.state.kind,
+					error,
+				});
+				throw error;
+			}
+		}
+	}
+
+	return { scheduledRebuildId: undefined };
+}
 
 export async function getActiveSnapshotForEnvironment(
 	ctx: DbCtx,
@@ -122,16 +164,14 @@ export async function scheduleSnapshot(
 		throw new ConvexError("A snapshot build is already in progress");
 	}
 
-	if (environment.scheduledRebuildId) {
-		try {
-			await ctx.scheduler.cancel(environment.scheduledRebuildId);
-		} catch {
-			// Already executed or cancelled.
-		}
-	}
+	const scheduledRebuildPatch = await getScheduledRebuildCleanupPatch(
+		ctx,
+		environment._id,
+		environment.scheduledRebuildId
+	);
 
 	await ctx.db.patch(environment._id, {
-		scheduledRebuildId: undefined,
+		...scheduledRebuildPatch,
 		updatedAt: Date.now(),
 	});
 
