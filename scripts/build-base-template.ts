@@ -12,6 +12,8 @@ import { defaultBuildLogger, Template } from "e2b";
 
 config({ path: resolve(import.meta.dirname, "../apps/server/.env") });
 
+const SANDBOX_AGENT_CLI_VERSION = "0.2.1";
+
 const apiKey = process.env.E2B_API_KEY;
 if (!apiKey) {
 	throw new Error(
@@ -32,10 +34,10 @@ const template = Template()
 		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
 	)
 	.runCmd(
-		"curl -fsSL https://releases.rivet.dev/sandbox-agent/0.2.1/install.sh | sh"
+		`curl -fsSL https://releases.rivet.dev/sandbox-agent/${SANDBOX_AGENT_CLI_VERSION}/install.sh | sh`
 	)
 	.runCmd(
-		"sandbox-agent install-agent claude && sandbox-agent install-agent codex && sandbox-agent install-agent opencode && sandbox-agent install-agent amp && sandbox-agent install-agent pi"
+		"set -euo pipefail; sandbox-agent install-agent claude & pid1=$!; sandbox-agent install-agent codex & pid2=$!; sandbox-agent install-agent opencode & pid3=$!; sandbox-agent install-agent amp & pid4=$!; sandbox-agent install-agent pi & pid5=$!; wait $pid1; wait $pid2; wait $pid3; wait $pid4; wait $pid5"
 	);
 
 console.log("Building base template…");
