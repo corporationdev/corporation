@@ -97,6 +97,18 @@ async function runTrackedSnapshot(
 
 	try {
 		const result = await args.execute(reporter);
+
+		try {
+			await reporter.close();
+		} catch (closeError) {
+			await ctx.runMutation(internal.snapshot.completeSnapshot, {
+				snapshotId,
+				status: "error",
+				error: formatSnapshotError(closeError),
+			});
+			return;
+		}
+
 		await ctx.runMutation(internal.snapshot.completeSnapshot, {
 			snapshotId,
 			environmentId: args.environmentId,
@@ -104,6 +116,12 @@ async function runTrackedSnapshot(
 			...result,
 		});
 	} catch (error) {
+		try {
+			await reporter.close();
+		} catch (closeError) {
+			console.error("Failed to close snapshot reporter", closeError);
+		}
+
 		await ctx.runMutation(internal.snapshot.completeSnapshot, {
 			snapshotId,
 			status: "error",
@@ -111,8 +129,6 @@ async function runTrackedSnapshot(
 		});
 		throw error;
 	} finally {
-		await reporter.close();
-
 		await ctx.runMutation(internal.environments.scheduleNextRebuild, {
 			id: args.environmentId,
 		});
