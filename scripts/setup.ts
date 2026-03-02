@@ -4,6 +4,8 @@ import { $ } from "bun";
 
 const envLineRegex = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)/;
 const DEV_DEPLOYMENT = "dev:hip-impala-208";
+const DEV_DEPLOY_KEY_OP_REFERENCE = "op://corporation-dev/Convex/deploy-key";
+const IGNORE_DEPLOY_KEY = "<ignore_deploy_key>";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const argv = process.argv.slice(2);
@@ -34,12 +36,15 @@ if (useSandbox) {
 		const seedZip = `/tmp/convex-seed-${process.pid}.zip`;
 		try {
 			const backendEnv = loadBackendEnv();
-			const seedDeployKey = backendEnv.SEED_CONVEX_DEPLOY_KEY;
+			const localEnv = withIgnoredDeployKey(backendEnv);
 			const seedExportEnv = {
-				...backendEnv,
+				...localEnv,
 				CONVEX_DEPLOYMENT: DEV_DEPLOYMENT,
-				...(seedDeployKey ? { CONVEX_DEPLOY_KEY: seedDeployKey } : {}),
 			};
+			const seedDeployKey = await readSeedDeployKeyFromOp();
+			if (seedDeployKey) {
+				seedExportEnv.CONVEX_DEPLOY_KEY = seedDeployKey;
+			}
 			await $`bunx convex export --path ${seedZip}`
 				.env(seedExportEnv)
 				.cwd(backendDir);
@@ -47,7 +52,7 @@ if (useSandbox) {
 				.cwd(repoRoot)
 				.nothrow();
 			await $`bunx convex dev --local --once --run-sh ${`bunx convex import ${seedZip} --replace --yes`}`
-				.env(backendEnv)
+				.env(localEnv)
 				.cwd(backendDir);
 		} catch {
 			console.log(
@@ -68,10 +73,12 @@ if (sync) {
 			console.log(
 				"Local backend already running, syncing env vars directly..."
 			);
-			await $`bun ./sync-convex-env.ts`.env(loadBackendEnv()).cwd(backendDir);
+			await $`bun ./sync-convex-env.ts`
+				.env(withIgnoredDeployKey(loadBackendEnv()))
+				.cwd(backendDir);
 		} else {
 			await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
-				.env(loadBackendEnv())
+				.env(withIgnoredDeployKey(loadBackendEnv()))
 				.cwd(backendDir);
 		}
 	} else {
@@ -95,4 +102,25 @@ function loadBackendEnv() {
 		}
 	}
 	return env;
+}
+
+function withIgnoredDeployKey(env: Record<string, string>) {
+	return {
+		...env,
+		CONVEX_DEPLOY_KEY: IGNORE_DEPLOY_KEY,
+	};
+}
+
+async function readSeedDeployKeyFromOp() {
+	try {
+		const key = (
+			await $`op read ${DEV_DEPLOY_KEY_OP_REFERENCE}`.quiet().text()
+		).trim();
+		return key.length > 0 ? key : undefined;
+	} catch {
+		console.log(
+			"[seed] Unable to read Convex deploy key from 1Password; using existing Convex auth"
+		);
+		return undefined;
+	}
 }
