@@ -7,11 +7,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type ActionCtx, internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
-import {
-	killDevServer,
-	setupSandbox,
-	startDevServer,
-} from "./lib/sandbox";
+import { killDevServer, setupSandbox, startDevServer } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
