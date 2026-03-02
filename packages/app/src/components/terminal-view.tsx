@@ -81,7 +81,6 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 			return;
 		}
 
-		let isCancelled = false;
 		const initialize = async () => {
 			try {
 				await actor.connection?.subscribeTerminal(terminalId);
@@ -103,7 +102,6 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		});
 
 		return () => {
-			isCancelled = true;
 			actor.connection
 				?.unsubscribeTerminal(terminalId)
 				.catch((error: unknown) => {

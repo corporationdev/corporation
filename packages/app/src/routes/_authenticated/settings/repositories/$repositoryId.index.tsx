@@ -371,11 +371,12 @@ function ActiveSnapshotLogs({
 		}
 	}, [isBuilding]);
 
+	const logs = activeSnapshot?.logs;
 	useEffect(() => {
-		if (isBuilding && logsEndRef.current) {
+		if (isBuilding && logs && logsEndRef.current) {
 			logsEndRef.current.scrollIntoView({ behavior: "smooth" });
 		}
-	}, [isBuilding, activeSnapshot?.logs]);
+	}, [isBuilding, logs]);
 
 	if (!hasLogs) {
 		return null;
