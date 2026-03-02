@@ -1,6 +1,6 @@
 import { createLogger } from "@corporation/logger";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import type { CommandHandle, Sandbox } from "e2b";
+import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
@@ -11,52 +11,8 @@ const log = createLogger("space:terminal");
 const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";
 const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
-const MAX_SCROLLBACK_BYTES = 256 * 1024;
 const PTY_TIMEOUT_MS = 0;
-
-function encodeBytes(bytes: number[]): string {
-	if (bytes.length === 0) {
-		return "";
-	}
-
-	let binary = "";
-	const chunkSize = 8192;
-
-	for (let index = 0; index < bytes.length; index += chunkSize) {
-		const chunk = bytes.slice(index, index + chunkSize);
-		for (const value of chunk) {
-			binary += String.fromCharCode(value);
-		}
-	}
-
-	return btoa(binary);
-}
-
-function decodeBytes(encoded: string | null): number[] {
-	if (!encoded) {
-		return [];
-	}
-
-	const binary = atob(encoded);
-	const bytes: number[] = new Array(binary.length);
-	for (let index = 0; index < binary.length; index++) {
-		bytes[index] = binary.charCodeAt(index);
-	}
-	return bytes;
-}
-
-function appendAndTrimBuffer(base: number[], next: number[]): number[] {
-	if (next.length === 0) {
-		return base;
-	}
-
-	const combined = base.concat(next);
-	if (combined.length <= MAX_SCROLLBACK_BYTES) {
-		return combined;
-	}
-
-	return combined.slice(combined.length - MAX_SCROLLBACK_BYTES);
-}
+const TMUX_HISTORY_LIMIT = 50_000;
 
 function isProcessNotFoundError(error: unknown): boolean {
 	if (!(error instanceof Error)) {
@@ -68,6 +24,106 @@ function isProcessNotFoundError(error: unknown): boolean {
 		error.message.includes("process with pid") &&
 		error.message.includes("not found")
 	);
+}
+
+async function hasTmuxSession(
+	sandbox: Sandbox,
+	sessionName: string
+): Promise<boolean> {
+	try {
+		await sandbox.commands.run(`tmux has-session -t ${sessionName}`);
+		return true;
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+async function ensureTmuxSession(
+	sandbox: Sandbox,
+	sessionName: string,
+	cwd?: string
+): Promise<void> {
+	const exists = await hasTmuxSession(sandbox, sessionName);
+	if (exists) {
+		return;
+	}
+
+	const cwdFlag = cwd ? ` -c '${cwd}'` : "";
+	await sandbox.commands.run(
+		`tmux new-session -d -s ${sessionName}${cwdFlag} \\; set-option -t ${sessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${sessionName} status off`
+	);
+}
+
+async function createTmuxPty(
+	sandbox: Sandbox,
+	sessionName: string,
+	cols: number,
+	rows: number,
+	onData: (data: Uint8Array) => void
+): Promise<{ handle: CommandHandle; pid: number }> {
+	const handle = await sandbox.pty.create({
+		cols,
+		rows,
+		onData,
+		timeoutMs: PTY_TIMEOUT_MS,
+		user: "root",
+	});
+
+	const attachCmd = `exec tmux attach-session -t ${sessionName}\n`;
+	await sandbox.pty.sendInput(handle.pid, new TextEncoder().encode(attachCmd));
+
+	return { handle, pid: handle.pid };
+}
+
+async function connectOrCreatePty(
+	sandbox: Sandbox,
+	sessionName: string,
+	existingPid: number | null,
+	cols: number,
+	rows: number,
+	onData: (data: Uint8Array) => void,
+	cwd?: string
+): Promise<{ handle: CommandHandle; pid: number }> {
+	if (existingPid !== null) {
+		try {
+			const handle = await sandbox.pty.connect(existingPid, {
+				onData,
+				timeoutMs: PTY_TIMEOUT_MS,
+			});
+			return { handle, pid: existingPid };
+		} catch {
+			log.warn(
+				{ pid: existingPid },
+				"failed to reconnect pty, creating a new one"
+			);
+		}
+	}
+
+	await ensureTmuxSession(sandbox, sessionName, cwd);
+	return await createTmuxPty(sandbox, sessionName, cols, rows, onData);
+}
+
+async function captureScrollback(
+	sandbox: Sandbox,
+	sessionName: string
+): Promise<number[]> {
+	const exists = await hasTmuxSession(sandbox, sessionName);
+	if (!exists) {
+		return [];
+	}
+
+	try {
+		const result = await sandbox.commands.run(
+			`tmux capture-pane -t ${sessionName} -p -S -`
+		);
+		return Array.from(new TextEncoder().encode(result.stdout));
+	} catch (error) {
+		log.warn({ sessionName, err: error }, "failed to capture tmux scrollback");
+		return [];
+	}
 }
 
 async function recreateTerminalHandle(
@@ -134,50 +190,12 @@ function trackTerminalExit(
 		});
 }
 
-async function connectOrCreatePty(
-	sandbox: Sandbox,
-	existingPid: number | null,
-	cols: number,
-	rows: number,
-	onData: (data: Uint8Array) => void,
-	cwd?: string
-): Promise<{ handle: CommandHandle; pid: number }> {
-	if (existingPid !== null) {
-		try {
-			const handle = await sandbox.pty.connect(existingPid, {
-				onData,
-				timeoutMs: PTY_TIMEOUT_MS,
-			});
-			return { handle, pid: existingPid };
-		} catch {
-			log.warn(
-				{ pid: existingPid },
-				"failed to reconnect pty, creating a new one"
-			);
-		}
-	}
-
-	const handle = await sandbox.pty.create({
-		cols,
-		rows,
-		onData,
-		timeoutMs: PTY_TIMEOUT_MS,
-		user: "root",
-		cwd,
-	});
-
-	return { handle, pid: handle.pid };
-}
-
 async function disconnectAllTerminals(ctx: SpaceRuntimeContext): Promise<void> {
 	for (const handle of ctx.vars.terminalHandles.values()) {
 		await handle.disconnect();
 	}
 
-	await Promise.all(ctx.vars.terminalPersistWrites.values());
 	ctx.vars.terminalHandles.clear();
-	ctx.vars.terminalBuffers.clear();
-	ctx.vars.terminalPersistWrites.clear();
 }
 
 async function ensureTerminal(
@@ -219,7 +237,6 @@ async function ensureTerminal(
 				ptyPid: null,
 				cols: nextCols,
 				rows: nextRows,
-				scrollbackBlob: null,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -254,7 +271,6 @@ async function ensureTerminal(
 				ptyPid: terminals.ptyPid,
 				cols: terminals.cols,
 				rows: terminals.rows,
-				scrollbackBlob: terminals.scrollbackBlob,
 			})
 			.from(terminals)
 			.where(eq(terminals.id, terminalId))
@@ -265,14 +281,8 @@ async function ensureTerminal(
 			throw new Error("Terminal not found");
 		}
 
-		const existingBuffer = decodeBytes(terminalRow.scrollbackBlob);
-		ctx.vars.terminalBuffers.set(terminalId, existingBuffer);
-
 		const onData = (chunk: Uint8Array) => {
 			const bytes = Array.from(chunk);
-			const currentBuffer = ctx.vars.terminalBuffers.get(terminalId) ?? [];
-			const nextBuffer = appendAndTrimBuffer(currentBuffer, bytes);
-			ctx.vars.terminalBuffers.set(terminalId, nextBuffer);
 
 			publishToChannel(
 				ctx,
@@ -283,40 +293,11 @@ async function ensureTerminal(
 					data: bytes,
 				}
 			);
-
-			const previousWrite =
-				ctx.vars.terminalPersistWrites.get(terminalId) ?? Promise.resolve();
-			const persistWrite = previousWrite
-				.catch(() => undefined)
-				.then(async () => {
-					const latestBuffer = ctx.vars.terminalBuffers.get(terminalId) ?? [];
-					await ctx.vars.db
-						.update(terminals)
-						.set({
-							scrollbackBlob: encodeBytes(latestBuffer),
-							updatedAt: Date.now(),
-						})
-						.where(eq(terminals.id, terminalId));
-				})
-				.catch((error) => {
-					log.error(
-						{ terminalId, err: error },
-						"failed to persist terminal scrollback"
-					);
-				});
-
-			ctx.vars.terminalPersistWrites.set(terminalId, persistWrite);
-			ctx.waitUntil(
-				persistWrite.finally(() => {
-					if (ctx.vars.terminalPersistWrites.get(terminalId) === persistWrite) {
-						ctx.vars.terminalPersistWrites.delete(terminalId);
-					}
-				})
-			);
 		};
 
 		const { handle, pid } = await connectOrCreatePty(
 			ctx.vars.sandbox,
+			terminalId,
 			terminalRow.ptyPid,
 			terminalRow.cols,
 			terminalRow.rows,
@@ -346,20 +327,7 @@ async function getScrollback(
 		await ensureTerminal(ctx, terminalId);
 	}
 
-	const inMemory = ctx.vars.terminalBuffers.get(terminalId);
-	if (inMemory) {
-		return inMemory;
-	}
-
-	const rows = await ctx.vars.db
-		.select({ scrollbackBlob: terminals.scrollbackBlob })
-		.from(terminals)
-		.where(eq(terminals.id, terminalId))
-		.limit(1);
-
-	const bytes = decodeBytes(rows[0]?.scrollbackBlob ?? null);
-	ctx.vars.terminalBuffers.set(terminalId, bytes);
-	return bytes;
+	return await captureScrollback(ctx.vars.sandbox, terminalId);
 }
 
 async function input(
