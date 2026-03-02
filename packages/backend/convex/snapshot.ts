@@ -3,8 +3,63 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation } from "./_generated/server";
-import { authedMutation } from "./functions";
+import { authedMutation, authedQuery } from "./functions";
 import { snapshotTypeValidator } from "./schema";
+
+export const getActive = authedQuery({
+	args: {
+		environmentId: v.id("environments"),
+	},
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.environmentId);
+		if (!environment || environment.userId !== ctx.userId) {
+			throw new ConvexError("Environment not found");
+		}
+
+		return getActiveSnapshotForEnvironment(ctx, environment);
+	},
+});
+
+export const listByEnvironment = authedQuery({
+	args: {
+		environmentId: v.id("environments"),
+	},
+	handler: async (ctx, args) => {
+		const environment = await ctx.db.get(args.environmentId);
+		if (!environment || environment.userId !== ctx.userId) {
+			throw new ConvexError("Environment not found");
+		}
+
+		const snapshots = await ctx.db
+			.query("snapshots")
+			.withIndex("by_environment_and_startedAt", (q) =>
+				q.eq("environmentId", args.environmentId)
+			)
+			.order("desc")
+			.collect();
+
+		return snapshots.map(({ logs: _logs, ...rest }) => rest);
+	},
+});
+
+export const get = authedQuery({
+	args: {
+		id: v.id("snapshots"),
+	},
+	handler: async (ctx, args) => {
+		const snapshot = await ctx.db.get(args.id);
+		if (!snapshot) {
+			throw new ConvexError("Snapshot not found");
+		}
+
+		const environment = await ctx.db.get(snapshot.environmentId);
+		if (!environment || environment.userId !== ctx.userId) {
+			throw new ConvexError("Snapshot not found");
+		}
+
+		return snapshot;
+	},
+});
 
 type DbCtx = {
 	db: QueryCtx["db"] | MutationCtx["db"];
