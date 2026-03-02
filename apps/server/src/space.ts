@@ -77,7 +77,7 @@ export const space = actor({
 			apiKey: env.E2B_API_KEY,
 		});
 
-		return {
+		const vars: SpaceVars = {
 			db,
 			sandbox,
 			sandboxClient,
@@ -85,6 +85,14 @@ export const space = actor({
 			terminalHandles: new Map(),
 			subscriptions: createSubscriptionHub(),
 		};
+
+		for (const driver of lifecycleDrivers) {
+			if (driver.onWake) {
+				await driver.onWake(vars);
+			}
+		}
+
+		return vars;
 	},
 
 	onDisconnect: (c, conn) => {

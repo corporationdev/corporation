@@ -5,7 +5,7 @@ import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
-import type { SpaceRuntimeContext } from "./types";
+import type { SpaceRuntimeContext, SpaceVars } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";
@@ -13,6 +13,7 @@ const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
 const PTY_TIMEOUT_MS = 0;
 const TMUX_HISTORY_LIMIT = 50_000;
+const DEV_SERVER_TERMINAL_ID = "devserver";
 
 function isProcessNotFoundError(error: unknown): boolean {
 	if (!(error instanceof Error)) {
@@ -53,7 +54,7 @@ async function ensureTmuxSession(
 
 	const cwdFlag = cwd ? ` -c '${cwd}'` : "";
 	await sandbox.commands.run(
-		`tmux new-session -d -s ${sessionName}${cwdFlag} \\; set-option -t ${sessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${sessionName} status off`
+		`tmux new-session -d -s ${sessionName}${cwdFlag} \\; set-option -t ${sessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${sessionName} mouse on \\; set-option -t ${sessionName} status off`
 	);
 }
 
@@ -99,30 +100,6 @@ async function connectOrCreatePty(
 
 	await ensureTmuxSession(sandbox, sessionName, cwd);
 	return await createTmuxPty(sandbox, sessionName, cols, rows, onData);
-}
-
-async function captureScrollback(
-	sandbox: Sandbox,
-	sessionName: string
-): Promise<number[]> {
-	const exists = await hasTmuxSession(sandbox, sessionName);
-	if (!exists) {
-		return [];
-	}
-
-	try {
-		const result = await sandbox.commands.run(
-			`tmux capture-pane -t ${sessionName} -p -S -`
-		);
-		const trimmed = result.stdout.replace(/\n+$/, "");
-		if (!trimmed) {
-			return [];
-		}
-		return Array.from(new TextEncoder().encode(trimmed));
-	} catch (error) {
-		log.warn({ sessionName, err: error }, "failed to capture tmux scrollback");
-		return [];
-	}
 }
 
 async function recreateTerminalHandle(
@@ -220,10 +197,12 @@ async function ensureTerminal(
 			.limit(1);
 
 		if (existing.length === 0) {
+			const title =
+				terminalId === DEV_SERVER_TERMINAL_ID ? "Dev Server" : "Terminal";
 			await tx.insert(tabs).values({
 				id: tabId,
 				type: "terminal",
-				title: "Terminal",
+				title,
 				active: true,
 				createdAt: now,
 				updatedAt: now,
@@ -316,17 +295,6 @@ async function ensureTerminal(
 	}
 
 	await ctx.broadcastTabsChanged();
-}
-
-async function getScrollback(
-	ctx: SpaceRuntimeContext,
-	terminalId: string
-): Promise<number[]> {
-	if (!ctx.vars.terminalHandles.has(terminalId)) {
-		await ensureTerminal(ctx, terminalId);
-	}
-
-	return await captureScrollback(ctx.vars.sandbox, terminalId);
 }
 
 async function input(
@@ -438,15 +406,114 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {
 	});
 }
 
+async function startDevServerAction(
+	ctx: SpaceRuntimeContext,
+	devCommand: string
+): Promise<void> {
+	const exists = await hasTmuxSession(ctx.vars.sandbox, DEV_SERVER_TERMINAL_ID);
+	if (exists) {
+		// Already running — just ensure the tab + PTY are attached
+		await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
+		return;
+	}
+
+	const workdir = ctx.state.workdir ?? undefined;
+	const cwdFlag = workdir ? ` -c '${workdir}'` : "";
+	await ctx.vars.sandbox.commands.run(
+		`tmux new-session -d -s ${DEV_SERVER_TERMINAL_ID}${cwdFlag} \\; set-option -t ${DEV_SERVER_TERMINAL_ID} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${DEV_SERVER_TERMINAL_ID} mouse on \\; set-option -t ${DEV_SERVER_TERMINAL_ID} status off`
+	);
+
+	// Send the dev command into the tmux session so it runs inside the shell
+	await ctx.vars.sandbox.commands.run(
+		`tmux send-keys -t ${DEV_SERVER_TERMINAL_ID} ${JSON.stringify(devCommand)} Enter`
+	);
+
+	await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
+}
+
+async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
+	// Disconnect the PTY handle first
+	const handle = ctx.vars.terminalHandles.get(DEV_SERVER_TERMINAL_ID);
+	if (handle) {
+		try {
+			await handle.disconnect();
+		} catch {
+			// Best-effort
+		}
+		ctx.vars.terminalHandles.delete(DEV_SERVER_TERMINAL_ID);
+	}
+
+	// Kill the tmux session
+	try {
+		await ctx.vars.sandbox.commands.run(
+			`tmux kill-session -t ${DEV_SERVER_TERMINAL_ID}`
+		);
+	} catch (error) {
+		if (!(error instanceof CommandExitError)) {
+			throw error;
+		}
+		// Session already gone
+	}
+
+	// Archive the tab
+	const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
+	await ctx.vars.db
+		.update(tabs)
+		.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
+		.where(eq(tabs.id, tabId));
+
+	await ctx.broadcastTabsChanged();
+}
+
+async function onWake(vars: SpaceVars): Promise<void> {
+	const exists = await hasTmuxSession(vars.sandbox, DEV_SERVER_TERMINAL_ID);
+	if (!exists) {
+		return;
+	}
+
+	const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
+	const now = Date.now();
+
+	const existingTab = await vars.db
+		.select({ id: tabs.id })
+		.from(tabs)
+		.where(eq(tabs.id, tabId))
+		.limit(1);
+
+	if (existingTab.length === 0) {
+		await vars.db.insert(tabs).values({
+			id: tabId,
+			type: "terminal",
+			title: "Dev Server",
+			active: true,
+			createdAt: now,
+			updatedAt: now,
+			archivedAt: null,
+		});
+		await vars.db.insert(terminals).values({
+			id: DEV_SERVER_TERMINAL_ID,
+			tabId,
+			ptyPid: null,
+			cols: DEFAULT_TERMINAL_COLS,
+			rows: DEFAULT_TERMINAL_ROWS,
+			createdAt: now,
+			updatedAt: now,
+		});
+	} else {
+		await vars.db
+			.update(tabs)
+			.set({ active: true, archivedAt: null, updatedAt: now })
+			.where(eq(tabs.id, tabId));
+	}
+
+	log.info("auto-discovered devserver tmux session on wake");
+}
+
 async function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 	await disconnectAllTerminals(ctx);
 }
 
 type TerminalPublicActions = {
-	getScrollback: (
-		ctx: SpaceRuntimeContext,
-		terminalId: string
-	) => Promise<number[]>;
 	input: (
 		ctx: SpaceRuntimeContext,
 		terminalId: string,
@@ -458,6 +525,11 @@ type TerminalPublicActions = {
 		cols: number,
 		rows: number
 	) => Promise<void>;
+	startDevServer: (
+		ctx: SpaceRuntimeContext,
+		devCommand: string
+	) => Promise<void>;
+	killDevServer: (ctx: SpaceRuntimeContext) => Promise<void>;
 };
 
 type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
@@ -466,11 +538,13 @@ type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
 
 export const terminalDriver: TerminalDriver = {
 	kind: "terminal",
+	onWake,
 	onSleep,
 	listTabs,
 	publicActions: {
-		getScrollback,
 		input,
 		resize,
+		startDevServer: startDevServerAction,
+		killDevServer: killDevServerAction,
 	},
 };

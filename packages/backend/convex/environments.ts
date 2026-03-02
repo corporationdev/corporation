@@ -32,7 +32,7 @@ export const update = authedMutation({
 		name: v.optional(v.string()),
 		setupCommand: v.optional(v.string()),
 		devCommand: v.optional(v.string()),
-		devPort: v.optional(v.number()),
+		devPort: v.number(),
 		envByPath: v.optional(
 			v.record(v.string(), v.record(v.string(), v.string()))
 		),
@@ -68,7 +68,7 @@ export async function createEnvironmentHelper(
 		name: string;
 		setupCommand: string;
 		devCommand: string;
-		devPort?: number;
+		devPort: number;
 		envByPath?: Record<string, Record<string, string>>;
 	}
 ): Promise<Id<"environments">> {
@@ -101,7 +101,7 @@ export const create = authedMutation({
 		name: v.string(),
 		setupCommand: v.string(),
 		devCommand: v.string(),
-		devPort: v.optional(v.number()),
+		devPort: v.number(),
 		envByPath: v.optional(
 			v.record(v.string(), v.record(v.string(), v.string()))
 		),

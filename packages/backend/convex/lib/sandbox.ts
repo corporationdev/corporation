@@ -1,3 +1,5 @@
+"use node";
+
 import type { Sandbox } from "e2b";
 import { normalizeBranchName, quoteShellArg } from "./git";
 
@@ -6,6 +8,9 @@ const NEEDS_QUOTING_RE = /[\s"'#]/;
 const LOCALHOST_PORT_RE = /http:\/\/localhost:(\d+)/g;
 const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
+const DEV_SERVER_SESSION_NAME = "devserver";
+const DEV_SERVER_STARTUP_TIMEOUT_MS = 120_000;
+const DEV_SERVER_POLL_INTERVAL_MS = 1000;
 
 type EnvVar = { key: string; value: string };
 type CommandExitErrorLike = {
@@ -18,6 +23,13 @@ type RunRootCommandOptions = Omit<
 	"user"
 >;
 
+export function getSandboxWorkdir(repository: {
+	owner: string;
+	name: string;
+}): string {
+	return `/root/${repository.owner}-${repository.name}`;
+}
+
 export type SandboxEnv = {
 	repository: {
 		owner: string;
@@ -25,6 +37,8 @@ export type SandboxEnv = {
 		defaultBranch: string;
 	};
 	setupCommand: string;
+	devCommand: string;
+	devPort: number;
 	envByPath?: Record<string, Record<string, string>> | null;
 };
 
@@ -168,7 +182,7 @@ export async function setupSandbox(
 	appendLog?: (chunk: string) => void
 ): Promise<string> {
 	const { repository } = env;
-	const workdir = `/root/${repository.owner}-${repository.name}`;
+	const workdir = getSandboxWorkdir(repository);
 	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
 	const safeRepoUrl = quoteShellArg(repoUrl);
 	const safeWorkdir = quoteShellArg(workdir);
@@ -227,7 +241,7 @@ export async function pushBranch(
 	author: { name: string; email: string }
 ): Promise<boolean> {
 	const { repository } = env;
-	const workdir = `/root/${repository.owner}-${repository.name}`;
+	const workdir = getSandboxWorkdir(repository);
 	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
 	const safeBranchName = quoteShellArg(normalizeBranchName(branchName));
 	const safeRepoUrl = quoteShellArg(repoUrl);
@@ -267,3 +281,90 @@ export async function pushBranch(
 
 	return true;
 }
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function startDevServer(
+	sandbox: Sandbox,
+	env: SandboxEnv,
+	appendLog?: (chunk: string) => void
+): Promise<void> {
+	const { repository } = env;
+	const workdir = getSandboxWorkdir(repository);
+	const safeCommand = quoteShellArg(env.devCommand);
+
+	appendLog?.(
+		`Starting dev server (tmux session: ${DEV_SERVER_SESSION_NAME})...\n`
+	);
+
+	await runRootCommand(
+		sandbox,
+		`tmux new-session -d -s ${DEV_SERVER_SESSION_NAME} -c ${quoteShellArg(workdir)} ${safeCommand} \\; set-option -t ${DEV_SERVER_SESSION_NAME} mouse on \\; set-option -t ${DEV_SERVER_SESSION_NAME} status off`
+	);
+
+	appendLog?.(`Waiting for dev server on port ${env.devPort}...\n`);
+
+	const deadline = Date.now() + DEV_SERVER_STARTUP_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		try {
+			await sandbox.commands.run(
+				`curl -sf --max-time 2 http://localhost:${env.devPort}/`
+			);
+			appendLog?.(`Dev server is ready on port ${env.devPort}.\n`);
+			return;
+		} catch (error) {
+			if (!isCommandExitError(error)) {
+				throw error;
+			}
+		}
+
+		// Check that the tmux session is still alive
+		try {
+			await sandbox.commands.run(
+				`tmux has-session -t ${DEV_SERVER_SESSION_NAME}`
+			);
+		} catch (error) {
+			if (isCommandExitError(error)) {
+				throw new Error("Dev server process exited before becoming ready");
+			}
+			throw error;
+		}
+
+		await sleep(DEV_SERVER_POLL_INTERVAL_MS);
+	}
+
+	throw new Error(
+		`Dev server did not become ready on port ${env.devPort} within ${DEV_SERVER_STARTUP_TIMEOUT_MS / 1000}s`
+	);
+}
+
+export async function killDevServer(sandbox: Sandbox): Promise<void> {
+	try {
+		await sandbox.commands.run(
+			`tmux kill-session -t ${DEV_SERVER_SESSION_NAME}`
+		);
+	} catch (error) {
+		if (isCommandExitError(error)) {
+			return; // Session doesn't exist
+		}
+		throw error;
+	}
+}
+
+export async function hasDevServerSession(sandbox: Sandbox): Promise<boolean> {
+	try {
+		await sandbox.commands.run(
+			`tmux has-session -t ${DEV_SERVER_SESSION_NAME}`
+		);
+		return true;
+	} catch (error) {
+		if (isCommandExitError(error)) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+export { DEV_SERVER_SESSION_NAME };

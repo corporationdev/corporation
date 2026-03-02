@@ -29,7 +29,7 @@ const envFileSchema = z.object({
 export const repositoryConfigSchema = z.object({
 	setupCommand: z.string().min(1, "Setup command is required"),
 	devCommand: z.string().min(1, "Dev command is required"),
-	devPort: z.union([z.coerce.number().int().min(1).max(65_535), z.literal("")]),
+	devPort: z.string().min(1, "Dev port is required"),
 	envFiles: z.array(envFileSchema),
 });
 
@@ -100,10 +100,10 @@ function normalizePath(inputPath: string): string {
 	return withoutTrailingSlash || ".";
 }
 
-export function parseDevPort(value: string | number): number | undefined {
+export function parseDevPort(value: string | number): number {
 	const num = typeof value === "number" ? value : Number.parseInt(value, 10);
 	if (Number.isNaN(num) || num < 1 || num > 65_535) {
-		return undefined;
+		throw new Error("Invalid dev port");
 	}
 	return num;
 }

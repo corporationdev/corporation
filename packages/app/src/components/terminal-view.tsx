@@ -94,12 +94,6 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 						terminal.rows
 					);
 				}
-
-				const data = await actor.connection?.getScrollback(terminalId);
-				if (isCancelled || !data || data.length === 0) {
-					return;
-				}
-				terminalRef.current?.write(new Uint8Array(data));
 			} catch (error: unknown) {
 				console.error("Failed to initialize terminal", error);
 			}

@@ -9,7 +9,7 @@ import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { normalizeBranchName, quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
-import { pushBranch, setupSandbox } from "./lib/sandbox";
+import { getSandboxWorkdir, pushBranch, setupSandbox } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -245,7 +245,7 @@ export const ensureSandbox = internalAction({
 
 			const sandbox = await Sandbox.connect(sandboxId);
 			const { repository } = space.environment;
-			const workdir = `/root/${repository.owner}-${repository.name}`;
+			const workdir = getSandboxWorkdir(repository);
 			await ensureBranchCheckedOut(
 				sandbox,
 				workdir,
@@ -332,7 +332,7 @@ export const renameBranch = internalAction({
 
 			const sandbox = await Sandbox.connect(space.sandboxId);
 			const { repository } = space.environment;
-			const workdir = `/root/${repository.owner}-${repository.name}`;
+			const workdir = getSandboxWorkdir(repository);
 			const safeOldBranchName = quoteShellArg(args.oldBranchName);
 			const normalizedNewBranchName = normalizeBranchName(args.newBranchName);
 			const safeNewBranchName = quoteShellArg(normalizedNewBranchName);
