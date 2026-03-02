@@ -83,8 +83,6 @@ export const space = actor({
 			sandboxClient,
 			sessionStreams: new Map(),
 			terminalHandles: new Map(),
-			terminalBuffers: new Map(),
-			terminalPersistWrites: new Map(),
 			subscriptions: createSubscriptionHub(),
 		};
 	},

@@ -146,14 +146,14 @@ async function resolveSandbox(
 	sandboxId: string;
 	sandboxUrl?: string;
 }> {
-	const { snapshotId } = space.environment;
+	const { externalSnapshotId } = space.environment;
 
-	if (!snapshotId) {
+	if (!externalSnapshotId) {
 		throw new Error("Environment snapshot is not ready yet");
 	}
 
 	if (!space.sandboxId) {
-		return await provisionSandbox(ctx, space._id, snapshotId);
+		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
 
 	try {
@@ -170,7 +170,7 @@ async function resolveSandbox(
 			sandboxUrl: getPreviewUrl(sandbox, SANDBOX_AGENT_PORT),
 		};
 	} catch {
-		return await provisionSandbox(ctx, space._id, snapshotId);
+		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
 }
 
