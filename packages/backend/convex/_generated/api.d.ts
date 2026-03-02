@@ -22,6 +22,7 @@ import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
 import type * as repositories from "../repositories.js";
 import type * as sandboxActions from "../sandboxActions.js";
+import type * as snapshot from "../snapshot.js";
 import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaces from "../spaces.js";
 
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   nangoWebhook: typeof nangoWebhook;
   repositories: typeof repositories;
   sandboxActions: typeof sandboxActions;
+  snapshot: typeof snapshot;
   snapshotActions: typeof snapshotActions;
   spaces: typeof spaces;
 }>;

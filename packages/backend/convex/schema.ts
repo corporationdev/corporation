@@ -7,6 +7,12 @@ export const snapshotStatusValidator = v.union(
 	v.literal("error")
 );
 
+export const snapshotTypeValidator = v.union(
+	v.literal("build"),
+	v.literal("rebuild"),
+	v.literal("override")
+);
+
 export const spaceStatusValidator = v.union(
 	v.literal("creating"),
 	v.literal("running"),
@@ -26,13 +32,8 @@ export default defineSchema(
 			envByPath: v.optional(
 				v.record(v.string(), v.record(v.string(), v.string()))
 			),
-			snapshotId: v.optional(v.string()),
-			snapshotCommitSha: v.optional(v.string()),
-			snapshotStatus: snapshotStatusValidator,
-			error: v.optional(v.string()),
 			rebuildIntervalMs: v.optional(v.number()),
 			scheduledRebuildId: v.optional(v.id("_scheduled_functions")),
-			lastSnapshotBuildAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
@@ -69,6 +70,21 @@ export default defineSchema(
 			.index("by_environment", ["environmentId"])
 			.index("by_slug", ["slug"])
 			.index("by_sandboxId", ["sandboxId"]),
+
+		snapshots: defineTable({
+			environmentId: v.id("environments"),
+			type: snapshotTypeValidator,
+			status: snapshotStatusValidator,
+			logs: v.string(),
+			logsTruncated: v.optional(v.boolean()),
+			error: v.optional(v.string()),
+			externalSnapshotId: v.optional(v.string()),
+			snapshotCommitSha: v.optional(v.string()),
+			startedAt: v.number(),
+			completedAt: v.optional(v.number()),
+		})
+			.index("by_environment", ["environmentId"])
+			.index("by_environment_and_startedAt", ["environmentId", "startedAt"]),
 	},
 	// TODO: remove schemaValidation: false before launch
 	{ schemaValidation: false }

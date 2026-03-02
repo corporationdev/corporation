@@ -5,6 +5,7 @@ import { internalQuery } from "./_generated/server";
 import { createEnvironmentHelper } from "./environments";
 import { authedMutation, authedQuery } from "./functions";
 import { normalizeEnvByPath } from "./lib/envByPath";
+import { withDerivedSnapshotState } from "./snapshot";
 
 function requireOwnedRepository(
 	userId: string,
@@ -30,10 +31,13 @@ export const list = authedQuery({
 					.query("environments")
 					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
 					.first();
+				const defaultEnvironment = defaultEnv
+					? await withDerivedSnapshotState(ctx, defaultEnv)
+					: null;
 
 				return {
 					...repo,
-					defaultEnvironment: defaultEnv,
+					defaultEnvironment,
 				};
 			})
 		);
@@ -53,11 +57,20 @@ export const get = authedQuery({
 			.query("environments")
 			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
 			.collect();
-		environments.sort((a, b) => a.createdAt - b.createdAt);
+		const environmentsWithSnapshot = await Promise.all(
+			environments.map(async (environment) =>
+				withDerivedSnapshotState(ctx, environment)
+			)
+		);
+		environmentsWithSnapshot.sort((a, b) => a.createdAt - b.createdAt);
 
-		const defaultEnvironment = environments[0] ?? null;
+		const defaultEnvironment = environmentsWithSnapshot[0] ?? null;
 
-		return { ...repo, environments, defaultEnvironment };
+		return {
+			...repo,
+			environments: environmentsWithSnapshot,
+			defaultEnvironment,
+		};
 	},
 });
 
@@ -155,6 +168,13 @@ const del = authedMutation({
 			.collect();
 
 		for (const env of environments) {
+			const snapshots = await ctx.db
+				.query("snapshots")
+				.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
+				.collect();
+			for (const snapshot of snapshots) {
+				await ctx.db.delete(snapshot._id);
+			}
 			await ctx.db.delete(env._id);
 		}
 

@@ -8,6 +8,7 @@ import { authedMutation, authedQuery } from "./functions";
 import { generateBranchName } from "./lib/branchName";
 import { normalizeBranchName } from "./lib/git";
 import { spaceStatusValidator } from "./schema";
+import { withDerivedSnapshotState } from "./snapshot";
 
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string },
@@ -143,12 +144,16 @@ export const getBySlug = authedQuery({
 		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
+		const environmentWithSnapshot = await withDerivedSnapshotState(
+			ctx,
+			environment
+		);
 
 		return {
 			...space,
 			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
-				...environment,
+				...environmentWithSnapshot,
 				repository,
 			},
 		};
@@ -168,12 +173,16 @@ export const get = authedQuery({
 		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
+		const environmentWithSnapshot = await withDerivedSnapshotState(
+			ctx,
+			environment
+		);
 
 		return {
 			...space,
 			workdir: `/root/${repository.owner}-${repository.name}`,
 			environment: {
-				...environment,
+				...environmentWithSnapshot,
 				repository,
 			},
 		};
@@ -245,10 +254,14 @@ export const internalGet = internalQuery({
 		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
+		const environmentWithSnapshot = await withDerivedSnapshotState(
+			ctx,
+			environment
+		);
 
 		return {
 			...space,
-			environment: { ...environment, repository },
+			environment: { ...environmentWithSnapshot, repository },
 		};
 	},
 });

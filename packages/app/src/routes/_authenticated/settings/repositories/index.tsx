@@ -1,33 +1,19 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Hammer, Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Card, CardAction, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useLatestShas } from "@/hooks/use-latest-shas";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 	component: RepositoriesPage,
 });
-
-const MS_PER_HOUR = 3_600_000;
 
 function SnapshotStatusIndicator({
 	status,
@@ -97,55 +83,38 @@ function RepositoryCard({
 		name: string;
 		defaultEnvironment: {
 			_id: Id<"environments">;
-			snapshotStatus: "building" | "ready" | "error";
-			error?: string;
-			rebuildIntervalMs?: number;
+			snapshotStatus?: "building" | "ready" | "error";
 		} | null;
 	};
 	isOutdated: boolean;
 	isChecking: boolean;
 }) {
+	const navigate = useNavigate();
+
 	const { mutate: removeRepository, isPending: isDeleting } =
 		useConvexTanstackMutation(api.repositories.delete, {
+			onSuccess: () => {
+				toast.success("Repository deleted");
+				navigate({ to: "/settings/repositories" });
+			},
 			onError: (error) => {
 				toast.error(error.message);
 			},
 		});
-
-	const { mutate: rebuild, isPending: isRebuilding } =
-		useConvexTanstackMutation(api.environments.rebuildSnapshot, {
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		});
-
-	const { mutate: fullBuild, isPending: isFullBuilding } =
-		useConvexTanstackMutation(api.environments.fullBuildSnapshot, {
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		});
-
-	const { mutate: setInterval } = useConvexTanstackMutation(
-		api.environments.updateRebuildInterval,
-		{
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		}
-	);
-
-	const currentHours = repository.defaultEnvironment?.rebuildIntervalMs
-		? String(repository.defaultEnvironment.rebuildIntervalMs / MS_PER_HOUR)
-		: "0";
 
 	return (
 		<Card size="sm">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<CardTitle>
-						{repository.owner}/{repository.name}
-					</CardTitle>
+					<Link
+						className="hover:underline"
+						params={{ repositoryId: repository._id }}
+						to="/settings/repositories/$repositoryId"
+					>
+						<CardTitle>
+							{repository.owner}/{repository.name}
+						</CardTitle>
+					</Link>
 					<SnapshotStatusIndicator
 						isChecking={isChecking}
 						isOutdated={isOutdated}
@@ -154,54 +123,6 @@ function RepositoryCard({
 				</div>
 				<CardAction>
 					<div className="flex items-center gap-1">
-						{repository.defaultEnvironment ? (
-							<>
-								<Tooltip>
-									<Button
-										disabled={
-											isRebuilding ||
-											repository.defaultEnvironment.snapshotStatus ===
-												"building"
-										}
-										onClick={() => {
-											if (repository.defaultEnvironment) {
-												rebuild({
-													id: repository.defaultEnvironment._id,
-												});
-											}
-										}}
-										render={<TooltipTrigger />}
-										size="icon-sm"
-										variant="ghost"
-									>
-										<RefreshCw className="size-4" />
-									</Button>
-									<TooltipContent>Rebuild snapshot</TooltipContent>
-								</Tooltip>
-								<Tooltip>
-									<Button
-										disabled={
-											isFullBuilding ||
-											repository.defaultEnvironment.snapshotStatus ===
-												"building"
-										}
-										onClick={() => {
-											if (repository.defaultEnvironment) {
-												fullBuild({
-													id: repository.defaultEnvironment._id,
-												});
-											}
-										}}
-										render={<TooltipTrigger />}
-										size="icon-sm"
-										variant="ghost"
-									>
-										<Hammer className="size-4" />
-									</Button>
-									<TooltipContent>Build snapshot</TooltipContent>
-								</Tooltip>
-							</>
-						) : null}
 						<Link
 							params={{ repositoryId: repository._id }}
 							to="/settings/repositories/$repositoryId/edit"
@@ -221,45 +142,6 @@ function RepositoryCard({
 					</div>
 				</CardAction>
 			</CardHeader>
-			{repository.defaultEnvironment && (
-				<CardContent>
-					<div className="flex items-center gap-2">
-						<span className="text-muted-foreground text-xs">
-							Auto-rebuild every
-						</span>
-						<Input
-							className="h-7 w-16 text-xs"
-							defaultValue={currentHours}
-							min={0}
-							onBlur={(e) => {
-								if (!repository.defaultEnvironment) {
-									return;
-								}
-								const hours = Number.parseFloat(e.target.value);
-								const rebuildIntervalMs =
-									Number.isNaN(hours) || hours <= 0
-										? undefined
-										: Math.round(hours * MS_PER_HOUR);
-								setInterval({
-									id: repository.defaultEnvironment._id,
-									rebuildIntervalMs,
-								});
-							}}
-							step="any"
-							type="number"
-						/>
-						<span className="text-muted-foreground text-xs">
-							hours (0 to disable)
-						</span>
-					</div>
-					{repository.defaultEnvironment.snapshotStatus === "error" &&
-						repository.defaultEnvironment.error && (
-							<p className="mt-2 whitespace-pre-wrap break-words text-destructive text-xs">
-								{repository.defaultEnvironment.error}
-							</p>
-						)}
-				</CardContent>
-			)}
 		</Card>
 	);
 }
