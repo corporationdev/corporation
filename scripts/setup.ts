@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { $ } from "bun";
 
 const envLineRegex = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)/;
+const DEV_DEPLOYMENT = "dev:hip-impala-208";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const argv = process.argv.slice(2);
@@ -33,7 +34,7 @@ if (useSandbox) {
 		const seedZip = `/tmp/convex-seed-${process.pid}.zip`;
 		try {
 			await $`bunx convex export --path ${seedZip}`
-				.env(loadBackendEnv())
+				.env({ ...loadBackendEnv(), CONVEX_DEPLOYMENT: DEV_DEPLOYMENT })
 				.cwd(backendDir);
 			await $`zip -d ${seedZip} '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'`
 				.cwd(repoRoot)
@@ -82,8 +83,8 @@ function loadBackendEnv() {
 	>;
 	for (const line of text.split("\n")) {
 		const match = line.match(envLineRegex);
-		if (match) {
-			env[match[1]] = match[2];
+		if (match?.[1]) {
+			env[match[1]] = match[2] ?? "";
 		}
 	}
 	return env;
