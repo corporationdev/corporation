@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
 	buildEnvByPath,
 	envFilesFromEnvByPath,
+	parseDevPort,
 	RepositoryConfigForm,
 	repositoryConfigSchema,
 } from "@/components/repository-config-form";
@@ -71,6 +72,7 @@ function EditRepositoryForm({
 		defaultValues: {
 			setupCommand: defaultEnvironment.setupCommand,
 			devCommand: defaultEnvironment.devCommand,
+			devPort: defaultEnvironment.devPort?.toString() ?? "",
 			envFiles: envFilesFromEnvByPath(defaultEnvironment.envByPath),
 		},
 		validators: {
@@ -81,6 +83,7 @@ function EditRepositoryForm({
 				id: defaultEnvironment._id,
 				setupCommand: value.setupCommand,
 				devCommand: value.devCommand,
+				devPort: parseDevPort(value.devPort),
 				envByPath: buildEnvByPath(value.envFiles),
 			});
 

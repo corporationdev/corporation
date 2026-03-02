@@ -29,6 +29,7 @@ const envFileSchema = z.object({
 export const repositoryConfigSchema = z.object({
 	setupCommand: z.string().min(1, "Setup command is required"),
 	devCommand: z.string().min(1, "Dev command is required"),
+	devPort: z.union([z.coerce.number().int().min(1).max(65_535), z.literal("")]),
 	envFiles: z.array(envFileSchema),
 });
 
@@ -97,6 +98,14 @@ function normalizePath(inputPath: string): string {
 	);
 
 	return withoutTrailingSlash || ".";
+}
+
+export function parseDevPort(value: string | number): number | undefined {
+	const num = typeof value === "number" ? value : Number.parseInt(value, 10);
+	if (Number.isNaN(num) || num < 1 || num > 65_535) {
+		return undefined;
+	}
+	return num;
 }
 
 export function buildEnvByPath(envFiles: EnvFileValues[]): EnvByPath {
@@ -334,6 +343,29 @@ export function RepositoryConfigForm({
 									onBlur={field.handleBlur}
 									onChange={(e) => field.handleChange(e.target.value)}
 									placeholder="e.g. npm run dev"
+									value={field.state.value}
+								/>
+								{isInvalid && <FieldError errors={field.state.meta.errors} />}
+							</Field>
+						);
+					}}
+				</form.Field>
+
+				<form.Field name="devPort">
+					{(field: FieldState) => {
+						const isInvalid =
+							field.state.meta.isTouched && !field.state.meta.isValid;
+						return (
+							<Field data-invalid={isInvalid}>
+								<FieldLabel htmlFor={field.name}>Dev Port</FieldLabel>
+								<Input
+									aria-invalid={isInvalid}
+									id={field.name}
+									name={field.name}
+									onBlur={field.handleBlur}
+									onChange={(e) => field.handleChange(e.target.value)}
+									placeholder="e.g. 3000"
+									type="number"
 									value={field.state.value}
 								/>
 								{isInvalid && <FieldError errors={field.state.meta.errors} />}

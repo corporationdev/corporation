@@ -92,7 +92,7 @@ export function SpaceLayout() {
 					})
 				)}
 			</SidebarInset>
-			<SpaceSidebar actor={actor} space={space} />
+			<SpaceSidebar actor={actor} space={space} tabs={tabs} />
 		</div>
 	);
 }
