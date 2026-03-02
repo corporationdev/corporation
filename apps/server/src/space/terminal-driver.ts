@@ -87,18 +87,13 @@ async function connectOrCreatePty(
 	onData: (data: Uint8Array) => void,
 	cwd?: string
 ): Promise<{ handle: CommandHandle; pid: number }> {
+	// Kill stale PTY if it exists — we always create a fresh one
+	// to avoid duplicate tmux attach sessions.
 	if (existingPid !== null) {
 		try {
-			const handle = await sandbox.pty.connect(existingPid, {
-				onData,
-				timeoutMs: PTY_TIMEOUT_MS,
-			});
-			return { handle, pid: existingPid };
+			await sandbox.pty.kill(existingPid);
 		} catch {
-			log.warn(
-				{ pid: existingPid },
-				"failed to reconnect pty, creating a new one"
-			);
+			// Best-effort: process may already be gone
 		}
 	}
 
@@ -119,7 +114,11 @@ async function captureScrollback(
 		const result = await sandbox.commands.run(
 			`tmux capture-pane -t ${sessionName} -p -S -`
 		);
-		return Array.from(new TextEncoder().encode(result.stdout));
+		const trimmed = result.stdout.replace(/\n+$/, "");
+		if (!trimmed) {
+			return [];
+		}
+		return Array.from(new TextEncoder().encode(trimmed));
 	} catch (error) {
 		log.warn({ sessionName, err: error }, "failed to capture tmux scrollback");
 		return [];
