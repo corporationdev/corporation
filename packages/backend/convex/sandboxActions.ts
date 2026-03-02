@@ -114,7 +114,7 @@ async function provisionSandbox(
 	snapshotId: string
 ): Promise<{
 	sandboxId: string;
-	sandboxUrl: string;
+	agentUrl: string;
 }> {
 	const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 	if (!anthropicApiKey) {
@@ -135,8 +135,8 @@ async function provisionSandbox(
 
 	await bootSandboxAgent(sandbox);
 
-	const sandboxUrl = getPreviewUrl(sandbox, SANDBOX_AGENT_PORT);
-	return { sandboxId: sandbox.sandboxId, sandboxUrl };
+	const agentUrl = getPreviewUrl(sandbox, SANDBOX_AGENT_PORT);
+	return { sandboxId: sandbox.sandboxId, agentUrl };
 }
 
 async function resolveSandbox(
@@ -144,7 +144,7 @@ async function resolveSandbox(
 	space: Space
 ): Promise<{
 	sandboxId: string;
-	sandboxUrl?: string;
+	agentUrl?: string;
 }> {
 	const { externalSnapshotId } = space.environment;
 
@@ -167,7 +167,7 @@ async function resolveSandbox(
 
 		return {
 			sandboxId: sandbox.sandboxId,
-			sandboxUrl: getPreviewUrl(sandbox, SANDBOX_AGENT_PORT),
+			agentUrl: getPreviewUrl(sandbox, SANDBOX_AGENT_PORT),
 		};
 	} catch {
 		return await provisionSandbox(ctx, space._id, externalSnapshotId);
@@ -241,7 +241,7 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 			});
 
-			const { sandboxId, sandboxUrl } = await resolveSandbox(ctx, space);
+			const { sandboxId, agentUrl } = await resolveSandbox(ctx, space);
 
 			const sandbox = await Sandbox.connect(sandboxId);
 			const { repository } = space.environment;
@@ -257,7 +257,7 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 				status: "running",
 				sandboxId,
-				sandboxUrl,
+				agentUrl,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {

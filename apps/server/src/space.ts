@@ -35,7 +35,7 @@ export const space = actor({
 	createState: (
 		c,
 		input: {
-			sandboxUrl: string;
+			agentUrl: string;
 			sandboxId: string;
 			workdir: string;
 		}
@@ -46,7 +46,7 @@ export const space = actor({
 		}
 
 		return {
-			sandboxUrl: input.sandboxUrl,
+			agentUrl: input.agentUrl,
 			sandboxId: input.sandboxId,
 			workdir: input.workdir,
 			_sandboxAgentPersist: { sessions: {}, events: {} },
@@ -70,7 +70,7 @@ export const space = actor({
 
 		const persist = new RivetSessionPersistDriver(c);
 		const sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: c.state.sandboxUrl,
+			baseUrl: c.state.agentUrl,
 			persist,
 		});
 		const sandbox = await Sandbox.connect(c.state.sandboxId, {

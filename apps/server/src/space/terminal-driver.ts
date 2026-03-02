@@ -485,6 +485,14 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 async function onWake(vars: SpaceVars): Promise<void> {
 	const exists = await hasTmuxSession(vars.sandbox, DEV_SERVER_TERMINAL_ID);
 	if (!exists) {
+		// Clean up stale tab if tmux session is gone (e.g. sandbox restart)
+		const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
+		const now = Date.now();
+		vars.db
+			.update(tabs)
+			.set({ active: false, archivedAt: now, updatedAt: now })
+			.where(eq(tabs.id, tabId))
+			.run();
 		return;
 	}
 

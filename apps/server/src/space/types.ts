@@ -4,7 +4,7 @@ import type { CommandHandle, Sandbox } from "e2b";
 import type { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 
 export type PersistedState = RivetPersistState & {
-	sandboxUrl: string;
+	agentUrl: string;
 	sandboxId: string;
 	workdir: string;
 };

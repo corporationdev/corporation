@@ -174,7 +174,7 @@ function ConnectedSessionRuntime({
 			return;
 		}
 
-		if (!space?.sandboxUrl) {
+		if (!space?.agentUrl) {
 			return;
 		}
 
@@ -192,7 +192,7 @@ function ConnectedSessionRuntime({
 		actor.connStatus,
 		actor.connection,
 		sessionId,
-		space?.sandboxUrl,
+		space?.agentUrl,
 		initMutation.isSuccess,
 	]);
 

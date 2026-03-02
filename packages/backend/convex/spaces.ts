@@ -195,7 +195,7 @@ export const update = authedMutation({
 		id: v.id("spaces"),
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
-		sandboxUrl: v.optional(v.string()),
+		agentUrl: v.optional(v.string()),
 		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -221,7 +221,7 @@ export const internalUpdate = internalMutation({
 		id: v.id("spaces"),
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
-		sandboxUrl: v.optional(v.string()),
+		agentUrl: v.optional(v.string()),
 		lastSyncedCommitSha: v.optional(v.string()),
 		prUrl: v.optional(v.string()),
 		error: v.optional(v.string()),
