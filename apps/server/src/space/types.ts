@@ -22,8 +22,6 @@ export type SpaceVars = {
 	sandboxClient: SandboxAgentClient;
 	sessionStreams: Map<string, () => void>;
 	terminalHandles: Map<string, CommandHandle>;
-	terminalBuffers: Map<string, number[]>;
-	terminalPersistWrites: Map<string, Promise<void>>;
 	subscriptions: SubscriptionHub;
 };
 
