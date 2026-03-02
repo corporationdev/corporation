@@ -18,6 +18,8 @@ type ActionCtx = GenericActionCtx<DataModel>;
 const SANDBOX_AGENT_PORT = 5799;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
+// Keep in sync with SANDBOX_TIMEOUT_MS in apps/server/src/space/sandbox-keepalive.ts
+const SANDBOX_TIMEOUT_MS = 900_000;
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -131,6 +133,12 @@ async function provisionSandbox(
 		allowInternetAccess: true,
 		network: { allowPublicTraffic: true },
 		autoPause: true,
+		timeoutMs: SANDBOX_TIMEOUT_MS,
+	});
+
+	await ctx.runMutation(internal.spaces.internalUpdate, {
+		id: spaceId,
+		sandboxExpiresAt: Date.now() + SANDBOX_TIMEOUT_MS,
 	});
 
 	await bootSandboxAgent(sandbox);

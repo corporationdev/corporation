@@ -2,6 +2,7 @@ import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Session, SessionEvent } from "sandbox-agent";
 import { type SessionTab, tabs } from "../db/schema";
+import { refreshSandboxTimeout } from "./action-registration";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import { publishToChannel } from "./subscriptions";
@@ -25,6 +26,7 @@ function ensureEventListener(ctx: SpaceRuntimeContext, session: Session): void {
 	}
 
 	const unsubscribe = session.onEvent((event) => {
+		refreshSandboxTimeout(ctx);
 		publishToChannel(
 			ctx,
 			createTabChannel("session", sessionId),

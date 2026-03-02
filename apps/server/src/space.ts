@@ -84,6 +84,7 @@ export const space = actor({
 			sessionStreams: new Map(),
 			terminalHandles: new Map(),
 			subscriptions: createSubscriptionHub(),
+			lastTimeoutRefreshAt: 0,
 		};
 
 		for (const driver of lifecycleDrivers) {
@@ -140,6 +141,10 @@ export const space = actor({
 				.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
 				.where(eq(tabs.id, tabId));
 			await ctx.broadcastTabsChanged();
+		},
+		resetTimeout: (c) => {
+			c.vars.lastTimeoutRefreshAt = 0;
+			augmentContext(c, lifecycleDrivers);
 		},
 		...driverActions,
 	},
