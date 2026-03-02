@@ -33,14 +33,21 @@ if (useSandbox) {
 		console.log("Seeding local Convex from dev deployment...");
 		const seedZip = `/tmp/convex-seed-${process.pid}.zip`;
 		try {
+			const backendEnv = loadBackendEnv();
+			const seedDeployKey = backendEnv.SEED_CONVEX_DEPLOY_KEY;
+			const seedExportEnv = {
+				...backendEnv,
+				CONVEX_DEPLOYMENT: DEV_DEPLOYMENT,
+				...(seedDeployKey ? { CONVEX_DEPLOY_KEY: seedDeployKey } : {}),
+			};
 			await $`bunx convex export --path ${seedZip}`
-				.env({ ...loadBackendEnv(), CONVEX_DEPLOYMENT: DEV_DEPLOYMENT })
+				.env(seedExportEnv)
 				.cwd(backendDir);
 			await $`zip -d ${seedZip} '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'`
 				.cwd(repoRoot)
 				.nothrow();
 			await $`bunx convex dev --local --once --run-sh ${`bunx convex import ${seedZip} --replace --yes`}`
-				.env(loadBackendEnv())
+				.env(backendEnv)
 				.cwd(backendDir);
 		} catch {
 			console.log(
