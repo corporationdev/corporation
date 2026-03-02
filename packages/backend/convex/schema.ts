@@ -65,6 +65,7 @@ export default defineSchema(
 			prUrl: v.optional(v.string()),
 			error: v.optional(v.string()),
 			archived: v.optional(v.boolean()),
+			sandboxExpiresAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
