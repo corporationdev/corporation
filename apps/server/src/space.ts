@@ -84,6 +84,7 @@ export const space = actor({
 			sessionStreams: new Map(),
 			terminalHandles: new Map(),
 			subscriptions: createSubscriptionHub(),
+			lastTimeoutRefreshAt: 0,
 		};
 
 		for (const driver of lifecycleDrivers) {

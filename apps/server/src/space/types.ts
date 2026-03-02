@@ -23,6 +23,7 @@ export type SpaceVars = {
 	sessionStreams: Map<string, () => void>;
 	terminalHandles: Map<string, CommandHandle>;
 	subscriptions: SubscriptionHub;
+	lastTimeoutRefreshAt: number;
 };
 
 export type ConnectionSender = {
