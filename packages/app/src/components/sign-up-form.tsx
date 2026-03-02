@@ -19,11 +19,13 @@ export default function SignUpForm() {
 			name: "",
 		},
 		onSubmit: async ({ value }) => {
+			const callbackURL = new URL("/", window.location.origin).toString();
 			await authClient.signUp.email(
 				{
 					email: value.email,
 					password: value.password,
 					name: value.name,
+					callbackURL,
 				},
 				{
 					onSuccess: () => {

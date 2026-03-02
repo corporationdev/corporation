@@ -18,10 +18,12 @@ export default function SignInForm() {
 			password: "",
 		},
 		onSubmit: async ({ value }) => {
+			const callbackURL = new URL("/", window.location.origin).toString();
 			await authClient.signIn.email(
 				{
 					email: value.email,
 					password: value.password,
+					callbackURL,
 				},
 				{
 					onSuccess: () => {
