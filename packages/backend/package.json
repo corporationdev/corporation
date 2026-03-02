@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "",
   "scripts": {
-    "dev": "STAGE_VALUE=${STAGE:-$(awk -F= '/^STAGE=/{print $2; exit}' .env 2>/dev/null)}; case \"$STAGE_VALUE\" in sandbox|sandbox-*) CONVEX_AGENT_MODE=anonymous convex dev --local ;; *) convex dev ;; esac",
+    "dev": "STAGE_VALUE=${STAGE:-$(awk -F= '/^STAGE=/{print $2; exit}' .env 2>/dev/null)}; case \"$STAGE_VALUE\" in sandbox|sandbox-*) CONVEX_DEPLOY_KEY='<ignore_deploy_key>' CONVEX_AGENT_MODE=anonymous convex dev --local ;; *) convex dev ;; esac",
     "dev:setup": "convex dev --configure --until-success"
   },
   "dependencies": {
