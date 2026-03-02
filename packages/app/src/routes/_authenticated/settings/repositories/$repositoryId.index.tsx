@@ -345,7 +345,7 @@ function ActiveSnapshotError({
 	return (
 		<div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
 			<AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-			<p className="wrap-break-word whitespace-pre-wrap text-destructive text-sm">
+			<p className="whitespace-pre-wrap text-destructive text-sm">
 				{activeSnapshot.error}
 			</p>
 		</div>

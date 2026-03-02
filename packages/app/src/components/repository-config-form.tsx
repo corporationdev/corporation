@@ -15,6 +15,16 @@ const QUOTED_VALUE_RE = /^(['"])(.*)\1$/;
 const LEADING_DOT_SLASH_RE = /^\.\/+/;
 const TRAILING_SLASH_RE = /\/+$/;
 const SECTION_HEADER_RE = /^\[(.*)\]$/;
+const DEV_PORT_DIGITS_RE = /^\d+$/;
+const DEV_PORT_ERROR_MESSAGE =
+	"Dev port must be an integer between 1 and 65535";
+const devPortNumberSchema = z.coerce
+	.number({
+		error: DEV_PORT_ERROR_MESSAGE,
+	})
+	.int(DEV_PORT_ERROR_MESSAGE)
+	.min(1, DEV_PORT_ERROR_MESSAGE)
+	.max(65_535, DEV_PORT_ERROR_MESSAGE);
 
 const envVarSchema = z.object({
 	key: z.string(),
@@ -29,7 +39,14 @@ const envFileSchema = z.object({
 export const repositoryConfigSchema = z.object({
 	setupCommand: z.string().min(1, "Setup command is required"),
 	devCommand: z.string().min(1, "Dev command is required"),
-	devPort: z.string().min(1, "Dev port is required"),
+	devPort: z
+		.string()
+		.trim()
+		.min(1, "Dev port is required")
+		.refine(
+			(value) => devPortNumberSchema.safeParse(value).success,
+			DEV_PORT_ERROR_MESSAGE
+		),
 	envFiles: z.array(envFileSchema),
 });
 
@@ -101,10 +118,23 @@ function normalizePath(inputPath: string): string {
 }
 
 export function parseDevPort(value: string | number): number {
-	const num = typeof value === "number" ? value : Number.parseInt(value, 10);
-	if (Number.isNaN(num) || num < 1 || num > 65_535) {
+	if (typeof value === "number") {
+		if (!Number.isInteger(value) || value < 1 || value > 65_535) {
+			throw new Error("Invalid dev port");
+		}
+		return value;
+	}
+
+	const trimmed = value.trim();
+	if (!(trimmed && DEV_PORT_DIGITS_RE.test(trimmed))) {
 		throw new Error("Invalid dev port");
 	}
+
+	const num = Number(trimmed);
+	if (!Number.isInteger(num) || num < 1 || num > 65_535) {
+		throw new Error("Invalid dev port");
+	}
+
 	return num;
 }
 

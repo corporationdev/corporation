@@ -53,16 +53,21 @@ async function ensureTmuxSession(
 	sessionName: string,
 	cwd?: string
 ): Promise<void> {
-	const exists = await hasTmuxSession(sandbox, sessionName);
-	if (exists) {
-		return;
-	}
-
 	const safeSessionName = quoteShellArg(sessionName);
 	const cwdFlag = cwd ? ` -c ${quoteShellArg(cwd)}` : "";
-	await sandbox.commands.run(
-		`tmux new-session -d -s ${safeSessionName}${cwdFlag} \\; set-option -t ${safeSessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeSessionName} mouse on \\; set-option -t ${safeSessionName} status off`
-	);
+	try {
+		await sandbox.commands.run(
+			`tmux new-session -d -s ${safeSessionName}${cwdFlag} \\; set-option -t ${safeSessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeSessionName} mouse on \\; set-option -t ${safeSessionName} status off`
+		);
+	} catch (error) {
+		if (
+			error instanceof CommandExitError &&
+			error.message.includes("duplicate session")
+		) {
+			return;
+		}
+		throw error;
+	}
 }
 
 async function createTmuxPty(
