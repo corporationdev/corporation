@@ -51,7 +51,7 @@ if (useSandbox) {
 			await $`zip -d ${seedZip} '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'`
 				.cwd(repoRoot)
 				.nothrow();
-			await $`bunx convex dev --local --once --run-sh ${`bunx convex import ${seedZip} --replace --yes`}`
+			await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${`bunx convex import ${seedZip} --replace --yes`}`
 				.env(localEnv)
 				.cwd(backendDir);
 		} catch {
