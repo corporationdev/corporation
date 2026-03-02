@@ -26,6 +26,63 @@ function isActorConnDisposedError(error: unknown): boolean {
 	);
 }
 
+type TranscriptConnection = {
+	getTranscript: (
+		sessionId: string,
+		offset: number,
+		limit: number
+	) => Promise<SessionEvent[] | Promise<SessionEvent[]>>;
+};
+
+async function loadTranscriptEvents(
+	conn: TranscriptConnection,
+	sessionId: string,
+	isCancelled: () => boolean
+): Promise<SessionEvent[]> {
+	const events: SessionEvent[] = [];
+	let offset = 0;
+
+	while (true) {
+		if (isCancelled()) {
+			break;
+		}
+
+		const pageResult = await conn.getTranscript(
+			sessionId,
+			offset,
+			TRANSCRIPT_PAGE_SIZE
+		);
+		const page = await pageResult;
+		if (isCancelled()) {
+			break;
+		}
+
+		if (page.length === 0) {
+			break;
+		}
+
+		events.push(...page);
+		offset += page.length;
+		if (page.length < TRANSCRIPT_PAGE_SIZE) {
+			break;
+		}
+	}
+
+	return events;
+}
+
+function sortSessionEvents(events: SessionEvent[]): void {
+	events.sort((left, right) => {
+		if (left.createdAt !== right.createdAt) {
+			return left.createdAt - right.createdAt;
+		}
+		if (left.eventIndex !== right.eventIndex) {
+			return left.eventIndex - right.eventIndex;
+		}
+		return left.id.localeCompare(right.id);
+	});
+}
+
 export function useSessionEventState({
 	sessionId,
 	actor,
@@ -82,35 +139,15 @@ export function useSessionEventState({
 		const conn = actor.connection;
 		(async () => {
 			await conn.subscribeSession(sessionId);
-			const events: SessionEvent[] = [];
-			let offset = 0;
-			while (true) {
-				const page = await conn.getTranscript(
-					sessionId,
-					offset,
-					TRANSCRIPT_PAGE_SIZE
-				);
-				if (page.length === 0) {
-					break;
-				}
-				events.push(...page);
-				offset += page.length;
-				if (page.length < TRANSCRIPT_PAGE_SIZE) {
-					break;
-				}
-			}
+			const events = await loadTranscriptEvents(
+				conn,
+				sessionId,
+				() => isCancelled
+			);
 			if (isCancelled) {
 				return;
 			}
-			events.sort((left, right) => {
-				if (left.createdAt !== right.createdAt) {
-					return left.createdAt - right.createdAt;
-				}
-				if (left.eventIndex !== right.eventIndex) {
-					return left.eventIndex - right.eventIndex;
-				}
-				return left.id.localeCompare(right.id);
-			});
+			sortSessionEvents(events);
 			applyEvents(events);
 			applyEvents(bufferRef.current);
 			bufferRef.current = [];
