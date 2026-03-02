@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import type { SpaceActor } from "@/lib/rivetkit";
 import "@xterm/xterm/css/xterm.css";
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ESC sequence for terminal mouse tracking
 const MOUSE_TRACKING_RE = /\x1b\[\?100[0-6][hl]/g;
 
 type TerminalViewProps = {
