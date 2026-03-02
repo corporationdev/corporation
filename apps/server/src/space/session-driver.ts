@@ -10,6 +10,7 @@ import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
 const DEFAULT_AGENT = "opencode";
+const DEFAULT_MODEL_ID = "anthropic/claude-opus-4-6";
 const SESSION_EVENT_NAME = "session.event";
 
 function abortAllSessionStreams(ctx: SpaceRuntimeContext): void {
@@ -96,6 +97,7 @@ async function sendMessage(
 	content: string
 ): Promise<void> {
 	await ensureSession(ctx, sessionId);
+	const existingSession = await ctx.vars.sandboxClient.getSession(sessionId);
 
 	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
 		id: sessionId,
@@ -106,10 +108,32 @@ async function sendMessage(
 		},
 	});
 	ensureEventListener(ctx, session);
+	if (!existingSession) {
+		await applyDefaultModel(session);
+	}
 
 	session.prompt([{ type: "text", text: content }]).catch((error) => {
 		console.error("Failed to send session prompt", error);
 	});
+}
+
+async function applyDefaultModel(session: Session): Promise<void> {
+	try {
+		await session.send("unstable/set_session_model", {
+			modelId: DEFAULT_MODEL_ID,
+		});
+		return;
+	} catch {
+		// Fall through to protocol-native method name.
+	}
+
+	try {
+		await session.send("session/set_model", {
+			modelId: DEFAULT_MODEL_ID,
+		});
+	} catch (error) {
+		console.warn("Failed to set default session model", error);
+	}
 }
 
 async function getTranscript(
