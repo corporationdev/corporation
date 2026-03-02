@@ -31,13 +31,13 @@ if (useSandbox) {
 		console.log("Seeding local Convex from dev deployment...");
 		const seedZip = `/tmp/convex-seed-${process.pid}.zip`;
 		try {
-			await $`npx convex export --path ${seedZip}`
+			await $`bunx convex export --path ${seedZip}`
 				.env(loadBackendEnv())
 				.cwd(repoRoot);
 			await $`zip -d ${seedZip} '_components/betterAuth/jwks/*' '_components/betterAuth/session/*'`
 				.cwd(repoRoot)
 				.nothrow();
-			await $`npx convex dev --local --once --run-sh ${`npx convex import ${seedZip} --replace --yes`}`
+			await $`bunx convex dev --local --once --run-sh ${`bunx convex import ${seedZip} --replace --yes`}`
 				.env(loadBackendEnv())
 				.cwd(resolve(repoRoot, "packages/backend"));
 		} catch {
@@ -54,11 +54,11 @@ if (sync) {
 	console.log("Syncing environment variables to Convex...");
 	const backendDir = resolve(repoRoot, "packages/backend");
 	if (useSandbox) {
-		await $`CONVEX_AGENT_MODE=anonymous npx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
+		await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
 			.env(loadBackendEnv())
 			.cwd(backendDir);
 	} else {
-		await $`npx convex dev --once --run-sh ${"bun ./sync-convex-env.ts"}`
+		await $`bunx convex dev --once --run-sh ${"bun ./sync-convex-env.ts"}`
 			.env(loadBackendEnv())
 			.cwd(backendDir);
 	}
