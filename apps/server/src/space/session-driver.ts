@@ -107,7 +107,9 @@ async function sendMessage(
 	});
 	ensureEventListener(ctx, session);
 
-	await session.prompt([{ type: "text", text: content }]);
+	session.prompt([{ type: "text", text: content }]).catch((error) => {
+		console.error("Failed to send session prompt", error);
+	});
 }
 
 async function getTranscript(

@@ -13,6 +13,8 @@ type SessionState = {
 	isRunning: boolean;
 };
 
+const TRANSCRIPT_PAGE_SIZE = 200;
+
 function isActorConnDisposedError(error: unknown): boolean {
 	if (!(error instanceof Error)) {
 		return false;
@@ -24,6 +26,63 @@ function isActorConnDisposedError(error: unknown): boolean {
 	);
 }
 
+type TranscriptConnection = {
+	getTranscript: (
+		sessionId: string,
+		offset: number,
+		limit: number
+	) => Promise<SessionEvent[] | Promise<SessionEvent[]>>;
+};
+
+async function loadTranscriptEvents(
+	conn: TranscriptConnection,
+	sessionId: string,
+	isCancelled: () => boolean
+): Promise<SessionEvent[]> {
+	const events: SessionEvent[] = [];
+	let offset = 0;
+
+	while (true) {
+		if (isCancelled()) {
+			break;
+		}
+
+		const pageResult = await conn.getTranscript(
+			sessionId,
+			offset,
+			TRANSCRIPT_PAGE_SIZE
+		);
+		const page = await pageResult;
+		if (isCancelled()) {
+			break;
+		}
+
+		if (page.length === 0) {
+			break;
+		}
+
+		events.push(...page);
+		offset += page.length;
+		if (page.length < TRANSCRIPT_PAGE_SIZE) {
+			break;
+		}
+	}
+
+	return events;
+}
+
+function sortSessionEvents(events: SessionEvent[]): void {
+	events.sort((left, right) => {
+		if (left.createdAt !== right.createdAt) {
+			return left.createdAt - right.createdAt;
+		}
+		if (left.eventIndex !== right.eventIndex) {
+			return left.eventIndex - right.eventIndex;
+		}
+		return left.id.localeCompare(right.id);
+	});
+}
+
 export function useSessionEventState({
 	sessionId,
 	actor,
@@ -32,7 +91,7 @@ export function useSessionEventState({
 	actor: SpaceActor;
 }): SessionState {
 	const eventStateRef = useRef<EventState>(createEventState());
-	const lastSequenceRef = useRef(0);
+	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<SessionEvent[]>([]);
 	const [sessionState, setSessionState] = useState<SessionState>({
@@ -44,12 +103,12 @@ export function useSessionEventState({
 		let lastResult: SessionState | null = null;
 
 		for (const event of events) {
-			if (event.eventIndex <= lastSequenceRef.current) {
+			if (seenEventIdsRef.current.has(event.id)) {
 				continue;
 			}
+			seenEventIdsRef.current.add(event.id);
 
 			lastResult = processEvent(event, eventStateRef.current);
-			lastSequenceRef.current = event.eventIndex;
 		}
 
 		if (lastResult) {
@@ -62,7 +121,7 @@ export function useSessionEventState({
 			return;
 		}
 		eventStateRef.current = createEventState();
-		lastSequenceRef.current = 0;
+		seenEventIdsRef.current = new Set();
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 		setSessionState({ messages: [], isRunning: false });
@@ -80,11 +139,16 @@ export function useSessionEventState({
 		const conn = actor.connection;
 		(async () => {
 			await conn.subscribeSession(sessionId);
-			const events = await conn.getTranscript(sessionId, 0);
+			const events = await loadTranscriptEvents(
+				conn,
+				sessionId,
+				() => isCancelled
+			);
 			if (isCancelled) {
 				return;
 			}
-			applyEvents(await events);
+			sortSessionEvents(events);
+			applyEvents(events);
 			applyEvents(bufferRef.current);
 			bufferRef.current = [];
 			caughtUpRef.current = true;

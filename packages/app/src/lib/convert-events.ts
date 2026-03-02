@@ -18,7 +18,7 @@ type TurnState = {
 	fallbackUserParts: MessagePart[];
 	userParts: MessagePart[];
 	assistantParts: MessagePart[];
-	toolParts: Map<string, ToolCallPart>;
+	toolPartsById: Map<string, ToolCallPart>;
 	completed: boolean;
 	stopReason?: string;
 };
@@ -83,7 +83,7 @@ function handlePromptRequest(
 		fallbackUserParts,
 		userParts: [],
 		assistantParts: [],
-		toolParts: new Map<string, ToolCallPart>(),
+		toolPartsById: new Map<string, ToolCallPart>(),
 		completed: false,
 	};
 
@@ -162,7 +162,17 @@ function handleResponse(
 		return;
 	}
 
-	const turn = state.turnById.get(requestId);
+	let turn = state.turnById.get(requestId);
+	if (!turn) {
+		const latestActiveTurn = getLatestActiveTurn(state);
+		if (latestActiveTurn && isSyntheticTurnId(latestActiveTurn.id)) {
+			state.turnById.delete(latestActiveTurn.id);
+			latestActiveTurn.id = requestId;
+			state.turnById.set(requestId, latestActiveTurn);
+			turn = latestActiveTurn;
+		}
+	}
+
 	if (!turn) {
 		return;
 	}
@@ -185,40 +195,66 @@ function handleResponse(
 function deriveMessages(state: EventState): ProcessResult {
 	const messages: ThreadMessageLike[] = [];
 	let isRunning = false;
+	const turns = state.turns.filter((turn): turn is TurnState => Boolean(turn));
 
-	for (const turn of state.turns) {
-		const userContent =
-			turn.userParts.length > 0 ? turn.userParts : turn.fallbackUserParts;
-		if (userContent.length > 0) {
-			messages.push({
-				id: `${turn.id}:user`,
-				role: "user",
-				content: [...userContent],
-			});
-		}
-
-		const assistantContent: MessagePart[] = [...turn.assistantParts];
-		for (const toolPart of turn.toolParts.values()) {
-			assistantContent.push(toolPart as MessagePart);
-		}
-
-		if (assistantContent.length > 0 || !turn.completed) {
-			messages.push({
-				id: `${turn.id}:assistant`,
-				role: "assistant",
-				content: assistantContent,
-				status: turn.completed
-					? { type: "complete", reason: "stop" }
-					: { type: "running" },
-			});
-		}
-
-		if (!turn.completed) {
+	for (let index = 0; index < turns.length; index += 1) {
+		const turn = turns[index];
+		const isLatestTurn = index === turns.length - 1;
+		maybeCompleteStaleSyntheticTurn(turn, isLatestTurn);
+		appendUserMessage(messages, turn);
+		appendAssistantMessage(messages, turn);
+		if (isLatestTurn && !turn.completed) {
 			isRunning = true;
 		}
 	}
 
 	return { messages, isRunning };
+}
+
+function maybeCompleteStaleSyntheticTurn(
+	turn: TurnState,
+	isLatestTurn: boolean
+): void {
+	if (!(isLatestTurn || turn.completed) && isSyntheticTurnId(turn.id)) {
+		turn.completed = true;
+	}
+}
+
+function appendUserMessage(
+	messages: ThreadMessageLike[],
+	turn: TurnState
+): void {
+	const userContent =
+		turn.userParts.length > 0 ? turn.userParts : turn.fallbackUserParts;
+	if (userContent.length === 0) {
+		return;
+	}
+
+	messages.push({
+		id: `${turn.id}:user`,
+		role: "user",
+		content: [...userContent],
+	});
+}
+
+function appendAssistantMessage(
+	messages: ThreadMessageLike[],
+	turn: TurnState
+): void {
+	const assistantContent: MessagePart[] = [...turn.assistantParts];
+
+	if (assistantContent.length === 0 && turn.completed) {
+		return;
+	}
+
+	messages.push({
+		id: `${turn.id}:assistant`,
+		role: "assistant",
+		content: assistantContent,
+		status: turn.completed
+			? { type: "complete", reason: "stop" }
+			: { type: "running" },
+	});
 }
 
 function createSyntheticTurn(
@@ -233,7 +269,7 @@ function createSyntheticTurn(
 		fallbackUserParts: [],
 		userParts: [],
 		assistantParts: [],
-		toolParts: new Map<string, ToolCallPart>(),
+		toolPartsById: new Map<string, ToolCallPart>(),
 		completed: false,
 	};
 	state.turnById.set(turn.id, turn);
@@ -251,6 +287,10 @@ function getLatestActiveTurn(state: EventState): TurnState | null {
 	return null;
 }
 
+function isSyntheticTurnId(turnId: string): boolean {
+	return turnId.startsWith("synthetic-");
+}
+
 function upsertToolCall(
 	turn: TurnState,
 	update: Record<string, unknown>
@@ -259,13 +299,17 @@ function upsertToolCall(
 		return;
 	}
 
-	const existing = turn.toolParts.get(update.toolCallId);
+	const existing = turn.toolPartsById.get(update.toolCallId);
 	const nextToolPart: ToolCallPart = existing ?? {
 		type: "tool-call",
 		toolCallId: update.toolCallId,
 		toolName: typeof update.title === "string" ? update.title : "tool",
 		args: {},
 	};
+	if (!existing) {
+		turn.assistantParts.push(nextToolPart as MessagePart);
+		turn.toolPartsById.set(nextToolPart.toolCallId, nextToolPart);
+	}
 
 	if (typeof update.title === "string" && update.title.length > 0) {
 		nextToolPart.toolName = update.title;
@@ -280,7 +324,7 @@ function upsertToolCall(
 		nextToolPart.result = result;
 	}
 
-	turn.toolParts.set(nextToolPart.toolCallId, nextToolPart);
+	turn.toolPartsById.set(nextToolPart.toolCallId, nextToolPart);
 }
 
 function extractToolCallResult(
