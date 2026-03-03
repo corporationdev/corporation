@@ -7,14 +7,21 @@ import { ListIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AgentModelPicker } from "@/components/agent-model-picker";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
 import { EventsView } from "@/components/events-view";
 import { Button } from "@/components/ui/button";
+import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
+
+const INITIAL_AGENT = "opencode";
+const INITIAL_MODEL =
+	agentModelsData[INITIAL_AGENT as keyof typeof agentModelsData].defaultModel ??
+	"";
 
 export const SessionView: FC<{
 	actor: SpaceActor;
@@ -36,13 +43,15 @@ export const SessionView: FC<{
 		);
 	}
 
-	return <NewSessionView key={spaceSlug} spaceSlug={spaceSlug} />;
+	return <NewSessionView actor={actor} key={spaceSlug} spaceSlug={spaceSlug} />;
 };
 
 const NewSpaceView: FC = () => {
 	const navigate = useNavigate();
 	const setPending = usePendingMessageStore((s) => s.setPending);
 	const [message, setMessage] = useState("");
+	const [agent, setAgent] = useState(INITIAL_AGENT);
+	const [modelId, setModelId] = useState(INITIAL_MODEL);
 
 	const repositories = useQuery(api.repositories.list);
 	const firstRepo = repositories?.[0];
@@ -61,7 +70,7 @@ const NewSpaceView: FC = () => {
 		const spaceSlug = nanoid();
 		const sessionId = nanoid();
 
-		setPending({ text, environmentId: firstEnv._id });
+		setPending({ text, agent, modelId, environmentId: firstEnv._id });
 		setMessage("");
 
 		navigate({
@@ -71,7 +80,7 @@ const NewSpaceView: FC = () => {
 				tab: serializeTab({ type: "session", id: sessionId }),
 			},
 		});
-	}, [message, firstEnv, setPending, navigate]);
+	}, [message, firstEnv, agent, modelId, setPending, navigate]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -83,6 +92,14 @@ const NewSpaceView: FC = () => {
 			</div>
 			<ChatInput
 				disabled={!firstEnv}
+				footer={
+					<AgentModelPicker
+						agent={agent}
+						modelId={modelId}
+						onAgentChange={setAgent}
+						onModelIdChange={setModelId}
+					/>
+				}
 				message={message}
 				onMessageChange={setMessage}
 				onSendMessage={handleSend}
@@ -92,10 +109,95 @@ const NewSpaceView: FC = () => {
 	);
 };
 
-const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
+type ConfigSelectOption = { value: string; name: string };
+type ConfigOption = {
+	category?: string;
+	type?: string;
+	currentValue?: string;
+	options?:
+		| ConfigSelectOption[]
+		| Array<{ group: string; options: ConfigSelectOption[] }>;
+};
+
+function flattenSelectOptions(
+	options:
+		| ConfigSelectOption[]
+		| Array<{ group: string; options: ConfigSelectOption[] }>
+): ConfigSelectOption[] {
+	if (options.length === 0) {
+		return [];
+	}
+	if ("value" in options[0]) {
+		return options as ConfigSelectOption[];
+	}
+	return (options as Array<{ options: ConfigSelectOption[] }>).flatMap(
+		(g) => g.options
+	);
+}
+
+function useAgentModels(actor: SpaceActor) {
+	const [agentModels, setAgentModels] = useState<
+		Record<string, { id: string; name?: string }[]> | undefined
+	>();
+	const [defaultModels, setDefaultModels] = useState<
+		Record<string, string> | undefined
+	>();
+
+	useEffect(() => {
+		if (actor.connStatus !== "connected" || !actor.connection) {
+			return;
+		}
+		const conn = actor.connection;
+		(async () => {
+			const result = await conn.listAgents();
+			const models: Record<string, { id: string; name?: string }[]> = {};
+			const defaults: Record<string, string> = {};
+			for (const agent of (
+				result as {
+					agents: Array<{ id: string; configOptions?: unknown[] | null }>;
+				}
+			).agents) {
+				const options = (agent.configOptions ?? []) as ConfigOption[];
+				for (const opt of options) {
+					if (
+						opt.category === "model" &&
+						opt.type === "select" &&
+						opt.options
+					) {
+						models[agent.id] = flattenSelectOptions(opt.options).map((o) => ({
+							id: o.value,
+							name: o.name,
+						}));
+					}
+					if (
+						opt.category === "model" &&
+						opt.type === "select" &&
+						opt.currentValue
+					) {
+						defaults[agent.id] = opt.currentValue;
+					}
+				}
+			}
+			setAgentModels(models);
+			setDefaultModels(defaults);
+		})().catch((error: unknown) => {
+			console.warn("Failed to load agent models", error);
+		});
+	}, [actor.connStatus, actor.connection]);
+
+	return { agentModels, defaultModels };
+}
+
+const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
+	spaceSlug,
+	actor,
+}) => {
 	const navigate = useNavigate();
 	const setPending = usePendingMessageStore((s) => s.setPending);
 	const [message, setMessage] = useState("");
+	const [agent, setAgent] = useState(INITIAL_AGENT);
+	const [modelId, setModelId] = useState(INITIAL_MODEL);
+	const { agentModels, defaultModels } = useAgentModels(actor);
 
 	const handleSend = useCallback(() => {
 		const text = message.trim();
@@ -105,7 +207,7 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 
 		const sessionId = nanoid();
 
-		setPending({ text, spaceSlug });
+		setPending({ text, agent, modelId, spaceSlug });
 		setMessage("");
 
 		navigate({
@@ -115,7 +217,7 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 				tab: serializeTab({ type: "session", id: sessionId }),
 			},
 		});
-	}, [message, setPending, spaceSlug, navigate]);
+	}, [message, agent, modelId, setPending, spaceSlug, navigate]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -127,6 +229,16 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 			</div>
 			<ChatInput
 				disabled={false}
+				footer={
+					<AgentModelPicker
+						agent={agent}
+						agentModels={agentModels}
+						defaultModels={defaultModels}
+						modelId={modelId}
+						onAgentChange={setAgent}
+						onModelIdChange={setModelId}
+					/>
+				}
 				message={message}
 				onMessageChange={setMessage}
 				onSendMessage={handleSend}
@@ -143,22 +255,37 @@ const ConnectedSessionView: FC<{
 }> = ({ sessionId, spaceSlug, actor }) => {
 	const [message, setMessage] = useState("");
 	const [showEvents, setShowEvents] = useState(false);
+	const [agent, setAgent] = useState(INITIAL_AGENT);
+	const [modelId, setModelId] = useState(INITIAL_MODEL);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
 	const ensureSpace = useMutation(api.spaces.ensure);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
+	const { agentModels, defaultModels } = useAgentModels(actor);
 
-	const pendingTextRef = useRef<string | null>(null);
+	const pendingRef = useRef<{
+		text: string;
+		agent: string;
+		modelId: string;
+	} | null>(null);
 	const initMutation = useTanstackMutation({
 		mutationFn: async (pending: {
 			text: string;
+			agent: string;
+			modelId: string;
 			environmentId?: Id<"environments">;
 		}) => {
 			await ensureSpace({
 				slug: spaceSlug,
 				environmentId: pending.environmentId,
 			});
-			pendingTextRef.current = pending.text;
+			pendingRef.current = {
+				text: pending.text,
+				agent: pending.agent,
+				modelId: pending.modelId,
+			};
+			setAgent(pending.agent);
+			setModelId(pending.modelId);
 		},
 		onError: (error) => {
 			toast.error("Failed to start chat");
@@ -184,7 +311,7 @@ const ConnectedSessionView: FC<{
 		initMutation.mutate,
 	]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: initMutation.isSuccess is intentionally included to re-trigger this effect when the mutation completes, since it sets pendingTextRef (a ref that doesn't cause re-renders on its own).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: initMutation.isSuccess is intentionally included to re-trigger this effect when the mutation completes, since it sets pendingRef (a ref that doesn't cause re-renders on its own).
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
@@ -194,16 +321,18 @@ const ConnectedSessionView: FC<{
 			return;
 		}
 
-		const text = pendingTextRef.current;
-		if (!text) {
+		const pending = pendingRef.current;
+		if (!pending) {
 			return;
 		}
-		pendingTextRef.current = null;
+		pendingRef.current = null;
 
 		const conn = actor.connection;
-		conn.sendMessage(sessionId, text).catch((error: unknown) => {
-			console.error("Failed to send pending message", error);
-		});
+		conn
+			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
+			.catch((error: unknown) => {
+				console.error("Failed to send pending message", error);
+			});
 	}, [
 		actor.connStatus,
 		actor.connection,
@@ -230,13 +359,21 @@ const ConnectedSessionView: FC<{
 				throw new Error("Actor connection is unavailable");
 			}
 
-			await conn.sendMessage(sessionId, text);
+			await conn.sendMessage(sessionId, text, agent, modelId);
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
 			setMessage((current) => (current ? current : text));
 			toast.error("Failed to send message");
 		}
-	}, [message, ensureSpace, spaceSlug, actor.connection, sessionId]);
+	}, [
+		message,
+		ensureSpace,
+		spaceSlug,
+		actor.connection,
+		sessionId,
+		agent,
+		modelId,
+	]);
 
 	const handleStop = useCallback(async () => {
 		try {
@@ -291,6 +428,17 @@ const ConnectedSessionView: FC<{
 			{!showEvents && (
 				<ChatInput
 					disabled={actor.connStatus !== "connected" || !actor.connection}
+					footer={
+						<AgentModelPicker
+							agent={agent}
+							agentLocked
+							agentModels={agentModels}
+							defaultModels={defaultModels}
+							modelId={modelId}
+							onAgentChange={setAgent}
+							onModelIdChange={setModelId}
+						/>
+					}
 					isRunning={sessionState.isRunning}
 					message={message}
 					onMessageChange={setMessage}
