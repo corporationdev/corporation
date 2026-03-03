@@ -83,7 +83,12 @@ export default defineSchema(
 			completedAt: v.optional(v.number()),
 		})
 			.index("by_environment", ["environmentId"])
-			.index("by_environment_and_startedAt", ["environmentId", "startedAt"]),
+			.index("by_environment_and_startedAt", ["environmentId", "startedAt"])
+			.index("by_environment_status_startedAt", [
+				"environmentId",
+				"status",
+				"startedAt",
+			]),
 	},
 	// TODO: remove schemaValidation: false before launch
 	{ schemaValidation: false }

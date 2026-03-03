@@ -154,7 +154,8 @@ async function resolveSandbox(
 	sandboxId: string;
 	agentUrl?: string;
 }> {
-	const { externalSnapshotId } = space.environment;
+	const externalSnapshotId =
+		space.environment.activeSnapshot?.externalSnapshotId;
 
 	if (!externalSnapshotId) {
 		throw new Error("Environment snapshot is not ready yet");

@@ -114,8 +114,8 @@ function RepositoryDetail({
 			},
 		});
 
-	const isBuilding = defaultEnvironment.snapshotStatus === "building";
-	const isError = defaultEnvironment.snapshotStatus === "error";
+	const isBuilding = defaultEnvironment.latestSnapshot?.status === "building";
+	const isError = defaultEnvironment.latestSnapshot?.status === "error";
 
 	return (
 		<div className="flex flex-col gap-6 p-6">
@@ -125,7 +125,9 @@ function RepositoryDetail({
 					<h1 className="mt-2 font-semibold text-lg">
 						{repository.owner}/{repository.name}
 					</h1>
-					<StatusIndicator status={defaultEnvironment.snapshotStatus ?? null} />
+					<StatusIndicator
+						status={defaultEnvironment.latestSnapshot?.status ?? null}
+					/>
 				</div>
 				<div className="flex items-center gap-1">
 					<Tooltip>
@@ -192,10 +194,10 @@ function RepositoryDetail({
 			</div>
 
 			{isError && (
-				<ActiveSnapshotError environmentId={defaultEnvironment._id} />
+				<LatestSnapshotError environmentId={defaultEnvironment._id} />
 			)}
 
-			<ActiveSnapshotLogs
+			<LatestSnapshotLogs
 				environmentId={defaultEnvironment._id}
 				isBuilding={isBuilding}
 			/>
@@ -240,14 +242,14 @@ function StatusIndicator({
 	);
 }
 
-function ActiveSnapshotError({
+function LatestSnapshotError({
 	environmentId,
 }: {
 	environmentId: Id<"environments">;
 }) {
-	const activeSnapshot = useQuery(api.snapshot.getActive, { environmentId });
+	const latestSnapshot = useQuery(api.snapshot.getLatest, { environmentId });
 
-	if (!activeSnapshot?.error) {
+	if (!latestSnapshot?.error) {
 		return null;
 	}
 
@@ -255,24 +257,24 @@ function ActiveSnapshotError({
 		<div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
 			<AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
 			<p className="whitespace-pre-wrap text-destructive text-sm">
-				{activeSnapshot.error}
+				{latestSnapshot.error}
 			</p>
 		</div>
 	);
 }
 
-function ActiveSnapshotLogs({
+function LatestSnapshotLogs({
 	environmentId,
 	isBuilding,
 }: {
 	environmentId: Id<"environments">;
 	isBuilding: boolean;
 }) {
-	const activeSnapshot = useQuery(api.snapshot.getActive, { environmentId });
+	const latestSnapshot = useQuery(api.snapshot.getLatest, { environmentId });
 	const [isOpen, setIsOpen] = useState(false);
 	const logsEndRef = useRef<HTMLDivElement>(null);
 
-	const hasLogs = !!activeSnapshot?.logs;
+	const hasLogs = !!latestSnapshot?.logs;
 
 	useEffect(() => {
 		if (isBuilding) {
@@ -280,7 +282,7 @@ function ActiveSnapshotLogs({
 		}
 	}, [isBuilding]);
 
-	const logs = activeSnapshot?.logs;
+	const logs = latestSnapshot?.logs;
 	useEffect(() => {
 		if (isBuilding && logs && logsEndRef.current) {
 			logsEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -303,9 +305,9 @@ function ActiveSnapshotLogs({
 			<CollapsibleContent>
 				<div className="mt-2 max-h-96 overflow-auto rounded-md bg-muted p-4">
 					<pre className="whitespace-pre-wrap break-all font-mono text-xs leading-5">
-						{activeSnapshot.logs}
+						{latestSnapshot.logs}
 					</pre>
-					{activeSnapshot.logsTruncated && (
+					{latestSnapshot.logsTruncated && (
 						<p className="mt-2 text-muted-foreground text-xs italic">
 							Logs truncated (exceeded maximum length)
 						</p>
