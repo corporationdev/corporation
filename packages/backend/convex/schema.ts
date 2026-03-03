@@ -9,8 +9,7 @@ export const snapshotStatusValidator = v.union(
 
 export const snapshotTypeValidator = v.union(
 	v.literal("build"),
-	v.literal("rebuild"),
-	v.literal("override")
+	v.literal("rebuild")
 );
 
 export const spaceStatusValidator = v.union(

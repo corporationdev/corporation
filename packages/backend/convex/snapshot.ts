@@ -65,10 +65,6 @@ type DbCtx = {
 	db: QueryCtx["db"] | MutationCtx["db"];
 };
 
-type ScheduleSnapshotRequest =
-	| { type: "build" | "rebuild" }
-	| { type: "override"; sandboxId: string; snapshotCommitSha?: string };
-
 const MAX_SNAPSHOT_LOG_CHARS = 200_000;
 
 export async function getLatestSnapshotForEnvironment(
@@ -105,7 +101,7 @@ export async function withDerivedSnapshotState(
 export async function scheduleSnapshot(
 	ctx: MutationCtx,
 	environment: Doc<"environments">,
-	request: ScheduleSnapshotRequest
+	type: "build" | "rebuild"
 ): Promise<Id<"snapshots">> {
 	const latestSnapshot = await ctx.db
 		.query("snapshots")
@@ -119,19 +115,17 @@ export async function scheduleSnapshot(
 	}
 
 	const buildRequest =
-		request.type === "rebuild" && latestSnapshot?.externalSnapshotId
+		type === "rebuild" && latestSnapshot?.externalSnapshotId
 			? {
 					type: "rebuild" as const,
 					oldExternalSnapshotId: latestSnapshot.externalSnapshotId,
 				}
 			: { type: "build" as const };
-	const snapshotType =
-		request.type === "override" ? "override" : buildRequest.type;
 
 	const now = Date.now();
 	const snapshotId = await ctx.db.insert("snapshots", {
 		environmentId: environment._id,
-		type: snapshotType,
+		type: buildRequest.type,
 		status: "building",
 		logs: "",
 		startedAt: now,
@@ -140,16 +134,6 @@ export async function scheduleSnapshot(
 	await ctx.db.patch(environment._id, {
 		updatedAt: now,
 	});
-
-	if (request.type === "override") {
-		await ctx.scheduler.runAfter(0, internal.snapshotActions.overrideSnapshot, {
-			environmentId: environment._id,
-			snapshotId,
-			sandboxId: request.sandboxId,
-			snapshotCommitSha: request.snapshotCommitSha,
-		});
-		return snapshotId;
-	}
 
 	await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
 		request: {
@@ -172,49 +156,18 @@ export const createSnapshot = authedMutation({
 			v.object({
 				type: v.literal("rebuild"),
 				environmentId: v.id("environments"),
-			}),
-			v.object({
-				type: v.literal("override"),
-				environmentId: v.id("environments"),
-				spaceId: v.id("spaces"),
 			})
 		),
 	},
 	handler: async (ctx, args) => {
 		const { request } = args;
-		let scheduledRequest: ScheduleSnapshotRequest =
-			request.type === "rebuild" ? { type: "rebuild" } : { type: "build" };
 
 		const environment = await ctx.db.get(request.environmentId);
 		if (!environment || environment.userId !== ctx.userId) {
 			throw new ConvexError("Environment not found");
 		}
 
-		if (request.type === "override") {
-			const space = await ctx.db.get(request.spaceId);
-			if (!space) {
-				throw new ConvexError("Space not found");
-			}
-
-			if (space.environmentId !== environment._id) {
-				throw new ConvexError("Space does not belong to the environment");
-			}
-
-			if (!space.sandboxId) {
-				throw new ConvexError("Space has no running sandbox");
-			}
-			if (space.status !== "running") {
-				throw new ConvexError("Space must be running to save as base snapshot");
-			}
-
-			scheduledRequest = {
-				type: "override",
-				sandboxId: space.sandboxId,
-				snapshotCommitSha: space.lastSyncedCommitSha,
-			};
-		}
-
-		await scheduleSnapshot(ctx, environment, scheduledRequest);
+		await scheduleSnapshot(ctx, environment, request.type);
 	},
 });
 
