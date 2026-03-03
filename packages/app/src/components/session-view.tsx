@@ -3,11 +3,14 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
+import { ListIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
+import { EventsView } from "@/components/events-view";
+import { Button } from "@/components/ui/button";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
@@ -139,6 +142,7 @@ const ConnectedSessionView: FC<{
 	actor: SpaceActor;
 }> = ({ sessionId, spaceSlug, actor }) => {
 	const [message, setMessage] = useState("");
+	const [showEvents, setShowEvents] = useState(false);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
 	const ensureSpace = useMutation(api.spaces.ensure);
@@ -241,7 +245,12 @@ const ConnectedSessionView: FC<{
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-background">
-			{sessionState.entries.length === 0 ? (
+			{showEvents ? (
+				<EventsView
+					events={sessionState.rawEvents}
+					onBack={() => setShowEvents(false)}
+				/>
+			) : sessionState.entries.length === 0 ? (
 				<div className="flex flex-1 flex-col items-center justify-center px-4">
 					<h1 className="font-semibold text-2xl">Ready to Chat</h1>
 					<p className="mt-1 text-muted-foreground">
@@ -249,19 +258,32 @@ const ConnectedSessionView: FC<{
 					</p>
 				</div>
 			) : (
-				<ChatMessages
-					entries={sessionState.entries}
-					isThinking={sessionState.isRunning}
-					messagesEndRef={messagesEndRef}
+				<div className="relative min-h-0 flex-1">
+					<Button
+						className="absolute top-2 right-2 z-10"
+						onClick={() => setShowEvents(true)}
+						size="icon"
+						title="Switch to events view"
+						variant="ghost"
+					>
+						<ListIcon className="size-4" />
+					</Button>
+					<ChatMessages
+						entries={sessionState.entries}
+						isThinking={sessionState.isRunning}
+						messagesEndRef={messagesEndRef}
+					/>
+				</div>
+			)}
+			{!showEvents && (
+				<ChatInput
+					disabled={actor.connStatus !== "connected" || !actor.connection}
+					message={message}
+					onMessageChange={setMessage}
+					onSendMessage={handleSend}
+					placeholder="Send a message..."
 				/>
 			)}
-			<ChatInput
-				disabled={actor.connStatus !== "connected" || !actor.connection}
-				message={message}
-				onMessageChange={setMessage}
-				onSendMessage={handleSend}
-				placeholder="Send a message..."
-			/>
 		</div>
 	);
 };
