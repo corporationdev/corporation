@@ -19,7 +19,7 @@ const SANDBOX_AGENT_PORT = 5799;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 // TODO: Timeout errors are not handled correctly end-to-end yet; prompt calls can still appear to hang.
-const SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS = 15 * 60_000;
+const SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS = 60 * 60_000;
 // Keep in sync with SANDBOX_TIMEOUT_MS in apps/server/src/space/sandbox-keepalive.ts
 const SANDBOX_TIMEOUT_MS = 900_000;
 

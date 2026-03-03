@@ -197,7 +197,9 @@ async function cancelSession(
 	// We open a fresh ACP connection rather than going through the sandbox-agent
 	// SDK, whose internal write queue serializes all messages — a cancel
 	// notification would get stuck behind the in-flight prompt POST.
-	const persist = new RivetSessionPersistDriver(ctx);
+	const persist = new RivetSessionPersistDriver(ctx, {
+		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
+	});
 	const record = await persist.getSession(sessionId);
 	if (!record) {
 		return;
@@ -259,7 +261,9 @@ async function getTranscript(
 	offset: number,
 	limit?: number
 ): Promise<SessionEvent[]> {
-	const persist = new RivetSessionPersistDriver(ctx);
+	const persist = new RivetSessionPersistDriver(ctx, {
+		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
+	});
 	const page = await persist.listEvents({
 		sessionId,
 		cursor: offset > 0 ? String(offset) : undefined,
@@ -269,7 +273,9 @@ async function getTranscript(
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
-	const persist = new RivetSessionPersistDriver(ctx);
+	const persist = new RivetSessionPersistDriver(ctx, {
+		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
+	});
 
 	const [rows, sessionsPage] = await Promise.all([
 		ctx.vars.db
