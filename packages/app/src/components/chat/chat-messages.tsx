@@ -252,7 +252,19 @@ export function ChatMessages({
 					>
 						{isUser ? (
 							<div className="max-w-[85%] rounded-2xl bg-muted px-4 py-2.5 text-sm">
-								{entry.text ?? ""}
+								{entry.text ? <div>{entry.text}</div> : null}
+								{entry.attachments && entry.attachments.length > 0 ? (
+									<div className="mt-2 flex flex-col gap-1">
+										{entry.attachments.map((attachment, idx) => (
+											<div
+												className="rounded-md border border-border/60 bg-background/70 px-2 py-1 text-xs"
+												key={`${attachment.name}-${idx.toString()}`}
+											>
+												{attachment.name}
+											</div>
+										))}
+									</div>
+								) : null}
 							</div>
 						) : (
 							<div className="wrap-break-word px-2 text-sm leading-relaxed">

@@ -14,6 +14,34 @@ const DEFAULT_AGENT = "opencode";
 const DEFAULT_MODEL_ID = "anthropic/claude-opus-4-6";
 const SESSION_EVENT_NAME = "session.event";
 const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
+const MAX_ATTACHMENT_COUNT = 8;
+
+type PromptAttachment = {
+	name: string;
+	mimeType: string;
+	uri: string;
+};
+
+type PromptPayload = {
+	text?: string;
+	attachments?: PromptAttachment[];
+};
+
+type PromptPart =
+	| { type: "text"; text: string }
+	| { type: "resource_link"; name: string; uri: string; mimeType: string };
+
+function normalizePromptPayload(payload: PromptPayload): {
+	text: string;
+	attachments: PromptAttachment[];
+} {
+	const text = payload.text?.trim() ?? "";
+	const attachments = payload.attachments ?? [];
+	if (attachments.length > MAX_ATTACHMENT_COUNT) {
+		throw new Error(`Cannot attach more than ${MAX_ATTACHMENT_COUNT} files`);
+	}
+	return { text, attachments };
+}
 
 function abortAllSessionStreams(ctx: SpaceRuntimeContext): void {
 	for (const unsubscribe of ctx.vars.sessionStreams.values()) {
@@ -98,13 +126,43 @@ async function sendMessage(
 	sessionId: string,
 	content: string
 ): Promise<void> {
+	await sendPrompt(ctx, sessionId, { text: content });
+}
+
+async function sendPrompt(
+	ctx: SpaceRuntimeContext,
+	sessionId: string,
+	prompt: PromptPayload
+): Promise<void> {
+	const normalized = normalizePromptPayload(prompt);
+	if (!(normalized.text || normalized.attachments.length > 0)) {
+		return;
+	}
+
 	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
-	if (isFirstMessageForSpace) {
+	if (isFirstMessageForSpace && normalized.text) {
 		ctx.waitUntil(
-			requestAutoBranchName(ctx, content).catch((error) => {
+			requestAutoBranchName(ctx, normalized.text).catch((error) => {
 				console.warn("Failed to trigger auto branch naming", error);
 			})
 		);
+	}
+
+	const promptParts: PromptPart[] = [];
+	if (normalized.text) {
+		promptParts.push({ type: "text", text: normalized.text });
+	}
+	for (const attachment of normalized.attachments) {
+		const uri = attachment.uri.trim();
+		if (!uri.startsWith("file://")) {
+			throw new Error("Attachment URI must be an absolute file URI");
+		}
+		promptParts.push({
+			type: "resource_link",
+			name: attachment.name,
+			uri,
+			mimeType: attachment.mimeType,
+		});
 	}
 
 	await ensureSession(ctx, sessionId);
@@ -125,7 +183,7 @@ async function sendMessage(
 
 	ctx.waitUntil(
 		session
-			.prompt([{ type: "text", text: content }])
+			.prompt(promptParts)
 			.then(() => undefined)
 			.catch((error) => {
 				console.error("Failed to send session prompt", error);
@@ -260,6 +318,11 @@ type SessionPublicActions = {
 		sessionId: string,
 		content: string
 	) => Promise<void>;
+	sendPrompt: (
+		ctx: SpaceRuntimeContext,
+		sessionId: string,
+		prompt: PromptPayload
+	) => Promise<void>;
 	getTranscript: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
@@ -278,6 +341,7 @@ export const sessionDriver: SessionDriver = {
 	listTabs,
 	publicActions: {
 		sendMessage,
+		sendPrompt,
 		getTranscript,
 	},
 };

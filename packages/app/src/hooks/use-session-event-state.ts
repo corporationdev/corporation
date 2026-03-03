@@ -123,7 +123,13 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 			flushThought(time);
 			const params = payload.params as Record<string, unknown> | undefined;
 			const promptArray = params?.prompt as
-				| Array<{ type: string; text?: string }>
+				| Array<{
+						type: string;
+						text?: string;
+						name?: string;
+						mimeType?: string;
+						uri?: string;
+				  }>
 				| undefined;
 			const replayPrefix = "Previous session history is replayed below";
 			const text = (promptArray ?? [])
@@ -137,7 +143,14 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 				)
 				.join("\n\n")
 				.trim();
-			if (!text) {
+			const attachments = (promptArray ?? [])
+				.filter((part) => part?.type === "resource_link")
+				.map((part) => ({
+					name: part.name ?? "attachment",
+					mimeType: part.mimeType ?? "application/octet-stream",
+					uri: part.uri ?? "",
+				}));
+			if (!(text || attachments.length > 0)) {
 				continue;
 			}
 			entries.push({
@@ -146,6 +159,7 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 				time,
 				role: "user",
 				text,
+				attachments,
 			});
 			continue;
 		}

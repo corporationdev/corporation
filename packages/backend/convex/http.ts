@@ -14,6 +14,10 @@ const autoBranchNameSchema = z.object({
 	firstMessage: z.string().min(1),
 });
 
+const uploadTargetSchema = z.object({
+	spaceSlug: z.string().min(1),
+});
+
 const http = httpRouter();
 
 authComponent.registerRoutes(http, createAuth, { cors: true });
@@ -148,6 +152,33 @@ http.route({
 		});
 
 		return new Response("OK", { status: 200 });
+	}),
+});
+
+http.route({
+	path: "/sandbox/upload-target",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const user = await authComponent.safeGetAuthUser(ctx);
+		if (!user) {
+			return new Response("Unauthorized", { status: 401 });
+		}
+
+		const parsed = uploadTargetSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return new Response("Invalid body", { status: 400 });
+		}
+
+		const { spaceSlug } = parsed.data;
+
+		const target = await ctx.runQuery(internal.spaces.getUploadTargetForUser, {
+			spaceSlug,
+			userId: user._id,
+		});
+		if (!target) {
+			return new Response("Space not found", { status: 404 });
+		}
+		return Response.json(target);
 	}),
 });
 

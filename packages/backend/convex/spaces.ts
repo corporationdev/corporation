@@ -342,6 +342,36 @@ export const getBySandboxId = internalQuery({
 	},
 });
 
+export const getUploadTargetForUser = internalQuery({
+	args: {
+		spaceSlug: v.string(),
+		userId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db
+			.query("spaces")
+			.withIndex("by_slug", (q) => q.eq("slug", args.spaceSlug))
+			.unique();
+		if (!space) {
+			return null;
+		}
+
+		const environment = await ctx.db.get(space.environmentId);
+		if (!environment || environment.userId !== args.userId) {
+			return null;
+		}
+		if (!(space.sandboxId && space.agentUrl)) {
+			return null;
+		}
+
+		return {
+			spaceId: space._id,
+			sandboxId: space.sandboxId,
+			agentUrl: space.agentUrl,
+		};
+	},
+});
+
 export const requestAutoBranchRename = internalMutation({
 	args: {
 		spaceId: v.id("spaces"),

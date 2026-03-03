@@ -1,8 +1,10 @@
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { create } from "zustand";
+import type { ComposerImageAttachment } from "@/components/chat/types";
 
 type PendingMessage = {
 	text: string;
+	images: ComposerImageAttachment[];
 	/** Set when creating a brand new space (no existing space yet) */
 	environmentId?: Id<"environments">;
 	/** Set when creating a session in an existing space */
