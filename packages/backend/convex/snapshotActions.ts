@@ -131,7 +131,7 @@ async function runTrackedSnapshot(
 		});
 		throw error;
 	} finally {
-		await ctx.runMutation(internal.environments.scheduleNextRebuild, {
+		await ctx.runMutation(internal.environments.completeSnapshotBuild, {
 			id: args.environmentId,
 		});
 	}

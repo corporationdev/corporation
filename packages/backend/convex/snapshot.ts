@@ -70,48 +70,6 @@ type ScheduleSnapshotRequest =
 	| { type: "override"; sandboxId: string; snapshotCommitSha?: string };
 
 const MAX_SNAPSHOT_LOG_CHARS = 200_000;
-const TERMINAL_SCHEDULED_FUNCTION_STATES = ["success", "failed", "canceled"];
-
-function isTerminalScheduledFunctionState(kind: string): boolean {
-	return TERMINAL_SCHEDULED_FUNCTION_STATES.includes(kind);
-}
-
-export async function getScheduledRebuildCleanupPatch(
-	ctx: MutationCtx,
-	environmentId: Id<"environments">,
-	scheduledRebuildId: Id<"_scheduled_functions"> | undefined
-): Promise<{ scheduledRebuildId?: undefined }> {
-	if (!scheduledRebuildId) {
-		return {};
-	}
-
-	const scheduledFunction = await ctx.db.system.get(scheduledRebuildId);
-	if (
-		scheduledFunction &&
-		!isTerminalScheduledFunctionState(scheduledFunction.state.kind)
-	) {
-		try {
-			await ctx.scheduler.cancel(scheduledRebuildId);
-		} catch (error) {
-			const latestScheduledFunction =
-				await ctx.db.system.get(scheduledRebuildId);
-			if (
-				latestScheduledFunction &&
-				!isTerminalScheduledFunctionState(latestScheduledFunction.state.kind)
-			) {
-				console.error("Failed to cancel scheduled rebuild", {
-					environmentId,
-					scheduledRebuildId,
-					state: latestScheduledFunction.state.kind,
-					error,
-				});
-				throw error;
-			}
-		}
-	}
-
-	return { scheduledRebuildId: undefined };
-}
 
 export async function getLatestSnapshotForEnvironment(
 	ctx: DbCtx,
@@ -170,12 +128,6 @@ export async function scheduleSnapshot(
 	const snapshotType =
 		request.type === "override" ? "override" : buildRequest.type;
 
-	const scheduledRebuildPatch = await getScheduledRebuildCleanupPatch(
-		ctx,
-		environment._id,
-		environment.scheduledRebuildId
-	);
-
 	const now = Date.now();
 	const snapshotId = await ctx.db.insert("snapshots", {
 		environmentId: environment._id,
@@ -186,7 +138,6 @@ export async function scheduleSnapshot(
 	});
 
 	await ctx.db.patch(environment._id, {
-		...scheduledRebuildPatch,
 		updatedAt: now,
 	});
 
