@@ -67,18 +67,17 @@ if (useSandbox) {
 if (sync) {
 	console.log("Syncing environment variables to Convex...");
 	if (useSandbox) {
-		const localBackendRunning =
-			(await $`lsof -i :3210 -t`.nothrow().quiet()).exitCode === 0;
-		if (localBackendRunning) {
-			console.log(
-				"Local backend already running, syncing env vars directly..."
-			);
-			await $`bun ./sync-convex-env.ts`
-				.env(withIgnoredDeployKey(loadBackendEnv()))
-				.cwd(backendDir);
+		const localEnv = withIgnoredDeployKey(loadBackendEnv());
+		const directSync = await $`bun ./sync-convex-env.ts`
+			.env(localEnv)
+			.cwd(backendDir)
+			.nothrow()
+			.quiet();
+		if (directSync.exitCode === 0) {
+			console.log("Synced env vars to running local backend.");
 		} else {
 			await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
-				.env(withIgnoredDeployKey(loadBackendEnv()))
+				.env(localEnv)
 				.cwd(backendDir);
 		}
 	} else {
