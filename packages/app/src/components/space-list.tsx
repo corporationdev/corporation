@@ -9,9 +9,9 @@ import { nanoid } from "nanoid";
 import type { FC } from "react";
 import { toast } from "sonner";
 
+import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 
 export const SpaceList: FC = () => {
 	const groupedSpaces = useQuery(api.spaces.listByRepository);
@@ -195,12 +195,7 @@ const SpaceListItem: FC<{
 	});
 
 	return (
-		<div
-			className={cn(
-				"group/item flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
-				isActive && "bg-muted"
-			)}
-		>
+		<SpaceContextMenu branchName={branchName} isActive={isActive} spaceId={id}>
 			<button
 				className="flex h-full min-w-0 flex-1 items-center gap-2 truncate px-3 text-start text-sm"
 				onClick={() =>
@@ -222,6 +217,6 @@ const SpaceListItem: FC<{
 			>
 				<ArchiveIcon className="size-3.5" />
 			</button>
-		</div>
+		</SpaceContextMenu>
 	);
 };

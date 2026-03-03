@@ -1,6 +1,9 @@
 const BRANCH_ALLOWED_CHARS_RE = /^[A-Za-z0-9._/-]+$/;
 const BRANCH_DISALLOWED_SEQUENCE_RE = /(\.\.|@{|\\|\/\/)/;
 const MAX_BRANCH_NAME_LENGTH = 120;
+const BRANCH_SANITIZE_NON_ALNUM_DASH_RE = /[^a-z0-9-]/g;
+const BRANCH_SANITIZE_MULTIPLE_DASH_RE = /-+/g;
+const BRANCH_SANITIZE_EDGE_DASH_RE = /^-|-$/g;
 
 export function normalizeBranchName(branchName: string): string {
 	const normalized = branchName.trim();
@@ -50,6 +53,20 @@ export function normalizeBranchName(branchName: string): string {
 	}
 
 	return normalized;
+}
+
+export function sanitizeBranchName(
+	rawBranchName: string,
+	maxLength = 80
+): string {
+	const sanitized = rawBranchName
+		.trim()
+		.toLowerCase()
+		.replace(BRANCH_SANITIZE_NON_ALNUM_DASH_RE, "-")
+		.replace(BRANCH_SANITIZE_MULTIPLE_DASH_RE, "-")
+		.replace(BRANCH_SANITIZE_EDGE_DASH_RE, "");
+
+	return normalizeBranchName(sanitized.slice(0, maxLength));
 }
 
 export function quoteShellArg(value: string): string {

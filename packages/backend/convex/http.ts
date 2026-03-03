@@ -9,6 +9,11 @@ const sandboxTimeoutSchema = z.object({
 	expiresAt: z.number(),
 });
 
+const autoBranchNameSchema = z.object({
+	sandboxId: z.string().min(1),
+	firstMessage: z.string().min(1),
+});
+
 const http = httpRouter();
 
 authComponent.registerRoutes(http, createAuth, { cors: true });
@@ -103,6 +108,43 @@ http.route({
 		await ctx.runMutation(internal.spaces.internalUpdate, {
 			id: space._id,
 			sandboxExpiresAt: expiresAt,
+		});
+
+		return new Response("OK", { status: 200 });
+	}),
+});
+
+http.route({
+	path: "/internal/auto-branch-name",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const internalApiKey = process.env.INTERNAL_API_KEY;
+		if (!internalApiKey) {
+			return new Response("Server misconfiguration", { status: 500 });
+		}
+
+		const authorization = request.headers.get("authorization");
+		if (authorization !== `Bearer ${internalApiKey}`) {
+			return new Response("Unauthorized", { status: 401 });
+		}
+
+		const parsed = autoBranchNameSchema.safeParse(await request.json());
+		if (!parsed.success) {
+			return new Response("Invalid body", { status: 400 });
+		}
+
+		const { sandboxId, firstMessage } = parsed.data;
+
+		const space = await ctx.runQuery(internal.spaces.getBySandboxId, {
+			sandboxId,
+		});
+		if (!space) {
+			return new Response("Space not found", { status: 404 });
+		}
+
+		await ctx.runMutation(internal.spaces.requestAutoBranchRename, {
+			spaceId: space._id,
+			firstMessage,
 		});
 
 		return new Response("OK", { status: 200 });

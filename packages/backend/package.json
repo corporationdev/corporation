@@ -17,7 +17,9 @@
     "convex-helpers": "catalog:",
     "dotenv": "catalog:",
     "svix": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@ai-sdk/anthropic": "catalog:",
+    "ai": "catalog:"
   },
   "devDependencies": {
     "@corporation/config": "workspace:*",
