@@ -5,6 +5,7 @@ import type { SpaceActor } from "@/lib/rivetkit";
 
 export type SessionState = {
 	entries: TimelineEntry[];
+	rawEvents: SessionEvent[];
 	isRunning: boolean;
 };
 
@@ -400,5 +401,5 @@ export function useSessionEventState({
 		return lastEntry?.role === "user";
 	}, [entries]);
 
-	return { entries, isRunning };
+	return { entries, rawEvents: events, isRunning };
 }
