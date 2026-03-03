@@ -30,8 +30,7 @@
     "zod": "catalog:",
     "rivetkit": "catalog:",
     "@sandbox-agent/persist-rivet": "catalog:",
-    "sandbox-agent": "catalog:",
-    "acp-http-client": "catalog:"
+    "sandbox-agent": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

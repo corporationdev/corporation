@@ -1,6 +1,5 @@
 import { env } from "@corporation/env/server";
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
-import { AcpHttpClient } from "acp-http-client";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Session, SessionEvent } from "sandbox-agent";
 import { type SessionTab, tabs } from "../db/schema";
@@ -224,15 +223,25 @@ async function cancelSession(
 		return;
 	}
 
-	const client = new AcpHttpClient({
-		baseUrl,
-		transport: { path: `${ACP_SERVERS_PATH}/${server.serverId}` },
-	});
-	try {
-		await client.cancel({ sessionId: record.agentSessionId });
-	} finally {
-		await client.disconnect();
-	}
+	// Raw POST instead of AcpHttpClient because the SDK is designed for
+	// long-lived connections: it starts an SSE loop after the first POST
+	// and sends a DELETE on disconnect that tears down the server. For a
+	// fire-and-forget cancel notification, a single POST is all we need.
+	await fetch(
+		`${baseUrl}${ACP_SERVERS_PATH}/${encodeURIComponent(server.serverId)}`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json",
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				method: "session/cancel",
+				params: { sessionId: record.agentSessionId },
+			}),
+		}
+	);
 }
 
 async function getTranscript(
