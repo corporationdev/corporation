@@ -7,8 +7,6 @@
     ".": "./src/index.tsx"
   },
   "dependencies": {
-    "@assistant-ui/react": "catalog:",
-    "@assistant-ui/react-markdown": "catalog:",
     "@base-ui/react": "catalog:",
     "@convex-dev/better-auth": "catalog:",
     "@corporation/backend": "workspace:*",
@@ -32,7 +30,6 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-resizable-panels": "catalog:",
-    "remark-gfm": "catalog:",
     "sandbox-agent": "catalog:",
     "shadcn": "catalog:",
     "sonner": "catalog:",

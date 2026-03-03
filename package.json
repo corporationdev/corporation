@@ -7,8 +7,6 @@
       "packages/*"
     ],
     "catalog": {
-      "@assistant-ui/react": "^0.12.9",
-      "@assistant-ui/react-markdown": "^0.12.3",
       "@base-ui/react": "^1.0.0",
       "@cloudflare/workers-types": "^4.20251213.0",
       "@convex-dev/better-auth": "^0.10.9",

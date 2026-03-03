@@ -1,8 +1,7 @@
 import { Building } from "lucide-react";
 import type * as React from "react";
-
-import { SpaceList } from "@/components/assistant-ui/space-list";
 import { NavUser } from "@/components/nav-user";
+import { SpaceList } from "@/components/space-list";
 import {
 	Sidebar,
 	SidebarContent,
