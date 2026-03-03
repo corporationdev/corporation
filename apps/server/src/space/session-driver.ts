@@ -211,7 +211,10 @@ async function cancelSession(
 		headers: { Accept: "application/json" },
 	});
 	if (!serversRes.ok) {
-		return;
+		const responseText = await serversRes.text();
+		throw new Error(
+			`ACP server discovery failed during session cancel: ${serversRes.status} ${serversRes.statusText} ${responseText}`
+		);
 	}
 	const { servers } = (await serversRes.json()) as {
 		servers: { agent: string; serverId: string; createdAtMs: number }[];
@@ -227,7 +230,7 @@ async function cancelSession(
 	// long-lived connections: it starts an SSE loop after the first POST
 	// and sends a DELETE on disconnect that tears down the server. For a
 	// fire-and-forget cancel notification, a single POST is all we need.
-	await fetch(
+	const cancelRes = await fetch(
 		`${baseUrl}${ACP_SERVERS_PATH}/${encodeURIComponent(server.serverId)}`,
 		{
 			method: "POST",
@@ -242,6 +245,12 @@ async function cancelSession(
 			}),
 		}
 	);
+	if (!cancelRes.ok) {
+		const responseText = await cancelRes.text();
+		throw new Error(
+			`ACP session cancel failed: ${cancelRes.status} ${cancelRes.statusText} ${responseText}`
+		);
+	}
 }
 
 async function getTranscript(

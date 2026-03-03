@@ -43,10 +43,14 @@ export function ChatInput({
 		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
 			if (event.key === "Enter" && !event.shiftKey) {
 				event.preventDefault();
+				if (isRunning && onStop) {
+					onStop();
+					return;
+				}
 				onSendMessage();
 			}
 		},
-		[onSendMessage]
+		[isRunning, onSendMessage, onStop]
 	);
 
 	return (
