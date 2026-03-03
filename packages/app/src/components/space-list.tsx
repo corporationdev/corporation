@@ -70,31 +70,40 @@ const RepositorySpaceSection: FC<{
 		api.snapshot.createSnapshot
 	);
 
-	const lastTriggeredShaRef = useRef<string | null>(null);
+	const lastTriggeredShaRef = useRef<Map<Id<"environments">, string>>(
+		new Map()
+	);
+	const environmentId = defaultEnvironment?._id;
 
 	useEffect(() => {
 		if (
-			!(defaultEnvironment && isOutdated && latestSha) ||
+			!(environmentId && isOutdated && latestSha) ||
 			snapshotStatus === "building" ||
-			lastTriggeredShaRef.current === latestSha
+			lastTriggeredShaRef.current.get(environmentId) === latestSha
 		) {
 			return;
 		}
 
-		lastTriggeredShaRef.current = latestSha;
-		createSnapshot({
-			request: {
-				type: "rebuild",
-				environmentId: defaultEnvironment._id,
+		createSnapshot(
+			{
+				request: {
+					type: "rebuild",
+					environmentId,
+				},
 			},
-		});
-	}, [
-		isOutdated,
-		latestSha,
-		snapshotStatus,
-		defaultEnvironment,
-		createSnapshot,
-	]);
+			{
+				onSuccess: () => {
+					lastTriggeredShaRef.current.set(environmentId, latestSha);
+				},
+				onError: () => {
+					// Failed rebuilds must not block retries for this environment + SHA.
+					if (lastTriggeredShaRef.current.get(environmentId) === latestSha) {
+						lastTriggeredShaRef.current.delete(environmentId);
+					}
+				},
+			}
+		);
+	}, [environmentId, isOutdated, latestSha, snapshotStatus, createSnapshot]);
 
 	return (
 		<div className="flex flex-col gap-1">

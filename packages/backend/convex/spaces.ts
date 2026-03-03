@@ -158,10 +158,9 @@ export const listByRepository = authedQuery({
 
 			return {
 				repository,
-				defaultEnvironment: await withDerivedSnapshotState(
-					ctx,
-					defaultEnvironment
-				),
+				defaultEnvironment: defaultEnvironment
+					? await withDerivedSnapshotState(ctx, defaultEnvironment)
+					: null,
 				spaces,
 			};
 		});
