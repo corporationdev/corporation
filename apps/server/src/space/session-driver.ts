@@ -1,5 +1,6 @@
 import { env } from "@corporation/env/server";
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
+import { AcpHttpClient } from "acp-http-client";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Session, SessionEvent } from "sandbox-agent";
 import { type SessionTab, tabs } from "../db/schema";
@@ -14,6 +15,8 @@ const DEFAULT_AGENT = "opencode";
 const DEFAULT_MODEL_ID = "anthropic/claude-opus-4-6";
 const SESSION_EVENT_NAME = "session.event";
 const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
+const ACP_SERVERS_PATH = "/v1/acp";
+const TRAILING_SLASH_RE = /\/$/;
 
 function abortAllSessionStreams(ctx: SpaceRuntimeContext): void {
 	for (const unsubscribe of ctx.vars.sessionStreams.values()) {
@@ -50,7 +53,7 @@ async function ensureSession(
 	const tabId = createTabId("session", sessionId);
 	const nextTitle = title ?? DEFAULT_SESSION_TITLE;
 
-	await ctx.vars.db.transaction((tx) => {
+	ctx.vars.db.transaction((tx) => {
 		const existing = tx
 			.select({ id: tabs.id })
 			.from(tabs)
@@ -188,6 +191,50 @@ async function applyDefaultModel(session: Session): Promise<void> {
 	}
 }
 
+async function cancelSession(
+	ctx: SpaceRuntimeContext,
+	sessionId: string
+): Promise<void> {
+	// We open a fresh ACP connection rather than going through the sandbox-agent
+	// SDK, whose internal write queue serializes all messages — a cancel
+	// notification would get stuck behind the in-flight prompt POST.
+	const persist = new RivetSessionPersistDriver(ctx);
+	const record = await persist.getSession(sessionId);
+	if (!record) {
+		return;
+	}
+
+	const baseUrl = ctx.state.agentUrl.replace(TRAILING_SLASH_RE, "");
+
+	// Discover the active ACP server for this agent.
+	// This is a sandbox-agent daemon API, not part of ACP itself.
+	const serversRes = await fetch(`${baseUrl}${ACP_SERVERS_PATH}`, {
+		headers: { Accept: "application/json" },
+	});
+	if (!serversRes.ok) {
+		return;
+	}
+	const { servers } = (await serversRes.json()) as {
+		servers: { agent: string; serverId: string; createdAtMs: number }[];
+	};
+	const server = servers
+		.filter((s) => s.agent === record.agent)
+		.sort((a, b) => b.createdAtMs - a.createdAtMs)[0];
+	if (!server) {
+		return;
+	}
+
+	const client = new AcpHttpClient({
+		baseUrl,
+		transport: { path: `${ACP_SERVERS_PATH}/${server.serverId}` },
+	});
+	try {
+		await client.cancel({ sessionId: record.agentSessionId });
+	} finally {
+		await client.disconnect();
+	}
+}
+
 async function getTranscript(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
@@ -260,6 +307,7 @@ type SessionPublicActions = {
 		sessionId: string,
 		content: string
 	) => Promise<void>;
+	cancelSession: (ctx: SpaceRuntimeContext, sessionId: string) => Promise<void>;
 	getTranscript: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
@@ -278,6 +326,7 @@ export const sessionDriver: SessionDriver = {
 	listTabs,
 	publicActions: {
 		sendMessage,
+		cancelSession,
 		getTranscript,
 	},
 };

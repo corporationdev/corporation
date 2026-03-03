@@ -57,6 +57,7 @@
       "rivetkit": "^2.0.42",
       "@sandbox-agent/persist-rivet": "^0.2.0",
       "sandbox-agent": "^0.2.1",
+      "acp-http-client": "^0.2.1",
       "shadcn": "^3.6.2",
       "sonner": "^2.0.5",
       "@streamdown/code": "^1.0.3",
