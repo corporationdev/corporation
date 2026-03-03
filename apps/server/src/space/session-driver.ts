@@ -100,9 +100,11 @@ async function sendMessage(
 ): Promise<void> {
 	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
 	if (isFirstMessageForSpace) {
-		requestAutoBranchName(ctx, content).catch((error) => {
-			console.warn("Failed to trigger auto branch naming", error);
-		});
+		ctx.waitUntil(
+			requestAutoBranchName(ctx, content).catch((error) => {
+				console.warn("Failed to trigger auto branch naming", error);
+			})
+		);
 	}
 
 	await ensureSession(ctx, sessionId);
@@ -121,9 +123,14 @@ async function sendMessage(
 		await applyDefaultModel(session);
 	}
 
-	session.prompt([{ type: "text", text: content }]).catch((error) => {
-		console.error("Failed to send session prompt", error);
-	});
+	ctx.waitUntil(
+		session
+			.prompt([{ type: "text", text: content }])
+			.then(() => undefined)
+			.catch((error) => {
+				console.error("Failed to send session prompt", error);
+			})
+	);
 }
 
 async function hasNoSessionTabs(ctx: SpaceRuntimeContext): Promise<boolean> {

@@ -285,12 +285,16 @@ export const internalUpdate = internalMutation({
 export const internalUpdateBranchName = internalMutation({
 	args: {
 		id: v.id("spaces"),
+		expectedBranchName: v.string(),
 		branchName: v.string(),
 	},
 	handler: async (ctx, args) => {
 		const space = await ctx.db.get(args.id);
 		if (!space) {
 			throw new ConvexError("Space not found");
+		}
+		if (space.branchName !== args.expectedBranchName) {
+			return;
 		}
 
 		await applyBranchNameUpdate(ctx, space, args.branchName);

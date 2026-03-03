@@ -78,6 +78,7 @@ export const generateAndApplyBranchName = internalAction({
 
 		await ctx.runMutation(internal.spaces.internalUpdateBranchName, {
 			id: args.spaceId,
+			expectedBranchName: args.oldBranchName,
 			branchName: newBranchName,
 		});
 	},
