@@ -21,7 +21,7 @@ export const SpaceContextMenu: FC<{
 	branchName: string;
 	isActive: boolean;
 	children: ReactNode;
-}> = ({ spaceId, slug, branchName, isActive, children }) => {
+}> = ({ spaceId, branchName, isActive, children }) => {
 	const navigate = useNavigate();
 	const [isRenaming, setIsRenaming] = useState(false);
 	const [renameValue, setRenameValue] = useState(branchName);
