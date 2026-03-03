@@ -6,7 +6,7 @@ import { internalMutation } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { snapshotTypeValidator } from "./schema";
 
-export const getActive = authedQuery({
+export const getLatest = authedQuery({
 	args: {
 		environmentId: v.id("environments"),
 	},
@@ -16,7 +16,13 @@ export const getActive = authedQuery({
 			throw new ConvexError("Environment not found");
 		}
 
-		return getLatestSnapshotForEnvironment(ctx, environment);
+		return await ctx.db
+			.query("snapshots")
+			.withIndex("by_environment_and_startedAt", (q) =>
+				q.eq("environmentId", environment._id)
+			)
+			.order("desc")
+			.first();
 	},
 });
 
@@ -67,34 +73,31 @@ type DbCtx = {
 
 const MAX_SNAPSHOT_LOG_CHARS = 200_000;
 
-export async function getLatestSnapshotForEnvironment(
-	ctx: DbCtx,
-	environment: Doc<"environments">
-): Promise<Doc<"snapshots"> | null> {
-	return await ctx.db
-		.query("snapshots")
-		.withIndex("by_environment_and_startedAt", (q) =>
-			q.eq("environmentId", environment._id)
-		)
-		.order("desc")
-		.first();
-}
-
 export async function withDerivedSnapshotState(
 	ctx: DbCtx,
 	environment: Doc<"environments">
 ) {
-	const latestSnapshot = await getLatestSnapshotForEnvironment(
-		ctx,
-		environment
-	);
+	const [latestSnapshot, activeSnapshot] = await Promise.all([
+		ctx.db
+			.query("snapshots")
+			.withIndex("by_environment_and_startedAt", (q) =>
+				q.eq("environmentId", environment._id)
+			)
+			.order("desc")
+			.first(),
+		ctx.db
+			.query("snapshots")
+			.withIndex("by_environment_status_startedAt", (q) =>
+				q.eq("environmentId", environment._id).eq("status", "ready")
+			)
+			.order("desc")
+			.first(),
+	]);
 
 	return {
 		...environment,
-		snapshotStatus: latestSnapshot?.status,
-		snapshotId: latestSnapshot?._id,
-		snapshotCommitSha: latestSnapshot?.snapshotCommitSha,
-		externalSnapshotId: latestSnapshot?.externalSnapshotId,
+		latestSnapshot,
+		activeSnapshot,
 	};
 }
 
@@ -103,22 +106,31 @@ export async function scheduleSnapshot(
 	environment: Doc<"environments">,
 	type: "build" | "rebuild"
 ): Promise<Id<"snapshots">> {
-	const latestSnapshot = await ctx.db
-		.query("snapshots")
-		.withIndex("by_environment_and_startedAt", (q) =>
-			q.eq("environmentId", environment._id)
-		)
-		.order("desc")
-		.first();
+	const [latestSnapshot, activeSnapshot] = await Promise.all([
+		ctx.db
+			.query("snapshots")
+			.withIndex("by_environment_and_startedAt", (q) =>
+				q.eq("environmentId", environment._id)
+			)
+			.order("desc")
+			.first(),
+		ctx.db
+			.query("snapshots")
+			.withIndex("by_environment_status_startedAt", (q) =>
+				q.eq("environmentId", environment._id).eq("status", "ready")
+			)
+			.order("desc")
+			.first(),
+	]);
 	if (latestSnapshot?.status === "building") {
 		throw new ConvexError("A snapshot build is already in progress");
 	}
 
 	const buildRequest =
-		type === "rebuild" && latestSnapshot?.externalSnapshotId
+		type === "rebuild" && activeSnapshot?.externalSnapshotId
 			? {
 					type: "rebuild" as const,
-					oldExternalSnapshotId: latestSnapshot.externalSnapshotId,
+					oldExternalSnapshotId: activeSnapshot.externalSnapshotId,
 				}
 			: { type: "build" as const };
 

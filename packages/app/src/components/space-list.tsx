@@ -61,8 +61,9 @@ const RepositorySpaceSection: FC<{
 }> = ({ group, latestSha }) => {
 	const { repository, spaces, defaultEnvironment } = group;
 
-	const snapshotCommitSha = defaultEnvironment?.snapshotCommitSha;
-	const snapshotStatus = defaultEnvironment?.snapshotStatus;
+	const snapshotCommitSha =
+		defaultEnvironment?.activeSnapshot?.snapshotCommitSha;
+	const snapshotStatus = defaultEnvironment?.latestSnapshot?.status;
 	const isOutdated =
 		!!latestSha && (!snapshotCommitSha || latestSha !== snapshotCommitSha);
 

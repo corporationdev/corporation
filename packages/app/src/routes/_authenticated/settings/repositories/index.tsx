@@ -57,7 +57,7 @@ function RepositoryCard({
 		name: string;
 		defaultEnvironment: {
 			_id: Id<"environments">;
-			snapshotStatus?: "building" | "ready" | "error";
+			latestSnapshot: { status: "building" | "ready" | "error" } | null;
 		} | null;
 	};
 }) {
@@ -88,7 +88,9 @@ function RepositoryCard({
 						</CardTitle>
 					</Link>
 					<SnapshotStatusIndicator
-						status={repository.defaultEnvironment?.snapshotStatus ?? null}
+						status={
+							repository.defaultEnvironment?.latestSnapshot?.status ?? null
+						}
 					/>
 				</div>
 				<CardAction>
