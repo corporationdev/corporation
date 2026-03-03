@@ -9,7 +9,6 @@ import {
 	GlobeIcon,
 	LoaderIcon,
 	PlayIcon,
-	SaveIcon,
 	SquareIcon,
 	TerminalIcon,
 	UploadIcon,
@@ -135,18 +134,6 @@ const SpaceSidebarContent: FC<{
 		},
 	});
 
-	const createSnapshotMutation = useConvexTanstackMutation(
-		api.snapshot.createSnapshot,
-		{
-			onSuccess: () => {
-				toast.success("Sandbox saved as base snapshot");
-			},
-			onError: (error) => {
-				toast.error(`Failed to save snapshot: ${error.message}`);
-			},
-		}
-	);
-
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
 		useStartSandbox(space.slug, space.status);
 
@@ -215,35 +202,6 @@ const SpaceSidebarContent: FC<{
 			)}
 			{isStarted && <SyncCodeButton space={space} />}
 			{isStarted && <GitButtons space={space} />}
-			{isStarted && (
-				<Button
-					className="w-full justify-start gap-2"
-					disabled={
-						createSnapshotMutation.isPending ||
-						space.environment.snapshotStatus === "building"
-					}
-					onClick={() =>
-						createSnapshotMutation.mutate({
-							request: {
-								type: "override",
-								environmentId: space.environmentId,
-								spaceId: space._id,
-							},
-						})
-					}
-					size="sm"
-					variant="outline"
-				>
-					{createSnapshotMutation.isPending ? (
-						<LoaderIcon className="size-4 animate-spin" />
-					) : (
-						<SaveIcon className="size-4" />
-					)}
-					{createSnapshotMutation.isPending
-						? "Saving..."
-						: "Save as Base Snapshot"}
-				</Button>
-			)}
 			{isStarted && (
 				<DevServerButtons actor={actor} space={space} tabs={tabs} />
 			)}

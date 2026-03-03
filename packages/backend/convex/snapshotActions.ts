@@ -84,7 +84,7 @@ async function runTrackedSnapshot(
 	ctx: ActionCtx,
 	args: {
 		snapshotId: Id<"snapshots">;
-		type: "build" | "rebuild" | "override";
+		type: "build" | "rebuild";
 		environmentId: Id<"environments">;
 		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
 	}
@@ -224,34 +224,6 @@ export const buildSnapshot = internalAction({
 						// Best-effort cleanup
 					}
 				}
-			},
-		});
-	},
-});
-
-export const overrideSnapshot = internalAction({
-	args: {
-		environmentId: v.id("environments"),
-		snapshotId: v.id("snapshots"),
-		sandboxId: v.string(),
-		snapshotCommitSha: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		await runTrackedSnapshot(ctx, {
-			snapshotId: args.snapshotId,
-			environmentId: args.environmentId,
-			type: "override",
-			execute: async (reporter) => {
-				reporter.appendLog("Connecting to running sandbox...\n");
-				const sandbox = await Sandbox.connect(args.sandboxId);
-				reporter.appendLog("Creating snapshot from running sandbox...\n");
-				const snapshot = await sandbox.createSnapshot();
-				reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);
-
-				return {
-					externalSnapshotId: snapshot.snapshotId,
-					snapshotCommitSha: args.snapshotCommitSha,
-				};
 			},
 		});
 	},

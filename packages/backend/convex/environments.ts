@@ -93,7 +93,7 @@ export async function createEnvironmentHelper(
 		throw new ConvexError("Environment not found");
 	}
 
-	await scheduleSnapshot(ctx, environment, { type: "build" });
+	await scheduleSnapshot(ctx, environment, "build");
 
 	return environmentId;
 }
