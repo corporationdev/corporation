@@ -258,7 +258,7 @@ const ConnectedSessionView: FC<{
 					</p>
 				</div>
 			) : (
-				<div className="relative min-h-0 flex-1">
+				<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
 					<Button
 						className="absolute top-2 right-2 z-10"
 						onClick={() => setShowEvents(true)}

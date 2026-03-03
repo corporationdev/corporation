@@ -230,7 +230,7 @@ export function ChatMessages({
 	flushToolGroup();
 
 	return (
-		<div className="flex flex-1 flex-col overflow-y-auto px-4 pt-4">
+		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4">
 			{groupedEntries.map((group) => {
 				if (group.type === "tool-group") {
 					return (
