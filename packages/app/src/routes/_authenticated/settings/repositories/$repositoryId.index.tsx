@@ -13,7 +13,7 @@ import {
 	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -28,7 +28,6 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useLatestShas } from "@/hooks/use-latest-shas";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const Route = createFileRoute(
@@ -115,26 +114,6 @@ function RepositoryDetail({
 			},
 		});
 
-	const repos = useMemo(
-		() => [
-			{
-				owner: repository.owner,
-				name: repository.name,
-				defaultBranch: repository.defaultBranch,
-			},
-		],
-		[repository.owner, repository.name, repository.defaultBranch]
-	);
-	const { data: latestShas, isPending: shasPending } = useLatestShas(
-		repos,
-		true
-	);
-	const latestSha = latestShas?.[`${repository.owner}/${repository.name}`];
-	const isOutdated =
-		!!latestSha &&
-		(!defaultEnvironment.snapshotCommitSha ||
-			latestSha !== defaultEnvironment.snapshotCommitSha);
-
 	const isBuilding = defaultEnvironment.snapshotStatus === "building";
 	const isError = defaultEnvironment.snapshotStatus === "error";
 
@@ -146,11 +125,7 @@ function RepositoryDetail({
 					<h1 className="mt-2 font-semibold text-lg">
 						{repository.owner}/{repository.name}
 					</h1>
-					<StatusIndicator
-						isChecking={shasPending}
-						isOutdated={isOutdated}
-						status={defaultEnvironment.snapshotStatus ?? null}
-					/>
+					<StatusIndicator status={defaultEnvironment.snapshotStatus ?? null} />
 				</div>
 				<div className="flex items-center gap-1">
 					<Tooltip>
@@ -232,12 +207,8 @@ function RepositoryDetail({
 
 function StatusIndicator({
 	status,
-	isOutdated,
-	isChecking,
 }: {
 	status: "building" | "ready" | "error" | null;
-	isOutdated: boolean;
-	isChecking: boolean;
 }) {
 	if (!status) {
 		return null;
@@ -248,24 +219,6 @@ function StatusIndicator({
 			<span className="mt-1 flex items-center gap-1.5 text-muted-foreground text-sm">
 				<Loader2 className="size-3.5 animate-spin" />
 				Building snapshot...
-			</span>
-		);
-	}
-
-	if (status === "ready" && isChecking) {
-		return (
-			<span className="mt-1 flex items-center gap-1.5 text-muted-foreground text-sm">
-				<Loader2 className="size-3.5 animate-spin" />
-				Checking...
-			</span>
-		);
-	}
-
-	if (status === "ready" && isOutdated) {
-		return (
-			<span className="mt-1 flex items-center gap-1.5 text-amber-600 text-sm">
-				<span className="size-2 rounded-full bg-amber-500" />
-				Out of date
 			</span>
 		);
 	}

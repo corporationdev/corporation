@@ -142,7 +142,7 @@ export const listByRepository = authedQuery({
 			spacesByEnvironment.set(environmentId, spaces);
 		}
 
-		const grouped = repositories.map((repository) => {
+		const grouped = await asyncMap(repositories, async (repository) => {
 			const repoEnvironments = [
 				...(environmentsByRepository.get(repository._id) ?? []),
 			];
@@ -158,7 +158,9 @@ export const listByRepository = authedQuery({
 
 			return {
 				repository,
-				defaultEnvironmentId: defaultEnvironment?._id ?? null,
+				defaultEnvironment: defaultEnvironment
+					? await withDerivedSnapshotState(ctx, defaultEnvironment)
+					: null,
 				spaces,
 			};
 		});

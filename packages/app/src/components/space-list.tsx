@@ -6,15 +6,23 @@ import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArchiveIcon, BoxIcon, FolderIcon, PlusIcon } from "lucide-react";
 import { nanoid } from "nanoid";
-import type { FC } from "react";
+import { type FC, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useLatestShas } from "@/hooks/use-latest-shas";
+import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const SpaceList: FC = () => {
 	const groupedSpaces = useQuery(api.spaces.listByRepository);
+
+	const repos =
+		groupedSpaces
+			?.filter((g) => g.defaultEnvironment)
+			.map((g) => g.repository) ?? [];
+	const { data: latestShas } = useLatestShas(repos, repos.length > 0);
 
 	if (groupedSpaces === undefined) {
 		return (
@@ -31,7 +39,13 @@ export const SpaceList: FC = () => {
 	return (
 		<div className="flex flex-col gap-3">
 			{groupedSpaces.map((group) => (
-				<RepositorySpaceSection group={group} key={group.repository._id} />
+				<RepositorySpaceSection
+					group={group}
+					key={group.repository._id}
+					latestSha={
+						latestShas?.[`${group.repository.owner}/${group.repository.name}`]
+					}
+				/>
 			))}
 		</div>
 	);
@@ -43,8 +57,53 @@ type RepositorySpaceGroup = FunctionReturnType<
 
 const RepositorySpaceSection: FC<{
 	group: RepositorySpaceGroup;
-}> = ({ group }) => {
-	const { repository, spaces, defaultEnvironmentId } = group;
+	latestSha: string | undefined;
+}> = ({ group, latestSha }) => {
+	const { repository, spaces, defaultEnvironment } = group;
+
+	const snapshotCommitSha = defaultEnvironment?.snapshotCommitSha;
+	const snapshotStatus = defaultEnvironment?.snapshotStatus;
+	const isOutdated =
+		!!latestSha && (!snapshotCommitSha || latestSha !== snapshotCommitSha);
+
+	const { mutate: createSnapshot } = useConvexTanstackMutation(
+		api.snapshot.createSnapshot
+	);
+
+	const lastTriggeredShaRef = useRef<Map<Id<"environments">, string>>(
+		new Map()
+	);
+	const environmentId = defaultEnvironment?._id;
+
+	useEffect(() => {
+		if (
+			!(environmentId && isOutdated && latestSha) ||
+			snapshotStatus === "building" ||
+			lastTriggeredShaRef.current.get(environmentId) === latestSha
+		) {
+			return;
+		}
+
+		createSnapshot(
+			{
+				request: {
+					type: "rebuild",
+					environmentId,
+				},
+			},
+			{
+				onSuccess: () => {
+					lastTriggeredShaRef.current.set(environmentId, latestSha);
+				},
+				onError: () => {
+					// Failed rebuilds must not block retries for this environment + SHA.
+					if (lastTriggeredShaRef.current.get(environmentId) === latestSha) {
+						lastTriggeredShaRef.current.delete(environmentId);
+					}
+				},
+			}
+		);
+	}, [environmentId, isOutdated, latestSha, snapshotStatus, createSnapshot]);
 
 	return (
 		<div className="flex flex-col gap-1">
@@ -55,9 +114,9 @@ const RepositorySpaceSection: FC<{
 						{repository.owner}/{repository.name}
 					</span>
 				</div>
-				{defaultEnvironmentId ? (
+				{defaultEnvironment ? (
 					<NewSpaceButton
-						environmentId={defaultEnvironmentId}
+						environmentId={defaultEnvironment._id}
 						repositoryName={repository.name}
 					/>
 				) : null}
