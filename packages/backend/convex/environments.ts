@@ -1,12 +1,11 @@
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { assertValidDevPort } from "./lib/devPort";
 import { normalizeEnvByPath } from "./lib/envByPath";
-import { getScheduledRebuildCleanupPatch, scheduleSnapshot } from "./snapshot";
+import { scheduleSnapshot } from "./snapshot";
 
 export const listByRepository = authedQuery({
 	args: {
@@ -159,96 +158,6 @@ export const completeSnapshotBuild = internalMutation({
 			throw new ConvexError("Environment not found");
 		}
 
-		const now = Date.now();
-
-		await ctx.db.patch(args.id, { updatedAt: now });
-
-		await ctx.scheduler.runAfter(0, internal.environments.scheduleNextRebuild, {
-			id: args.id,
-		});
-	},
-});
-
-export const scheduleNextRebuild = internalMutation({
-	args: { id: v.id("environments") },
-	handler: async (ctx, args) => {
-		const environment = await ctx.db.get(args.id);
-		if (!environment) {
-			return;
-		}
-
-		const intervalMs = environment.rebuildIntervalMs;
-		if (!intervalMs) {
-			if (environment.scheduledRebuildId) {
-				await ctx.db.patch(args.id, {
-					scheduledRebuildId: undefined,
-					updatedAt: Date.now(),
-				});
-			}
-			return;
-		}
-
-		const scheduledId = await ctx.scheduler.runAfter(
-			intervalMs,
-			internal.environments.executeScheduledRebuild,
-			{ id: args.id }
-		);
-
-		await ctx.db.patch(args.id, {
-			scheduledRebuildId: scheduledId,
-			updatedAt: Date.now(),
-		});
-	},
-});
-
-export const executeScheduledRebuild = internalMutation({
-	args: { id: v.id("environments") },
-	handler: async (ctx, args) => {
-		const environment = await ctx.db.get(args.id);
-		if (!environment) {
-			return;
-		}
-
-		if (!environment.rebuildIntervalMs) {
-			await ctx.db.patch(args.id, {
-				scheduledRebuildId: undefined,
-				updatedAt: Date.now(),
-			});
-			return;
-		}
-
-		await scheduleSnapshot(ctx, environment, { type: "rebuild" });
-	},
-});
-
-export const updateRebuildInterval = authedMutation({
-	args: {
-		id: v.id("environments"),
-		rebuildIntervalMs: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const environment = await ctx.db.get(args.id);
-		if (!environment) {
-			throw new ConvexError("Environment not found");
-		}
-		if (environment.userId !== ctx.userId) {
-			throw new ConvexError("Environment not found");
-		}
-
-		const scheduledRebuildPatch = await getScheduledRebuildCleanupPatch(
-			ctx,
-			args.id,
-			environment.scheduledRebuildId
-		);
-
-		await ctx.db.patch(args.id, {
-			rebuildIntervalMs: args.rebuildIntervalMs,
-			...scheduledRebuildPatch,
-			updatedAt: Date.now(),
-		});
-
-		await ctx.scheduler.runAfter(0, internal.environments.scheduleNextRebuild, {
-			id: args.id,
-		});
+		await ctx.db.patch(args.id, { updatedAt: Date.now() });
 	},
 });

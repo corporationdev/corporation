@@ -22,7 +22,6 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Tooltip,
@@ -37,8 +36,6 @@ export const Route = createFileRoute(
 )({
 	component: RepositoryDetailPage,
 });
-
-const MS_PER_HOUR = 3_600_000;
 
 function RepositoryDetailPage() {
 	const { repositoryId } = Route.useParams();
@@ -118,15 +115,6 @@ function RepositoryDetail({
 			},
 		});
 
-	const { mutate: setInterval } = useConvexTanstackMutation(
-		api.environments.updateRebuildInterval,
-		{
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		}
-	);
-
 	const repos = useMemo(
 		() => [
 			{
@@ -149,10 +137,6 @@ function RepositoryDetail({
 
 	const isBuilding = defaultEnvironment.snapshotStatus === "building";
 	const isError = defaultEnvironment.snapshotStatus === "error";
-
-	const currentHours = defaultEnvironment.rebuildIntervalMs
-		? String(defaultEnvironment.rebuildIntervalMs / MS_PER_HOUR)
-		: "0";
 
 	return (
 		<div className="flex flex-col gap-6 p-6">
@@ -240,34 +224,6 @@ function RepositoryDetail({
 				environmentId={defaultEnvironment._id}
 				isBuilding={isBuilding}
 			/>
-
-			<div className="flex items-center gap-2">
-				<span className="text-muted-foreground text-sm">
-					Auto-rebuild every
-				</span>
-				<Input
-					className="h-8 w-20 text-sm"
-					defaultValue={currentHours}
-					key={currentHours}
-					min={0}
-					onBlur={(e) => {
-						const hours = Number.parseFloat(e.target.value);
-						const rebuildIntervalMs =
-							Number.isNaN(hours) || hours <= 0
-								? undefined
-								: Math.round(hours * MS_PER_HOUR);
-						setInterval({
-							id: defaultEnvironment._id,
-							rebuildIntervalMs,
-						});
-					}}
-					step="any"
-					type="number"
-				/>
-				<span className="text-muted-foreground text-sm">
-					hours (0 to disable)
-				</span>
-			</div>
 
 			<SnapshotHistory environmentId={defaultEnvironment._id} />
 		</div>
