@@ -1,6 +1,8 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import type { Session, User } from "better-auth";
+import { useConvexAuth } from "convex/react";
 
+import Loader from "@/components/loader";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
 import { useLayoutStore } from "@/stores/layout-store";
@@ -22,8 +24,13 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
+	const { isLoading, isAuthenticated } = useConvexAuth();
 	const leftOpen = useLayoutStore((s) => s.leftSidebarOpen);
 	const setLeftOpen = useLayoutStore((s) => s.setLeftSidebarOpen);
+
+	if (isLoading || !isAuthenticated) {
+		return <Loader />;
+	}
 
 	return (
 		<SidebarProvider
