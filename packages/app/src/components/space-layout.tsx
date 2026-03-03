@@ -60,7 +60,7 @@ export function SpaceLayout() {
 	return (
 		<div className="flex h-full w-full overflow-hidden">
 			<SpaceListSidebar />
-			<SidebarInset className="overflow-hidden!">
+			<SidebarInset className="min-h-0 overflow-hidden">
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
@@ -75,22 +75,24 @@ export function SpaceLayout() {
 						tabs={tabs}
 					/>
 				)}
-				{isSpaceMissing ? (
-					<SpaceNotFoundPanel />
-				) : shouldWaitForSandboxStatus ? (
-					<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
-						Loading sandbox status...
-					</div>
-				) : shouldShowSandboxPaused ? (
-					<SandboxPausedPanel slug={space.slug} status={space.status} />
-				) : (
-					activeTabConfig.render({
-						actor,
-						tabId: tab?.id,
-						spaceSlug,
-						tabs,
-					})
-				)}
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+					{isSpaceMissing ? (
+						<SpaceNotFoundPanel />
+					) : shouldWaitForSandboxStatus ? (
+						<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
+							Loading sandbox status...
+						</div>
+					) : shouldShowSandboxPaused ? (
+						<SandboxPausedPanel slug={space.slug} status={space.status} />
+					) : (
+						activeTabConfig.render({
+							actor,
+							tabId: tab?.id,
+							spaceSlug,
+							tabs,
+						})
+					)}
+				</div>
 			</SidebarInset>
 			<SpaceSidebar actor={actor} space={space} tabs={tabs} />
 		</div>
@@ -106,7 +108,7 @@ const SpaceTabBar: FC<{
 	const navigate = useNavigate();
 
 	return (
-		<div className="flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-2">
+		<div className="sticky top-0 z-20 flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-background px-2">
 			{tabs.map((tab) => {
 				const tabConfig = tabRegistry[tab.type];
 				const tabParam = tabConfig.tabParamFromSpaceTab(tab);
