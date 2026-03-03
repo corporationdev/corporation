@@ -40,9 +40,34 @@ export const previews = sqliteTable("previews", {
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
 
+export const sessions = sqliteTable("sessions", {
+	id: text("id").primaryKey(),
+	agent: text("agent").notNull(),
+	agentSessionId: text("agent_session_id").notNull(),
+	lastConnectionId: text("last_connection_id").notNull(),
+	createdAt: integer("created_at", { mode: "number" }).notNull(),
+	destroyedAt: integer("destroyed_at", { mode: "number" }),
+	sessionInit: text("session_init", { mode: "json" }),
+	modelId: text("model_id"),
+});
+
+export const sessionEvents = sqliteTable("session_events", {
+	id: text("id").primaryKey(),
+	eventIndex: integer("event_index").notNull(),
+	sessionId: text("session_id")
+		.notNull()
+		.references(() => sessions.id, { onDelete: "cascade" }),
+	createdAt: integer("created_at", { mode: "number" }).notNull(),
+	connectionId: text("connection_id").notNull(),
+	sender: text("sender").notNull(),
+	payload: text("payload", { mode: "json" }).notNull(),
+});
+
 export type TabRow = InferSelectModel<typeof tabs>;
 export type TerminalRow = InferSelectModel<typeof terminals>;
 export type PreviewRow = InferSelectModel<typeof previews>;
+export type SessionRow = InferSelectModel<typeof sessions>;
+export type SessionEventRow = InferSelectModel<typeof sessionEvents>;
 
 type SharedTabFields = Pick<
 	TabRow,
@@ -53,6 +78,7 @@ export type SessionTab = SharedTabFields & {
 	type: "session";
 	sessionId: string;
 	agent: string | null;
+	modelId: string | null;
 };
 
 export type TerminalTab = SharedTabFields & {
@@ -70,3 +96,5 @@ export type PreviewTab = SharedTabFields & {
 };
 
 export type SpaceTab = SessionTab | TerminalTab | PreviewTab;
+
+export const schema = { tabs, terminals, previews, sessions, sessionEvents };

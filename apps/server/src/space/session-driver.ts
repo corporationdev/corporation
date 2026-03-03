@@ -1,8 +1,7 @@
 import { env } from "@corporation/env/server";
-import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { AgentListResponse, Session, SessionEvent } from "sandbox-agent";
-import { type SessionTab, tabs } from "../db/schema";
+import { type SessionTab, sessions, tabs } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
@@ -121,6 +120,7 @@ async function sendMessage(
 	});
 	ensureEventListener(ctx, session);
 	await applyModel(session, modelId);
+	await ctx.vars.persist.setModelId(sessionId, modelId);
 
 	ctx.waitUntil(
 		session
@@ -191,13 +191,11 @@ async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
 ): Promise<void> {
-	// We open a fresh ACP connection rather than going through the sandbox-agent
-	// SDK, whose internal write queue serializes all messages — a cancel
-	// notification would get stuck behind the in-flight prompt POST.
-	const persist = new RivetSessionPersistDriver(ctx, {
-		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
-	});
-	const record = await persist.getSession(sessionId);
+	// We read session data directly from our persist driver rather than going
+	// through the sandbox-agent SDK, whose internal write queue serializes all
+	// messages — a cancel notification would get stuck behind the in-flight
+	// prompt POST.
+	const record = await ctx.vars.persist.getSession(sessionId);
 	if (!record) {
 		return;
 	}
@@ -258,10 +256,7 @@ async function getTranscript(
 	offset: number,
 	limit?: number
 ): Promise<SessionEvent[]> {
-	const persist = new RivetSessionPersistDriver(ctx, {
-		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
-	});
-	const page = await persist.listEvents({
+	const page = await ctx.vars.persist.listEvents({
 		sessionId,
 		cursor: offset > 0 ? String(offset) : undefined,
 		limit,
@@ -270,11 +265,7 @@ async function getTranscript(
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
-	const persist = new RivetSessionPersistDriver(ctx, {
-		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
-	});
-
-	const [rows, sessionsPage] = await Promise.all([
+	const [rows, sessionRows] = await Promise.all([
 		ctx.vars.db
 			.select({
 				tabId: tabs.id,
@@ -295,10 +286,16 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 				)
 			)
 			.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt)),
-		persist.listSessions(),
+		ctx.vars.db
+			.select({
+				id: sessions.id,
+				agent: sessions.agent,
+				modelId: sessions.modelId,
+			})
+			.from(sessions),
 	]);
 
-	const sessionsByKey = new Map(sessionsPage.items.map((s) => [s.id, s]));
+	const sessionsByKey = new Map(sessionRows.map((s) => [s.id, s]));
 
 	return rows.map((row) => {
 		const sessionId = row.sessionId as string;
@@ -313,6 +310,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 			archivedAt: row.archivedAt,
 			sessionId,
 			agent: record?.agent ?? null,
+			modelId: record?.modelId ?? null,
 		};
 	});
 }

@@ -1,9 +1,9 @@
-import type { RivetPersistState } from "@sandbox-agent/persist-rivet";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import type { CommandHandle, Sandbox } from "e2b";
 import type { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
+import type { SqliteSessionPersistDriver } from "../db/session-persist-driver";
 
-export type PersistedState = RivetPersistState & {
+export type PersistedState = {
 	agentUrl: string;
 	sandboxId: string;
 	workdir: string;
@@ -18,6 +18,7 @@ export type SubscriptionHub = {
 
 export type SpaceVars = {
 	db: SpaceDatabase;
+	persist: SqliteSessionPersistDriver;
 	sandbox: Sandbox;
 	sandboxClient: SandboxAgentClient;
 	sessionStreams: Map<string, () => void>;

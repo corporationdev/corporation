@@ -1,5 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import type { SessionTab } from "@corporation/server/space";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
@@ -18,26 +19,26 @@ import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
-const INITIAL_AGENT = "opencode";
+const INITIAL_AGENT = "claude";
 const INITIAL_MODEL =
 	agentModelsData[INITIAL_AGENT as keyof typeof agentModelsData].defaultModel ??
 	"";
 
 export const SessionView: FC<{
 	actor: SpaceActor;
-	sessionId: string | undefined;
+	sessionTab?: SessionTab;
 	spaceSlug: string | undefined;
-}> = ({ actor, sessionId, spaceSlug }) => {
+}> = ({ actor, sessionTab, spaceSlug }) => {
 	if (!spaceSlug) {
 		return <NewSpaceView />;
 	}
 
-	if (sessionId && actor) {
+	if (sessionTab && actor) {
 		return (
 			<ConnectedSessionView
 				actor={actor}
-				key={sessionId}
-				sessionId={sessionId}
+				key={sessionTab.sessionId}
+				sessionTab={sessionTab}
 				spaceSlug={spaceSlug}
 			/>
 		);
@@ -249,14 +250,18 @@ const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
 };
 
 const ConnectedSessionView: FC<{
-	sessionId: string;
+	sessionTab: SessionTab;
 	spaceSlug: string;
 	actor: SpaceActor;
-}> = ({ sessionId, spaceSlug, actor }) => {
+}> = ({ sessionTab, spaceSlug, actor }) => {
+	const sessionId = sessionTab.sessionId;
 	const [message, setMessage] = useState("");
 	const [showEvents, setShowEvents] = useState(false);
-	const [agent, setAgent] = useState(INITIAL_AGENT);
-	const [modelId, setModelId] = useState(INITIAL_MODEL);
+	const [agentOverride, setAgentOverride] = useState<string | null>(null);
+	const [modelIdOverride, setModelIdOverride] = useState<string | null>(null);
+	const agent = agentOverride ?? sessionTab.agent ?? INITIAL_AGENT;
+	const modelId = modelIdOverride ?? sessionTab.modelId ?? INITIAL_MODEL;
+
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumePending = usePendingMessageStore((s) => s.consumePending);
 	const ensureSpace = useMutation(api.spaces.ensure);
@@ -284,8 +289,8 @@ const ConnectedSessionView: FC<{
 				agent: pending.agent,
 				modelId: pending.modelId,
 			};
-			setAgent(pending.agent);
-			setModelId(pending.modelId);
+			setAgentOverride(pending.agent);
+			setModelIdOverride(pending.modelId);
 		},
 		onError: (error) => {
 			toast.error("Failed to start chat");
@@ -435,8 +440,8 @@ const ConnectedSessionView: FC<{
 							agentModels={agentModels}
 							defaultModels={defaultModels}
 							modelId={modelId}
-							onAgentChange={setAgent}
-							onModelIdChange={setModelId}
+							onAgentChange={setAgentOverride}
+							onModelIdChange={setModelIdOverride}
 						/>
 					}
 					isRunning={sessionState.isRunning}
