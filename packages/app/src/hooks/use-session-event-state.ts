@@ -130,7 +130,7 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 				.filter(
 					(part) => part?.type === "text" && typeof part.text === "string"
 				)
-				.map((part) => part.text?.trim())
+				.map((part) => part.text?.trim() ?? "")
 				.filter(
 					(partText) =>
 						partText.length > 0 && !partText.startsWith(replayPrefix)

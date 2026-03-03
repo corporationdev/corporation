@@ -33,6 +33,8 @@
     "sandbox-agent": "catalog:",
     "shadcn": "catalog:",
     "sonner": "catalog:",
+    "@streamdown/code": "catalog:",
+    "streamdown": "catalog:",
     "tailwind-merge": "catalog:",
     "tw-animate-css": "catalog:",
     "zod": "catalog:",

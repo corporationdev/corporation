@@ -218,14 +218,20 @@ const ConnectedSessionView: FC<{
 
 		setMessage("");
 
-		await ensureSpace({ slug: spaceSlug });
+		try {
+			await ensureSpace({ slug: spaceSlug });
 
-		const conn = actor.connection;
-		if (!conn) {
-			throw new Error("Actor connection is unavailable");
+			const conn = actor.connection;
+			if (!conn) {
+				throw new Error("Actor connection is unavailable");
+			}
+
+			await conn.sendMessage(sessionId, text);
+		} catch (error) {
+			console.error("Failed to send message", { error, sessionId });
+			setMessage((current) => (current ? current : text));
+			toast.error("Failed to send message");
 		}
-
-		await conn.sendMessage(sessionId, text);
 	}, [message, ensureSpace, spaceSlug, actor.connection, sessionId]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change

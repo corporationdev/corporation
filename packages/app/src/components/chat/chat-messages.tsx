@@ -1,3 +1,4 @@
+import { code } from "@streamdown/code";
 import {
 	AlertTriangleIcon,
 	BrainIcon,
@@ -7,7 +8,7 @@ import {
 	WrenchIcon,
 } from "lucide-react";
 import { type RefObject, useState } from "react";
-import { MarkdownText } from "@/components/chat/markdown-text";
+import { Streamdown } from "streamdown";
 import type { TimelineEntry } from "@/components/chat/types";
 import { cn } from "@/lib/utils";
 
@@ -239,6 +240,7 @@ export function ChatMessages({
 
 				const entry = group.entries[0];
 				const isUser = entry.role === "user";
+				const isLastEntry = group === groupedEntries.at(-1);
 
 				return (
 					<div
@@ -255,7 +257,12 @@ export function ChatMessages({
 						) : (
 							<div className="wrap-break-word px-2 text-sm leading-relaxed">
 								{entry.text ? (
-									<MarkdownText text={entry.text} />
+									<Streamdown
+										isAnimating={isLastEntry && isThinking}
+										plugins={{ code }}
+									>
+										{entry.text}
+									</Streamdown>
 								) : (
 									<ThinkingDots />
 								)}
