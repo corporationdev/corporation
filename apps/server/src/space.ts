@@ -68,7 +68,9 @@ export const space = actor({
 			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const persist = new RivetSessionPersistDriver(c);
+		const persist = new RivetSessionPersistDriver(c, {
+			maxEventsPerSession: Number.MAX_SAFE_INTEGER,
+		});
 		const sandboxClient = await SandboxAgentClient.connect({
 			baseUrl: c.state.agentUrl,
 			persist,
