@@ -195,7 +195,12 @@ const SpaceListItem: FC<{
 	});
 
 	return (
-		<SpaceContextMenu branchName={branchName} isActive={isActive} spaceId={id}>
+		<SpaceContextMenu
+			branchName={branchName}
+			isActive={isActive}
+			slug={slug}
+			spaceId={id}
+		>
 			<button
 				className="flex h-full min-w-0 flex-1 items-center gap-2 truncate px-3 text-start text-sm"
 				onClick={() =>

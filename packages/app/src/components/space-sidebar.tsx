@@ -12,7 +12,6 @@ import {
 	SaveIcon,
 	SquareIcon,
 	TerminalIcon,
-	Trash2Icon,
 	UploadIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -120,12 +119,6 @@ const SpaceSidebarContent: FC<{
 	useErrorToast(space.error, clearError);
 
 	const stopMutation = useConvexTanstackMutation(api.spaces.stop);
-
-	const deleteMutation = useConvexTanstackMutation(api.spaces.delete, {
-		onSuccess: () => {
-			navigate({ to: "/space" });
-		},
-	});
 
 	const previewMutation = useTanstackMutation({
 		mutationFn: async (port: number) => {
@@ -296,20 +289,6 @@ const SpaceSidebarContent: FC<{
 			{isStarted && (
 				<SandboxCountdown actor={actor} expiresAt={space.sandboxExpiresAt} />
 			)}
-			<Button
-				className="w-full justify-start gap-2"
-				disabled={deleteMutation.isPending}
-				onClick={() => deleteMutation.mutate({ id: space._id })}
-				size="sm"
-				variant="destructive"
-			>
-				{deleteMutation.isPending ? (
-					<LoaderIcon className="size-4 animate-spin" />
-				) : (
-					<Trash2Icon className="size-4" />
-				)}
-				{deleteMutation.isPending ? "Deleting..." : "Delete Space"}
-			</Button>
 		</div>
 	);
 };
