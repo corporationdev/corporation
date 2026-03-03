@@ -1,15 +1,10 @@
-import type { ThreadMessageLike } from "@assistant-ui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionEvent } from "sandbox-agent";
-import {
-	createEventState,
-	type EventState,
-	processEvent,
-} from "@/lib/convert-events";
+import type { TimelineEntry } from "@/components/chat/types";
 import type { SpaceActor } from "@/lib/rivetkit";
 
-type SessionState = {
-	messages: ThreadMessageLike[];
+export type SessionState = {
+	entries: TimelineEntry[];
 	isRunning: boolean;
 };
 
@@ -83,6 +78,225 @@ function sortSessionEvents(events: SessionEvent[]): void {
 	});
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: event processing requires handling many event types
+function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
+	const entries: TimelineEntry[] = [];
+
+	let assistantAccumId: string | null = null;
+	let assistantAccumText = "";
+	let thoughtAccumId: string | null = null;
+	let thoughtAccumText = "";
+
+	const flushAssistant = (time: string) => {
+		if (assistantAccumId) {
+			const existing = entries.find((e) => e.id === assistantAccumId);
+			if (existing) {
+				existing.text = assistantAccumText;
+				existing.time = time;
+			}
+		}
+		assistantAccumId = null;
+		assistantAccumText = "";
+	};
+
+	const flushThought = (time: string) => {
+		if (thoughtAccumId) {
+			const existing = entries.find((e) => e.id === thoughtAccumId);
+			if (existing?.reasoning) {
+				existing.reasoning.text = thoughtAccumText;
+				existing.time = time;
+			}
+		}
+		thoughtAccumId = null;
+		thoughtAccumText = "";
+	};
+
+	const toolEntryMap = new Map<string, TimelineEntry>();
+
+	for (const event of events) {
+		const payload = event.payload as Record<string, unknown>;
+		const method = typeof payload.method === "string" ? payload.method : null;
+		const time = new Date(event.createdAt).toISOString();
+
+		if (event.sender === "client" && method === "session/prompt") {
+			flushAssistant(time);
+			flushThought(time);
+			const params = payload.params as Record<string, unknown> | undefined;
+			const promptArray = params?.prompt as
+				| Array<{ type: string; text?: string }>
+				| undefined;
+			const replayPrefix = "Previous session history is replayed below";
+			const text = (promptArray ?? [])
+				.filter(
+					(part) => part?.type === "text" && typeof part.text === "string"
+				)
+				.map((part) => part.text?.trim() ?? "")
+				.filter(
+					(partText) =>
+						partText.length > 0 && !partText.startsWith(replayPrefix)
+				)
+				.join("\n\n")
+				.trim();
+			if (!text) {
+				continue;
+			}
+			entries.push({
+				id: event.id,
+				kind: "message",
+				time,
+				role: "user",
+				text,
+			});
+			continue;
+		}
+
+		if (event.sender === "agent" && method === "session/update") {
+			const params = payload.params as Record<string, unknown> | undefined;
+			const update = params?.update as Record<string, unknown> | undefined;
+			if (!update || typeof update.sessionUpdate !== "string") {
+				continue;
+			}
+
+			switch (update.sessionUpdate) {
+				case "agent_message_chunk": {
+					const content = update.content as
+						| { type?: string; text?: string }
+						| undefined;
+					if (content?.type === "text" && content.text) {
+						if (!assistantAccumId) {
+							assistantAccumId = `assistant-${event.id}`;
+							assistantAccumText = "";
+							entries.push({
+								id: assistantAccumId,
+								kind: "message",
+								time,
+								role: "assistant",
+								text: "",
+							});
+						}
+						assistantAccumText += content.text;
+						const entry = entries.find((e) => e.id === assistantAccumId);
+						if (entry) {
+							entry.text = assistantAccumText;
+							entry.time = time;
+						}
+					}
+					break;
+				}
+				case "agent_thought_chunk": {
+					const content = update.content as
+						| { type?: string; text?: string }
+						| undefined;
+					if (content?.type === "text" && content.text) {
+						if (!thoughtAccumId) {
+							thoughtAccumId = `thought-${event.id}`;
+							thoughtAccumText = "";
+							entries.push({
+								id: thoughtAccumId,
+								kind: "reasoning",
+								time,
+								reasoning: {
+									text: "",
+									visibility: "public",
+								},
+							});
+						}
+						thoughtAccumText += content.text;
+						const entry = entries.find((e) => e.id === thoughtAccumId);
+						if (entry?.reasoning) {
+							entry.reasoning.text = thoughtAccumText;
+							entry.time = time;
+						}
+					}
+					break;
+				}
+				case "tool_call": {
+					flushAssistant(time);
+					flushThought(time);
+					const toolCallId = (update.toolCallId as string) ?? event.id;
+					const existing = toolEntryMap.get(toolCallId);
+					if (existing) {
+						if (update.status) {
+							existing.toolStatus = update.status as string;
+						}
+						if (update.rawInput != null) {
+							existing.toolInput = JSON.stringify(update.rawInput, null, 2);
+						}
+						if (update.rawOutput != null) {
+							existing.toolOutput = JSON.stringify(update.rawOutput, null, 2);
+						}
+						if (update.title) {
+							existing.toolName = update.title as string;
+						}
+						existing.time = time;
+					} else {
+						const entry: TimelineEntry = {
+							id: `tool-${toolCallId}`,
+							kind: "tool",
+							time,
+							toolName: (update.title as string) ?? "tool",
+							toolInput:
+								update.rawInput != null
+									? JSON.stringify(update.rawInput, null, 2)
+									: undefined,
+							toolOutput:
+								update.rawOutput != null
+									? JSON.stringify(update.rawOutput, null, 2)
+									: undefined,
+							toolStatus: (update.status as string) ?? "in_progress",
+						};
+						toolEntryMap.set(toolCallId, entry);
+						entries.push(entry);
+					}
+					break;
+				}
+				case "tool_call_update": {
+					const toolCallId = update.toolCallId as string;
+					const existing = toolEntryMap.get(toolCallId);
+					if (existing) {
+						if (update.status) {
+							existing.toolStatus = update.status as string;
+						}
+						if (update.rawOutput != null) {
+							existing.toolOutput = JSON.stringify(update.rawOutput, null, 2);
+						}
+						if (update.title) {
+							existing.toolName = update.title as string;
+						}
+						existing.time = time;
+					}
+					break;
+				}
+				case "plan": {
+					const planEntries =
+						(update.entries as Array<{
+							content: string;
+							status: string;
+						}>) ?? [];
+					const detail = planEntries
+						.map((e) => `[${e.status}] ${e.content}`)
+						.join("\n");
+					entries.push({
+						id: event.id,
+						kind: "meta",
+						time,
+						meta: {
+							title: "Plan",
+							detail,
+							severity: "info",
+						},
+					});
+					break;
+				}
+				default:
+					break;
+			}
+		}
+	}
+
+	return entries;
+}
+
 export function useSessionEventState({
 	sessionId,
 	actor,
@@ -90,29 +304,21 @@ export function useSessionEventState({
 	sessionId: string;
 	actor: SpaceActor;
 }): SessionState {
-	const eventStateRef = useRef<EventState>(createEventState());
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<SessionEvent[]>([]);
-	const [sessionState, setSessionState] = useState<SessionState>({
-		messages: [],
-		isRunning: false,
-	});
+	const [events, setEvents] = useState<SessionEvent[]>([]);
 
-	const applyEvents = useCallback((events: SessionEvent[]) => {
-		let lastResult: SessionState | null = null;
-
-		for (const event of events) {
-			if (seenEventIdsRef.current.has(event.id)) {
-				continue;
+	const addEvents = useCallback((newEvents: SessionEvent[]) => {
+		const unseen: SessionEvent[] = [];
+		for (const event of newEvents) {
+			if (!seenEventIdsRef.current.has(event.id)) {
+				seenEventIdsRef.current.add(event.id);
+				unseen.push(event);
 			}
-			seenEventIdsRef.current.add(event.id);
-
-			lastResult = processEvent(event, eventStateRef.current);
 		}
-
-		if (lastResult) {
-			setSessionState(lastResult);
+		if (unseen.length > 0) {
+			setEvents((prev) => [...prev, ...unseen]);
 		}
 	}, []);
 
@@ -120,11 +326,10 @@ export function useSessionEventState({
 		if (!sessionId) {
 			return;
 		}
-		eventStateRef.current = createEventState();
 		seenEventIdsRef.current = new Set();
 		caughtUpRef.current = false;
 		bufferRef.current = [];
-		setSessionState({ messages: [], isRunning: false });
+		setEvents([]);
 	}, [sessionId]);
 
 	useEffect(() => {
@@ -139,7 +344,7 @@ export function useSessionEventState({
 		const conn = actor.connection;
 		(async () => {
 			await conn.subscribeSession(sessionId);
-			const events = await loadTranscriptEvents(
+			const loaded = await loadTranscriptEvents(
 				conn,
 				sessionId,
 				() => isCancelled
@@ -147,9 +352,9 @@ export function useSessionEventState({
 			if (isCancelled) {
 				return;
 			}
-			sortSessionEvents(events);
-			applyEvents(events);
-			applyEvents(bufferRef.current);
+			sortSessionEvents(loaded);
+			addEvents(loaded);
+			addEvents(bufferRef.current);
 			bufferRef.current = [];
 			caughtUpRef.current = true;
 		})().catch((error: unknown) => {
@@ -168,7 +373,7 @@ export function useSessionEventState({
 				console.error("Failed to unsubscribe session", error);
 			});
 		};
-	}, [actor.connStatus, actor.connection, applyEvents, sessionId]);
+	}, [actor.connStatus, actor.connection, addEvents, sessionId]);
 
 	actor.useEvent("session.event", (event) => {
 		const typed = event as SessionEvent;
@@ -176,8 +381,24 @@ export function useSessionEventState({
 			bufferRef.current.push(typed);
 			return;
 		}
-		applyEvents([typed]);
+		addEvents([typed]);
 	});
 
-	return sessionState;
+	const entries = useMemo(() => eventsToEntries(events), [events]);
+
+	const isRunning = useMemo(() => {
+		if (entries.length === 0) {
+			return false;
+		}
+		const hasInProgressTool = entries.some(
+			(e) => e.kind === "tool" && e.toolStatus === "in_progress"
+		);
+		if (hasInProgressTool) {
+			return true;
+		}
+		const lastEntry = entries.at(-1);
+		return lastEntry?.role === "user";
+	}, [entries]);
+
+	return { entries, isRunning };
 }

@@ -1,392 +1,267 @@
-import {
-	ActionBarMorePrimitive,
-	ActionBarPrimitive,
-	AssistantIf,
-	BranchPickerPrimitive,
-	ComposerPrimitive,
-	ErrorPrimitive,
-	MessagePrimitive,
-	ThreadPrimitive,
-} from "@assistant-ui/react";
-import {
-	ArrowDownIcon,
-	ArrowUpIcon,
-	CheckIcon,
-	ChevronLeftIcon,
-	ChevronRightIcon,
-	CopyIcon,
-	DownloadIcon,
-	MoreHorizontalIcon,
-	PencilIcon,
-	RefreshCwIcon,
-	SquareIcon,
-} from "lucide-react";
-import type { FC } from "react";
-import {
-	ComposerAddAttachment,
-	ComposerAttachments,
-	UserMessageAttachments,
-} from "@/components/assistant-ui/attachment";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
-import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
-import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Button } from "@/components/ui/button";
+import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import { useMutation as useTanstackMutation } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery } from "convex/react";
+import { nanoid } from "nanoid";
+import { type FC, useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { ChatInput } from "@/components/chat/chat-input";
+import { ChatMessages } from "@/components/chat/chat-messages";
+import { useSessionEventState } from "@/hooks/use-session-event-state";
 import type { SpaceActor } from "@/lib/rivetkit";
-import { SessionRuntimeProvider } from "@/lib/session-runtime";
-import { cn } from "@/lib/utils";
+import { serializeTab } from "@/lib/tab-routing";
+import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 export const SessionView: FC<{
 	actor: SpaceActor;
 	sessionId: string | undefined;
 	spaceSlug: string | undefined;
 }> = ({ actor, sessionId, spaceSlug }) => {
+	if (!spaceSlug) {
+		return <NewSpaceView />;
+	}
+
+	if (sessionId && actor) {
+		return (
+			<ConnectedSessionView
+				actor={actor}
+				key={sessionId}
+				sessionId={sessionId}
+				spaceSlug={spaceSlug}
+			/>
+		);
+	}
+
+	return <NewSessionView key={spaceSlug} spaceSlug={spaceSlug} />;
+};
+
+const NewSpaceView: FC = () => {
+	const navigate = useNavigate();
+	const setPending = usePendingMessageStore((s) => s.setPending);
+	const [message, setMessage] = useState("");
+
+	const repositories = useQuery(api.repositories.list);
+	const firstRepo = repositories?.[0];
+	const environments = useQuery(
+		api.environments.listByRepository,
+		firstRepo ? { repositoryId: firstRepo._id } : "skip"
+	);
+	const firstEnv = environments?.[0];
+
+	const handleSend = useCallback(() => {
+		const text = message.trim();
+		if (!(text && firstEnv)) {
+			return;
+		}
+
+		const spaceSlug = nanoid();
+		const sessionId = nanoid();
+
+		setPending({ text, environmentId: firstEnv._id });
+		setMessage("");
+
+		navigate({
+			to: "/space/$spaceSlug",
+			params: { spaceSlug },
+			search: {
+				tab: serializeTab({ type: "session", id: sessionId }),
+			},
+		});
+	}, [message, firstEnv, setPending, navigate]);
+
 	return (
-		<SessionRuntimeProvider
-			actor={actor}
-			sessionId={sessionId}
-			spaceSlug={spaceSlug}
-		>
-			<SessionViewContent />
-		</SessionRuntimeProvider>
+		<div className="flex min-h-0 flex-1 flex-col bg-background">
+			<div className="flex flex-1 flex-col items-center justify-center px-4">
+				<h1 className="font-semibold text-2xl">Hello there!</h1>
+				<p className="mt-1 text-muted-foreground text-xl">
+					How can I help you today?
+				</p>
+			</div>
+			<ChatInput
+				disabled={!firstEnv}
+				message={message}
+				onMessageChange={setMessage}
+				onSendMessage={handleSend}
+				placeholder="Send a message..."
+			/>
+		</div>
 	);
 };
 
-const SessionViewContent: FC = () => {
+const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
+	const navigate = useNavigate();
+	const setPending = usePendingMessageStore((s) => s.setPending);
+	const [message, setMessage] = useState("");
+
+	const handleSend = useCallback(() => {
+		const text = message.trim();
+		if (!text) {
+			return;
+		}
+
+		const sessionId = nanoid();
+
+		setPending({ text, spaceSlug });
+		setMessage("");
+
+		navigate({
+			to: "/space/$spaceSlug",
+			params: { spaceSlug },
+			search: {
+				tab: serializeTab({ type: "session", id: sessionId }),
+			},
+		});
+	}, [message, setPending, spaceSlug, navigate]);
+
 	return (
-		<ThreadPrimitive.Root
-			className="aui-root aui-thread-root @container flex min-h-0 flex-1 flex-col bg-background"
-			style={{
-				["--thread-max-width" as string]: "44rem",
-			}}
-		>
-			<ThreadPrimitive.Viewport
-				autoScroll
-				className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth px-4 pt-4"
-			>
-				<AssistantIf condition={({ thread }) => thread.isEmpty}>
-					<SessionWelcome />
-				</AssistantIf>
-
-				<ThreadPrimitive.Messages
-					components={{
-						UserMessage,
-						EditComposer,
-						AssistantMessage,
-					}}
-				/>
-
-				<ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-4 overflow-visible rounded-t-3xl bg-background pb-4 md:pb-6">
-					<SessionScrollToBottom />
-					<Composer />
-				</ThreadPrimitive.ViewportFooter>
-			</ThreadPrimitive.Viewport>
-		</ThreadPrimitive.Root>
+		<div className="flex min-h-0 flex-1 flex-col bg-background">
+			<div className="flex flex-1 flex-col items-center justify-center px-4">
+				<h1 className="font-semibold text-2xl">Hello there!</h1>
+				<p className="mt-1 text-muted-foreground text-xl">
+					How can I help you today?
+				</p>
+			</div>
+			<ChatInput
+				disabled={false}
+				message={message}
+				onMessageChange={setMessage}
+				onSendMessage={handleSend}
+				placeholder="Send a message..."
+			/>
+		</div>
 	);
 };
 
-const SessionScrollToBottom: FC = () => {
-	return (
-		<ThreadPrimitive.ScrollToBottom asChild>
-			<TooltipIconButton
-				className="aui-thread-scroll-to-bottom absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible dark:bg-background dark:hover:bg-accent"
-				tooltip="Scroll to bottom"
-				variant="outline"
-			>
-				<ArrowDownIcon />
-			</TooltipIconButton>
-		</ThreadPrimitive.ScrollToBottom>
-	);
-};
+const ConnectedSessionView: FC<{
+	sessionId: string;
+	spaceSlug: string;
+	actor: SpaceActor;
+}> = ({ sessionId, spaceSlug, actor }) => {
+	const [message, setMessage] = useState("");
+	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const consumePending = usePendingMessageStore((s) => s.consumePending);
+	const ensureSpace = useMutation(api.spaces.ensure);
+	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 
-const SessionWelcome: FC = () => {
+	const pendingTextRef = useRef<string | null>(null);
+	const initMutation = useTanstackMutation({
+		mutationFn: async (pending: {
+			text: string;
+			environmentId?: Id<"environments">;
+		}) => {
+			await ensureSpace({
+				slug: spaceSlug,
+				environmentId: pending.environmentId,
+			});
+			pendingTextRef.current = pending.text;
+		},
+		onError: (error) => {
+			toast.error("Failed to start chat");
+			console.error("initMutation failed", error);
+		},
+	});
+
+	useEffect(() => {
+		if (initMutation.isPending || initMutation.isSuccess) {
+			return;
+		}
+
+		const consumed = consumePending();
+		if (!consumed) {
+			return;
+		}
+
+		initMutation.mutate(consumed);
+	}, [
+		consumePending,
+		initMutation.isPending,
+		initMutation.isSuccess,
+		initMutation.mutate,
+	]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: initMutation.isSuccess is intentionally included to re-trigger this effect when the mutation completes, since it sets pendingTextRef (a ref that doesn't cause re-renders on its own).
+	useEffect(() => {
+		if (actor.connStatus !== "connected" || !actor.connection) {
+			return;
+		}
+
+		if (!space?.agentUrl) {
+			return;
+		}
+
+		const text = pendingTextRef.current;
+		if (!text) {
+			return;
+		}
+		pendingTextRef.current = null;
+
+		const conn = actor.connection;
+		conn.sendMessage(sessionId, text).catch((error: unknown) => {
+			console.error("Failed to send pending message", error);
+		});
+	}, [
+		actor.connStatus,
+		actor.connection,
+		sessionId,
+		space?.agentUrl,
+		initMutation.isSuccess,
+	]);
+
+	const sessionState = useSessionEventState({ sessionId, actor });
+
+	const handleSend = useCallback(async () => {
+		const text = message.trim();
+		if (!text) {
+			return;
+		}
+
+		setMessage("");
+
+		try {
+			await ensureSpace({ slug: spaceSlug });
+
+			const conn = actor.connection;
+			if (!conn) {
+				throw new Error("Actor connection is unavailable");
+			}
+
+			await conn.sendMessage(sessionId, text);
+		} catch (error) {
+			console.error("Failed to send message", { error, sessionId });
+			setMessage((current) => (current ? current : text));
+			toast.error("Failed to send message");
+		}
+	}, [message, ensureSpace, spaceSlug, actor.connection, sessionId]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
+	useEffect(() => {
+		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, [sessionState.entries]);
+
 	return (
-		<div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
-			<div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
-				<div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
-					<h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in font-semibold text-2xl duration-200">
-						Hello there!
-					</h1>
-					<p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in text-muted-foreground text-xl delay-75 duration-200">
-						How can I help you today?
+		<div className="flex min-h-0 flex-1 flex-col bg-background">
+			{sessionState.entries.length === 0 ? (
+				<div className="flex flex-1 flex-col items-center justify-center px-4">
+					<h1 className="font-semibold text-2xl">Ready to Chat</h1>
+					<p className="mt-1 text-muted-foreground">
+						Send a message to start a conversation.
 					</p>
 				</div>
-			</div>
-			<SessionSuggestions />
-		</div>
-	);
-};
-
-const SUGGESTIONS = [
-	{
-		title: "What's the weather",
-		label: "in San Francisco?",
-		prompt: "What's the weather in San Francisco?",
-	},
-	{
-		title: "Explain React hooks",
-		label: "like useState and useEffect",
-		prompt: "Explain React hooks like useState and useEffect",
-	},
-] as const;
-
-const SessionSuggestions: FC = () => {
-	return (
-		<div className="aui-thread-welcome-suggestions grid w-full @md:grid-cols-2 gap-2 pb-4">
-			{SUGGESTIONS.map((suggestion, index) => (
-				<div
-					className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 @md:nth-[n+3]:block nth-[n+3]:hidden animate-in fill-mode-both duration-200"
-					key={suggestion.prompt}
-					style={{ animationDelay: `${100 + index * 50}ms` }}
-				>
-					<ThreadPrimitive.Suggestion asChild prompt={suggestion.prompt} send>
-						<Button
-							aria-label={suggestion.prompt}
-							className="aui-thread-welcome-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1 rounded-2xl border px-4 py-3 text-left text-sm transition-colors hover:bg-muted"
-							variant="ghost"
-						>
-							<span className="aui-thread-welcome-suggestion-text-1 font-medium">
-								{suggestion.title}
-							</span>
-							<span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground">
-								{suggestion.label}
-							</span>
-						</Button>
-					</ThreadPrimitive.Suggestion>
-				</div>
-			))}
-		</div>
-	);
-};
-
-const Composer: FC = () => {
-	return (
-		<ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-			<ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
-				<ComposerAttachments />
-				<ComposerPrimitive.Input
-					aria-label="Message input"
-					autoFocus
-					className="aui-composer-input mb-1 max-h-32 min-h-14 w-full resize-none bg-transparent px-4 pt-2 pb-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-0"
-					placeholder="Send a message..."
-					rows={1}
+			) : (
+				<ChatMessages
+					entries={sessionState.entries}
+					isThinking={sessionState.isRunning}
+					messagesEndRef={messagesEndRef}
 				/>
-				<ComposerAction />
-			</ComposerPrimitive.AttachmentDropzone>
-		</ComposerPrimitive.Root>
-	);
-};
-
-const ComposerAction: FC = () => {
-	return (
-		<div className="aui-composer-action-wrapper relative mx-2 mb-2 flex items-center justify-between">
-			<ComposerAddAttachment />
-
-			<AssistantIf condition={({ thread }) => !thread.isRunning}>
-				<ComposerPrimitive.Send asChild>
-					<TooltipIconButton
-						aria-label="Send message"
-						className="aui-composer-send size-8 rounded-full"
-						side="bottom"
-						size="icon"
-						tooltip="Send message"
-						type="submit"
-						variant="default"
-					>
-						<ArrowUpIcon className="aui-composer-send-icon size-4" />
-					</TooltipIconButton>
-				</ComposerPrimitive.Send>
-			</AssistantIf>
-
-			<AssistantIf condition={({ thread }) => thread.isRunning}>
-				<ComposerPrimitive.Cancel asChild>
-					<Button
-						aria-label="Stop generating"
-						className="aui-composer-cancel size-8 rounded-full"
-						size="icon"
-						type="button"
-						variant="default"
-					>
-						<SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-					</Button>
-				</ComposerPrimitive.Cancel>
-			</AssistantIf>
-		</div>
-	);
-};
-
-const MessageError: FC = () => {
-	return (
-		<MessagePrimitive.Error>
-			<ErrorPrimitive.Root className="aui-message-error-root mt-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive text-sm dark:bg-destructive/5 dark:text-red-200">
-				<ErrorPrimitive.Message className="aui-message-error-message line-clamp-2" />
-			</ErrorPrimitive.Root>
-		</MessagePrimitive.Error>
-	);
-};
-
-const AssistantMessage: FC = () => {
-	return (
-		<MessagePrimitive.Root
-			className="aui-assistant-message-root fade-in slide-in-from-bottom-1 relative mx-auto w-full max-w-(--thread-max-width) animate-in py-3 duration-150"
-			data-role="assistant"
-		>
-			<div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
-				<MessagePrimitive.Parts
-					components={{
-						Text: MarkdownText,
-						Reasoning,
-						ReasoningGroup,
-						tools: { Fallback: ToolFallback },
-					}}
-				/>
-				<MessageError />
-			</div>
-
-			<div className="aui-assistant-message-footer mt-1 ml-2 flex">
-				<BranchPicker />
-				<AssistantActionBar />
-			</div>
-		</MessagePrimitive.Root>
-	);
-};
-
-const AssistantActionBar: FC = () => {
-	return (
-		<ActionBarPrimitive.Root
-			autohide="not-last"
-			autohideFloat="single-branch"
-			className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex gap-1 text-muted-foreground data-floating:absolute data-floating:rounded-md data-floating:border data-floating:bg-background data-floating:p-1 data-floating:shadow-sm"
-			hideWhenRunning
-		>
-			<ActionBarPrimitive.Copy asChild>
-				<TooltipIconButton tooltip="Copy">
-					<AssistantIf condition={({ message }) => message.isCopied}>
-						<CheckIcon />
-					</AssistantIf>
-					<AssistantIf condition={({ message }) => !message.isCopied}>
-						<CopyIcon />
-					</AssistantIf>
-				</TooltipIconButton>
-			</ActionBarPrimitive.Copy>
-			<ActionBarPrimitive.Reload asChild>
-				<TooltipIconButton tooltip="Refresh">
-					<RefreshCwIcon />
-				</TooltipIconButton>
-			</ActionBarPrimitive.Reload>
-			<ActionBarMorePrimitive.Root>
-				<ActionBarMorePrimitive.Trigger asChild>
-					<TooltipIconButton
-						className="data-[state=open]:bg-accent"
-						tooltip="More"
-					>
-						<MoreHorizontalIcon />
-					</TooltipIconButton>
-				</ActionBarMorePrimitive.Trigger>
-				<ActionBarMorePrimitive.Content
-					align="start"
-					className="aui-action-bar-more-content z-50 min-w-32 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-					side="bottom"
-				>
-					<ActionBarPrimitive.ExportMarkdown asChild>
-						<ActionBarMorePrimitive.Item className="aui-action-bar-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
-							<DownloadIcon className="size-4" />
-							Export as Markdown
-						</ActionBarMorePrimitive.Item>
-					</ActionBarPrimitive.ExportMarkdown>
-				</ActionBarMorePrimitive.Content>
-			</ActionBarMorePrimitive.Root>
-		</ActionBarPrimitive.Root>
-	);
-};
-
-const UserMessage: FC = () => {
-	return (
-		<MessagePrimitive.Root
-			className="aui-user-message-root fade-in slide-in-from-bottom-1 mx-auto grid w-full max-w-(--thread-max-width) animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 py-3 duration-150 [&:where(>*)]:col-start-2"
-			data-role="user"
-		>
-			<UserMessageAttachments />
-
-			<div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-				<div className="aui-user-message-content wrap-break-word rounded-2xl bg-muted px-4 py-2.5 text-foreground">
-					<MessagePrimitive.Parts />
-				</div>
-				<div className="aui-user-action-bar-wrapper absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 pr-2">
-					<UserActionBar />
-				</div>
-			</div>
-
-			<BranchPicker className="aui-user-branch-picker col-span-full col-start-1 row-start-3 -mr-1 justify-end" />
-		</MessagePrimitive.Root>
-	);
-};
-
-const UserActionBar: FC = () => {
-	return (
-		<ActionBarPrimitive.Root
-			autohide="not-last"
-			className="aui-user-action-bar-root flex flex-col items-end"
-			hideWhenRunning
-		>
-			<ActionBarPrimitive.Edit asChild>
-				<TooltipIconButton className="aui-user-action-edit p-4" tooltip="Edit">
-					<PencilIcon />
-				</TooltipIconButton>
-			</ActionBarPrimitive.Edit>
-		</ActionBarPrimitive.Root>
-	);
-};
-
-const EditComposer: FC = () => {
-	return (
-		<MessagePrimitive.Root className="aui-edit-composer-wrapper mx-auto flex w-full max-w-(--thread-max-width) flex-col px-2 py-3">
-			<ComposerPrimitive.Root className="aui-edit-composer-root ml-auto flex w-full max-w-[85%] flex-col rounded-2xl bg-muted">
-				<ComposerPrimitive.Input
-					autoFocus
-					className="aui-edit-composer-input min-h-14 w-full resize-none bg-transparent p-4 text-foreground text-sm outline-none"
-				/>
-				<div className="aui-edit-composer-footer mx-3 mb-3 flex items-center gap-2 self-end">
-					<ComposerPrimitive.Cancel asChild>
-						<Button size="sm" variant="ghost">
-							Cancel
-						</Button>
-					</ComposerPrimitive.Cancel>
-					<ComposerPrimitive.Send asChild>
-						<Button size="sm">Update</Button>
-					</ComposerPrimitive.Send>
-				</div>
-			</ComposerPrimitive.Root>
-		</MessagePrimitive.Root>
-	);
-};
-
-const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
-	className,
-	...rest
-}) => {
-	return (
-		<BranchPickerPrimitive.Root
-			className={cn(
-				"aui-branch-picker-root mr-2 -ml-2 inline-flex items-center text-muted-foreground text-xs",
-				className
 			)}
-			hideWhenSingleBranch
-			{...rest}
-		>
-			<BranchPickerPrimitive.Previous asChild>
-				<TooltipIconButton tooltip="Previous">
-					<ChevronLeftIcon />
-				</TooltipIconButton>
-			</BranchPickerPrimitive.Previous>
-			<span className="aui-branch-picker-state font-medium">
-				<BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
-			</span>
-			<BranchPickerPrimitive.Next asChild>
-				<TooltipIconButton tooltip="Next">
-					<ChevronRightIcon />
-				</TooltipIconButton>
-			</BranchPickerPrimitive.Next>
-		</BranchPickerPrimitive.Root>
+			<ChatInput
+				disabled={actor.connStatus !== "connected" || !actor.connection}
+				message={message}
+				onMessageChange={setMessage}
+				onSendMessage={handleSend}
+				placeholder="Send a message..."
+			/>
+		</div>
 	);
 };
