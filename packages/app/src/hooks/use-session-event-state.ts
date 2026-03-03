@@ -388,18 +388,38 @@ export function useSessionEventState({
 	const entries = useMemo(() => eventsToEntries(events), [events]);
 
 	const isRunning = useMemo(() => {
-		if (entries.length === 0) {
+		if (events.length === 0) {
 			return false;
 		}
-		const hasInProgressTool = entries.some(
-			(e) => e.kind === "tool" && e.toolStatus === "in_progress"
-		);
-		if (hasInProgressTool) {
-			return true;
+
+		// Find the last prompt request in the raw events.
+		let lastPromptIdx = -1;
+		for (let i = events.length - 1; i >= 0; i--) {
+			const payload = events[i].payload as Record<string, unknown>;
+			if (
+				events[i].sender === "client" &&
+				payload.method === "session/prompt"
+			) {
+				lastPromptIdx = i;
+				break;
+			}
 		}
-		const lastEntry = entries.at(-1);
-		return lastEntry?.role === "user";
-	}, [entries]);
+
+		if (lastPromptIdx === -1) {
+			return false;
+		}
+
+		// Check if there's a response with stopReason after the last prompt.
+		for (let i = lastPromptIdx + 1; i < events.length; i++) {
+			const payload = events[i].payload as Record<string, unknown>;
+			const result = payload.result as Record<string, unknown> | undefined;
+			if (result && typeof result.stopReason === "string") {
+				return false;
+			}
+		}
+
+		return true;
+	}, [events]);
 
 	return { entries, rawEvents: events, isRunning };
 }

@@ -238,6 +238,19 @@ const ConnectedSessionView: FC<{
 		}
 	}, [message, ensureSpace, spaceSlug, actor.connection, sessionId]);
 
+	const handleStop = useCallback(async () => {
+		try {
+			const conn = actor.connection;
+			if (!conn) {
+				return;
+			}
+			await conn.cancelSession(sessionId);
+		} catch (error) {
+			console.error("Failed to cancel session", { error, sessionId });
+			toast.error("Failed to stop session");
+		}
+	}, [actor.connection, sessionId]);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -278,9 +291,11 @@ const ConnectedSessionView: FC<{
 			{!showEvents && (
 				<ChatInput
 					disabled={actor.connStatus !== "connected" || !actor.connection}
+					isRunning={sessionState.isRunning}
 					message={message}
 					onMessageChange={setMessage}
 					onSendMessage={handleSend}
+					onStop={handleStop}
 					placeholder="Send a message..."
 				/>
 			)}

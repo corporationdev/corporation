@@ -1,4 +1,4 @@
-import { ArrowUpIcon } from "lucide-react";
+import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import { useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,12 +7,16 @@ export function ChatInput({
 	message,
 	onMessageChange,
 	onSendMessage,
+	onStop,
+	isRunning = false,
 	placeholder,
 	disabled,
 }: {
 	message: string;
 	onMessageChange: (value: string) => void;
 	onSendMessage: () => void;
+	onStop?: () => void;
+	isRunning?: boolean;
 	placeholder: string;
 	disabled: boolean;
 }) {
@@ -39,10 +43,14 @@ export function ChatInput({
 		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
 			if (event.key === "Enter" && !event.shiftKey) {
 				event.preventDefault();
+				if (isRunning && onStop) {
+					onStop();
+					return;
+				}
 				onSendMessage();
 			}
 		},
-		[onSendMessage]
+		[isRunning, onSendMessage, onStop]
 	);
 
 	return (
@@ -58,15 +66,27 @@ export function ChatInput({
 					rows={1}
 					value={message}
 				/>
-				<Button
-					className="mb-1 size-8 shrink-0 rounded-full"
-					disabled={disabled || !message.trim()}
-					onClick={onSendMessage}
-					size="icon"
-				>
-					<ArrowUpIcon className="size-4" />
-					<span className="sr-only">Send message</span>
-				</Button>
+				{isRunning && onStop ? (
+					<Button
+						className="mb-1 size-8 shrink-0 rounded-full"
+						onClick={onStop}
+						size="icon"
+						variant="destructive"
+					>
+						<SquareIcon className="size-3" />
+						<span className="sr-only">Stop</span>
+					</Button>
+				) : (
+					<Button
+						className="mb-1 size-8 shrink-0 rounded-full"
+						disabled={disabled || !message.trim()}
+						onClick={onSendMessage}
+						size="icon"
+					>
+						<ArrowUpIcon className="size-4" />
+						<span className="sr-only">Send message</span>
+					</Button>
+				)}
 			</div>
 		</div>
 	);
