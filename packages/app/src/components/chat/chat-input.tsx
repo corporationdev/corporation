@@ -1,6 +1,7 @@
 import { ArrowUpIcon } from "lucide-react";
 import { useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 export function ChatInput({
 	message,
@@ -17,6 +18,23 @@ export function ChatInput({
 }) {
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+	const adjustHeight = useCallback(() => {
+		const textarea = textareaRef.current;
+		if (!textarea) {
+			return;
+		}
+		textarea.style.height = "auto";
+		textarea.style.height = `${textarea.scrollHeight}px`;
+	}, []);
+
+	const handleChange = useCallback(
+		(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+			onMessageChange(e.target.value);
+			adjustHeight();
+		},
+		[onMessageChange, adjustHeight]
+	);
+
 	const handleKeyDown = useCallback(
 		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
 			if (event.key === "Enter" && !event.shiftKey) {
@@ -30,10 +48,10 @@ export function ChatInput({
 	return (
 		<div className="sticky bottom-0 mx-auto w-full max-w-[44rem] px-4 pb-4">
 			<div className="flex items-end gap-2 rounded-2xl border border-input bg-background px-4 py-2 shadow-sm transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
-				<textarea
-					className="max-h-32 min-h-10 w-full resize-none bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground"
+				<Textarea
+					className="max-h-48 min-h-[2.5rem]"
 					disabled={disabled}
-					onChange={(e) => onMessageChange(e.target.value)}
+					onChange={handleChange}
 					onKeyDown={handleKeyDown}
 					placeholder={placeholder}
 					ref={textareaRef}
