@@ -33,8 +33,6 @@ export default defineSchema(
 			envByPath: v.optional(
 				v.record(v.string(), v.record(v.string(), v.string()))
 			),
-			rebuildIntervalMs: v.optional(v.number()),
-			scheduledRebuildId: v.optional(v.id("_scheduled_functions")),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
