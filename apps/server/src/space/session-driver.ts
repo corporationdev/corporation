@@ -1,3 +1,4 @@
+import { env } from "@corporation/env/server";
 import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Session, SessionEvent } from "sandbox-agent";
@@ -12,6 +13,7 @@ const DEFAULT_SESSION_TITLE = "New Chat";
 const DEFAULT_AGENT = "opencode";
 const DEFAULT_MODEL_ID = "anthropic/claude-opus-4-6";
 const SESSION_EVENT_NAME = "session.event";
+const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
 
 function abortAllSessionStreams(ctx: SpaceRuntimeContext): void {
 	for (const unsubscribe of ctx.vars.sessionStreams.values()) {
@@ -96,6 +98,15 @@ async function sendMessage(
 	sessionId: string,
 	content: string
 ): Promise<void> {
+	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
+	if (isFirstMessageForSpace) {
+		ctx.waitUntil(
+			requestAutoBranchName(ctx, content).catch((error) => {
+				console.warn("Failed to trigger auto branch naming", error);
+			})
+		);
+	}
+
 	await ensureSession(ctx, sessionId);
 	const existingSession = await ctx.vars.sandboxClient.getSession(sessionId);
 
@@ -112,9 +123,50 @@ async function sendMessage(
 		await applyDefaultModel(session);
 	}
 
-	session.prompt([{ type: "text", text: content }]).catch((error) => {
-		console.error("Failed to send session prompt", error);
+	ctx.waitUntil(
+		session
+			.prompt([{ type: "text", text: content }])
+			.then(() => undefined)
+			.catch((error) => {
+				console.error("Failed to send session prompt", error);
+			})
+	);
+}
+
+async function hasNoSessionTabs(ctx: SpaceRuntimeContext): Promise<boolean> {
+	const existingTabs = await ctx.vars.db
+		.select({ id: tabs.id })
+		.from(tabs)
+		.where(eq(tabs.type, "session"))
+		.limit(1);
+	return existingTabs.length === 0;
+}
+
+async function requestAutoBranchName(
+	ctx: SpaceRuntimeContext,
+	firstMessage: string
+): Promise<void> {
+	const convexSiteUrl = env.CONVEX_SITE_URL;
+	const internalApiKey = env.INTERNAL_API_KEY;
+	if (!(convexSiteUrl && internalApiKey)) {
+		return;
+	}
+
+	const response = await fetch(`${convexSiteUrl}${AUTO_BRANCH_NAME_ENDPOINT}`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: `Bearer ${internalApiKey}`,
+		},
+		body: JSON.stringify({
+			sandboxId: ctx.state.sandboxId,
+			firstMessage,
+		}),
 	});
+
+	if (!response.ok) {
+		throw new Error(`Auto branch endpoint failed: ${response.status}`);
+	}
 }
 
 async function applyDefaultModel(session: Session): Promise<void> {

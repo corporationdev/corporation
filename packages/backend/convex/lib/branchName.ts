@@ -124,8 +124,19 @@ const NOUNS = [
 	"moth",
 ];
 
+const ADJECTIVE_SET = new Set(ADJECTIVES);
+const NOUN_SET = new Set(NOUNS);
+
 export function generateBranchName(): string {
 	const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
 	const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
 	return `${adjective}-${noun}`;
+}
+
+export function isGeneratedBranchName(branchName: string): boolean {
+	const [adjective, noun, ...rest] = branchName.split("-");
+	if (!(adjective && noun) || rest.length > 0) {
+		return false;
+	}
+	return ADJECTIVE_SET.has(adjective) && NOUN_SET.has(noun);
 }
