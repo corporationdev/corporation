@@ -107,6 +107,7 @@ function stopDaemon(): void {
 	spawnDaemon(["daemon", "stop", "--host", HOST, "--port", String(PORT)]);
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one-off script
 function extractModels(
 	agents: Array<{ id: string; configOptions?: ConfigOption[] | null }>
 ): Record<string, AgentEntry> {

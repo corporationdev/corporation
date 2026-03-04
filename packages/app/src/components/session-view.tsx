@@ -439,10 +439,10 @@ const ConnectedSessionView: FC<{
 						<AgentModelPicker
 							agent={agent}
 							agentLocked
-							modelLocked
 							agentModels={agentModels}
 							defaultModels={defaultModels}
 							modelId={modelId}
+							modelLocked
 							onAgentChange={setAgentOverride}
 							onModelIdChange={setModelIdOverride}
 						/>
