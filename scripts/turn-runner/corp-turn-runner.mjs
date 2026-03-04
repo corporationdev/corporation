@@ -184,6 +184,7 @@ async function sendPromptViaRawAcp({
 	prompt,
 	pendingResponseResolvers,
 	timeoutMs,
+	onClientEnvelope,
 }) {
 	const requestId = `prompt-${crypto.randomUUID()}`;
 	const waiter = createResponseWaiter(
@@ -191,24 +192,27 @@ async function sendPromptViaRawAcp({
 		requestId,
 		timeoutMs
 	);
+	const requestEnvelope = {
+		jsonrpc: "2.0",
+		id: requestId,
+		method: "session/prompt",
+		params: { sessionId, prompt },
+	};
 	const controller = new AbortController();
 	const fetchTimeout = setTimeout(() => {
 		controller.abort();
 	}, timeoutMs);
 
 	try {
+		onClientEnvelope?.(requestEnvelope);
+
 		const response = await fetch(new URL(acpPath, agentUrl), {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 				Accept: "application/json",
 			},
-			body: JSON.stringify({
-				jsonrpc: "2.0",
-				id: requestId,
-				method: "session/prompt",
-				params: { sessionId, prompt },
-			}),
+			body: JSON.stringify(requestEnvelope),
 			signal: controller.signal,
 		});
 		clearTimeout(fetchTimeout);
@@ -389,6 +393,7 @@ async function main() {
 			prompt,
 			pendingResponseResolvers,
 			timeoutMs: rawPromptResponseTimeoutMs,
+			onClientEnvelope: (envelope) => queueEnvelopeEvent(envelope, "outbound"),
 		});
 
 		await queueCallback("completed");
