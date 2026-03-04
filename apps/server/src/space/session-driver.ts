@@ -373,10 +373,6 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 	});
 }
 
-function onSleep(): Promise<void> {
-	return Promise.resolve();
-}
-
 type SessionPublicActions = {
 	sendMessage: (
 		ctx: SpaceRuntimeContext,
@@ -405,7 +401,6 @@ type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
 
 export const sessionDriver: SessionDriver = {
 	kind: "session",
-	onSleep,
 	listTabs,
 	publicActions: {
 		sendMessage,

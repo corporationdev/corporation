@@ -111,10 +111,6 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<PreviewTab[]> {
 	}));
 }
 
-async function onSleep(): Promise<void> {
-	// No persistent connections to clean up for preview tabs
-}
-
 type PreviewPublicActions = {
 	ensurePreview: (
 		ctx: SpaceRuntimeContext,
@@ -130,7 +126,6 @@ type PreviewDriver = TabDriverLifecycle<PreviewPublicActions> & {
 
 export const previewDriver: PreviewDriver = {
 	kind: "preview",
-	onSleep,
 	listTabs,
 	publicActions: {
 		ensurePreview,

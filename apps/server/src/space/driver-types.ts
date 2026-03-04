@@ -11,7 +11,7 @@ export type DriverActionMap = Record<string, DriverAction>;
 export type TabDriverLifecycle<TPublicActions extends DriverActionMap> = {
 	kind: TabType;
 	onWake?: (vars: SpaceVars) => Promise<void>;
-	onSleep: (ctx: SpaceRuntimeContext) => Promise<void>;
+	onSleep?: (ctx: SpaceRuntimeContext) => Promise<void>;
 	listTabs: (ctx: SpaceRuntimeContext) => Promise<SpaceTab[]>;
 	publicActions: TPublicActions;
 };
