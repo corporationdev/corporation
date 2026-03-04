@@ -27,7 +27,7 @@ const template = Template()
 	.aptInstall(["ca-certificates", "git", "zip", "unzip", "zsh", "curl", "tmux"])
 	// TODO: move cloudflared to dynamic installation once we add that capability
 	.runCmd(
-		'set -euo pipefail; ARCH=$(dpkg --print-architecture); curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb" -o /tmp/cloudflared.deb; dpkg -i /tmp/cloudflared.deb; rm -f /tmp/cloudflared.deb; cloudflared --version'
+		'set -euo pipefail; ARCH=$(dpkg --print-architecture); curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH.deb" -o /tmp/cloudflared.deb; dpkg -i /tmp/cloudflared.deb; rm -f /tmp/cloudflared.deb; cloudflared --version'
 	)
 	.runCmd(
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell variable interpolation, not JS templates

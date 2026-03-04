@@ -191,6 +191,10 @@ async function sendPromptViaRawAcp({
 		requestId,
 		timeoutMs
 	);
+	const controller = new AbortController();
+	const fetchTimeout = setTimeout(() => {
+		controller.abort();
+	}, timeoutMs);
 
 	try {
 		const response = await fetch(new URL(acpPath, agentUrl), {
@@ -205,7 +209,9 @@ async function sendPromptViaRawAcp({
 				method: "session/prompt",
 				params: { sessionId, prompt },
 			}),
+			signal: controller.signal,
 		});
+		clearTimeout(fetchTimeout);
 
 		const bodyText = await response.text().catch(() => "");
 		if (!response.ok) {
@@ -233,7 +239,14 @@ async function sendPromptViaRawAcp({
 		waiter.cancel();
 		return envelopeResult(envelope) ?? {};
 	} catch (error) {
+		clearTimeout(fetchTimeout);
 		waiter.cancel();
+		if (error instanceof Error && error.name === "AbortError") {
+			throw new Error(
+				`Timed out waiting for ACP prompt transport after ${timeoutMs}ms`,
+				{ cause: error }
+			);
+		}
 		throw error;
 	}
 }
