@@ -138,16 +138,12 @@ export async function startTurnRunner(
 	}
 	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
 	const promptJson = JSON.stringify([{ type: "text", text: params.content }]);
-	const now = Date.now();
 
 	await ctx.vars.db
 		.update(sessions)
 		.set({
 			runId: turnId,
 			runStatus: RUN_STATUS_RUNNING,
-			runStartedAt: now,
-			runCompletedAt: null,
-			lastEventAt: now,
 			callbackToken,
 			runError: null,
 		})
@@ -174,7 +170,6 @@ export async function startTurnRunner(
 			.update(sessions)
 			.set({
 				runStatus: RUN_STATUS_FAILED,
-				runCompletedAt: Date.now(),
 				runError: {
 					message: error instanceof Error ? error.message : String(error),
 				},
@@ -220,22 +215,15 @@ export async function ingestTurnRunnerBatch(
 		throw new Error("Invalid callback token");
 	}
 
-	const now = Date.now();
 	if (parsed.kind === "events") {
 		await insertSessionEvents(ctx, session.id, parsed.events);
+		return;
 	}
-
-	const basePatch = { lastEventAt: now };
 
 	if (parsed.kind === "completed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({
-				...basePatch,
-				runStatus: RUN_STATUS_COMPLETED,
-				runCompletedAt: now,
-				runError: null,
-			})
+			.set({ runStatus: RUN_STATUS_COMPLETED, runError: null })
 			.where(eq(sessions.id, session.id));
 		return;
 	}
@@ -243,22 +231,11 @@ export async function ingestTurnRunnerBatch(
 	if (parsed.kind === "failed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({
-				...basePatch,
-				runStatus: RUN_STATUS_FAILED,
-				runCompletedAt: now,
-				runError: parsed.error,
-			})
+			.set({ runStatus: RUN_STATUS_FAILED, runError: parsed.error })
 			.where(eq(sessions.id, session.id));
 		log.error(
 			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },
 			"turn runner reported failure"
 		);
-		return;
 	}
-
-	await ctx.vars.db
-		.update(sessions)
-		.set(basePatch)
-		.where(eq(sessions.id, session.id));
 }

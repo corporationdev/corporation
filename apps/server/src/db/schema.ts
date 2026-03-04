@@ -61,9 +61,6 @@ export const sessions = sqliteTable("sessions", {
 	runStatus: text("run_status", { enum: runStatusValues })
 		.notNull()
 		.default("idle"),
-	runStartedAt: integer("run_started_at", { mode: "number" }),
-	runCompletedAt: integer("run_completed_at", { mode: "number" }),
-	lastEventAt: integer("last_event_at", { mode: "number" }),
 	callbackToken: text("callback_token"),
 	runError: text("run_error", { mode: "json" }),
 });
