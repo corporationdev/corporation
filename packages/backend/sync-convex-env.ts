@@ -43,6 +43,7 @@ const mergedEnv = {
 	...runtime.convexSyncEnv,
 };
 
+let failedSetCount = 0;
 for (const [key, value] of Object.entries(mergedEnv)) {
 	if (!value) {
 		continue;
@@ -59,5 +60,12 @@ for (const [key, value] of Object.entries(mergedEnv)) {
 	);
 	if (result.status !== 0) {
 		console.error(`Failed to set ${key}. Continuing.`);
+		failedSetCount += 1;
 	}
+}
+
+if (failedSetCount > 0) {
+	throw new Error(
+		`Failed to sync ${failedSetCount} environment variable${failedSetCount === 1 ? "" : "s"} to Convex.`
+	);
 }
