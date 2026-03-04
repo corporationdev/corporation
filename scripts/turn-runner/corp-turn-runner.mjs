@@ -5,8 +5,8 @@ import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { SandboxAgent } from "sandbox-agent";
 
-const FLUSH_INTERVAL_MS = 75;
-const MAX_BATCH_SIZE = 10;
+const FLUSH_INTERVAL_MS = 0;
+const MAX_BATCH_SIZE = 1;
 const CALLBACK_TIMEOUT_MS = 10_000;
 const CALLBACK_MAX_ATTEMPTS = 8;
 const LOG_FILE = "/tmp/corp-turn-runner.log";
