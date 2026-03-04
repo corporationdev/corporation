@@ -1,8 +1,7 @@
 import { env } from "@corporation/env/server";
-import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
-import type { Session, SessionEvent } from "sandbox-agent";
-import { type SessionTab, tabs } from "../db/schema";
+import type { AgentListResponse, Session, SessionEvent } from "sandbox-agent";
+import { type SessionTab, sessions, tabs } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
@@ -10,8 +9,6 @@ import { publishToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
-const DEFAULT_AGENT = "opencode";
-const DEFAULT_MODEL_ID = "anthropic/claude-opus-4-6";
 const SESSION_EVENT_NAME = "session.event";
 const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
 const ACP_SERVERS_PATH = "/v1/acp";
@@ -98,7 +95,9 @@ async function ensureSession(
 async function sendMessage(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
-	content: string
+	content: string,
+	agent: string,
+	modelId: string
 ): Promise<void> {
 	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
 	if (isFirstMessageForSpace) {
@@ -110,19 +109,19 @@ async function sendMessage(
 	}
 
 	await ensureSession(ctx, sessionId);
-	const existingSession = await ctx.vars.sandboxClient.getSession(sessionId);
 
 	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
 		id: sessionId,
-		agent: DEFAULT_AGENT,
+		agent,
 		sessionInit: {
 			cwd: ctx.state.workdir,
 			mcpServers: [],
 		},
 	});
 	ensureEventListener(ctx, session);
-	if (!existingSession) {
-		await applyDefaultModel(session);
+	const modelApplied = await applyModel(session, modelId);
+	if (modelApplied) {
+		await ctx.vars.persist.setModelId(sessionId, modelId);
 	}
 
 	ctx.waitUntil(
@@ -171,36 +170,36 @@ async function requestAutoBranchName(
 	}
 }
 
-async function applyDefaultModel(session: Session): Promise<void> {
+async function applyModel(session: Session, modelId: string): Promise<boolean> {
 	try {
-		await session.send("unstable/set_session_model", {
-			modelId: DEFAULT_MODEL_ID,
-		});
-		return;
+		await session.send("unstable/set_session_model", { modelId });
+		return true;
 	} catch {
 		// Fall through to protocol-native method name.
 	}
 
 	try {
-		await session.send("session/set_model", {
-			modelId: DEFAULT_MODEL_ID,
-		});
+		await session.send("session/set_model", { modelId });
+		return true;
 	} catch (error) {
-		console.warn("Failed to set default session model", error);
+		console.warn("Failed to set session model", error);
+		return false;
 	}
+}
+
+function listAgents(ctx: SpaceRuntimeContext): Promise<AgentListResponse> {
+	return ctx.vars.sandboxClient.listAgents({ config: true });
 }
 
 async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
 ): Promise<void> {
-	// We open a fresh ACP connection rather than going through the sandbox-agent
-	// SDK, whose internal write queue serializes all messages — a cancel
-	// notification would get stuck behind the in-flight prompt POST.
-	const persist = new RivetSessionPersistDriver(ctx, {
-		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
-	});
-	const record = await persist.getSession(sessionId);
+	// We read session data directly from our persist driver rather than going
+	// through the sandbox-agent SDK, whose internal write queue serializes all
+	// messages — a cancel notification would get stuck behind the in-flight
+	// prompt POST.
+	const record = await ctx.vars.persist.getSession(sessionId);
 	if (!record) {
 		return;
 	}
@@ -261,10 +260,7 @@ async function getTranscript(
 	offset: number,
 	limit?: number
 ): Promise<SessionEvent[]> {
-	const persist = new RivetSessionPersistDriver(ctx, {
-		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
-	});
-	const page = await persist.listEvents({
+	const page = await ctx.vars.persist.listEvents({
 		sessionId,
 		cursor: offset > 0 ? String(offset) : undefined,
 		limit,
@@ -273,11 +269,7 @@ async function getTranscript(
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
-	const persist = new RivetSessionPersistDriver(ctx, {
-		maxEventsPerSession: Number.MAX_SAFE_INTEGER,
-	});
-
-	const [rows, sessionsPage] = await Promise.all([
+	const [rows, sessionRows] = await Promise.all([
 		ctx.vars.db
 			.select({
 				tabId: tabs.id,
@@ -298,10 +290,16 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 				)
 			)
 			.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt)),
-		persist.listSessions(),
+		ctx.vars.db
+			.select({
+				id: sessions.id,
+				agent: sessions.agent,
+				modelId: sessions.modelId,
+			})
+			.from(sessions),
 	]);
 
-	const sessionsByKey = new Map(sessionsPage.items.map((s) => [s.id, s]));
+	const sessionsByKey = new Map(sessionRows.map((s) => [s.id, s]));
 
 	return rows.map((row) => {
 		const sessionId = row.sessionId as string;
@@ -316,6 +314,7 @@ async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
 			archivedAt: row.archivedAt,
 			sessionId,
 			agent: record?.agent ?? null,
+			modelId: record?.modelId ?? null,
 		};
 	});
 }
@@ -329,7 +328,9 @@ type SessionPublicActions = {
 	sendMessage: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
-		content: string
+		content: string,
+		agent: string,
+		modelId: string
 	) => Promise<void>;
 	cancelSession: (ctx: SpaceRuntimeContext, sessionId: string) => Promise<void>;
 	getTranscript: (
@@ -338,6 +339,7 @@ type SessionPublicActions = {
 		offset: number,
 		limit?: number
 	) => Promise<SessionEvent[]>;
+	listAgents: (ctx: SpaceRuntimeContext) => Promise<AgentListResponse>;
 };
 
 type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
@@ -352,5 +354,6 @@ export const sessionDriver: SessionDriver = {
 		sendMessage,
 		cancelSession,
 		getTranscript,
+		listAgents,
 	},
 };

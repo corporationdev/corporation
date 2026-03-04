@@ -3,6 +3,8 @@ import { create } from "zustand";
 
 type PendingMessage = {
 	text: string;
+	agent: string;
+	modelId: string;
 	/** Set when creating a brand new space (no existing space yet) */
 	environmentId?: Id<"environments">;
 	/** Set when creating a session in an existing space */

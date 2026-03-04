@@ -87,9 +87,14 @@ export function SpaceLayout() {
 					) : (
 						activeTabConfig.render({
 							actor,
-							tabId: tab?.id,
+							tab: tab
+								? tabs.find((t) => {
+										const param = tabRegistry[t.type].tabParamFromSpaceTab(t);
+										return param?.type === tab.type && param.id === tab.id;
+									})
+								: undefined,
+							routeParamId: tab?.id,
 							spaceSlug,
-							tabs,
 						})
 					)}
 				</div>

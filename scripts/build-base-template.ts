@@ -37,7 +37,7 @@ const template = Template()
 		`curl -fsSL https://releases.rivet.dev/sandbox-agent/${SANDBOX_AGENT_CLI_VERSION}/install.sh | sh`
 	)
 	.runCmd(
-		"set -euo pipefail; sandbox-agent install-agent claude & pid1=$!; sandbox-agent install-agent codex & pid2=$!; sandbox-agent install-agent opencode & pid3=$!; sandbox-agent install-agent amp & pid4=$!; sandbox-agent install-agent pi & pid5=$!; wait $pid1; wait $pid2; wait $pid3; wait $pid4; wait $pid5"
+		"set -euo pipefail; sandbox-agent install-agent claude & pid1=$!; sandbox-agent install-agent codex & pid2=$!; sandbox-agent install-agent opencode & pid3=$!; sandbox-agent install-agent amp & pid4=$!; sandbox-agent install-agent pi & pid5=$!; sandbox-agent install-agent cursor & pid6=$!; wait $pid1; wait $pid2; wait $pid3; wait $pid4; wait $pid5; wait $pid6"
 	);
 
 console.log("Building base template…");

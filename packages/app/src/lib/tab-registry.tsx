@@ -7,9 +7,9 @@ import type { SpaceActor } from "@/lib/rivetkit";
 
 type TabRenderContext = {
 	actor: SpaceActor;
-	tabId: string | undefined;
+	tab: SpaceTab | undefined;
+	routeParamId: string | undefined;
 	spaceSlug: string | undefined;
-	tabs: SpaceTab[];
 };
 
 type TabRouteParam = {
@@ -36,9 +36,17 @@ export const tabRegistry: TabConfigMap = {
 	session: {
 		requiresSandbox: false,
 		defaultTitle: "New Chat",
-		render: ({ actor, tabId, spaceSlug }) => (
-			<SessionView actor={actor} sessionId={tabId} spaceSlug={spaceSlug} />
-		),
+		render: ({ actor, tab, routeParamId, spaceSlug }) => {
+			const sessionTab = tab?.type === "session" ? tab : undefined;
+			return (
+				<SessionView
+					actor={actor}
+					sessionId={routeParamId}
+					sessionTab={sessionTab}
+					spaceSlug={spaceSlug}
+				/>
+			);
+		},
 		tabParamFromSpaceTab: (tab) => {
 			if (tab.type !== "session") {
 				return undefined;
@@ -49,11 +57,17 @@ export const tabRegistry: TabConfigMap = {
 	terminal: {
 		requiresSandbox: true,
 		defaultTitle: "Terminal",
-		render: ({ actor, tabId }) => {
-			if (!tabId) {
+		render: ({ actor, tab }) => {
+			if (tab?.type !== "terminal") {
 				return null;
 			}
-			return <TerminalView actor={actor} key={tabId} terminalId={tabId} />;
+			return (
+				<TerminalView
+					actor={actor}
+					key={tab.terminalId}
+					terminalId={tab.terminalId}
+				/>
+			);
 		},
 		tabParamFromSpaceTab: (tab) => {
 			if (tab.type !== "terminal") {
@@ -65,14 +79,11 @@ export const tabRegistry: TabConfigMap = {
 	preview: {
 		requiresSandbox: true,
 		defaultTitle: "Preview",
-		render: ({ tabId, tabs }) => {
-			const previewTab = tabs.find(
-				(t) => t.type === "preview" && t.previewId === tabId
-			);
-			if (!previewTab || previewTab.type !== "preview") {
+		render: ({ tab }) => {
+			if (tab?.type !== "preview") {
 				return null;
 			}
-			return <PreviewView key={tabId} url={previewTab.url} />;
+			return <PreviewView key={tab.previewId} url={tab.url} />;
 		},
 		tabParamFromSpaceTab: (tab) => {
 			if (tab.type !== "preview") {

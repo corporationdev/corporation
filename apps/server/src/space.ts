@@ -1,6 +1,5 @@
 import { env } from "@corporation/env/server";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
-import { RivetSessionPersistDriver } from "@sandbox-agent/persist-rivet";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
@@ -8,7 +7,8 @@ import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
 import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
-import { previews, type SpaceTab, tabs, terminals } from "./db/schema";
+import { type SpaceTab, schema, tabs } from "./db/schema";
+import { SqliteSessionPersistDriver } from "./db/session-persist-driver";
 import {
 	augmentContext,
 	collectDriverActions,
@@ -49,18 +49,11 @@ export const space = actor({
 			agentUrl: input.agentUrl,
 			sandboxId: input.sandboxId,
 			workdir: input.workdir,
-			_sandboxAgentPersist: { sessions: {}, events: {} },
 		};
 	},
 
 	createVars: async (c, driverCtx: DriverContext): Promise<SpaceVars> => {
-		const db = drizzle(driverCtx.state.storage, {
-			schema: {
-				tabs,
-				terminals,
-				previews,
-			},
-		});
+		const db = drizzle(driverCtx.state.storage, { schema });
 
 		await migrate(db, bundledMigrations);
 
@@ -68,9 +61,7 @@ export const space = actor({
 			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const persist = new RivetSessionPersistDriver(c, {
-			maxEventsPerSession: Number.MAX_SAFE_INTEGER,
-		});
+		const persist = new SqliteSessionPersistDriver(db);
 		const sandboxClient = await SandboxAgentClient.connect({
 			baseUrl: c.state.agentUrl,
 			persist,
@@ -81,6 +72,7 @@ export const space = actor({
 
 		const vars: SpaceVars = {
 			db,
+			persist,
 			sandbox,
 			sandboxClient,
 			sessionStreams: new Map(),
