@@ -41,7 +41,7 @@ const actorDO = DurableObjectNamespace("actor-do", {
 
 const actorKV = await KVNamespace("actor-kv");
 const devCallbackTunnel =
-	stageKind === "dev"
+	stageKind === "dev" || stageKind === "sandbox"
 		? await quickTunnel(app, "http://localhost:3000")
 		: undefined;
 
@@ -55,14 +55,11 @@ export const server = await Worker("agent-server", {
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
 		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
 		...runtime.serverBindings,
-		// In local dev, use a Quick Tunnel URL so sandbox runners can reach the
+		// In dev/sandbox, use a Quick Tunnel URL so sandbox runners can reach the
 		// callback endpoint from inside E2B.
-		SERVER_PUBLIC_URL:
-			stageKind === "dev"
-				? devCallbackTunnel
-					? `${devCallbackTunnel.tunnelUrl}/api`
-					: runtime.serverBindings.SERVER_PUBLIC_URL
-				: runtime.serverBindings.SERVER_PUBLIC_URL,
+		SERVER_PUBLIC_URL: devCallbackTunnel
+			? `${devCallbackTunnel.tunnelUrl}/api`
+			: runtime.serverBindings.SERVER_PUBLIC_URL,
 		ACTOR_DO: actorDO,
 		ACTOR_KV: actorKV,
 	},

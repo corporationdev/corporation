@@ -35,11 +35,10 @@ export function resolveRuntimeContext(
 	if (stageKind === "dev") {
 		const CONVEX_URL = "https://hip-impala-208.convex.cloud";
 		const CONVEX_SITE_URL = "https://hip-impala-208.convex.site";
-		const SERVER_PUBLIC_URL = process.env.SERVER_PUBLIC_URL;
-
-		if (!SERVER_PUBLIC_URL) {
-			throw new Error(`Missing SERVER_PUBLIC_URL for dev stage "${stage}"`);
-		}
+		// Alchemy overrides SERVER_PUBLIC_URL with the tunnel URL at deploy time,
+		// so this default is just a placeholder for config resolution.
+		const SERVER_PUBLIC_URL =
+			process.env.SERVER_PUBLIC_URL ?? "http://localhost:3000";
 
 		return {
 			webClientEnv: {
@@ -67,11 +66,11 @@ export function resolveRuntimeContext(
 	if (stageKind === "sandbox") {
 		const CONVEX_URL = "http://localhost:3210";
 		const CONVEX_SITE_URL = "http://localhost:3211";
-		const SERVER_PUBLIC_URL = process.env.SERVER_PUBLIC_URL;
+		// Alchemy overrides SERVER_PUBLIC_URL with the tunnel URL at deploy time,
+		// so this default is just a placeholder for config resolution.
+		const SERVER_PUBLIC_URL =
+			process.env.SERVER_PUBLIC_URL ?? "http://localhost:3000";
 
-		if (!SERVER_PUBLIC_URL) {
-			throw new Error(`Missing SERVER_PUBLIC_URL for dev stage "${stage}"`);
-		}
 		return {
 			webClientEnv: {
 				VITE_SERVER_URL: "/api",
