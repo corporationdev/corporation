@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "sandbox-agent": "0.2.1"
+    "acp-http-client": "0.2.1"
   }
 }
