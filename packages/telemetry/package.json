@@ -1,0 +1,22 @@
+{
+  "name": "@corporation/telemetry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-async-hooks": "^2.2.0",
+    "@opentelemetry/core": "^2.2.0",
+    "@opentelemetry/otlp-transformer": "^0.207.0",
+    "@opentelemetry/resources": "^2.2.0",
+    "@opentelemetry/sdk-trace-base": "^2.2.0",
+    "@opentelemetry/semantic-conventions": "^1.38.0"
+  },
+  "devDependencies": {
+    "@corporation/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

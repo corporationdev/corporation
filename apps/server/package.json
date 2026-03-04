@@ -17,6 +17,7 @@
     "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
+    "@corporation/telemetry": "workspace:*",
     "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@nangohq/node": "catalog:",

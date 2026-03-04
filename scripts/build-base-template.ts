@@ -49,6 +49,10 @@ const template = Template()
 	)
 	.runCmd(
 		"set -euo pipefail; chmod +x /opt/corporation/turn-runner/corp-turn-runner.mjs; ln -sf /opt/corporation/turn-runner/corp-turn-runner.mjs /usr/local/bin/corp-turn-runner"
+	)
+	.copy("otel/", "/opt/corporation/otel/")
+	.runCmd(
+		"set -euo pipefail; cd /opt/corporation/otel; npm install --omit=dev --no-audit --no-fund"
 	);
 
 console.log("Building base template…");

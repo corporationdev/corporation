@@ -97,6 +97,21 @@ async function launchTurnRunner(
 		callbackToken: string;
 	}
 ): Promise<number | null> {
+	// Propagate trace context so sandbox spans link to the parent trace
+	const carrier = telemetry.propagate();
+
+	const traceEnvs: Record<string, string> = {};
+	if (carrier.traceparent) {
+		traceEnvs.TRACEPARENT = carrier.traceparent;
+		traceEnvs.NODE_OPTIONS = "--import /opt/corporation/otel/tracing.mjs";
+	}
+	if (env.AXIOM_API_TOKEN) {
+		traceEnvs.AXIOM_API_TOKEN = env.AXIOM_API_TOKEN;
+	}
+	if (env.AXIOM_DATASET) {
+		traceEnvs.AXIOM_DATASET = env.AXIOM_DATASET;
+	}
+
 	const launchCommand = [
 		"set -euo pipefail",
 		`command -v ${TURN_RUNNER_COMMAND} >/dev/null 2>&1`,
@@ -121,6 +136,7 @@ async function launchTurnRunner(
 			CALLBACK_URL: params.callbackUrl,
 			CALLBACK_TOKEN: params.callbackToken,
 			CWD: ctx.state.workdir,
+			...traceEnvs,
 		},
 	});
 

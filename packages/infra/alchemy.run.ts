@@ -54,6 +54,8 @@ export const server = await Worker("agent-server", {
 		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
 		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
+		AXIOM_API_TOKEN: alchemy.secret(process.env.AXIOM_API_TOKEN),
+		AXIOM_DATASET: process.env.AXIOM_DATASET ?? "traces",
 		...runtime.serverBindings,
 		// In dev/sandbox, use a Quick Tunnel URL so sandbox runners can reach the
 		// callback endpoint from inside E2B.
