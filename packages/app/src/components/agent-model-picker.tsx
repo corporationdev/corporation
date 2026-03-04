@@ -92,7 +92,7 @@ export const AgentModelPicker: FC<{
 				</DropdownMenuTrigger>
 				<DropdownMenuContent>
 					{KNOWN_AGENTS.map((id) => (
-						<DropdownMenuItem key={id} onClick={() => handleAgentChange(id)}>
+						<DropdownMenuItem key={id} onSelect={() => handleAgentChange(id)}>
 							{AGENT_LABELS[id] ?? id}
 						</DropdownMenuItem>
 					))}
@@ -118,7 +118,7 @@ export const AgentModelPicker: FC<{
 						{models.map((m) => (
 							<DropdownMenuItem
 								key={m.id}
-								onClick={() => onModelIdChange(m.id)}
+								onSelect={() => onModelIdChange(m.id)}
 							>
 								{m.name ?? m.id}
 							</DropdownMenuItem>

@@ -119,8 +119,10 @@ async function sendMessage(
 		},
 	});
 	ensureEventListener(ctx, session);
-	await applyModel(session, modelId);
-	await ctx.vars.persist.setModelId(sessionId, modelId);
+	const modelApplied = await applyModel(session, modelId);
+	if (modelApplied) {
+		await ctx.vars.persist.setModelId(sessionId, modelId);
+	}
 
 	ctx.waitUntil(
 		session
@@ -168,18 +170,20 @@ async function requestAutoBranchName(
 	}
 }
 
-async function applyModel(session: Session, modelId: string): Promise<void> {
+async function applyModel(session: Session, modelId: string): Promise<boolean> {
 	try {
 		await session.send("unstable/set_session_model", { modelId });
-		return;
+		return true;
 	} catch {
 		// Fall through to protocol-native method name.
 	}
 
 	try {
 		await session.send("session/set_model", { modelId });
+		return true;
 	} catch (error) {
 		console.warn("Failed to set session model", error);
+		return false;
 	}
 }
 

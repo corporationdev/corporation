@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, or } from "drizzle-orm";
 import type {
 	ListEventsRequest,
 	ListPage,
@@ -9,6 +9,14 @@ import type {
 } from "sandbox-agent";
 import type { SpaceDatabase } from "../space/types";
 import { sessionEvents, sessions } from "./schema";
+
+type SessionPageSortDirection = "asc" | "desc";
+
+type SessionPageCursor = {
+	createdAt: number;
+	id: string;
+	direction: SessionPageSortDirection;
+};
 
 export class SqliteSessionPersistDriver implements SessionPersistDriver {
 	private readonly db: SpaceDatabase;
@@ -34,15 +42,22 @@ export class SqliteSessionPersistDriver implements SessionPersistDriver {
 		request?: ListPageRequest
 	): Promise<ListPage<SessionRecord>> {
 		const limit = request?.limit ?? 100;
-		const conditions = request?.cursor
-			? [gt(sessions.createdAt, Number(request.cursor))]
-			: [];
+		const cursor = this.parseSessionCursor(request?.cursor);
+		const direction = cursor?.direction ?? "desc";
+		const cursorCondition = cursor
+			? this.buildSessionCursorCondition(cursor)
+			: undefined;
 
 		const rows = await this.db
 			.select()
 			.from(sessions)
-			.where(conditions.length > 0 ? and(...conditions) : undefined)
-			.orderBy(desc(sessions.createdAt))
+			.where(cursorCondition)
+			.orderBy(
+				direction === "desc"
+					? desc(sessions.createdAt)
+					: asc(sessions.createdAt),
+				direction === "desc" ? desc(sessions.id) : asc(sessions.id)
+			)
 			.limit(limit + 1);
 
 		const hasMore = rows.length > limit;
@@ -52,7 +67,10 @@ export class SqliteSessionPersistDriver implements SessionPersistDriver {
 		const lastItem = items.at(-1);
 		return {
 			items,
-			nextCursor: hasMore && lastItem ? String(lastItem.createdAt) : undefined,
+			nextCursor:
+				hasMore && lastItem
+					? this.toSessionCursor(lastItem, direction)
+					: undefined,
 		};
 	}
 
@@ -168,5 +186,73 @@ export class SqliteSessionPersistDriver implements SessionPersistDriver {
 			sender: row.sender as SessionEvent["sender"],
 			payload: row.payload as SessionEvent["payload"],
 		};
+	}
+
+	private parseSessionCursor(cursor?: string): SessionPageCursor | null {
+		if (!cursor) {
+			return null;
+		}
+
+		try {
+			const parsed = JSON.parse(cursor) as Partial<SessionPageCursor>;
+			if (
+				(parsed.direction === "asc" || parsed.direction === "desc") &&
+				typeof parsed.createdAt === "number" &&
+				Number.isFinite(parsed.createdAt) &&
+				typeof parsed.id === "string" &&
+				parsed.id.length > 0
+			) {
+				return {
+					createdAt: parsed.createdAt,
+					id: parsed.id,
+					direction: parsed.direction,
+				};
+			}
+		} catch {
+			// Legacy cursors were plain createdAt timestamps.
+		}
+
+		const legacyCreatedAt = Number(cursor);
+		if (Number.isFinite(legacyCreatedAt)) {
+			return {
+				createdAt: legacyCreatedAt,
+				id: "",
+				direction: "desc",
+			};
+		}
+
+		return null;
+	}
+
+	private buildSessionCursorCondition(cursor: SessionPageCursor) {
+		if (cursor.direction === "desc") {
+			if (!cursor.id) {
+				return lt(sessions.createdAt, cursor.createdAt);
+			}
+
+			return or(
+				lt(sessions.createdAt, cursor.createdAt),
+				and(
+					eq(sessions.createdAt, cursor.createdAt),
+					lt(sessions.id, cursor.id)
+				)
+			);
+		}
+
+		return or(
+			gt(sessions.createdAt, cursor.createdAt),
+			and(eq(sessions.createdAt, cursor.createdAt), gt(sessions.id, cursor.id))
+		);
+	}
+
+	private toSessionCursor(
+		session: Pick<SessionRecord, "createdAt" | "id">,
+		direction: SessionPageSortDirection
+	): string {
+		return JSON.stringify({
+			createdAt: session.createdAt,
+			id: session.id,
+			direction,
+		});
 	}
 }

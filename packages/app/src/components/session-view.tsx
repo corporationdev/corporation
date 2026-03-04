@@ -339,6 +339,8 @@ const ConnectedSessionView: FC<{
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
 				console.error("Failed to send pending message", error);
+				pendingRef.current = pending;
+				toast.error("Failed to send message");
 			});
 	}, [
 		actor.connStatus,
