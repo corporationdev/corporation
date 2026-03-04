@@ -50,7 +50,7 @@ async function insertSessionEvents(
 		return;
 	}
 
-	await ctx.vars.db
+	const insertedRows = await ctx.vars.db
 		.insert(sessionEvents)
 		.values(
 			validEvents.map((event) => ({
@@ -63,9 +63,19 @@ async function insertSessionEvents(
 				payload: event.payload as Record<string, unknown>,
 			}))
 		)
-		.onConflictDoNothing({ target: sessionEvents.id });
+		.onConflictDoNothing({ target: sessionEvents.id })
+		.returning({ id: sessionEvents.id });
+
+	if (insertedRows.length === 0) {
+		return;
+	}
+
+	const insertedIds = new Set(insertedRows.map((row) => row.id));
 
 	for (const event of validEvents) {
+		if (!insertedIds.has(event.id)) {
+			continue;
+		}
 		publishToChannel(
 			ctx,
 			createTabChannel("session", sessionId),
