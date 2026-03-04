@@ -23,75 +23,14 @@ export const RUN_STATUS_RUNNING = "running";
 export const RUN_STATUS_COMPLETED = "completed";
 export const RUN_STATUS_FAILED = "failed";
 
-function redactToken(token: string): string {
-	if (token.length <= 8) {
-		return token;
+function nullableMax(a: number | null, b: number | null): number | null {
+	if (a === null) {
+		return b;
 	}
-	return `${token.slice(0, 4)}...${token.slice(-4)}`;
-}
-
-function payloadPreview(value: unknown): string {
-	try {
-		const serialized = JSON.stringify(value);
-		if (!serialized) {
-			return "null";
-		}
-		return serialized.slice(0, 500);
-	} catch {
-		return "[unserializable payload]";
+	if (b === null) {
+		return a;
 	}
-}
-
-function createCallbackToken(): string {
-	return `${crypto.randomUUID()}${crypto.randomUUID()}`;
-}
-
-function normalizeBaseUrl(url: string): string {
-	return url.replace(TRAILING_SLASH_RE, "");
-}
-
-function getTurnRunnerCallbackUrl(ctx: SpaceRuntimeContext): string {
-	const callbackBaseUrl = env.SERVER_PUBLIC_URL;
-	if (!callbackBaseUrl) {
-		log.error(
-			{ actorId: ctx.actorId },
-			"getTurnRunnerCallbackUrl: missing SERVER_PUBLIC_URL"
-		);
-		throw new Error("Missing SERVER_PUBLIC_URL env var");
-	}
-
-	const normalizedBaseUrl = normalizeBaseUrl(callbackBaseUrl);
-	const callbackUrl = `${normalizedBaseUrl}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
-	return callbackUrl;
-}
-
-function createPromptPayload(content: string): string {
-	return JSON.stringify([{ type: "text", text: content }]);
-}
-
-function maxNullable(
-	currentValue: number | null,
-	nextValue: number | null
-): number | null {
-	if (nextValue === null) {
-		return currentValue;
-	}
-	if (currentValue === null) {
-		return nextValue;
-	}
-	return Math.max(currentValue, nextValue);
-}
-
-function getLastEventIndex(
-	payload: TurnRunnerCallbackPayload,
-	insertedMaxEventIndex: number | null,
-	currentLastEventIndex: number | null
-): number | null {
-	let result = maxNullable(currentLastEventIndex, insertedMaxEventIndex);
-	if (typeof payload.lastEventIndex === "number") {
-		result = maxNullable(result, payload.lastEventIndex);
-	}
-	return result;
+	return Math.max(a, b);
 }
 
 async function insertSessionEvents(
@@ -103,15 +42,6 @@ async function insertSessionEvents(
 
 	for (const event of events) {
 		if (event.sessionId !== sessionId) {
-			log.warn(
-				{
-					actorId: ctx.actorId,
-					sessionId,
-					eventId: event.id,
-					eventSessionId: event.sessionId,
-				},
-				"insertSessionEvents: skipping event with mismatched sessionId"
-			);
 			continue;
 		}
 
@@ -135,7 +65,7 @@ async function insertSessionEvents(
 			event
 		);
 
-		maxEventIndex = maxNullable(maxEventIndex, event.eventIndex);
+		maxEventIndex = nullableMax(maxEventIndex, event.eventIndex);
 	}
 
 	return maxEventIndex;
@@ -168,7 +98,6 @@ async function launchTurnRunner(
 				AGENT_URL: ctx.state.agentUrl,
 				CALLBACK_URL: params.callbackUrl,
 				CALLBACK_TOKEN: params.callbackToken,
-				CALLBACK_MODE: "rivet-action",
 				CWD: ctx.state.workdir,
 			},
 		}
@@ -185,14 +114,6 @@ export async function ensureNoRunningTurn(
 		.where(eq(sessions.id, sessionId))
 		.limit(1);
 	if (existingSession[0]?.runStatus === RUN_STATUS_RUNNING) {
-		log.warn(
-			{
-				actorId: ctx.actorId,
-				sessionId,
-				runStatus: existingSession[0]?.runStatus,
-			},
-			"ensureNoRunningTurn: blocked because session already has running turn"
-		);
 		throw new Error("Session already has a running turn");
 	}
 }
@@ -216,9 +137,13 @@ export async function startTurnRunner(
 	}
 
 	const turnId = nanoid();
-	const callbackToken = createCallbackToken();
-	const callbackUrl = getTurnRunnerCallbackUrl(ctx);
-	const promptJson = createPromptPayload(params.content);
+	const callbackToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+	const baseUrl = env.SERVER_PUBLIC_URL;
+	if (!baseUrl) {
+		throw new Error("Missing SERVER_PUBLIC_URL env var");
+	}
+	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
+	const promptJson = JSON.stringify([{ type: "text", text: params.content }]);
 	const now = Date.now();
 
 	await ctx.vars.db
@@ -251,7 +176,7 @@ export async function startTurnRunner(
 	} catch (error) {
 		log.error(
 			{ err: error, actorId: ctx.actorId, sessionId: params.sessionId, turnId },
-			"startTurnRunner: launchTurnRunner failed"
+			"launchTurnRunner failed"
 		);
 		await ctx.vars.db
 			.update(sessions)
@@ -276,12 +201,8 @@ export async function ingestTurnRunnerBatch(
 		parsed = parseTurnRunnerCallbackPayload(payload);
 	} catch (error) {
 		log.error(
-			{
-				err: error,
-				actorId: ctx.actorId,
-				payloadPreview: payloadPreview(payload),
-			},
-			"ingestTurnRunnerBatch: failed to parse callback payload"
+			{ err: error, actorId: ctx.actorId },
+			"failed to parse callback payload"
 		);
 		throw error;
 	}
@@ -290,7 +211,6 @@ export async function ingestTurnRunnerBatch(
 		.select({
 			id: sessions.id,
 			runId: sessions.runId,
-			runStatus: sessions.runStatus,
 			callbackToken: sessions.callbackToken,
 			lastEventIndex: sessions.lastEventIndex,
 		})
@@ -299,44 +219,13 @@ export async function ingestTurnRunnerBatch(
 		.limit(1);
 	const session = rows[0];
 	if (!session) {
-		log.error(
-			{
-				actorId: ctx.actorId,
-				sessionId: parsed.sessionId,
-				turnId: parsed.turnId,
-				kind: parsed.kind,
-			},
-			"ingestTurnRunnerBatch: unknown session"
-		);
 		throw new Error(`Unknown session: ${parsed.sessionId}`);
 	}
 
 	if (session.runId !== parsed.turnId) {
-		log.error(
-			{
-				actorId: ctx.actorId,
-				sessionId: parsed.sessionId,
-				expectedRunId: session.runId,
-				receivedRunId: parsed.turnId,
-				kind: parsed.kind,
-			},
-			"ingestTurnRunnerBatch: stale callback turnId"
-		);
 		throw new Error("Stale callback for non-current run");
 	}
 	if (!session.callbackToken || session.callbackToken !== parsed.token) {
-		log.error(
-			{
-				actorId: ctx.actorId,
-				sessionId: parsed.sessionId,
-				turnId: parsed.turnId,
-				expectedToken: session.callbackToken
-					? redactToken(session.callbackToken)
-					: null,
-				receivedToken: redactToken(parsed.token),
-			},
-			"ingestTurnRunnerBatch: invalid callback token"
-		);
 		throw new Error("Invalid callback token");
 	}
 
@@ -350,14 +239,15 @@ export async function ingestTurnRunnerBatch(
 		);
 	}
 
-	const basePatch = {
-		lastEventAt: now,
-		lastEventIndex: getLastEventIndex(
-			parsed,
-			insertedMaxEventIndex,
-			session.lastEventIndex
-		),
-	};
+	let lastEventIndex = nullableMax(
+		session.lastEventIndex,
+		insertedMaxEventIndex
+	);
+	if (typeof parsed.lastEventIndex === "number") {
+		lastEventIndex = nullableMax(lastEventIndex, parsed.lastEventIndex);
+	}
+
+	const basePatch = { lastEventAt: now, lastEventIndex };
 
 	if (parsed.kind === "completed") {
 		await ctx.vars.db
@@ -384,14 +274,8 @@ export async function ingestTurnRunnerBatch(
 			})
 			.where(eq(sessions.id, session.id));
 		log.error(
-			{
-				actorId: ctx.actorId,
-				sessionId: session.id,
-				turnId: parsed.turnId,
-				error: parsed.error,
-				lastEventIndex: basePatch.lastEventIndex,
-			},
-			"ingestTurnRunnerBatch: marked run failed"
+			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },
+			"turn runner reported failure"
 		);
 		return;
 	}
