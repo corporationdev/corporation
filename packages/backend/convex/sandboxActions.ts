@@ -10,10 +10,6 @@ import { internalAction } from "./_generated/server";
 import { normalizeBranchName, quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import { getSandboxWorkdir, pushBranch, setupSandbox } from "./lib/sandbox";
-import {
-	TURN_RUNNER_PACKAGE_JSON_B64,
-	TURN_RUNNER_SCRIPT_B64,
-} from "./turnRunnerAssets";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -26,16 +22,6 @@ const SERVER_POLL_INTERVAL_MS = 500;
 const SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS = 60 * 60_000;
 // Keep in sync with SANDBOX_TIMEOUT_MS in apps/server/src/space/sandbox-keepalive.ts
 const SANDBOX_TIMEOUT_MS = 900_000;
-const TURN_RUNNER_INSTALL_DIR = "/opt/corporation/turn-runner";
-const TURN_RUNNER_EXECUTABLE = "/usr/local/bin/corp-turn-runner";
-const TURN_RUNNER_SCRIPT = Buffer.from(
-	TURN_RUNNER_SCRIPT_B64,
-	"base64"
-).toString("utf8");
-const TURN_RUNNER_PACKAGE_JSON = Buffer.from(
-	TURN_RUNNER_PACKAGE_JSON_B64,
-	"base64"
-).toString("utf8");
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,30 +73,6 @@ async function ensureSandboxAgentRunning(sandbox: Sandbox): Promise<void> {
 	if (!healthy) {
 		await bootSandboxAgent(sandbox);
 	}
-}
-
-// TODO: Remove this runtime installer once corp-turn-runner is guaranteed in the base template.
-async function ensureTurnRunnerInstalled(sandbox: Sandbox): Promise<void> {
-	// Always sync runner files so existing sandboxes get the latest script version.
-	await sandbox.files.writeFiles([
-		{
-			path: `${TURN_RUNNER_INSTALL_DIR}/corp-turn-runner.mjs`,
-			data: TURN_RUNNER_SCRIPT,
-		},
-		{
-			path: `${TURN_RUNNER_INSTALL_DIR}/package.json`,
-			data: TURN_RUNNER_PACKAGE_JSON,
-		},
-	]);
-
-	await sandbox.commands.run(
-		`set -euo pipefail; cd ${quoteShellArg(TURN_RUNNER_INSTALL_DIR)}; if [ ! -d node_modules/sandbox-agent ]; then npm install --omit=dev --no-audit --no-fund; fi`,
-		{ user: "root" }
-	);
-	await sandbox.commands.run(
-		`set -euo pipefail; chmod +x ${quoteShellArg(`${TURN_RUNNER_INSTALL_DIR}/corp-turn-runner.mjs`)}; ln -sf ${quoteShellArg(`${TURN_RUNNER_INSTALL_DIR}/corp-turn-runner.mjs`)} ${quoteShellArg(TURN_RUNNER_EXECUTABLE)}`,
-		{ user: "root" }
-	);
 }
 
 function getPreviewUrl(sandbox: Sandbox, port: number): string {
@@ -182,7 +144,6 @@ async function provisionSandbox(
 	});
 
 	await bootSandboxAgent(sandbox);
-	await ensureTurnRunnerInstalled(sandbox);
 
 	const agentUrl = getPreviewUrl(sandbox, SANDBOX_AGENT_PORT);
 	return { sandboxId: sandbox.sandboxId, agentUrl };
@@ -214,7 +175,6 @@ async function resolveSandbox(
 
 		const sandbox = await Sandbox.connect(space.sandboxId);
 		await ensureSandboxAgentRunning(sandbox);
-		await ensureTurnRunnerInstalled(sandbox);
 
 		return {
 			sandboxId: sandbox.sandboxId,

@@ -78,7 +78,7 @@ async function launchTurnRunner(
 		'echo "$pid"',
 		"sleep 0.25",
 		'kill -0 "$pid" >/dev/null 2>&1',
-	].join("; ");
+	].join("\n");
 
 	await ctx.vars.sandbox.commands.run(launchCommand, {
 		cwd: ctx.state.workdir,

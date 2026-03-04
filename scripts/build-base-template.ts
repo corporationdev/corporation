@@ -13,7 +13,6 @@ import { defaultBuildLogger, Template } from "e2b";
 config({ path: resolve(import.meta.dirname, "../apps/server/.env") });
 
 const SANDBOX_AGENT_CLI_VERSION = "0.2.1";
-const TURN_RUNNER_DIR = resolve(import.meta.dirname, "turn-runner");
 
 const apiKey = process.env.E2B_API_KEY;
 if (!apiKey) {
@@ -40,7 +39,7 @@ const template = Template()
 	.runCmd(
 		"set -euo pipefail; sandbox-agent install-agent claude & pid1=$!; sandbox-agent install-agent codex & pid2=$!; sandbox-agent install-agent opencode & pid3=$!; sandbox-agent install-agent amp & pid4=$!; sandbox-agent install-agent pi & pid5=$!; sandbox-agent install-agent cursor & pid6=$!; wait $pid1; wait $pid2; wait $pid3; wait $pid4; wait $pid5; wait $pid6"
 	)
-	.copy(`${TURN_RUNNER_DIR}/`, "/opt/corporation/turn-runner/")
+	.copy("turn-runner/", "/opt/corporation/turn-runner/")
 	.runCmd(
 		"set -euo pipefail; cd /opt/corporation/turn-runner; npm install --omit=dev --no-audit --no-fund"
 	)
