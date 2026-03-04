@@ -26,18 +26,20 @@ const INITIAL_MODEL =
 
 export const SessionView: FC<{
 	actor: SpaceActor;
+	sessionId?: string;
 	sessionTab?: SessionTab;
 	spaceSlug: string | undefined;
-}> = ({ actor, sessionTab, spaceSlug }) => {
+}> = ({ actor, sessionId, sessionTab, spaceSlug }) => {
 	if (!spaceSlug) {
 		return <NewSpaceView />;
 	}
 
-	if (sessionTab && actor) {
+	if (sessionId) {
 		return (
 			<ConnectedSessionView
 				actor={actor}
-				key={sessionTab.sessionId}
+				key={sessionId}
+				sessionId={sessionId}
 				sessionTab={sessionTab}
 				spaceSlug={spaceSlug}
 			/>
@@ -250,17 +252,17 @@ const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
 };
 
 const ConnectedSessionView: FC<{
-	sessionTab: SessionTab;
+	sessionId: string;
+	sessionTab?: SessionTab;
 	spaceSlug: string;
 	actor: SpaceActor;
-}> = ({ sessionTab, spaceSlug, actor }) => {
-	const sessionId = sessionTab.sessionId;
+}> = ({ sessionId, sessionTab, spaceSlug, actor }) => {
 	const [message, setMessage] = useState("");
 	const [showEvents, setShowEvents] = useState(false);
 	const [agentOverride, setAgentOverride] = useState<string | null>(null);
 	const [modelIdOverride, setModelIdOverride] = useState<string | null>(null);
-	const agent = agentOverride ?? sessionTab.agent ?? INITIAL_AGENT;
-	const modelId = modelIdOverride ?? sessionTab.modelId ?? INITIAL_MODEL;
+	const agent = agentOverride ?? sessionTab?.agent ?? INITIAL_AGENT;
+	const modelId = modelIdOverride ?? sessionTab?.modelId ?? INITIAL_MODEL;
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumePending = usePendingMessageStore((s) => s.consumePending);

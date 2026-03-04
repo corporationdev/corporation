@@ -93,6 +93,7 @@ export function SpaceLayout() {
 										return param?.type === tab.type && param.id === tab.id;
 									})
 								: undefined,
+							routeParamId: tab?.id,
 							spaceSlug,
 						})
 					)}

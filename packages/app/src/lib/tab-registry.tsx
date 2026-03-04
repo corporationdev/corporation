@@ -8,6 +8,7 @@ import type { SpaceActor } from "@/lib/rivetkit";
 type TabRenderContext = {
 	actor: SpaceActor;
 	tab: SpaceTab | undefined;
+	routeParamId: string | undefined;
 	spaceSlug: string | undefined;
 };
 
@@ -35,11 +36,12 @@ export const tabRegistry: TabConfigMap = {
 	session: {
 		requiresSandbox: false,
 		defaultTitle: "New Chat",
-		render: ({ actor, tab, spaceSlug }) => {
+		render: ({ actor, tab, routeParamId, spaceSlug }) => {
 			const sessionTab = tab?.type === "session" ? tab : undefined;
 			return (
 				<SessionView
 					actor={actor}
+					sessionId={routeParamId}
 					sessionTab={sessionTab}
 					spaceSlug={spaceSlug}
 				/>
