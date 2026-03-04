@@ -1,0 +1,8 @@
+{
+  "name": "@corporation/turn-runner",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "sandbox-agent": "0.2.1"
+  }
+}

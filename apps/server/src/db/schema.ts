@@ -40,6 +40,14 @@ export const previews = sqliteTable("previews", {
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
 
+export const sessionStatusValues = [
+	"idle",
+	"running",
+	"completed",
+	"failed",
+] as const;
+export type SessionStatus = (typeof sessionStatusValues)[number];
+
 export const sessions = sqliteTable("sessions", {
 	id: text("id").primaryKey(),
 	agent: text("agent").notNull(),
@@ -49,6 +57,13 @@ export const sessions = sqliteTable("sessions", {
 	destroyedAt: integer("destroyed_at", { mode: "number" }),
 	sessionInit: text("session_init", { mode: "json" }),
 	modelId: text("model_id"),
+	runId: text("run_id"),
+	pid: integer("pid"),
+	status: text("status", { enum: sessionStatusValues })
+		.notNull()
+		.default("idle"),
+	callbackToken: text("callback_token"),
+	error: text("error", { mode: "json" }),
 });
 
 export const sessionEvents = sqliteTable("session_events", {
@@ -97,4 +112,10 @@ export type PreviewTab = SharedTabFields & {
 
 export type SpaceTab = SessionTab | TerminalTab | PreviewTab;
 
-export const schema = { tabs, terminals, previews, sessions, sessionEvents };
+export const schema = {
+	tabs,
+	terminals,
+	previews,
+	sessions,
+	sessionEvents,
+};

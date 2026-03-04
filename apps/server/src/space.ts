@@ -75,7 +75,6 @@ export const space = actor({
 			persist,
 			sandbox,
 			sandboxClient,
-			sessionStreams: new Map(),
 			terminalHandles: new Map(),
 			subscriptions: createSubscriptionHub(),
 			lastTimeoutRefreshAt: 0,
@@ -97,7 +96,7 @@ export const space = actor({
 	onSleep: async (c) => {
 		const ctx = augmentContext(c, lifecycleDrivers);
 		for (const driver of lifecycleDrivers) {
-			await driver.onSleep(ctx);
+			await driver.onSleep?.(ctx);
 		}
 		clearSubscriptions(c.vars.subscriptions);
 	},

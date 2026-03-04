@@ -38,6 +38,13 @@ const template = Template()
 	)
 	.runCmd(
 		"set -euo pipefail; sandbox-agent install-agent claude & pid1=$!; sandbox-agent install-agent codex & pid2=$!; sandbox-agent install-agent opencode & pid3=$!; sandbox-agent install-agent amp & pid4=$!; sandbox-agent install-agent pi & pid5=$!; sandbox-agent install-agent cursor & pid6=$!; wait $pid1; wait $pid2; wait $pid3; wait $pid4; wait $pid5; wait $pid6"
+	)
+	.copy("turn-runner/", "/opt/corporation/turn-runner/")
+	.runCmd(
+		"set -euo pipefail; cd /opt/corporation/turn-runner; npm install --omit=dev --no-audit --no-fund"
+	)
+	.runCmd(
+		"set -euo pipefail; chmod +x /opt/corporation/turn-runner/corp-turn-runner.mjs; ln -sf /opt/corporation/turn-runner/corp-turn-runner.mjs /usr/local/bin/corp-turn-runner"
 	);
 
 console.log("Building base template…");
