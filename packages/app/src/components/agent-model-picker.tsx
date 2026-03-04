@@ -33,6 +33,7 @@ export const AgentModelPicker: FC<{
 	modelId: string;
 	onModelIdChange: (modelId: string) => void;
 	agentLocked?: boolean;
+	modelLocked?: boolean;
 	agentModels?: Record<string, ModelInfo[]>;
 	defaultModels?: Record<string, string>;
 }> = ({
@@ -41,6 +42,7 @@ export const AgentModelPicker: FC<{
 	modelId,
 	onModelIdChange,
 	agentLocked,
+	modelLocked,
 	agentModels,
 	defaultModels,
 }) => {
@@ -74,13 +76,15 @@ export const AgentModelPicker: FC<{
 	const currentModelLabel =
 		models.find((m) => m.id === modelId)?.name ?? modelId;
 
+	const locked = agentLocked && modelLocked;
+
 	return (
 		<div className="flex items-center gap-2">
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					className={cn(
 						"inline-flex h-7 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground",
-						agentLocked && "pointer-events-none opacity-50"
+						(agentLocked || locked) && "pointer-events-none opacity-50"
 					)}
 				>
 					{agentLabel}
@@ -103,7 +107,8 @@ export const AgentModelPicker: FC<{
 				<DropdownMenu>
 					<DropdownMenuTrigger
 						className={cn(
-							"inline-flex h-7 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
+							"inline-flex h-7 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground",
+							(modelLocked || locked) && "pointer-events-none opacity-50"
 						)}
 					>
 						{currentModelLabel}
