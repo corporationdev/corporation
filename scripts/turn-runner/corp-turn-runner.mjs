@@ -119,8 +119,6 @@ async function main() {
 	let callbackChain = Promise.resolve();
 	let flushTimer = null;
 	const eventBuffer = [];
-	let lastEventIndex = null;
-
 	const queueCallback = (kind, payload = {}) => {
 		sequence += 1;
 		const envelope = {
@@ -152,7 +150,16 @@ async function main() {
 		}
 		while (eventBuffer.length > 0) {
 			const batch = eventBuffer.splice(0, maxBatchSize);
-			await queueCallback("events", { events: batch, lastEventIndex });
+			try {
+				await queueCallback("events", { events: batch });
+			} catch (error) {
+				eventBuffer.unshift(...batch);
+				log("warn", "event flush failed, batch re-queued", {
+					batchSize: batch.length,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				throw error;
+			}
 		}
 	};
 
@@ -198,13 +205,6 @@ async function main() {
 		});
 
 		unsubscribe = session.onEvent((event) => {
-			if (lastEventIndex !== null && event.eventIndex <= lastEventIndex) {
-				return;
-			}
-			lastEventIndex =
-				lastEventIndex === null
-					? event.eventIndex
-					: Math.max(lastEventIndex, event.eventIndex);
 			eventBuffer.push(event);
 			scheduleFlush();
 		});
@@ -216,15 +216,14 @@ async function main() {
 				: null;
 
 		await flushBufferedEvents();
-		await queueCallback("completed", { stopReason, lastEventIndex });
+		await queueCallback("completed", { stopReason });
 		await callbackChain;
-		log("log", "completed", { turnId, stopReason, lastEventIndex });
+		log("log", "completed", { turnId, stopReason });
 	} catch (error) {
 		log("error", "turn failed", formatError(error));
 		await flushBufferedEvents().catch(() => undefined);
 		await queueCallback("failed", {
 			error: formatError(error),
-			lastEventIndex,
 		}).catch(() => undefined);
 		await callbackChain.catch(() => undefined);
 		process.exitCode = 1;

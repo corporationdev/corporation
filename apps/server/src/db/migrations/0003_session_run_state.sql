@@ -8,8 +8,6 @@ ALTER TABLE `sessions` ADD `run_completed_at` integer;
 --> statement-breakpoint
 ALTER TABLE `sessions` ADD `last_event_at` integer;
 --> statement-breakpoint
-ALTER TABLE `sessions` ADD `last_event_index` integer;
---> statement-breakpoint
 ALTER TABLE `sessions` ADD `callback_token` text;
 --> statement-breakpoint
 ALTER TABLE `sessions` ADD `run_stop_reason` text;

@@ -23,31 +23,20 @@ export const RUN_STATUS_RUNNING = "running";
 export const RUN_STATUS_COMPLETED = "completed";
 export const RUN_STATUS_FAILED = "failed";
 
-function nullableMax(a: number | null, b: number | null): number | null {
-	if (a === null) {
-		return b;
-	}
-	if (b === null) {
-		return a;
-	}
-	return Math.max(a, b);
-}
-
 async function insertSessionEvents(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
 	events: SessionEvent[]
-): Promise<number | null> {
-	let maxEventIndex: number | null = null;
+): Promise<void> {
+	const validEvents = events.filter((event) => event.sessionId === sessionId);
+	if (validEvents.length === 0) {
+		return;
+	}
 
-	for (const event of events) {
-		if (event.sessionId !== sessionId) {
-			continue;
-		}
-
-		await ctx.vars.db
-			.insert(sessionEvents)
-			.values({
+	await ctx.vars.db
+		.insert(sessionEvents)
+		.values(
+			validEvents.map((event) => ({
 				id: event.id,
 				eventIndex: event.eventIndex,
 				sessionId: event.sessionId,
@@ -55,20 +44,18 @@ async function insertSessionEvents(
 				connectionId: event.connectionId,
 				sender: event.sender,
 				payload: event.payload as Record<string, unknown>,
-			})
-			.onConflictDoNothing({ target: sessionEvents.id });
+			}))
+		)
+		.onConflictDoNothing({ target: sessionEvents.id });
 
+	for (const event of validEvents) {
 		publishToChannel(
 			ctx,
 			createTabChannel("session", sessionId),
 			SESSION_EVENT_NAME,
 			event
 		);
-
-		maxEventIndex = nullableMax(maxEventIndex, event.eventIndex);
 	}
-
-	return maxEventIndex;
 }
 
 async function launchTurnRunner(
@@ -83,25 +70,32 @@ async function launchTurnRunner(
 		callbackToken: string;
 	}
 ): Promise<void> {
-	await ctx.vars.sandbox.commands.run(
-		`nohup ${TURN_RUNNER_COMMAND} >/tmp/corp-turn-runner.stdout.log 2>&1 & echo $!`,
-		{
-			cwd: ctx.state.workdir,
-			timeoutMs: 15_000,
-			user: "root",
-			envs: {
-				TURN_ID: params.turnId,
-				SESSION_ID: params.sessionId,
-				AGENT: params.agent,
-				MODEL_ID: params.modelId,
-				PROMPT_JSON: params.promptJson,
-				AGENT_URL: ctx.state.agentUrl,
-				CALLBACK_URL: params.callbackUrl,
-				CALLBACK_TOKEN: params.callbackToken,
-				CWD: ctx.state.workdir,
-			},
-		}
-	);
+	const launchCommand = [
+		"set -euo pipefail",
+		`command -v ${TURN_RUNNER_COMMAND} >/dev/null 2>&1`,
+		`nohup ${TURN_RUNNER_COMMAND} >/tmp/corp-turn-runner.stdout.log 2>&1 &`,
+		"pid=$!",
+		'echo "$pid"',
+		"sleep 0.25",
+		'kill -0 "$pid" >/dev/null 2>&1',
+	].join("; ");
+
+	await ctx.vars.sandbox.commands.run(launchCommand, {
+		cwd: ctx.state.workdir,
+		timeoutMs: 15_000,
+		user: "root",
+		envs: {
+			TURN_ID: params.turnId,
+			SESSION_ID: params.sessionId,
+			AGENT: params.agent,
+			MODEL_ID: params.modelId,
+			PROMPT_JSON: params.promptJson,
+			AGENT_URL: ctx.state.agentUrl,
+			CALLBACK_URL: params.callbackUrl,
+			CALLBACK_TOKEN: params.callbackToken,
+			CWD: ctx.state.workdir,
+		},
+	});
 }
 
 export async function ensureNoRunningTurn(
@@ -137,7 +131,7 @@ export async function startTurnRunner(
 	}
 
 	const turnId = nanoid();
-	const callbackToken = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+	const callbackToken = crypto.randomUUID();
 	const baseUrl = env.SERVER_PUBLIC_URL;
 	if (!baseUrl) {
 		throw new Error("Missing SERVER_PUBLIC_URL env var");
@@ -154,7 +148,6 @@ export async function startTurnRunner(
 			runStartedAt: now,
 			runCompletedAt: null,
 			lastEventAt: now,
-			lastEventIndex: null,
 			callbackToken,
 			runStopReason: null,
 			runError: null,
@@ -212,7 +205,6 @@ export async function ingestTurnRunnerBatch(
 			id: sessions.id,
 			runId: sessions.runId,
 			callbackToken: sessions.callbackToken,
-			lastEventIndex: sessions.lastEventIndex,
 		})
 		.from(sessions)
 		.where(eq(sessions.id, parsed.sessionId))
@@ -230,24 +222,11 @@ export async function ingestTurnRunnerBatch(
 	}
 
 	const now = Date.now();
-	let insertedMaxEventIndex: number | null = null;
 	if (parsed.kind === "events") {
-		insertedMaxEventIndex = await insertSessionEvents(
-			ctx,
-			session.id,
-			parsed.events
-		);
+		await insertSessionEvents(ctx, session.id, parsed.events);
 	}
 
-	let lastEventIndex = nullableMax(
-		session.lastEventIndex,
-		insertedMaxEventIndex
-	);
-	if (typeof parsed.lastEventIndex === "number") {
-		lastEventIndex = nullableMax(lastEventIndex, parsed.lastEventIndex);
-	}
-
-	const basePatch = { lastEventAt: now, lastEventIndex };
+	const basePatch = { lastEventAt: now };
 
 	if (parsed.kind === "completed") {
 		await ctx.vars.db

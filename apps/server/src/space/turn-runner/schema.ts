@@ -26,7 +26,6 @@ const turnRunnerCallbackBaseSchema = z.object({
 	token: z.string().min(1),
 	sequence: z.number().int().gte(1),
 	timestamp: z.number(),
-	lastEventIndex: z.number().int().nonnegative().optional(),
 });
 
 const turnRunnerCallbackPayloadSchema = z.discriminatedUnion("kind", [
