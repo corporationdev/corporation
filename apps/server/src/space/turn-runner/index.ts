@@ -20,6 +20,8 @@ const TURN_RUNNER_COMMAND = "corp-turn-runner";
 const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
 const log = createLogger("space:turn-runner");
 
+type TextPromptPart = { type: "text"; text: string };
+
 export const SESSION_STATUS_RUNNING = "running";
 export const SESSION_STATUS_COMPLETED = "completed";
 export const SESSION_STATUS_FAILED = "failed";
@@ -134,7 +136,7 @@ export async function startTurnRunner(
 	ctx: SpaceRuntimeContext,
 	params: {
 		sessionId: string;
-		content: string;
+		prompt: TextPromptPart[];
 		agent: string;
 		modelId: string;
 	}
@@ -155,7 +157,7 @@ export async function startTurnRunner(
 		throw new Error("Missing SERVER_PUBLIC_URL env var");
 	}
 	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
-	const promptJson = JSON.stringify([{ type: "text", text: params.content }]);
+	const promptJson = JSON.stringify(params.prompt);
 
 	await ctx.vars.db
 		.update(sessions)

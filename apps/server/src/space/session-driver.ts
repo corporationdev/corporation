@@ -6,6 +6,10 @@ import { type SessionTab, sessions, tabs } from "../db/schema";
 import { createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import {
+	buildPromptWithReplay,
+	type SessionPromptPart,
+} from "./session-replay-context";
+import {
 	ensureNoRunningTurn,
 	ingestTurnRunnerBatch,
 	publishSessionStatus,
@@ -150,6 +154,16 @@ async function sendMessage(
 
 	await ensureNoRunningTurn(ctx, sessionId);
 
+	let prompt: SessionPromptPart[] = [{ type: "text", text: content }];
+	try {
+		prompt = await buildPromptWithReplay(ctx, sessionId, content);
+	} catch (error) {
+		log.warn(
+			{ err: error, actorId: ctx.actorId, sessionId },
+			"sendMessage: failed to build replay context"
+		);
+	}
+
 	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
 		id: sessionId,
 		agent,
@@ -171,7 +185,7 @@ async function sendMessage(
 
 	await startTurnRunner(ctx, {
 		sessionId,
-		content,
+		prompt,
 		agent,
 		modelId,
 	});
