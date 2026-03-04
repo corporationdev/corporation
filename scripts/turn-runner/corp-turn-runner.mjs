@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import process from "node:process";
 import { appendFileSync } from "node:fs";
+import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { SandboxAgent } from "sandbox-agent";
 
