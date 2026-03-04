@@ -35,7 +35,6 @@ corp-turn-runner \
 - `--callback-mode` / `CALLBACK_MODE` (`rivet-action` or `raw`, default: `rivet-action`)
 - `--flush-interval-ms` / `FLUSH_INTERVAL_MS` (default: `75`)
 - `--max-batch-size` / `MAX_BATCH_SIZE` (default: `10`)
-- `--heartbeat-interval-ms` / `HEARTBEAT_INTERVAL_MS` (default: `15000`)
 - `--callback-timeout-ms` / `CALLBACK_TIMEOUT_MS` (default: `10000`)
 - `--callback-max-attempts` / `CALLBACK_MAX_ATTEMPTS` (default: `8`)
 
@@ -52,9 +51,7 @@ All callbacks include:
 
 Kinds:
 
-- `started`: `{ agent, modelId }`
 - `events`: `{ events: SessionEvent[], lastEventIndex }`
-- `heartbeat`: `{ lastEventIndex }`
 - `completed`: `{ stopReason, lastEventIndex }`
 - `failed`: `{ error, lastEventIndex }`
 

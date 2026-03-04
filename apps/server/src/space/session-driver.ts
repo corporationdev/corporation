@@ -573,8 +573,6 @@ async function ingestTurnRunnerBatch(
 		"ingestTurnRunnerBatch: parsed callback payload"
 	);
 
-	refreshSandboxTimeout(ctx);
-
 	const rows = await ctx.vars.db
 		.select({
 			id: sessions.id,
@@ -706,6 +704,7 @@ async function ingestTurnRunnerBatch(
 		return;
 	}
 
+	// kind === "events" — update event tracking state
 	await ctx.vars.db
 		.update(sessions)
 		.set(basePatch)
@@ -718,7 +717,7 @@ async function ingestTurnRunnerBatch(
 			kind: parsed.kind,
 			lastEventIndex: basePatch.lastEventIndex,
 		},
-		"ingestTurnRunnerBatch: updated heartbeat/start state"
+		"ingestTurnRunnerBatch: updated event tracking state"
 	);
 }
 

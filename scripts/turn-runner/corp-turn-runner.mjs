@@ -8,7 +8,6 @@ import { SandboxAgent } from "sandbox-agent";
 const DEFAULT_AGENT_URL = "http://127.0.0.1:5799";
 const DEFAULT_CALLBACK_MODE = "rivet-action";
 const DEFAULT_FLUSH_INTERVAL_MS = 75;
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
 const DEFAULT_MAX_BATCH_SIZE = 10;
 const DEFAULT_CALLBACK_TIMEOUT_MS = 10_000;
 const DEFAULT_CALLBACK_MAX_ATTEMPTS = 8;
@@ -103,7 +102,6 @@ Optional:
   --callback-mode / CALLBACK_MODE (rivet-action | raw, default: ${DEFAULT_CALLBACK_MODE})
   --flush-interval-ms / FLUSH_INTERVAL_MS (default: ${DEFAULT_FLUSH_INTERVAL_MS})
   --max-batch-size / MAX_BATCH_SIZE (default: ${DEFAULT_MAX_BATCH_SIZE})
-  --heartbeat-interval-ms / HEARTBEAT_INTERVAL_MS (default: ${DEFAULT_HEARTBEAT_INTERVAL_MS})
   --callback-timeout-ms / CALLBACK_TIMEOUT_MS (default: ${DEFAULT_CALLBACK_TIMEOUT_MS})
   --callback-max-attempts / CALLBACK_MAX_ATTEMPTS (default: ${DEFAULT_CALLBACK_MAX_ATTEMPTS})
 `);
@@ -301,12 +299,6 @@ async function main() {
 		"FLUSH_INTERVAL_MS",
 		DEFAULT_FLUSH_INTERVAL_MS
 	);
-	const heartbeatIntervalMs = readIntegerOption(
-		options,
-		"heartbeat-interval-ms",
-		"HEARTBEAT_INTERVAL_MS",
-		DEFAULT_HEARTBEAT_INTERVAL_MS
-	);
 	const maxBatchSize = readIntegerOption(
 		options,
 		"max-batch-size",
@@ -324,7 +316,6 @@ async function main() {
 		callbackUrl,
 		callbackMode,
 		flushIntervalMs,
-		heartbeatIntervalMs,
 		maxBatchSize,
 		callbackTimeoutMs,
 		callbackMaxAttempts,
@@ -335,7 +326,6 @@ async function main() {
 	let sequence = 0;
 	let callbackChain = Promise.resolve();
 	let flushTimer = null;
-	let heartbeatTimer = null;
 	const eventBuffer = [];
 	const seenEventIds = new Set();
 	let lastEventIndex = -1;
@@ -455,10 +445,6 @@ async function main() {
 			clearTimeout(flushTimer);
 			flushTimer = null;
 		}
-		if (heartbeatTimer) {
-			clearInterval(heartbeatTimer);
-			heartbeatTimer = null;
-		}
 		if (unsubscribe) {
 			unsubscribe();
 			unsubscribe = null;
@@ -507,21 +493,6 @@ async function main() {
 			}
 		});
 		log("events: subscription attached");
-
-		heartbeatTimer = setInterval(() => {
-			fireAndForget(
-				queueCallback("heartbeat", { lastEventIndex }),
-				"heartbeat"
-			);
-		}, heartbeatIntervalMs);
-		log("heartbeat: timer started", { heartbeatIntervalMs });
-
-		log("turn: sending started callback");
-		await queueCallback("started", {
-			agent,
-			modelId: modelId || null,
-		});
-		log("turn: started callback sent");
 
 		log("turn: calling session.prompt");
 		const response = await session.prompt(prompt);
