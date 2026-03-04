@@ -35,6 +35,12 @@ export function resolveRuntimeContext(
 	if (stageKind === "dev") {
 		const CONVEX_URL = "https://hip-impala-208.convex.cloud";
 		const CONVEX_SITE_URL = "https://hip-impala-208.convex.site";
+		const SERVER_PUBLIC_URL = process.env.SERVER_PUBLIC_URL;
+
+		if (!SERVER_PUBLIC_URL) {
+			throw new Error(`Missing SERVER_PUBLIC_URL for dev stage "${stage}"`);
+		}
+
 		return {
 			webClientEnv: {
 				VITE_SERVER_URL: "/api",
@@ -42,16 +48,14 @@ export function resolveRuntimeContext(
 				VITE_CONVEX_SITE_URL: "/convex",
 			},
 			webDevProxyEnv: {
-				DEV_SERVER_PROXY_TARGET:
-					process.env.DEV_SERVER_PROXY_TARGET ?? "http://localhost:3000",
+				DEV_SERVER_PROXY_TARGET: SERVER_PUBLIC_URL,
 				DEV_CONVEX_PROXY_TARGET: CONVEX_URL,
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
 				CONVEX_URL,
 				CONVEX_SITE_URL,
-				SERVER_PUBLIC_URL:
-					process.env.SERVER_PUBLIC_URL ?? "http://localhost:3000",
+				SERVER_PUBLIC_URL,
 			},
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
@@ -63,6 +67,11 @@ export function resolveRuntimeContext(
 	if (stageKind === "sandbox") {
 		const CONVEX_URL = "http://localhost:3210";
 		const CONVEX_SITE_URL = "http://localhost:3211";
+		const SERVER_PUBLIC_URL = process.env.SERVER_PUBLIC_URL;
+
+		if (!SERVER_PUBLIC_URL) {
+			throw new Error(`Missing SERVER_PUBLIC_URL for dev stage "${stage}"`);
+		}
 		return {
 			webClientEnv: {
 				VITE_SERVER_URL: "/api",
@@ -70,16 +79,14 @@ export function resolveRuntimeContext(
 				VITE_CONVEX_SITE_URL: "/convex",
 			},
 			webDevProxyEnv: {
-				DEV_SERVER_PROXY_TARGET:
-					process.env.DEV_SERVER_PROXY_TARGET ?? "http://localhost:3000",
+				DEV_SERVER_PROXY_TARGET: SERVER_PUBLIC_URL,
 				DEV_CONVEX_PROXY_TARGET: CONVEX_URL,
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
 				CONVEX_URL,
 				CONVEX_SITE_URL,
-				SERVER_PUBLIC_URL:
-					process.env.SERVER_PUBLIC_URL ?? "http://localhost:3000",
+				SERVER_PUBLIC_URL,
 			},
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
