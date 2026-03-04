@@ -23,10 +23,6 @@ async function ensureSession(
 	sessionId: string,
 	title?: string
 ): Promise<void> {
-	log.info(
-		{ actorId: ctx.actorId, sessionId, title: title ?? null },
-		"ensureSession: begin"
-	);
 	const now = Date.now();
 	const tabId = createTabId("session", sessionId);
 	const nextTitle = title ?? DEFAULT_SESSION_TITLE;
@@ -72,7 +68,6 @@ async function ensureSession(
 	});
 
 	await ctx.broadcastTabsChanged();
-	log.info({ actorId: ctx.actorId, sessionId, tabId }, "ensureSession: done");
 }
 
 async function hasNoSessionTabs(ctx: SpaceRuntimeContext): Promise<boolean> {
@@ -91,10 +86,6 @@ async function requestAutoBranchName(
 	const convexSiteUrl = env.CONVEX_SITE_URL;
 	const internalApiKey = env.INTERNAL_API_KEY;
 	if (!(convexSiteUrl && internalApiKey)) {
-		log.info(
-			{ actorId: ctx.actorId, sandboxId: ctx.state.sandboxId },
-			"requestAutoBranchName: skipped (missing env)"
-		);
 		return;
 	}
 
@@ -113,37 +104,18 @@ async function requestAutoBranchName(
 	if (!response.ok) {
 		throw new Error(`Auto branch endpoint failed: ${response.status}`);
 	}
-
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sandboxId: ctx.state.sandboxId,
-			messageLength: firstMessage.length,
-		},
-		"requestAutoBranchName: success"
-	);
 }
 
 async function applyModel(session: Session, modelId: string): Promise<boolean> {
 	try {
-		log.info({ sessionId: session.id, modelId }, "applyModel: trying unstable");
 		await session.send("unstable/set_session_model", { modelId });
-		log.info(
-			{ sessionId: session.id, modelId },
-			"applyModel: unstable success"
-		);
 		return true;
 	} catch {
 		// Fall through to protocol-native method name.
-		log.warn(
-			{ sessionId: session.id, modelId },
-			"applyModel: unstable failed, trying session/set_model"
-		);
 	}
 
 	try {
 		await session.send("session/set_model", { modelId });
-		log.info({ sessionId: session.id, modelId }, "applyModel: legacy success");
 		return true;
 	} catch (error) {
 		log.warn(
@@ -161,25 +133,8 @@ async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId,
-			agent,
-			modelId,
-			contentLength: content.length,
-			workdir: ctx.state.workdir,
-			agentUrl: ctx.state.agentUrl,
-		},
-		"sendMessage: begin"
-	);
-
 	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
 	if (isFirstMessageForSpace) {
-		log.info(
-			{ actorId: ctx.actorId, sessionId },
-			"sendMessage: first message in space, requesting auto branch name"
-		);
 		ctx.waitUntil(
 			requestAutoBranchName(ctx, content).catch((error) => {
 				log.warn(
@@ -206,10 +161,6 @@ async function sendMessage(
 	const modelApplied = await applyModel(session, modelId);
 	if (modelApplied) {
 		await ctx.vars.persist.setModelId(sessionId, modelId);
-		log.info(
-			{ actorId: ctx.actorId, sessionId, modelId },
-			"sendMessage: persisted modelId"
-		);
 	} else {
 		log.warn(
 			{ actorId: ctx.actorId, sessionId, modelId },
@@ -233,7 +184,6 @@ async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
 ): Promise<void> {
-	log.info({ actorId: ctx.actorId, sessionId }, "cancelSession: begin");
 	// We read session data directly from our persist driver rather than going
 	// through the sandbox-agent SDK, whose internal write queue serializes all
 	// messages — a cancel notification would get stuck behind the in-flight
@@ -296,16 +246,6 @@ async function cancelSession(
 			`ACP session cancel failed: ${cancelRes.status} ${cancelRes.statusText} ${responseText}`
 		);
 	}
-
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId,
-			agentSessionId: record.agentSessionId,
-			serverId: server.serverId,
-		},
-		"cancelSession: success"
-	);
 }
 
 async function getTranscript(

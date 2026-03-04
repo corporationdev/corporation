@@ -17,7 +17,6 @@ const SESSION_EVENT_NAME = "session.event";
 const TRAILING_SLASH_RE = /\/$/;
 const TURN_RUNNER_COMMAND = "corp-turn-runner";
 const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
-const PID_SPLIT_RE = /\s+/;
 const log = createLogger("space:turn-runner");
 
 export const RUN_STATUS_RUNNING = "running";
@@ -63,10 +62,6 @@ function getTurnRunnerCallbackUrl(ctx: SpaceRuntimeContext): string {
 
 	const normalizedBaseUrl = normalizeBaseUrl(callbackBaseUrl);
 	const callbackUrl = `${normalizedBaseUrl}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
-	log.info(
-		{ actorId: ctx.actorId, callbackUrl, callbackBaseUrl },
-		"getTurnRunnerCallbackUrl: resolved callback URL"
-	);
 	return callbackUrl;
 }
 
@@ -104,17 +99,10 @@ async function insertSessionEvents(
 	sessionId: string,
 	events: SessionEvent[]
 ): Promise<number | null> {
-	log.info(
-		{ actorId: ctx.actorId, sessionId, eventCount: events.length },
-		"insertSessionEvents: begin"
-	);
 	let maxEventIndex: number | null = null;
-	let insertedCount = 0;
-	let skippedCount = 0;
 
 	for (const event of events) {
 		if (event.sessionId !== sessionId) {
-			skippedCount += 1;
 			log.warn(
 				{
 					actorId: ctx.actorId,
@@ -146,31 +134,9 @@ async function insertSessionEvents(
 			SESSION_EVENT_NAME,
 			event
 		);
-		insertedCount += 1;
-		log.info(
-			{
-				actorId: ctx.actorId,
-				sessionId,
-				eventId: event.id,
-				eventIndex: event.eventIndex,
-				sender: event.sender,
-			},
-			"insertSessionEvents: inserted + broadcasted event"
-		);
 
 		maxEventIndex = maxNullable(maxEventIndex, event.eventIndex);
 	}
-
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId,
-			insertedCount,
-			skippedCount,
-			maxEventIndex,
-		},
-		"insertSessionEvents: done"
-	);
 
 	return maxEventIndex;
 }
@@ -187,23 +153,7 @@ async function launchTurnRunner(
 		callbackToken: string;
 	}
 ): Promise<void> {
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId: params.sessionId,
-			turnId: params.turnId,
-			agent: params.agent,
-			modelId: params.modelId,
-			callbackUrl: params.callbackUrl,
-			callbackToken: redactToken(params.callbackToken),
-			agentUrl: ctx.state.agentUrl,
-			workdir: ctx.state.workdir,
-			promptJsonLength: params.promptJson.length,
-		},
-		"launchTurnRunner: starting background command"
-	);
-
-	const launchResult = await ctx.vars.sandbox.commands.run(
+	await ctx.vars.sandbox.commands.run(
 		`nohup ${TURN_RUNNER_COMMAND} >/tmp/corp-turn-runner.stdout.log 2>&1 & echo $!`,
 		{
 			cwd: ctx.state.workdir,
@@ -222,23 +172,6 @@ async function launchTurnRunner(
 				CWD: ctx.state.workdir,
 			},
 		}
-	);
-
-	const launchedPid = Number.parseInt(
-		(launchResult.stdout ?? "").trim().split(PID_SPLIT_RE).at(-1) ?? "",
-		10
-	);
-
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId: params.sessionId,
-			turnId: params.turnId,
-			pid: Number.isFinite(launchedPid) ? launchedPid : null,
-			launchStdout: (launchResult.stdout ?? "").trim(),
-			launchStderr: (launchResult.stderr ?? "").trim() || null,
-		},
-		"launchTurnRunner: background command started"
 	);
 }
 
@@ -303,17 +236,6 @@ export async function startTurnRunner(
 		})
 		.where(eq(sessions.id, params.sessionId));
 
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId: params.sessionId,
-			turnId,
-			callbackUrl,
-			callbackToken: redactToken(callbackToken),
-		},
-		"startTurnRunner: persisted run metadata"
-	);
-
 	refreshSandboxTimeout(ctx);
 
 	try {
@@ -326,10 +248,6 @@ export async function startTurnRunner(
 			callbackUrl,
 			callbackToken,
 		});
-		log.info(
-			{ actorId: ctx.actorId, sessionId: params.sessionId, turnId },
-			"startTurnRunner: launchTurnRunner succeeded"
-		);
 	} catch (error) {
 		log.error(
 			{ err: error, actorId: ctx.actorId, sessionId: params.sessionId, turnId },
@@ -353,15 +271,6 @@ export async function ingestTurnRunnerBatch(
 	ctx: SpaceRuntimeContext,
 	payload: unknown
 ): Promise<void> {
-	log.info(
-		{
-			actorId: ctx.actorId,
-			payloadType: typeof payload,
-			isArray: Array.isArray(payload),
-		},
-		"ingestTurnRunnerBatch: received callback payload"
-	);
-
 	let parsed: TurnRunnerCallbackPayload;
 	try {
 		parsed = parseTurnRunnerCallbackPayload(payload);
@@ -376,17 +285,6 @@ export async function ingestTurnRunnerBatch(
 		);
 		throw error;
 	}
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId: parsed.sessionId,
-			turnId: parsed.turnId,
-			kind: parsed.kind,
-			sequence: parsed.sequence,
-			lastEventIndex: parsed.lastEventIndex ?? null,
-		},
-		"ingestTurnRunnerBatch: parsed callback payload"
-	);
 
 	const rows = await ctx.vars.db
 		.select({
@@ -450,17 +348,6 @@ export async function ingestTurnRunnerBatch(
 			session.id,
 			parsed.events
 		);
-		log.info(
-			{
-				actorId: ctx.actorId,
-				sessionId: session.id,
-				turnId: parsed.turnId,
-				kind: parsed.kind,
-				eventCount: parsed.events.length,
-				insertedMaxEventIndex,
-			},
-			"ingestTurnRunnerBatch: processed events payload"
-		);
 	}
 
 	const basePatch = {
@@ -483,16 +370,6 @@ export async function ingestTurnRunnerBatch(
 				runError: null,
 			})
 			.where(eq(sessions.id, session.id));
-		log.info(
-			{
-				actorId: ctx.actorId,
-				sessionId: session.id,
-				turnId: parsed.turnId,
-				stopReason: parsed.stopReason,
-				lastEventIndex: basePatch.lastEventIndex,
-			},
-			"ingestTurnRunnerBatch: marked run completed"
-		);
 		return;
 	}
 
@@ -523,14 +400,4 @@ export async function ingestTurnRunnerBatch(
 		.update(sessions)
 		.set(basePatch)
 		.where(eq(sessions.id, session.id));
-	log.info(
-		{
-			actorId: ctx.actorId,
-			sessionId: session.id,
-			turnId: parsed.turnId,
-			kind: parsed.kind,
-			lastEventIndex: basePatch.lastEventIndex,
-		},
-		"ingestTurnRunnerBatch: updated event tracking state"
-	);
 }
