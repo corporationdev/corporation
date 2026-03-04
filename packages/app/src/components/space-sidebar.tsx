@@ -6,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { FunctionReturnType } from "convex/server";
 import {
 	ClipboardIcon,
+	CodeIcon,
 	ExternalLinkIcon,
 	GitPullRequestIcon,
 	GlobeIcon,
@@ -136,6 +137,21 @@ const SpaceSidebarContent: FC<{
 		},
 	});
 
+	const codeServerMutation = useTanstackMutation({
+		mutationFn: async () => {
+			if (!space.sandboxId) {
+				throw new Error("Space has no sandbox");
+			}
+			const res = await apiClient.sandbox["code-server"].$get({
+				query: { sandboxId: space.sandboxId },
+			});
+			const data = await res.json();
+			if ("url" in data) {
+				window.open(data.url, "_blank");
+			}
+		},
+	});
+
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
 		useStartSandbox(space.slug, space.status);
 
@@ -245,31 +261,47 @@ const SpaceSidebarContent: FC<{
 				</Button>
 			)}
 			{space.sandboxId && space.status === "running" && (
-				<div className="flex gap-2">
-					<Input
-						className="w-20"
-						max={65_535}
-						min={1}
-						onChange={(e) => setPreviewPort(e.target.value)}
-						placeholder="Port"
-						type="number"
-						value={previewPort}
-					/>
+				<>
+					<div className="flex gap-2">
+						<Input
+							className="w-20"
+							max={65_535}
+							min={1}
+							onChange={(e) => setPreviewPort(e.target.value)}
+							placeholder="Port"
+							type="number"
+							value={previewPort}
+						/>
+						<Button
+							className="flex-1 gap-2"
+							disabled={previewMutation.isPending}
+							onClick={handleOpenPreview}
+							size="sm"
+							variant="outline"
+						>
+							{previewMutation.isPending ? (
+								<LoaderIcon className="size-4 animate-spin" />
+							) : (
+								<GlobeIcon className="size-4" />
+							)}
+							{previewMutation.isPending ? "Loading..." : "Open Preview"}
+						</Button>
+					</div>
 					<Button
-						className="flex-1 gap-2"
-						disabled={previewMutation.isPending}
-						onClick={handleOpenPreview}
+						className="w-full justify-start gap-2"
+						disabled={codeServerMutation.isPending}
+						onClick={() => codeServerMutation.mutate()}
 						size="sm"
 						variant="outline"
 					>
-						{previewMutation.isPending ? (
+						{codeServerMutation.isPending ? (
 							<LoaderIcon className="size-4 animate-spin" />
 						) : (
-							<GlobeIcon className="size-4" />
+							<CodeIcon className="size-4" />
 						)}
-						{previewMutation.isPending ? "Loading..." : "Open Preview"}
+						{codeServerMutation.isPending ? "Opening..." : "Open VSCode Web"}
 					</Button>
-				</div>
+				</>
 			)}
 			{isStarted && (
 				<SandboxCountdown actor={actor} expiresAt={space.sandboxExpiresAt} />

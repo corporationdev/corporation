@@ -11,6 +11,9 @@ const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 const DEV_SERVER_SESSION_NAME = "devserver";
 const DEV_SERVER_STARTUP_TIMEOUT_MS = 120_000;
 const DEV_SERVER_POLL_INTERVAL_MS = 1000;
+const CODE_SERVER_SESSION_NAME = "codeserver";
+const CODE_SERVER_PORT = 8080;
+const CODE_SERVER_STARTUP_TIMEOUT_MS = 60_000;
 
 type EnvVar = { key: string; value: string };
 type CommandExitErrorLike = {
@@ -367,4 +370,154 @@ export async function hasDevServerSession(sandbox: Sandbox): Promise<boolean> {
 	}
 }
 
-export { DEV_SERVER_SESSION_NAME };
+/**
+ * Checks if code-server is installed in the sandbox.
+ */
+async function isCodeServerInstalled(sandbox: Sandbox): Promise<boolean> {
+	try {
+		await sandbox.commands.run("which code-server");
+		return true;
+	} catch (error) {
+		if (isCommandExitError(error)) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+/**
+ * Installs code-server in the sandbox using the official install script.
+ */
+async function installCodeServer(
+	sandbox: Sandbox,
+	appendLog?: (chunk: string) => void
+): Promise<void> {
+	appendLog?.("Installing code-server...\n");
+
+	await runRootCommand(
+		sandbox,
+		"curl -fsSL https://code-server.dev/install.sh | sh",
+		{
+			timeoutMs: 120_000,
+			onStdout: appendLog,
+			onStderr: appendLog,
+		}
+	);
+
+	appendLog?.("code-server installed successfully.\n");
+}
+
+/**
+ * Starts code-server in a tmux session. Installs it first if not already installed.
+ * Returns the URL to access code-server.
+ */
+export async function startCodeServer(
+	sandbox: Sandbox,
+	env: SandboxEnv,
+	appendLog?: (chunk: string) => void
+): Promise<string> {
+	const { repository } = env;
+	const workdir = getSandboxWorkdir(repository);
+
+	// Check if already running
+	try {
+		await sandbox.commands.run(
+			`tmux has-session -t ${CODE_SERVER_SESSION_NAME}`
+		);
+		appendLog?.("code-server is already running.\n");
+		return getPreviewUrl(sandbox, CODE_SERVER_PORT);
+	} catch (error) {
+		if (!isCommandExitError(error)) {
+			throw error;
+		}
+		// Session doesn't exist, continue with startup
+	}
+
+	// Install if needed
+	const installed = await isCodeServerInstalled(sandbox);
+	if (!installed) {
+		await installCodeServer(sandbox, appendLog);
+	}
+
+	appendLog?.(
+		`Starting code-server (tmux session: ${CODE_SERVER_SESSION_NAME})...\n`
+	);
+
+	// Start code-server in tmux with proper configuration
+	await runRootCommand(
+		sandbox,
+		`tmux new-session -d -s ${CODE_SERVER_SESSION_NAME} -c ${quoteShellArg(workdir)} code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} --auth none ${quoteShellArg(workdir)} \\; set-option -t ${CODE_SERVER_SESSION_NAME} mouse on \\; set-option -t ${CODE_SERVER_SESSION_NAME} status off`
+	);
+
+	appendLog?.(`Waiting for code-server on port ${CODE_SERVER_PORT}...\n`);
+
+	// Wait for code-server to be ready
+	const deadline = Date.now() + CODE_SERVER_STARTUP_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		try {
+			await sandbox.commands.run(
+				`curl -sf --max-time 2 http://localhost:${CODE_SERVER_PORT}/`
+			);
+			const url = getPreviewUrl(sandbox, CODE_SERVER_PORT);
+			appendLog?.(`code-server is ready at ${url}\n`);
+			return url;
+		} catch (error) {
+			if (!isCommandExitError(error)) {
+				throw error;
+			}
+		}
+
+		// Check that the tmux session is still alive
+		try {
+			await sandbox.commands.run(
+				`tmux has-session -t ${CODE_SERVER_SESSION_NAME}`
+			);
+		} catch (error) {
+			if (isCommandExitError(error)) {
+				throw new Error("code-server process exited before becoming ready");
+			}
+			throw error;
+		}
+
+		await sleep(DEV_SERVER_POLL_INTERVAL_MS);
+	}
+
+	throw new Error(
+		`code-server did not become ready on port ${CODE_SERVER_PORT} within ${CODE_SERVER_STARTUP_TIMEOUT_MS / 1000}s`
+	);
+}
+
+/**
+ * Kills the code-server tmux session if it exists.
+ */
+export async function killCodeServer(sandbox: Sandbox): Promise<void> {
+	try {
+		await sandbox.commands.run(
+			`tmux kill-session -t ${CODE_SERVER_SESSION_NAME}`
+		);
+	} catch (error) {
+		if (isCommandExitError(error)) {
+			return; // Session doesn't exist
+		}
+		throw error;
+	}
+}
+
+/**
+ * Checks if the code-server tmux session is running.
+ */
+export async function hasCodeServerSession(sandbox: Sandbox): Promise<boolean> {
+	try {
+		await sandbox.commands.run(
+			`tmux has-session -t ${CODE_SERVER_SESSION_NAME}`
+		);
+		return true;
+	} catch (error) {
+		if (isCommandExitError(error)) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+export { DEV_SERVER_SESSION_NAME, CODE_SERVER_SESSION_NAME, CODE_SERVER_PORT };
