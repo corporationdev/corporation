@@ -9,6 +9,7 @@ export type RuntimeContext = {
 		VITE_SERVER_URL: string;
 		VITE_CONVEX_URL: string;
 		VITE_CONVEX_SITE_URL: string;
+		VITE_STAGE_KIND: "dev" | "sandbox" | "preview" | "production";
 	};
 	webDevProxyEnv?: {
 		DEV_SERVER_PROXY_TARGET: string;
@@ -45,6 +46,7 @@ export function resolveRuntimeContext(
 				VITE_SERVER_URL: "/api",
 				VITE_CONVEX_URL: "/convex",
 				VITE_CONVEX_SITE_URL: "/convex",
+				VITE_STAGE_KIND: "dev",
 			},
 			webDevProxyEnv: {
 				DEV_SERVER_PROXY_TARGET: SERVER_PUBLIC_URL,
@@ -76,6 +78,7 @@ export function resolveRuntimeContext(
 				VITE_SERVER_URL: "/api",
 				VITE_CONVEX_URL: "/convex",
 				VITE_CONVEX_SITE_URL: "/convex",
+				VITE_STAGE_KIND: "sandbox",
 			},
 			webDevProxyEnv: {
 				DEV_SERVER_PROXY_TARGET: SERVER_PUBLIC_URL,
@@ -116,6 +119,7 @@ export function resolveRuntimeContext(
 				VITE_SERVER_URL: "/api",
 				VITE_CONVEX_URL: CONVEX_URL,
 				VITE_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				VITE_STAGE_KIND: "preview",
 			},
 			serverBindings: {
 				CONVEX_URL,
@@ -138,6 +142,7 @@ export function resolveRuntimeContext(
 				VITE_SERVER_URL: "/api",
 				VITE_CONVEX_URL: CONVEX_URL,
 				VITE_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				VITE_STAGE_KIND: "production",
 			},
 			serverBindings: {
 				CONVEX_URL,

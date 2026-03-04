@@ -1,9 +1,11 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import { env } from "@corporation/env/web";
 import type { SpaceTab } from "@corporation/server/space";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { FunctionReturnType } from "convex/server";
 import {
+	ClipboardIcon,
 	ExternalLinkIcon,
 	GitPullRequestIcon,
 	GlobeIcon,
@@ -154,6 +156,20 @@ const SpaceSidebarContent: FC<{
 		previewMutation.mutate(port);
 	};
 
+	const handleCopySandboxId = () => {
+		if (!space.sandboxId) {
+			return;
+		}
+		navigator.clipboard
+			.writeText(space.sandboxId)
+			.then(() => {
+				toast.success("Sandbox ID copied");
+			})
+			.catch(() => {
+				toast.error("Failed to copy sandbox ID");
+			});
+	};
+
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-center gap-2">
@@ -217,6 +233,17 @@ const SpaceSidebarContent: FC<{
 				<TerminalIcon className="size-4" />
 				New Terminal
 			</Button>
+			{env.VITE_STAGE_KIND === "dev" && space.sandboxId && (
+				<Button
+					className="w-full justify-start gap-2"
+					onClick={handleCopySandboxId}
+					size="sm"
+					variant="outline"
+				>
+					<ClipboardIcon className="size-4" />
+					Copy Sandbox ID
+				</Button>
+			)}
 			{space.sandboxId && space.status === "running" && (
 				<div className="flex gap-2">
 					<Input

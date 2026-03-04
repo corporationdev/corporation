@@ -1,26 +1,13 @@
 #!/usr/bin/env node
 
-import { appendFileSync } from "node:fs";
+import crypto from "node:crypto";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { SandboxAgent } from "sandbox-agent";
+import { AcpHttpClient, PROTOCOL_VERSION } from "acp-http-client";
 
-const FLUSH_INTERVAL_MS = 0;
-const MAX_BATCH_SIZE = 1;
 const CALLBACK_TIMEOUT_MS = 10_000;
 const CALLBACK_MAX_ATTEMPTS = 8;
-const LOG_FILE = "/tmp/corp-turn-runner.log";
-
-function log(level, message, data) {
-	const line = `[corp-turn-runner] ${new Date().toISOString()} ${message}`;
-	const full = data !== undefined ? `${line} ${JSON.stringify(data)}` : line;
-	try {
-		appendFileSync(LOG_FILE, `${full}\n`, "utf8");
-	} catch {
-		// best-effort file logging
-	}
-	console[level](full);
-}
+const RAW_PROMPT_RESPONSE_TIMEOUT_MS = 10 * 60_000;
 
 function requireEnv(key) {
 	const value = process.env[key];
@@ -42,6 +29,47 @@ function intEnv(key, fallback) {
 	return n;
 }
 
+function asRecord(value) {
+	if (!value || typeof value !== "object") {
+		return null;
+	}
+	return value;
+}
+
+function envelopeId(envelope) {
+	const record = asRecord(envelope);
+	const id = record?.id;
+	if (id == null) {
+		return null;
+	}
+	if (typeof id === "string" || typeof id === "number") {
+		return String(id);
+	}
+	return null;
+}
+
+function envelopeResult(envelope) {
+	const record = asRecord(envelope);
+	return asRecord(record?.result);
+}
+
+function envelopeError(envelope) {
+	const record = asRecord(envelope);
+	return asRecord(record?.error);
+}
+
+function clonePayload(payload) {
+	try {
+		const cloned = JSON.parse(JSON.stringify(payload));
+		if (cloned && typeof cloned === "object") {
+			return cloned;
+		}
+		return { value: cloned };
+	} catch {
+		return { value: String(payload) };
+	}
+}
+
 function formatError(error) {
 	if (error instanceof Error) {
 		return {
@@ -51,6 +79,32 @@ function formatError(error) {
 		};
 	}
 	return { name: "Error", message: String(error), stack: null };
+}
+
+function pickPermissionOption(options) {
+	if (!Array.isArray(options)) {
+		return null;
+	}
+
+	const allowAlways = options.find(
+		(option) =>
+			asRecord(option) &&
+			typeof option.kind === "string" &&
+			option.kind === "allow_always" &&
+			typeof option.optionId === "string"
+	);
+	if (allowAlways) {
+		return allowAlways;
+	}
+
+	const allowOnce = options.find(
+		(option) =>
+			asRecord(option) &&
+			typeof option.kind === "string" &&
+			option.kind === "allow_once" &&
+			typeof option.optionId === "string"
+	);
+	return allowOnce ?? null;
 }
 
 async function postJsonWithRetry(url, body, timeoutMs, maxAttempts) {
@@ -72,9 +126,6 @@ async function postJsonWithRetry(url, body, timeoutMs, maxAttempts) {
 			}
 			return;
 		} catch (error) {
-			log("warn", `callback POST failed (attempt ${attempt}/${maxAttempts})`, {
-				error: error instanceof Error ? error.message : String(error),
-			});
 			if (attempt >= maxAttempts) {
 				throw error;
 			}
@@ -84,41 +135,155 @@ async function postJsonWithRetry(url, body, timeoutMs, maxAttempts) {
 	}
 }
 
-async function main() {
-	process.on("unhandledRejection", (reason) => {
-		log("error", "unhandledRejection", formatError(reason));
+function createResponseWaiter(map, requestId, timeoutMs) {
+	let settled = false;
+	let timer = null;
+
+	const promise = new Promise((resolve, reject) => {
+		timer = setTimeout(() => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			map.delete(requestId);
+			reject(
+				new Error(
+					`Timed out waiting for ACP response envelope for id ${requestId}`
+				)
+			);
+		}, timeoutMs);
+
+		map.set(requestId, (envelope) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			clearTimeout(timer);
+			map.delete(requestId);
+			resolve(envelope);
+		});
 	});
 
+	return {
+		promise,
+		cancel: () => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			clearTimeout(timer);
+			map.delete(requestId);
+		},
+	};
+}
+
+async function sendPromptViaRawAcp({
+	agentUrl,
+	acpPath,
+	sessionId,
+	prompt,
+	pendingResponseResolvers,
+	timeoutMs,
+}) {
+	const requestId = `prompt-${crypto.randomUUID()}`;
+	const waiter = createResponseWaiter(
+		pendingResponseResolvers,
+		requestId,
+		timeoutMs
+	);
+	const controller = new AbortController();
+	const fetchTimeout = setTimeout(() => {
+		controller.abort();
+	}, timeoutMs);
+
+	try {
+		const response = await fetch(new URL(acpPath, agentUrl), {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json",
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: requestId,
+				method: "session/prompt",
+				params: { sessionId, prompt },
+			}),
+			signal: controller.signal,
+		});
+		clearTimeout(fetchTimeout);
+
+		const bodyText = await response.text().catch(() => "");
+		if (!response.ok) {
+			waiter.cancel();
+			throw new Error(
+				`Prompt failed (${response.status}): ${bodyText || "<empty>"}`
+			);
+		}
+
+		const envelope = bodyText.trim()
+			? JSON.parse(bodyText)
+			: await waiter.promise;
+
+		const error = envelopeError(envelope);
+		if (error) {
+			const code =
+				typeof error.code === "number" ? String(error.code) : "unknown";
+			const message =
+				typeof error.message === "string"
+					? error.message
+					: JSON.stringify(error);
+			throw new Error(`Prompt ACP error (${code}): ${message}`);
+		}
+
+		waiter.cancel();
+		return envelopeResult(envelope) ?? {};
+	} catch (error) {
+		clearTimeout(fetchTimeout);
+		waiter.cancel();
+		if (error instanceof Error && error.name === "AbortError") {
+			throw new Error(
+				`Timed out waiting for ACP prompt transport after ${timeoutMs}ms`,
+				{ cause: error }
+			);
+		}
+		throw error;
+	}
+}
+
+async function main() {
 	const turnId = requireEnv("TURN_ID");
 	const sessionId = requireEnv("SESSION_ID");
 	const agent = requireEnv("AGENT");
 	const callbackUrl = requireEnv("CALLBACK_URL");
 	const callbackToken = requireEnv("CALLBACK_TOKEN");
+
 	const agentUrl = process.env.AGENT_URL || "http://127.0.0.1:5799";
-	const cwd = process.env.CWD || "";
-	const promptJson = process.env.PROMPT_JSON || "";
+	const cwd = process.env.CWD || "/";
+	const promptJson = requireEnv("PROMPT_JSON");
 	const callbackTimeoutMs = intEnv("CALLBACK_TIMEOUT_MS", CALLBACK_TIMEOUT_MS);
 	const callbackMaxAttempts = intEnv(
 		"CALLBACK_MAX_ATTEMPTS",
 		CALLBACK_MAX_ATTEMPTS
 	);
-	const flushIntervalMs = intEnv("FLUSH_INTERVAL_MS", FLUSH_INTERVAL_MS);
-	const maxBatchSize = intEnv("MAX_BATCH_SIZE", MAX_BATCH_SIZE);
+	const rawPromptResponseTimeoutMs = intEnv(
+		"RAW_PROMPT_RESPONSE_TIMEOUT_MS",
+		RAW_PROMPT_RESPONSE_TIMEOUT_MS
+	);
 
-	if (!promptJson) {
-		throw new Error("Missing PROMPT_JSON env var");
-	}
 	const prompt = JSON.parse(promptJson);
 	if (!Array.isArray(prompt)) {
 		throw new Error("PROMPT_JSON must parse to an array");
 	}
 
-	log("log", "starting", { turnId, sessionId, agent, agentUrl, callbackUrl });
+	const connectionId = `corp-turn-runner-${turnId}-${crypto.randomUUID()}`;
+	const acpPath = `/v1/acp/${encodeURIComponent(connectionId)}`;
+	const pendingResponseResolvers = new Map();
 
 	let sequence = 0;
+	let eventIndex = 0;
 	let callbackChain = Promise.resolve();
-	let flushTimer = null;
-	const eventBuffer = [];
+
 	const queueCallback = (kind, payload = {}) => {
 		sequence += 1;
 		const envelope = {
@@ -143,89 +308,113 @@ async function main() {
 		return callbackChain;
 	};
 
-	const flushBufferedEvents = async () => {
-		if (flushTimer) {
-			clearTimeout(flushTimer);
-			flushTimer = null;
+	const queueEnvelopeEvent = (envelope, direction) => {
+		const id = envelopeId(envelope);
+		if (direction === "inbound" && id && pendingResponseResolvers.has(id)) {
+			pendingResponseResolvers.get(id)?.(envelope);
 		}
-		while (eventBuffer.length > 0) {
-			const batch = eventBuffer.splice(0, maxBatchSize);
-			try {
-				await queueCallback("events", { events: batch });
-			} catch (error) {
-				eventBuffer.unshift(...batch);
-				log("warn", "event flush failed, batch re-queued", {
-					batchSize: batch.length,
-					error: error instanceof Error ? error.message : String(error),
-				});
-				throw error;
-			}
-		}
+
+		eventIndex += 1;
+		queueCallback("events", {
+			events: [
+				{
+					id: crypto.randomUUID(),
+					eventIndex,
+					sessionId,
+					createdAt: Date.now(),
+					connectionId,
+					sender: direction === "outbound" ? "client" : "agent",
+					payload: clonePayload(envelope),
+				},
+			],
+		}).catch(() => undefined);
 	};
 
-	const scheduleFlush = () => {
-		if (eventBuffer.length >= maxBatchSize) {
-			flushBufferedEvents().catch(() => undefined);
-			return;
-		}
-		if (flushTimer) {
-			return;
-		}
-		flushTimer = setTimeout(() => {
-			flushTimer = null;
-			flushBufferedEvents().catch(() => undefined);
-		}, flushIntervalMs);
-	};
+	const acp = new AcpHttpClient({
+		baseUrl: agentUrl,
+		transport: {
+			path: acpPath,
+			bootstrapQuery: { agent },
+		},
+		onEnvelope: (envelope, direction) => {
+			queueEnvelopeEvent(envelope, direction);
+		},
+		client: {
+			requestPermission: (request) => {
+				const record = asRecord(request);
+				const options = Array.isArray(record?.options) ? record.options : [];
+				const selected = pickPermissionOption(options);
 
-	const sdk = await SandboxAgent.connect({ baseUrl: agentUrl });
-	let unsubscribe = null;
-	let exited = false;
-
-	const onExit = async () => {
-		if (exited) {
-			return;
-		}
-		exited = true;
-		if (flushTimer) {
-			clearTimeout(flushTimer);
-			flushTimer = null;
-		}
-		if (unsubscribe) {
-			unsubscribe();
-			unsubscribe = null;
-		}
-		await sdk.dispose().catch(() => undefined);
-	};
+				if (selected) {
+					return {
+						outcome: {
+							outcome: "selected",
+							optionId: selected.optionId,
+						},
+					};
+				}
+				return {
+					outcome: {
+						outcome: "cancelled",
+					},
+				};
+			},
+			sessionUpdate: async () => {
+				// Session updates are captured through onEnvelope.
+			},
+		},
+	});
 
 	try {
-		const session = await sdk.resumeOrCreateSession({
-			id: sessionId,
-			agent,
-			sessionInit: cwd ? { cwd, mcpServers: [] } : undefined,
+		await acp.initialize({
+			protocolVersion: PROTOCOL_VERSION,
+			clientInfo: {
+				name: "corp-turn-runner",
+				version: "v1",
+			},
 		});
 
-		unsubscribe = session.onEvent((event) => {
-			eventBuffer.push(event);
-			scheduleFlush();
+		const created = await acp.newSession({
+			cwd,
+			mcpServers: [],
+		});
+		if (!created.sessionId) {
+			throw new Error("session/new did not return a sessionId");
+		}
+
+		await sendPromptViaRawAcp({
+			agentUrl,
+			acpPath,
+			sessionId: created.sessionId,
+			prompt,
+			pendingResponseResolvers,
+			timeoutMs: rawPromptResponseTimeoutMs,
 		});
 
-		await session.prompt(prompt);
-
-		await flushBufferedEvents();
 		await queueCallback("completed");
 		await callbackChain;
-		log("log", "completed", { turnId });
 	} catch (error) {
-		log("error", "turn failed", formatError(error));
-		await flushBufferedEvents().catch(() => undefined);
-		await queueCallback("failed", {
-			error: formatError(error),
-		}).catch(() => undefined);
+		await queueCallback("failed", { error: formatError(error) }).catch(
+			() => undefined
+		);
 		await callbackChain.catch(() => undefined);
+		console.error(
+			`[corp-turn-runner] failed: ${
+				error instanceof Error ? error.message : String(error)
+			}`
+		);
 		process.exitCode = 1;
 	} finally {
-		await onExit();
+		await acp.disconnect().catch(() => undefined);
 	}
 }
+
+process.on("unhandledRejection", (reason) => {
+	console.error(
+		`[corp-turn-runner] unhandledRejection: ${
+			reason instanceof Error ? reason.message : String(reason)
+		}`
+	);
+});
 
 await main();
