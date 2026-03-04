@@ -65,7 +65,6 @@ export const sessions = sqliteTable("sessions", {
 	runCompletedAt: integer("run_completed_at", { mode: "number" }),
 	lastEventAt: integer("last_event_at", { mode: "number" }),
 	callbackToken: text("callback_token"),
-	runStopReason: text("run_stop_reason"),
 	runError: text("run_error", { mode: "json" }),
 });
 

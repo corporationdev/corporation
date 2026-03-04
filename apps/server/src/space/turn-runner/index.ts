@@ -149,7 +149,6 @@ export async function startTurnRunner(
 			runCompletedAt: null,
 			lastEventAt: now,
 			callbackToken,
-			runStopReason: null,
 			runError: null,
 		})
 		.where(eq(sessions.id, params.sessionId));
@@ -235,7 +234,6 @@ export async function ingestTurnRunnerBatch(
 				...basePatch,
 				runStatus: RUN_STATUS_COMPLETED,
 				runCompletedAt: now,
-				runStopReason: parsed.stopReason,
 				runError: null,
 			})
 			.where(eq(sessions.id, session.id));

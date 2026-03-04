@@ -209,16 +209,12 @@ async function main() {
 			scheduleFlush();
 		});
 
-		const response = await session.prompt(prompt);
-		const stopReason =
-			response && typeof response.stopReason === "string"
-				? response.stopReason
-				: null;
+		await session.prompt(prompt);
 
 		await flushBufferedEvents();
-		await queueCallback("completed", { stopReason });
+		await queueCallback("completed");
 		await callbackChain;
-		log("log", "completed", { turnId, stopReason });
+		log("log", "completed", { turnId });
 	} catch (error) {
 		log("error", "turn failed", formatError(error));
 		await flushBufferedEvents().catch(() => undefined);

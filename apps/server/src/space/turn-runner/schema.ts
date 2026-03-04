@@ -35,7 +35,6 @@ const turnRunnerCallbackPayloadSchema = z.discriminatedUnion("kind", [
 	}),
 	turnRunnerCallbackBaseSchema.extend({
 		kind: z.literal("completed"),
-		stopReason: z.string().nullable(),
 	}),
 	turnRunnerCallbackBaseSchema.extend({
 		kind: z.literal("failed"),
