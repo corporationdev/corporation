@@ -14,6 +14,7 @@ import {
 } from "./schema";
 
 const SESSION_EVENT_NAME = "session.event";
+const SESSION_STATUS_EVENT_NAME = "session.status";
 const TRAILING_SLASH_RE = /\/$/;
 const TURN_RUNNER_COMMAND = "corp-turn-runner";
 const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
@@ -22,6 +23,20 @@ const log = createLogger("space:turn-runner");
 export const SESSION_STATUS_RUNNING = "running";
 export const SESSION_STATUS_COMPLETED = "completed";
 export const SESSION_STATUS_FAILED = "failed";
+export const SESSION_STATUS_IDLE = "idle";
+
+export function publishSessionStatus(
+	ctx: SpaceRuntimeContext,
+	sessionId: string,
+	status: string
+): void {
+	publishToChannel(
+		ctx,
+		createTabChannel("session", sessionId),
+		SESSION_STATUS_EVENT_NAME,
+		{ sessionId, status }
+	);
+}
 
 async function insertSessionEvents(
 	ctx: SpaceRuntimeContext,
@@ -148,6 +163,7 @@ export async function startTurnRunner(
 			error: null,
 		})
 		.where(eq(sessions.id, params.sessionId));
+	publishSessionStatus(ctx, params.sessionId, SESSION_STATUS_RUNNING);
 
 	refreshSandboxTimeout(ctx);
 
@@ -225,6 +241,7 @@ export async function ingestTurnRunnerBatch(
 			.update(sessions)
 			.set({ status: SESSION_STATUS_COMPLETED, error: null })
 			.where(eq(sessions.id, session.id));
+		publishSessionStatus(ctx, session.id, SESSION_STATUS_COMPLETED);
 		return;
 	}
 
@@ -233,6 +250,7 @@ export async function ingestTurnRunnerBatch(
 			.update(sessions)
 			.set({ status: SESSION_STATUS_FAILED, error: parsed.error })
 			.where(eq(sessions.id, session.id));
+		publishSessionStatus(ctx, session.id, SESSION_STATUS_FAILED);
 		log.error(
 			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },
 			"turn runner reported failure"

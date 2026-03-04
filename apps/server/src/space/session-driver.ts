@@ -8,14 +8,15 @@ import type { TabDriverLifecycle } from "./driver-types";
 import {
 	ensureNoRunningTurn,
 	ingestTurnRunnerBatch,
+	publishSessionStatus,
+	SESSION_STATUS_IDLE,
+	SESSION_STATUS_RUNNING,
 	startTurnRunner,
 } from "./turn-runner";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
 const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
-const ACP_SERVERS_PATH = "/v1/acp";
-const TRAILING_SLASH_RE = /\/$/;
 const log = createLogger("space:session");
 
 async function ensureSession(
@@ -184,66 +185,36 @@ async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
 ): Promise<void> {
-	// We read session data directly from our persist driver rather than going
-	// through the sandbox-agent SDK, whose internal write queue serializes all
-	// messages — a cancel notification would get stuck behind the in-flight
-	// prompt POST.
-	const record = await ctx.vars.persist.getSession(sessionId);
-	if (!record) {
-		log.warn({ actorId: ctx.actorId, sessionId }, "cancelSession: no session");
+	const sessionRows = await ctx.vars.db
+		.select({ id: sessions.id, status: sessions.status })
+		.from(sessions)
+		.where(eq(sessions.id, sessionId))
+		.limit(1);
+	if (!sessionRows[0] || sessionRows[0].status !== SESSION_STATUS_RUNNING) {
 		return;
 	}
 
-	const baseUrl = ctx.state.agentUrl.replace(TRAILING_SLASH_RE, "");
+	// Clear run state and notify the frontend immediately.
+	await ctx.vars.db
+		.update(sessions)
+		.set({
+			status: SESSION_STATUS_IDLE,
+			runId: null,
+			callbackToken: null,
+			error: null,
+		})
+		.where(eq(sessions.id, sessionId));
+	publishSessionStatus(ctx, sessionId, SESSION_STATUS_IDLE);
 
-	// Discover the active ACP server for this agent.
-	// This is a sandbox-agent daemon API, not part of ACP itself.
-	const serversRes = await fetch(`${baseUrl}${ACP_SERVERS_PATH}`, {
-		headers: { Accept: "application/json" },
-	});
-	if (!serversRes.ok) {
-		const responseText = await serversRes.text();
-		throw new Error(
-			`ACP server discovery failed during session cancel: ${serversRes.status} ${serversRes.statusText} ${responseText}`
-		);
-	}
-	const { servers } = (await serversRes.json()) as {
-		servers: { agent: string; serverId: string; createdAtMs: number }[];
-	};
-	const server = servers
-		.filter((s) => s.agent === record.agent)
-		.sort((a, b) => b.createdAtMs - a.createdAtMs)[0];
-	if (!server) {
+	// Kill the turn-runner process in the sandbox.
+	try {
+		await ctx.vars.sandbox.commands.run("pkill -f corp-turn-runner || true", {
+			timeoutMs: 5000,
+		});
+	} catch (error) {
 		log.warn(
-			{ actorId: ctx.actorId, sessionId, agent: record.agent },
-			"cancelSession: no matching ACP server"
-		);
-		return;
-	}
-
-	// Raw POST instead of AcpHttpClient because the SDK is designed for
-	// long-lived connections: it starts an SSE loop after the first POST
-	// and sends a DELETE on disconnect that tears down the server. For a
-	// fire-and-forget cancel notification, a single POST is all we need.
-	const cancelRes = await fetch(
-		`${baseUrl}${ACP_SERVERS_PATH}/${encodeURIComponent(server.serverId)}`,
-		{
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Accept: "application/json",
-			},
-			body: JSON.stringify({
-				jsonrpc: "2.0",
-				method: "session/cancel",
-				params: { sessionId: record.agentSessionId },
-			}),
-		}
-	);
-	if (!cancelRes.ok) {
-		const responseText = await cancelRes.text();
-		throw new Error(
-			`ACP session cancel failed: ${cancelRes.status} ${cancelRes.statusText} ${responseText}`
+			{ err: error, actorId: ctx.actorId, sessionId },
+			"cancelSession: failed to kill turn-runner process"
 		);
 	}
 }

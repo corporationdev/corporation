@@ -309,6 +309,7 @@ export function useSessionEventState({
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<SessionEvent[]>([]);
 	const [events, setEvents] = useState<SessionEvent[]>([]);
+	const [sessionStatus, setSessionStatus] = useState<string | null>(null);
 
 	const addEvents = useCallback((newEvents: SessionEvent[]) => {
 		const unseen: SessionEvent[] = [];
@@ -331,6 +332,7 @@ export function useSessionEventState({
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 		setEvents([]);
+		setSessionStatus(null);
 	}, [sessionId]);
 
 	useEffect(() => {
@@ -385,41 +387,18 @@ export function useSessionEventState({
 		addEvents([typed]);
 	});
 
+	actor.useEvent(
+		"session.status",
+		(event: { sessionId: string; status: string }) => {
+			if (event.sessionId === sessionId) {
+				setSessionStatus(event.status);
+			}
+		}
+	);
+
 	const entries = useMemo(() => eventsToEntries(events), [events]);
 
-	const isRunning = useMemo(() => {
-		if (events.length === 0) {
-			return false;
-		}
-
-		// Find the last prompt request in the raw events.
-		let lastPromptIdx = -1;
-		for (let i = events.length - 1; i >= 0; i--) {
-			const payload = events[i].payload as Record<string, unknown>;
-			if (
-				events[i].sender === "client" &&
-				payload.method === "session/prompt"
-			) {
-				lastPromptIdx = i;
-				break;
-			}
-		}
-
-		if (lastPromptIdx === -1) {
-			return false;
-		}
-
-		// Check if there's a response with stopReason after the last prompt.
-		for (let i = lastPromptIdx + 1; i < events.length; i++) {
-			const payload = events[i].payload as Record<string, unknown>;
-			const result = payload.result as Record<string, unknown> | undefined;
-			if (result && typeof result.stopReason === "string") {
-				return false;
-			}
-		}
-
-		return true;
-	}, [events]);
+	const isRunning = useMemo(() => sessionStatus === "running", [sessionStatus]);
 
 	return { entries, rawEvents: events, isRunning };
 }
