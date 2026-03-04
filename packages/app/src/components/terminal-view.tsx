@@ -131,16 +131,12 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 
 		const initialize = async () => {
 			try {
-				await actor.connection?.subscribeTerminal(terminalId);
-
 				const terminal = terminalRef.current;
-				if (terminal) {
-					await actor.connection?.resize(
-						terminalId,
-						terminal.cols,
-						terminal.rows
-					);
-				}
+				await actor.connection?.openTerminal(
+					terminalId,
+					terminal?.cols,
+					terminal?.rows
+				);
 			} catch (error: unknown) {
 				console.error("Failed to initialize terminal", error);
 			}
@@ -162,15 +158,25 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 	// doesn't enter mouse-reporting mode. This lets xterm.js handle text
 	// selection natively while we forward wheel events manually above.
 	actor.useEvent("terminal.output", (payload: unknown) => {
-		const event = payload as { terminalId: string; data: number[] };
+		const event = payload as {
+			terminalId: string;
+			data: number[];
+			snapshot?: boolean;
+		};
 		if (event.terminalId !== terminalId) {
 			return;
 		}
 		const raw = new Uint8Array(event.data);
 		const text = new TextDecoder().decode(raw);
 		const filtered = text.replace(MOUSE_TRACKING_RE, "");
+		const output = event.snapshot
+			? filtered.replace(/\r?\n/g, "\r\n")
+			: filtered;
+		if (event.snapshot) {
+			terminalRef.current?.reset();
+		}
 		terminalRef.current?.write(
-			filtered.length !== text.length ? new TextEncoder().encode(filtered) : raw
+			output === text ? raw : new TextEncoder().encode(output)
 		);
 	});
 

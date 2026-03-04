@@ -4,7 +4,7 @@ import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
-import { publishToChannel } from "./subscriptions";
+import { publishToChannel, subscribeToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext, SpaceVars } from "./types";
 
 const log = createLogger("space:terminal");
@@ -14,9 +14,35 @@ const DEFAULT_TERMINAL_ROWS = 30;
 const PTY_TIMEOUT_MS = 0;
 const TMUX_HISTORY_LIMIT = 50_000;
 const DEV_SERVER_TERMINAL_ID = "devserver";
+const ENCODER = new TextEncoder();
+
+type TerminalOutputPayload = {
+	terminalId: string;
+	data: number[];
+	snapshot?: boolean;
+};
 
 function quoteShellArg(value: string): string {
 	return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function runRootCommand(sandbox: Sandbox, command: string) {
+	return sandbox.commands.run(command, { user: "root" });
+}
+
+function toBytes(value: string): number[] {
+	return Array.from(ENCODER.encode(value));
+}
+
+function normalizeTerminalDimension(
+	value: number | undefined,
+	fallback: number
+): number {
+	if (!(typeof value === "number" && Number.isFinite(value))) {
+		return fallback;
+	}
+	const normalized = Math.floor(value);
+	return normalized > 0 ? normalized : fallback;
 }
 
 function isProcessNotFoundError(error: unknown): boolean {
@@ -31,12 +57,76 @@ function isProcessNotFoundError(error: unknown): boolean {
 	);
 }
 
+async function directoryExists(
+	sandbox: Sandbox,
+	path: string
+): Promise<boolean> {
+	try {
+		await runRootCommand(sandbox, `test -d ${quoteShellArg(path)}`);
+		return true;
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+async function configureTmuxSession(
+	sandbox: Sandbox,
+	sessionName: string
+): Promise<void> {
+	const safeSessionName = quoteShellArg(sessionName);
+	await runRootCommand(
+		sandbox,
+		`tmux set-option -t ${safeSessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeSessionName} mouse on \\; set-option -t ${safeSessionName} status off`
+	);
+}
+
+async function sendTerminalSnapshotToConnection(
+	ctx: SpaceRuntimeContext,
+	terminalId: string
+): Promise<void> {
+	if (!ctx.conn) {
+		return;
+	}
+	const connection = ctx.conns.get(ctx.conn.id);
+	if (!connection) {
+		return;
+	}
+
+	try {
+		const result = await runRootCommand(
+			ctx.vars.sandbox,
+			`tmux capture-pane -p -e -t ${quoteShellArg(terminalId)} -S -`
+		);
+		if (!result.stdout) {
+			return;
+		}
+		const snapshot = result.stdout.endsWith("\n")
+			? result.stdout
+			: `${result.stdout}\n`;
+		const payload: TerminalOutputPayload = {
+			terminalId,
+			snapshot: true,
+			data: toBytes(snapshot),
+		};
+		connection.send(TERMINAL_OUTPUT_EVENT_NAME, payload);
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			return;
+		}
+		throw error;
+	}
+}
+
 async function hasTmuxSession(
 	sandbox: Sandbox,
 	sessionName: string
 ): Promise<boolean> {
 	try {
-		await sandbox.commands.run(
+		await runRootCommand(
+			sandbox,
 			`tmux has-session -t ${quoteShellArg(sessionName)}`
 		);
 		return true;
@@ -54,20 +144,38 @@ async function ensureTmuxSession(
 	cwd?: string
 ): Promise<void> {
 	const safeSessionName = quoteShellArg(sessionName);
-	const cwdFlag = cwd ? ` -c ${quoteShellArg(cwd)}` : "";
+	if (await hasTmuxSession(sandbox, sessionName)) {
+		await configureTmuxSession(sandbox, sessionName);
+		return;
+	}
+
+	let cwdFlag = "";
+	if (cwd) {
+		if (await directoryExists(sandbox, cwd)) {
+			cwdFlag = ` -c ${quoteShellArg(cwd)}`;
+		} else {
+			log.warn(
+				{ sessionName, cwd },
+				"tmux cwd does not exist, creating session without cwd override"
+			);
+		}
+	}
+
 	try {
-		await sandbox.commands.run(
-			`tmux new-session -d -s ${safeSessionName}${cwdFlag} \\; set-option -t ${safeSessionName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeSessionName} mouse on \\; set-option -t ${safeSessionName} status off`
+		await runRootCommand(
+			sandbox,
+			`tmux new-session -d -s ${safeSessionName}${cwdFlag}`
 		);
 	} catch (error) {
-		if (
-			error instanceof CommandExitError &&
-			error.message.includes("duplicate session")
-		) {
-			return;
+		if (!(error instanceof CommandExitError)) {
+			throw error;
 		}
-		throw error;
+		if (!(await hasTmuxSession(sandbox, sessionName))) {
+			throw error;
+		}
 	}
+
+	await configureTmuxSession(sandbox, sessionName);
 }
 
 async function createTmuxPty(
@@ -86,7 +194,7 @@ async function createTmuxPty(
 	});
 
 	const attachCmd = `exec tmux attach-session -t ${quoteShellArg(sessionName)}\n`;
-	await sandbox.pty.sendInput(handle.pid, new TextEncoder().encode(attachCmd));
+	await sandbox.pty.sendInput(handle.pid, ENCODER.encode(attachCmd));
 
 	return { handle, pid: handle.pid };
 }
@@ -111,7 +219,18 @@ async function connectOrCreatePty(
 	}
 
 	await ensureTmuxSession(sandbox, sessionName, cwd);
-	return await createTmuxPty(sandbox, sessionName, cols, rows, onData);
+	return createTmuxPty(sandbox, sessionName, cols, rows, onData);
+}
+
+function getTerminalHandleOrThrow(
+	ctx: SpaceRuntimeContext,
+	terminalId: string
+): CommandHandle {
+	const handle = ctx.vars.terminalHandles.get(terminalId);
+	if (!handle) {
+		throw new Error("Terminal handle is not available after ensureTerminal");
+	}
+	return handle;
 }
 
 async function recreateTerminalHandle(
@@ -192,10 +311,34 @@ async function ensureTerminal(
 	cols?: number,
 	rows?: number
 ): Promise<void> {
+	const previousEnsure = ctx.vars.terminalEnsures.get(terminalId);
+	const runEnsure = async () => {
+		await ensureTerminalOnce(ctx, terminalId, cols, rows);
+	};
+	const nextEnsure = previousEnsure
+		? previousEnsure.then(runEnsure, runEnsure)
+		: runEnsure();
+
+	ctx.vars.terminalEnsures.set(terminalId, nextEnsure);
+	try {
+		await nextEnsure;
+	} finally {
+		if (ctx.vars.terminalEnsures.get(terminalId) === nextEnsure) {
+			ctx.vars.terminalEnsures.delete(terminalId);
+		}
+	}
+}
+
+async function ensureTerminalOnce(
+	ctx: SpaceRuntimeContext,
+	terminalId: string,
+	cols?: number,
+	rows?: number
+): Promise<void> {
 	const now = Date.now();
 	const tabId = createTabId("terminal", terminalId);
-	const nextCols = cols ?? DEFAULT_TERMINAL_COLS;
-	const nextRows = rows ?? DEFAULT_TERMINAL_ROWS;
+	const nextCols = normalizeTerminalDimension(cols, DEFAULT_TERMINAL_COLS);
+	const nextRows = normalizeTerminalDimension(rows, DEFAULT_TERMINAL_ROWS);
 
 	await ctx.vars.db.transaction(async (tx) => {
 		const existing = await tx
@@ -238,11 +381,19 @@ async function ensureTerminal(
 			return;
 		}
 		if (cols !== undefined || rows !== undefined) {
+			const updatedCols =
+				cols !== undefined
+					? normalizeTerminalDimension(cols, existingTerminal.cols)
+					: existingTerminal.cols;
+			const updatedRows =
+				rows !== undefined
+					? normalizeTerminalDimension(rows, existingTerminal.rows)
+					: existingTerminal.rows;
 			await tx
 				.update(terminals)
 				.set({
-					cols: cols ?? existingTerminal.cols,
-					rows: rows ?? existingTerminal.rows,
+					cols: updatedCols,
+					rows: updatedRows,
 					updatedAt: now,
 				})
 				.where(eq(terminals.id, terminalId));
@@ -273,15 +424,16 @@ async function ensureTerminal(
 
 		const onData = (chunk: Uint8Array) => {
 			const bytes = Array.from(chunk);
+			const payload: TerminalOutputPayload = {
+				terminalId,
+				data: bytes,
+			};
 
 			publishToChannel(
 				ctx,
 				createTabChannel("terminal", terminalId),
 				TERMINAL_OUTPUT_EVENT_NAME,
-				{
-					terminalId,
-					data: bytes,
-				}
+				payload
 			);
 		};
 
@@ -295,6 +447,17 @@ async function ensureTerminal(
 			ctx.state.workdir ?? undefined
 		);
 
+		const previousHandle = ctx.vars.terminalHandles.get(terminalId);
+		if (previousHandle && previousHandle !== handle) {
+			try {
+				await previousHandle.disconnect();
+			} catch (error) {
+				log.warn(
+					{ terminalId, err: error },
+					"failed to disconnect replaced terminal handle"
+				);
+			}
+		}
 		ctx.vars.terminalHandles.set(terminalId, handle);
 		trackTerminalExit(ctx, terminalId, handle, pid);
 
@@ -318,10 +481,7 @@ async function input(
 		await ensureTerminal(ctx, terminalId);
 	}
 
-	const handle = ctx.vars.terminalHandles.get(terminalId);
-	if (!handle) {
-		throw new Error("Terminal handle is not available after ensureTerminal");
-	}
+	const handle = getTerminalHandleOrThrow(ctx, terminalId);
 
 	try {
 		await ctx.vars.sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
@@ -350,10 +510,7 @@ async function resize(
 ): Promise<void> {
 	await ensureTerminal(ctx, terminalId, cols, rows);
 
-	const handle = ctx.vars.terminalHandles.get(terminalId);
-	if (!handle) {
-		throw new Error("Terminal handle is not available after ensureTerminal");
-	}
+	const handle = getTerminalHandleOrThrow(ctx, terminalId);
 
 	try {
 		await ctx.vars.sandbox.pty.resize(handle.pid, { cols, rows });
@@ -442,14 +599,40 @@ async function startDevServerAction(
 	);
 
 	// Send the dev command literally to avoid shell expansion in the wrapper shell.
-	await ctx.vars.sandbox.commands.run(
+	await runRootCommand(
+		ctx.vars.sandbox,
 		`tmux send-keys -t ${safeSessionName} -l -- ${quoteShellArg(trimmedDevCommand)}`
 	);
-	await ctx.vars.sandbox.commands.run(
+	await runRootCommand(
+		ctx.vars.sandbox,
 		`tmux send-keys -t ${safeSessionName} Enter`
 	);
 
 	await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
+}
+
+async function openTerminalAction(
+	ctx: SpaceRuntimeContext,
+	terminalId: string,
+	cols?: number,
+	rows?: number
+): Promise<void> {
+	if (!ctx.conn) {
+		throw new Error("Terminal subscriptions require an active connection");
+	}
+
+	subscribeToChannel(
+		ctx.vars.subscriptions,
+		createTabChannel("terminal", terminalId),
+		ctx.conn.id
+	);
+
+	const hadHandle = ctx.vars.terminalHandles.has(terminalId);
+	await ensureTerminal(ctx, terminalId, cols, rows);
+
+	if (hadHandle) {
+		await sendTerminalSnapshotToConnection(ctx, terminalId);
+	}
 }
 
 async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
@@ -467,7 +650,8 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 	// Kill the tmux session
 	try {
 		const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
-		await ctx.vars.sandbox.commands.run(
+		await runRootCommand(
+			ctx.vars.sandbox,
 			`tmux kill-session -t ${safeSessionName}`
 		);
 	} catch (error) {
@@ -570,6 +754,12 @@ async function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
 }
 
 type TerminalPublicActions = {
+	openTerminal: (
+		ctx: SpaceRuntimeContext,
+		terminalId: string,
+		cols?: number,
+		rows?: number
+	) => Promise<void>;
 	input: (
 		ctx: SpaceRuntimeContext,
 		terminalId: string,
@@ -598,6 +788,7 @@ export const terminalDriver: TerminalDriver = {
 	onSleep,
 	listTabs,
 	publicActions: {
+		openTerminal: openTerminalAction,
 		input,
 		resize,
 		startDevServer: startDevServerAction,

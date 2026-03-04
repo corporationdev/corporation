@@ -22,6 +22,7 @@ export type SpaceVars = {
 	sandbox: Sandbox;
 	sandboxClient: SandboxAgentClient;
 	terminalHandles: Map<string, CommandHandle>;
+	terminalEnsures: Map<string, Promise<void>>;
 	subscriptions: SubscriptionHub;
 	lastTimeoutRefreshAt: number;
 };
