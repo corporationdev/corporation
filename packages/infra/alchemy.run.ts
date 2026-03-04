@@ -4,9 +4,9 @@ import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
 	KVNamespace,
+	quickTunnel,
 	Vite,
 	Worker,
-	quickTunnel,
 } from "alchemy/cloudflare";
 import { CloudflareStateStore } from "alchemy/state";
 import { config } from "dotenv";
@@ -59,9 +59,9 @@ export const server = await Worker("agent-server", {
 		// callback endpoint from inside E2B.
 		SERVER_PUBLIC_URL:
 			stageKind === "dev"
-				? (devCallbackTunnel
+				? devCallbackTunnel
 					? `${devCallbackTunnel.tunnelUrl}/api`
-					: runtime.serverBindings.SERVER_PUBLIC_URL)
+					: runtime.serverBindings.SERVER_PUBLIC_URL
 				: runtime.serverBindings.SERVER_PUBLIC_URL,
 		ACTOR_DO: actorDO,
 		ACTOR_KV: actorKV,
@@ -90,9 +90,9 @@ function getWebDomain(): string | undefined {
 const webDomain = getWebDomain();
 const devServerProxyTarget = runtime.webDevProxyEnv
 	? stageKind === "dev"
-		? server.url ??
+		? (server.url ??
 			runtime.webDevProxyEnv.DEV_SERVER_PROXY_TARGET ??
-			"http://localhost:3000"
+			"http://localhost:3000")
 		: runtime.webDevProxyEnv.DEV_SERVER_PROXY_TARGET
 	: undefined;
 
