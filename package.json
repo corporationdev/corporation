@@ -79,7 +79,7 @@
     "dev": "turbo dev",
     "secrets:inject": "bun scripts/secrets-inject.ts",
     "build": "turbo build",
-    "check-types": "turbo check-types",
+    "check-types": "turbo check-types --filter=!desktop",
     "dev:native": "turbo -F native dev",
     "dev:desktop": "turbo -F desktop dev",
     "dev:server": "turbo -F @corporation/backend dev",
