@@ -76,6 +76,7 @@ export const space = actor({
 			sandbox,
 			sandboxClient,
 			terminalHandles: new Map(),
+			terminalEnsures: new Map(),
 			subscriptions: createSubscriptionHub(),
 			lastTimeoutRefreshAt: 0,
 		};

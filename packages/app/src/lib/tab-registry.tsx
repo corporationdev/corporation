@@ -57,16 +57,14 @@ export const tabRegistry: TabConfigMap = {
 	terminal: {
 		requiresSandbox: true,
 		defaultTitle: "Terminal",
-		render: ({ actor, tab }) => {
-			if (tab?.type !== "terminal") {
+		render: ({ actor, tab, routeParamId }) => {
+			const terminalId =
+				tab?.type === "terminal" ? tab.terminalId : routeParamId;
+			if (!terminalId) {
 				return null;
 			}
 			return (
-				<TerminalView
-					actor={actor}
-					key={tab.terminalId}
-					terminalId={tab.terminalId}
-				/>
+				<TerminalView actor={actor} key={terminalId} terminalId={terminalId} />
 			);
 		},
 		tabParamFromSpaceTab: (tab) => {
