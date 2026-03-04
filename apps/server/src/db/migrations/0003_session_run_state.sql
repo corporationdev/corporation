@@ -1,5 +1,7 @@
 ALTER TABLE `sessions` ADD `run_id` text;
 --> statement-breakpoint
+ALTER TABLE `sessions` ADD `pid` integer;
+--> statement-breakpoint
 ALTER TABLE `sessions` ADD `status` text DEFAULT 'idle' NOT NULL;
 --> statement-breakpoint
 ALTER TABLE `sessions` ADD `callback_token` text;

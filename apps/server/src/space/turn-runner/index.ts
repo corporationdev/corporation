@@ -84,7 +84,7 @@ async function launchTurnRunner(
 		callbackUrl: string;
 		callbackToken: string;
 	}
-): Promise<void> {
+): Promise<number | null> {
 	const launchCommand = [
 		"set -euo pipefail",
 		`command -v ${TURN_RUNNER_COMMAND} >/dev/null 2>&1`,
@@ -95,7 +95,7 @@ async function launchTurnRunner(
 		'kill -0 "$pid" >/dev/null 2>&1',
 	].join("\n");
 
-	await ctx.vars.sandbox.commands.run(launchCommand, {
+	const result = await ctx.vars.sandbox.commands.run(launchCommand, {
 		cwd: ctx.state.workdir,
 		timeoutMs: 15_000,
 		user: "root",
@@ -111,6 +111,9 @@ async function launchTurnRunner(
 			CWD: ctx.state.workdir,
 		},
 	});
+
+	const pid = Number.parseInt(result.stdout.trim(), 10);
+	return Number.isNaN(pid) ? null : pid;
 }
 
 export async function ensureNoRunningTurn(
@@ -168,7 +171,7 @@ export async function startTurnRunner(
 	refreshSandboxTimeout(ctx);
 
 	try {
-		await launchTurnRunner(ctx, {
+		const pid = await launchTurnRunner(ctx, {
 			turnId,
 			sessionId: params.sessionId,
 			agent: params.agent,
@@ -177,6 +180,12 @@ export async function startTurnRunner(
 			callbackUrl,
 			callbackToken,
 		});
+		if (pid != null) {
+			await ctx.vars.db
+				.update(sessions)
+				.set({ pid })
+				.where(eq(sessions.id, params.sessionId));
+		}
 	} catch (error) {
 		log.error(
 			{ err: error, actorId: ctx.actorId, sessionId: params.sessionId, turnId },
@@ -239,7 +248,7 @@ export async function ingestTurnRunnerBatch(
 	if (parsed.kind === "completed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: SESSION_STATUS_COMPLETED, error: null })
+			.set({ status: SESSION_STATUS_COMPLETED, pid: null, error: null })
 			.where(eq(sessions.id, session.id));
 		publishSessionStatus(ctx, session.id, SESSION_STATUS_COMPLETED);
 		return;
@@ -248,7 +257,7 @@ export async function ingestTurnRunnerBatch(
 	if (parsed.kind === "failed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: SESSION_STATUS_FAILED, error: parsed.error })
+			.set({ status: SESSION_STATUS_FAILED, pid: null, error: parsed.error })
 			.where(eq(sessions.id, session.id));
 		publishSessionStatus(ctx, session.id, SESSION_STATUS_FAILED);
 		log.error(

@@ -186,7 +186,11 @@ async function cancelSession(
 	sessionId: string
 ): Promise<void> {
 	const sessionRows = await ctx.vars.db
-		.select({ id: sessions.id, status: sessions.status })
+		.select({
+			id: sessions.id,
+			status: sessions.status,
+			pid: sessions.pid,
+		})
 		.from(sessions)
 		.where(eq(sessions.id, sessionId))
 		.limit(1);
@@ -194,21 +198,28 @@ async function cancelSession(
 		return;
 	}
 
+	const { pid } = sessionRows[0];
+
 	// Clear run state and notify the frontend immediately.
 	await ctx.vars.db
 		.update(sessions)
 		.set({
 			status: SESSION_STATUS_IDLE,
 			runId: null,
+			pid: null,
 			callbackToken: null,
 			error: null,
 		})
 		.where(eq(sessions.id, sessionId));
 	publishSessionStatus(ctx, sessionId, SESSION_STATUS_IDLE);
 
-	// Kill the turn-runner process in the sandbox.
+	// TODO: Investigate whether killing is the right approach here or whether
+	// we keep the turn runner alive and just cancel the prompt.
+	const killCmd = pid
+		? `kill ${pid} 2>/dev/null || true`
+		: "pkill -f corp-turn-runner || true";
 	try {
-		await ctx.vars.sandbox.commands.run("pkill -f corp-turn-runner || true", {
+		await ctx.vars.sandbox.commands.run(killCmd, {
 			timeoutMs: 5000,
 		});
 	} catch (error) {

@@ -58,6 +58,7 @@ export const sessions = sqliteTable("sessions", {
 	sessionInit: text("session_init", { mode: "json" }),
 	modelId: text("model_id"),
 	runId: text("run_id"),
+	pid: integer("pid"),
 	status: text("status", { enum: sessionStatusValues })
 		.notNull()
 		.default("idle"),
