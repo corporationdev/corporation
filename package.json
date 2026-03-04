@@ -92,6 +92,7 @@
     "fix:force": "ultracite fix --unsafe",
     "db:generate": "turbo db:generate",
     "setup": "bun scripts/setup.ts",
+    "sync:turn-runner": "bun scripts/sync-turn-runner.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:models": "bun scripts/generate-agent-models.ts"
   },
