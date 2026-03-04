@@ -21,7 +21,6 @@ export type SpaceVars = {
 	persist: SqliteSessionPersistDriver;
 	sandbox: Sandbox;
 	sandboxClient: SandboxAgentClient;
-	sessionStreams: Map<string, () => void>;
 	terminalHandles: Map<string, CommandHandle>;
 	subscriptions: SubscriptionHub;
 	lastTimeoutRefreshAt: number;
@@ -32,6 +31,7 @@ export type ConnectionSender = {
 };
 
 export type SpaceRuntimeContext = {
+	actorId: string;
 	state: PersistedState;
 	vars: SpaceVars;
 	conns: Map<string, ConnectionSender>;

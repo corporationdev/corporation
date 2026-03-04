@@ -6,6 +6,7 @@ import {
 	KVNamespace,
 	Vite,
 	Worker,
+	quickTunnel,
 } from "alchemy/cloudflare";
 import { CloudflareStateStore } from "alchemy/state";
 import { config } from "dotenv";
@@ -39,6 +40,10 @@ const actorDO = DurableObjectNamespace("actor-do", {
 });
 
 const actorKV = await KVNamespace("actor-kv");
+const devCallbackTunnel =
+	stageKind === "dev"
+		? await quickTunnel(app, "http://localhost:3000")
+		: undefined;
 
 export const server = await Worker("agent-server", {
 	cwd: "../../apps/server",
@@ -50,6 +55,14 @@ export const server = await Worker("agent-server", {
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
 		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
 		...runtime.serverBindings,
+		// In local dev, use a Quick Tunnel URL so sandbox runners can reach the
+		// callback endpoint from inside E2B.
+		SERVER_PUBLIC_URL:
+			stageKind === "dev"
+				? (devCallbackTunnel
+					? `${devCallbackTunnel.tunnelUrl}/api`
+					: runtime.serverBindings.SERVER_PUBLIC_URL)
+				: runtime.serverBindings.SERVER_PUBLIC_URL,
 		ACTOR_DO: actorDO,
 		ACTOR_KV: actorKV,
 	},
@@ -59,6 +72,9 @@ export const server = await Worker("agent-server", {
 });
 
 console.log(`Agent server -> ${server.url}`);
+if (devCallbackTunnel) {
+	console.log(`Agent callback tunnel -> ${devCallbackTunnel.tunnelUrl}`);
+}
 
 // Resolve custom domain for deployed stages
 function getWebDomain(): string | undefined {
@@ -72,11 +88,25 @@ function getWebDomain(): string | undefined {
 }
 
 const webDomain = getWebDomain();
+const devServerProxyTarget = runtime.webDevProxyEnv
+	? stageKind === "dev"
+		? server.url ??
+			runtime.webDevProxyEnv.DEV_SERVER_PROXY_TARGET ??
+			"http://localhost:3000"
+		: runtime.webDevProxyEnv.DEV_SERVER_PROXY_TARGET
+	: undefined;
 
 export const web = await Vite("web", {
 	cwd: "../../apps/web",
 	entrypoint: "worker/index.ts",
 	build: "bunx --bun vite build",
+	dev: devServerProxyTarget
+		? {
+				env: {
+					DEV_SERVER_PROXY_TARGET: devServerProxyTarget,
+				},
+			}
+		: undefined,
 	assets: {
 		directory: "dist",
 		run_worker_first: ["/api/*"],
