@@ -19,9 +19,9 @@ const TURN_RUNNER_COMMAND = "corp-turn-runner";
 const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
 const log = createLogger("space:turn-runner");
 
-export const RUN_STATUS_RUNNING = "running";
-export const RUN_STATUS_COMPLETED = "completed";
-export const RUN_STATUS_FAILED = "failed";
+export const SESSION_STATUS_RUNNING = "running";
+export const SESSION_STATUS_COMPLETED = "completed";
+export const SESSION_STATUS_FAILED = "failed";
 
 async function insertSessionEvents(
 	ctx: SpaceRuntimeContext,
@@ -103,11 +103,11 @@ export async function ensureNoRunningTurn(
 	sessionId: string
 ): Promise<void> {
 	const existingSession = await ctx.vars.db
-		.select({ runStatus: sessions.runStatus })
+		.select({ status: sessions.status })
 		.from(sessions)
 		.where(eq(sessions.id, sessionId))
 		.limit(1);
-	if (existingSession[0]?.runStatus === RUN_STATUS_RUNNING) {
+	if (existingSession[0]?.status === SESSION_STATUS_RUNNING) {
 		throw new Error("Session already has a running turn");
 	}
 }
@@ -143,9 +143,9 @@ export async function startTurnRunner(
 		.update(sessions)
 		.set({
 			runId: turnId,
-			runStatus: RUN_STATUS_RUNNING,
+			status: SESSION_STATUS_RUNNING,
 			callbackToken,
-			runError: null,
+			error: null,
 		})
 		.where(eq(sessions.id, params.sessionId));
 
@@ -169,8 +169,8 @@ export async function startTurnRunner(
 		await ctx.vars.db
 			.update(sessions)
 			.set({
-				runStatus: RUN_STATUS_FAILED,
-				runError: {
+				status: SESSION_STATUS_FAILED,
+				error: {
 					message: error instanceof Error ? error.message : String(error),
 				},
 			})
@@ -223,7 +223,7 @@ export async function ingestTurnRunnerBatch(
 	if (parsed.kind === "completed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ runStatus: RUN_STATUS_COMPLETED, runError: null })
+			.set({ status: SESSION_STATUS_COMPLETED, error: null })
 			.where(eq(sessions.id, session.id));
 		return;
 	}
@@ -231,7 +231,7 @@ export async function ingestTurnRunnerBatch(
 	if (parsed.kind === "failed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ runStatus: RUN_STATUS_FAILED, runError: parsed.error })
+			.set({ status: SESSION_STATUS_FAILED, error: parsed.error })
 			.where(eq(sessions.id, session.id));
 		log.error(
 			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },

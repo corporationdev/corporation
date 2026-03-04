@@ -40,13 +40,13 @@ export const previews = sqliteTable("previews", {
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
 
-export const runStatusValues = [
+export const sessionStatusValues = [
 	"idle",
 	"running",
 	"completed",
 	"failed",
 ] as const;
-export type RunStatus = (typeof runStatusValues)[number];
+export type SessionStatus = (typeof sessionStatusValues)[number];
 
 export const sessions = sqliteTable("sessions", {
 	id: text("id").primaryKey(),
@@ -58,11 +58,11 @@ export const sessions = sqliteTable("sessions", {
 	sessionInit: text("session_init", { mode: "json" }),
 	modelId: text("model_id"),
 	runId: text("run_id"),
-	runStatus: text("run_status", { enum: runStatusValues })
+	status: text("status", { enum: sessionStatusValues })
 		.notNull()
 		.default("idle"),
 	callbackToken: text("callback_token"),
-	runError: text("run_error", { mode: "json" }),
+	error: text("error", { mode: "json" }),
 });
 
 export const sessionEvents = sqliteTable("session_events", {
