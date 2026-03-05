@@ -4,7 +4,6 @@ import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
 	KVNamespace,
-	quickTunnel,
 	Vite,
 	Worker,
 } from "alchemy/cloudflare";
@@ -40,9 +39,24 @@ const actorDO = DurableObjectNamespace("actor-do", {
 });
 
 const actorKV = await KVNamespace("actor-kv");
+const createSilentQuickTunnel = async (localUrl: string) => ({
+	localUrl,
+	tunnelUrl: await app.spawn("tunnel", {
+		cmd: `cloudflared tunnel --url ${localUrl}`,
+		processName: "cloudflared",
+		quiet: true,
+		extract: (line) => {
+			const match = line.match(/https:\/\/([^\s]+)\.trycloudflare\.com/);
+			if (match) {
+				return `https://${match[1]}.trycloudflare.com`;
+			}
+		},
+	}),
+});
+
 const devCallbackTunnel =
 	stageKind === "dev" || stageKind === "sandbox"
-		? await quickTunnel(app, "http://localhost:3000")
+		? await createSilentQuickTunnel("http://localhost:3000")
 		: undefined;
 
 export const server = await Worker("agent-server", {
