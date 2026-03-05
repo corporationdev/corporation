@@ -157,7 +157,7 @@ export async function startTurnRunner(
 		.where(eq(sessions.id, params.sessionId))
 		.limit(1);
 	if (persistedSession.length === 0) {
-		throw new Error("Session record not found after resumeOrCreateSession");
+		throw new Error("Session record not found");
 	}
 
 	const turnId = nanoid();

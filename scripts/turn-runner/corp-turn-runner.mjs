@@ -177,6 +177,28 @@ function createResponseWaiter(map, requestId, timeoutMs) {
 	};
 }
 
+async function setModelViaRawAcp({ agentUrl, acpPath, sessionId, modelId }) {
+	const requestId = `set-model-${crypto.randomUUID()}`;
+	const envelope = {
+		jsonrpc: "2.0",
+		id: requestId,
+		method: "session/set_model",
+		params: { sessionId, modelId },
+	};
+	const response = await fetch(new URL(acpPath, agentUrl), {
+		method: "POST",
+		headers: { "Content-Type": "application/json", Accept: "application/json" },
+		body: JSON.stringify(envelope),
+		signal: AbortSignal.timeout(10_000),
+	});
+	if (!response.ok) {
+		const text = await response.text().catch(() => "");
+		console.error(
+			`[corp-turn-runner] set_model failed (${response.status}): ${text}`
+		);
+	}
+}
+
 async function sendPromptViaRawAcp({
 	agentUrl,
 	acpPath,
@@ -262,6 +284,7 @@ async function main() {
 	const callbackUrl = requireEnv("CALLBACK_URL");
 	const callbackToken = requireEnv("CALLBACK_TOKEN");
 
+	const modelId = process.env.MODEL_ID || "";
 	const agentUrl = process.env.AGENT_URL || "http://127.0.0.1:5799";
 	const cwd = process.env.CWD || "/";
 	const promptJson = requireEnv("PROMPT_JSON");
@@ -384,6 +407,15 @@ async function main() {
 		});
 		if (!created.sessionId) {
 			throw new Error("session/new did not return a sessionId");
+		}
+
+		if (modelId) {
+			await setModelViaRawAcp({
+				agentUrl,
+				acpPath,
+				sessionId: created.sessionId,
+				modelId,
+			});
 		}
 
 		await sendPromptViaRawAcp({
