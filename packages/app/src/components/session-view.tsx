@@ -375,9 +375,14 @@ const ConnectedSessionView: FC<{
 		}
 
 		setMessage("");
+		const t0 = performance.now();
+		console.log("🔥🔥🔥 [TTFT] handleSend START", t0);
 
 		try {
 			await ensureSpace({ slug: spaceSlug });
+			console.log(
+				`🔥🔥🔥 [TTFT] ensureSpace done +${(performance.now() - t0).toFixed(1)}ms`
+			);
 
 			const conn = actor.connection;
 			if (!conn) {
@@ -385,6 +390,9 @@ const ConnectedSessionView: FC<{
 			}
 
 			await conn.sendMessage(sessionId, text, agent, modelId);
+			console.log(
+				`🔥🔥🔥 [TTFT] conn.sendMessage resolved +${(performance.now() - t0).toFixed(1)}ms`
+			);
 		} catch (error) {
 			const kind = softResetActorConnectionOnTransientError({
 				error,

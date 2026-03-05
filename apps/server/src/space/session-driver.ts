@@ -138,6 +138,9 @@ async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
+	const t0 = performance.now();
+	log.info("❤️❤️❤️ [TTFT] sendMessage START");
+
 	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
 	if (isFirstMessageForSpace) {
 		ctx.waitUntil(
@@ -149,10 +152,19 @@ async function sendMessage(
 			})
 		);
 	}
+	log.info(
+		`❤️❤️❤️ [TTFT] hasNoSessionTabs done +${(performance.now() - t0).toFixed(1)}ms`
+	);
 
 	await ensureSession(ctx, sessionId);
+	log.info(
+		`❤️❤️❤️ [TTFT] ensureSession done +${(performance.now() - t0).toFixed(1)}ms`
+	);
 
 	await ensureNoRunningTurn(ctx, sessionId);
+	log.info(
+		`❤️❤️❤️ [TTFT] ensureNoRunningTurn done +${(performance.now() - t0).toFixed(1)}ms`
+	);
 
 	let prompt: SessionPromptPart[] = [{ type: "text", text: content }];
 	try {
@@ -163,6 +175,9 @@ async function sendMessage(
 			"sendMessage: failed to build replay context"
 		);
 	}
+	log.info(
+		`❤️❤️❤️ [TTFT] buildPromptWithReplay done +${(performance.now() - t0).toFixed(1)}ms`
+	);
 
 	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
 		id: sessionId,
@@ -172,6 +187,9 @@ async function sendMessage(
 			mcpServers: [],
 		},
 	});
+	log.info(
+		`❤️❤️❤️ [TTFT] resumeOrCreateSession done +${(performance.now() - t0).toFixed(1)}ms`
+	);
 
 	const modelApplied = await applyModel(session, modelId);
 	if (modelApplied) {
@@ -182,6 +200,9 @@ async function sendMessage(
 			"sendMessage: model not applied"
 		);
 	}
+	log.info(
+		`❤️❤️❤️ [TTFT] applyModel done +${(performance.now() - t0).toFixed(1)}ms`
+	);
 
 	await startTurnRunner(ctx, {
 		sessionId,
@@ -189,6 +210,9 @@ async function sendMessage(
 		agent,
 		modelId,
 	});
+	log.info(
+		`❤️❤️❤️ [TTFT] startTurnRunner done +${(performance.now() - t0).toFixed(1)}ms`
+	);
 }
 
 async function listAgents(
