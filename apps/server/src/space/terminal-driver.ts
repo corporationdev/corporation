@@ -4,8 +4,9 @@ import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
+import { getSandbox } from "./runtime-services";
 import { publishToChannel, subscribeToChannel } from "./subscriptions";
-import type { SpaceRuntimeContext, SpaceVars } from "./types";
+import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_OUTPUT_EVENT_NAME = "terminal.output";
@@ -96,8 +97,9 @@ async function sendTerminalSnapshotToConnection(
 	}
 
 	try {
+		const sandbox = await getSandbox(ctx);
 		const result = await runRootCommand(
-			ctx.vars.sandbox,
+			sandbox,
 			`tmux capture-pane -p -e -t ${quoteShellArg(terminalId)} -S -`
 		);
 		if (!result.stdout) {
@@ -297,14 +299,6 @@ function trackTerminalExit(
 		});
 }
 
-async function disconnectAllTerminals(ctx: SpaceRuntimeContext): Promise<void> {
-	for (const handle of ctx.vars.terminalHandles.values()) {
-		await handle.disconnect();
-	}
-
-	ctx.vars.terminalHandles.clear();
-}
-
 async function ensureTerminal(
 	ctx: SpaceRuntimeContext,
 	terminalId: string,
@@ -407,6 +401,7 @@ async function ensureTerminalOnce(
 
 	const existingHandle = ctx.vars.terminalHandles.get(terminalId);
 	if (!existingHandle) {
+		const sandbox = await getSandbox(ctx);
 		const row = await ctx.vars.db
 			.select({
 				ptyPid: terminals.ptyPid,
@@ -438,7 +433,7 @@ async function ensureTerminalOnce(
 		};
 
 		const { handle, pid } = await connectOrCreatePty(
-			ctx.vars.sandbox,
+			sandbox,
 			terminalId,
 			terminalRow.ptyPid,
 			terminalRow.cols,
@@ -482,9 +477,10 @@ async function input(
 	}
 
 	const handle = getTerminalHandleOrThrow(ctx, terminalId);
+	const sandbox = await getSandbox(ctx);
 
 	try {
-		await ctx.vars.sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
+		await sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
 	} catch (error) {
 		if (!isProcessNotFoundError(error)) {
 			throw error;
@@ -495,10 +491,7 @@ async function input(
 			"terminal pty pid not found during input, recreating handle"
 		);
 		const refreshedHandle = await recreateTerminalHandle(ctx, terminalId);
-		await ctx.vars.sandbox.pty.sendInput(
-			refreshedHandle.pid,
-			new Uint8Array(data)
-		);
+		await sandbox.pty.sendInput(refreshedHandle.pid, new Uint8Array(data));
 	}
 }
 
@@ -511,9 +504,10 @@ async function resize(
 	await ensureTerminal(ctx, terminalId, cols, rows);
 
 	const handle = getTerminalHandleOrThrow(ctx, terminalId);
+	const sandbox = await getSandbox(ctx);
 
 	try {
-		await ctx.vars.sandbox.pty.resize(handle.pid, { cols, rows });
+		await sandbox.pty.resize(handle.pid, { cols, rows });
 	} catch (error) {
 		if (!isProcessNotFoundError(error)) {
 			throw error;
@@ -529,7 +523,7 @@ async function resize(
 			cols,
 			rows
 		);
-		await ctx.vars.sandbox.pty.resize(refreshedHandle.pid, { cols, rows });
+		await sandbox.pty.resize(refreshedHandle.pid, { cols, rows });
 	}
 }
 
@@ -584,7 +578,8 @@ async function startDevServerAction(
 		throw new Error("Dev command must not be empty");
 	}
 
-	const exists = await hasTmuxSession(ctx.vars.sandbox, DEV_SERVER_TERMINAL_ID);
+	const sandbox = await getSandbox(ctx);
+	const exists = await hasTmuxSession(sandbox, DEV_SERVER_TERMINAL_ID);
 	if (exists) {
 		// Already running — just ensure the tab + PTY are attached
 		await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
@@ -593,20 +588,17 @@ async function startDevServerAction(
 
 	const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
 	await ensureTmuxSession(
-		ctx.vars.sandbox,
+		sandbox,
 		DEV_SERVER_TERMINAL_ID,
 		ctx.state.workdir ?? undefined
 	);
 
 	// Send the dev command literally to avoid shell expansion in the wrapper shell.
 	await runRootCommand(
-		ctx.vars.sandbox,
+		sandbox,
 		`tmux send-keys -t ${safeSessionName} -l -- ${quoteShellArg(trimmedDevCommand)}`
 	);
-	await runRootCommand(
-		ctx.vars.sandbox,
-		`tmux send-keys -t ${safeSessionName} Enter`
-	);
+	await runRootCommand(sandbox, `tmux send-keys -t ${safeSessionName} Enter`);
 
 	await ensureTerminal(ctx, DEV_SERVER_TERMINAL_ID);
 }
@@ -649,11 +641,9 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 
 	// Kill the tmux session
 	try {
+		const sandbox = await getSandbox(ctx);
 		const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
-		await runRootCommand(
-			ctx.vars.sandbox,
-			`tmux kill-session -t ${safeSessionName}`
-		);
+		await runRootCommand(sandbox, `tmux kill-session -t ${safeSessionName}`);
 	} catch (error) {
 		if (!(error instanceof CommandExitError)) {
 			throw error;
@@ -671,13 +661,14 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 	await ctx.broadcastTabsChanged();
 }
 
-async function onWake(vars: SpaceVars): Promise<void> {
-	const exists = await hasTmuxSession(vars.sandbox, DEV_SERVER_TERMINAL_ID);
+async function onWake(ctx: SpaceRuntimeContext): Promise<void> {
+	const sandbox = await getSandbox(ctx);
+	const exists = await hasTmuxSession(sandbox, DEV_SERVER_TERMINAL_ID);
 	if (!exists) {
 		// Clean up stale tab if tmux session is gone (e.g. sandbox restart)
 		const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
 		const now = Date.now();
-		vars.db
+		ctx.vars.db
 			.update(tabs)
 			.set({ active: false, archivedAt: now, updatedAt: now })
 			.where(eq(tabs.id, tabId))
@@ -688,7 +679,7 @@ async function onWake(vars: SpaceVars): Promise<void> {
 	const tabId = createTabId("terminal", DEV_SERVER_TERMINAL_ID);
 	const now = Date.now();
 
-	vars.db.transaction((tx) => {
+	ctx.vars.db.transaction((tx) => {
 		const existingTab = tx
 			.select({ id: tabs.id })
 			.from(tabs)
@@ -745,12 +736,7 @@ async function onWake(vars: SpaceVars): Promise<void> {
 				.run();
 		}
 	});
-
-	log.info("auto-discovered devserver tmux session on wake");
-}
-
-async function onSleep(ctx: SpaceRuntimeContext): Promise<void> {
-	await disconnectAllTerminals(ctx);
+	log.info({ actorId: ctx.actorId }, "terminal.on-wake.devserver-discovered");
 }
 
 type TerminalPublicActions = {
@@ -785,7 +771,6 @@ type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
 export const terminalDriver: TerminalDriver = {
 	kind: "terminal",
 	onWake,
-	onSleep,
 	listTabs,
 	publicActions: {
 		openTerminal: openTerminalAction,

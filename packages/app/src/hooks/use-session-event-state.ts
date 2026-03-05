@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionEvent } from "sandbox-agent";
 import type { TimelineEntry } from "@/components/chat/types";
+import {
+	isDisposedConnError,
+	isInFlightMismatchError,
+	isTransientActorConnError,
+	requestActorConnectionSoftReset,
+} from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 
 export type SessionState = {
@@ -10,17 +16,6 @@ export type SessionState = {
 };
 
 const TRANSCRIPT_PAGE_SIZE = 200;
-
-function isActorConnDisposedError(error: unknown): boolean {
-	if (!(error instanceof Error)) {
-		return false;
-	}
-	const message = error.message.toLowerCase();
-	return (
-		error.name === "ActorConnDisposed" ||
-		message.includes("disposed actor connection")
-	);
-}
 
 type TranscriptConnection = {
 	getTranscript: (
@@ -361,7 +356,17 @@ export function useSessionEventState({
 			bufferRef.current = [];
 			caughtUpRef.current = true;
 		})().catch((error: unknown) => {
-			if (isActorConnDisposedError(error)) {
+			if (isTransientActorConnError(error)) {
+				if (isInFlightMismatchError(error)) {
+					console.warn("actor-conn.session-stream.inflight-mismatch", {
+						sessionId,
+					});
+					requestActorConnectionSoftReset("session-stream-inflight-mismatch");
+					return;
+				}
+				if (isDisposedConnError(error)) {
+					requestActorConnectionSoftReset("session-stream-disposed");
+				}
 				return;
 			}
 			console.error("Failed to initialize session stream", error);
@@ -370,7 +375,7 @@ export function useSessionEventState({
 		return () => {
 			isCancelled = true;
 			conn.unsubscribeSession(sessionId).catch((error: unknown) => {
-				if (isActorConnDisposedError(error)) {
+				if (isTransientActorConnError(error)) {
 					return;
 				}
 				console.error("Failed to unsubscribe session", error);

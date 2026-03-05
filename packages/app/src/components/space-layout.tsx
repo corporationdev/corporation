@@ -3,7 +3,7 @@ import type { SpaceTab } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { PlusIcon, XIcon } from "lucide-react";
-import type { FC } from "react";
+import { type FC, useEffect, useRef, useState } from "react";
 import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
 import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
@@ -12,6 +12,7 @@ import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useSpaceTabs } from "@/hooks/use-space-tabs";
+import { addActorConnectionSoftResetListener } from "@/lib/actor-errors";
 import { type SpaceActor, useActor } from "@/lib/rivetkit";
 import { type TabParam, tabRegistry } from "@/lib/tab-registry";
 import { parseTab, serializeTab } from "@/lib/tab-routing";
@@ -31,12 +32,40 @@ export function SpaceLayout() {
 	);
 	const isSpaceLoading = space === undefined;
 	const isSpaceMissing = !!spaceSlug && space === null;
+	const [connectionResetNonce, setConnectionResetNonce] = useState(0);
+	const lastResetAtRef = useRef(0);
 
 	const sandboxReady = !!space?.sandboxId && !!space?.agentUrl;
+
+	useEffect(() => {
+		return addActorConnectionSoftResetListener(
+			({ reason, spaceSlug: target }) => {
+				if (!spaceSlug) {
+					return;
+				}
+				if (target && target !== spaceSlug) {
+					return;
+				}
+
+				const now = Date.now();
+				if (now - lastResetAtRef.current < 1000) {
+					return;
+				}
+				lastResetAtRef.current = now;
+
+				setConnectionResetNonce((value) => {
+					const next = value + 1;
+					console.warn("space.actor.soft-reset", { spaceSlug, reason, next });
+					return next;
+				});
+			}
+		);
+	}, [spaceSlug]);
 
 	const actor = useActor({
 		name: "space",
 		key: spaceSlug ? [spaceSlug] : [],
+		params: { reconnectNonce: String(connectionResetNonce) },
 		createWithInput: sandboxReady
 			? {
 					sandboxId: space.sandboxId,

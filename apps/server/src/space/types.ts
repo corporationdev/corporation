@@ -16,11 +16,21 @@ export type SubscriptionHub = {
 	connToChannels: Map<string, Set<string>>;
 };
 
+export type RuntimeServices = {
+	sandbox: Sandbox;
+	sandboxClient: SandboxAgentClient;
+};
+
+export type RuntimeServiceState = {
+	sandbox: Sandbox | null;
+	sandboxClient: SandboxAgentClient | null;
+	inFlight: Promise<RuntimeServices> | null;
+};
+
 export type SpaceVars = {
 	db: SpaceDatabase;
 	persist: SqliteSessionPersistDriver;
-	sandbox: Sandbox;
-	sandboxClient: SandboxAgentClient;
+	runtimeServices: RuntimeServiceState;
 	terminalHandles: Map<string, CommandHandle>;
 	terminalEnsures: Map<string, Promise<void>>;
 	subscriptions: SubscriptionHub;

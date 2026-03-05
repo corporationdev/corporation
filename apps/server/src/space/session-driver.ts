@@ -5,6 +5,7 @@ import type { AgentListResponse, Session, SessionEvent } from "sandbox-agent";
 import { type SessionTab, sessions, tabs } from "../db/schema";
 import { createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
+import { getSandbox, getSandboxClient } from "./runtime-services";
 import {
 	buildPromptWithReplay,
 	type SessionPromptPart,
@@ -164,7 +165,8 @@ async function sendMessage(
 		);
 	}
 
-	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
+	const sandboxClient = await getSandboxClient(ctx);
+	const session = await sandboxClient.resumeOrCreateSession({
 		id: sessionId,
 		agent,
 		sessionInit: {
@@ -191,8 +193,11 @@ async function sendMessage(
 	});
 }
 
-function listAgents(ctx: SpaceRuntimeContext): Promise<AgentListResponse> {
-	return ctx.vars.sandboxClient.listAgents({ config: true });
+async function listAgents(
+	ctx: SpaceRuntimeContext
+): Promise<AgentListResponse> {
+	const sandboxClient = await getSandboxClient(ctx);
+	return await sandboxClient.listAgents({ config: true });
 }
 
 async function cancelSession(
@@ -233,7 +238,8 @@ async function cancelSession(
 		? `kill ${pid} 2>/dev/null || true`
 		: "pkill -f corp-turn-runner || true";
 	try {
-		await ctx.vars.sandbox.commands.run(killCmd, {
+		const sandbox = await getSandbox(ctx);
+		await sandbox.commands.run(killCmd, {
 			timeoutMs: 5000,
 		});
 	} catch (error) {

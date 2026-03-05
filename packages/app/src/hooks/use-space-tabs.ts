@@ -1,6 +1,42 @@
 import type { SpaceTab } from "@corporation/server/space";
 import { useEffect, useState } from "react";
+import {
+	isDisposedConnError,
+	isInFlightMismatchError,
+	isTransientActorConnError,
+	requestActorConnectionSoftReset,
+} from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
+
+function getActorSpaceSlug(actor: SpaceActor): string | undefined {
+	const key = actor.opts.key;
+	if (typeof key === "string") {
+		return key;
+	}
+	return key[0];
+}
+
+function handleListTabsError(actor: SpaceActor, error: unknown): void {
+	if (!isTransientActorConnError(error)) {
+		console.error("Failed to fetch tabs", error);
+		return;
+	}
+
+	if (isInFlightMismatchError(error)) {
+		requestActorConnectionSoftReset(
+			"space-tabs-inflight-mismatch",
+			getActorSpaceSlug(actor)
+		);
+		return;
+	}
+
+	if (isDisposedConnError(error)) {
+		requestActorConnectionSoftReset(
+			"space-tabs-disposed-connection",
+			getActorSpaceSlug(actor)
+		);
+	}
+}
 
 export function useSpaceTabs(actor: SpaceActor): SpaceTab[] {
 	const [tabs, setTabs] = useState<SpaceTab[]>([]);
@@ -9,18 +45,18 @@ export function useSpaceTabs(actor: SpaceActor): SpaceTab[] {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
+		const conn = actor.connection;
+
 		const fetchTabs = async () => {
 			try {
-				const result = await actor.connection?.listTabs();
-				if (result) {
-					setTabs(await result);
-				}
+				const result = await conn.listTabs();
+				setTabs(await result);
 			} catch (error: unknown) {
-				console.error("Failed to fetch tabs", error);
+				handleListTabsError(actor, error);
 			}
 		};
 		fetchTabs();
-	}, [actor.connStatus, actor.connection]);
+	}, [actor, actor.connStatus, actor.connection, actor.opts.key]);
 
 	actor.useEvent("tabs.changed", (event) => {
 		setTabs(event as SpaceTab[]);

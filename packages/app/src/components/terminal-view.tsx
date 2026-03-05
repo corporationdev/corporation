@@ -2,6 +2,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTermTerminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
+import {
+	isDisposedConnError,
+	isInFlightMismatchError,
+	isTransientActorConnError,
+	requestActorConnectionSoftReset,
+} from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 import "@xterm/xterm/css/xterm.css";
 
@@ -12,6 +18,35 @@ type TerminalViewProps = {
 	terminalId: string;
 	actor: SpaceActor;
 };
+
+function getSpaceSlug(actor: SpaceActor): string | undefined {
+	const key = actor.opts.key;
+	if (typeof key === "string") {
+		return key || undefined;
+	}
+	return key[0];
+}
+
+function handleTerminalActionError(
+	error: unknown,
+	terminalId: string,
+	actor: SpaceActor,
+	action: string
+): void {
+	if (isTransientActorConnError(error)) {
+		const spaceSlug = getSpaceSlug(actor);
+		if (isInFlightMismatchError(error)) {
+			requestActorConnectionSoftReset(
+				`terminal-${action}-inflight-mismatch`,
+				spaceSlug
+			);
+		} else if (isDisposedConnError(error)) {
+			requestActorConnectionSoftReset(`terminal-${action}-disposed`, spaceSlug);
+		}
+		return;
+	}
+	console.error(`Failed to ${action} terminal action`, { error, terminalId });
+}
 
 export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -79,21 +114,30 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		if (!(terminal && actor.connection)) {
 			return;
 		}
+		const conn = actor.connection;
 
 		const dataDisposable = terminal.onData((data) => {
 			const bytes = Array.from(new TextEncoder().encode(data));
-			actor.connection?.input(terminalId, bytes);
+			conn
+				.input(terminalId, bytes)
+				.catch((error) =>
+					handleTerminalActionError(error, terminalId, actor, "input")
+				);
 		});
 
 		const resizeDisposable = terminal.onResize(({ cols, rows }) => {
-			actor.connection?.resize(terminalId, cols, rows);
+			conn
+				.resize(terminalId, cols, rows)
+				.catch((error) =>
+					handleTerminalActionError(error, terminalId, actor, "resize")
+				);
 		});
 
 		return () => {
 			dataDisposable.dispose();
 			resizeDisposable.dispose();
 		};
-	}, [actor.connection, terminalId]);
+	}, [actor, actor.connection, terminalId]);
 
 	// Intercept wheel events and send them as SGR mouse scroll sequences to
 	// tmux (which has mouse on). We prevent xterm.js from seeing the wheel
@@ -113,7 +157,11 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 			const button = e.deltaY > 0 ? 65 : 64;
 			const seq = `\x1b[<${button};1;1M`.repeat(lines);
 			const bytes = Array.from(new TextEncoder().encode(seq));
-			conn.input(terminalId, bytes);
+			conn
+				.input(terminalId, bytes)
+				.catch((error) =>
+					handleTerminalActionError(error, terminalId, actor, "wheel-input")
+				);
 		};
 
 		container.addEventListener("wheel", handleWheel, {
@@ -122,37 +170,32 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		});
 		return () =>
 			container.removeEventListener("wheel", handleWheel, { capture: true });
-	}, [actor.connection, terminalId]);
+	}, [actor, actor.connection, terminalId]);
 
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
+		const conn = actor.connection;
 
 		const initialize = async () => {
 			try {
 				const terminal = terminalRef.current;
-				await actor.connection?.openTerminal(
-					terminalId,
-					terminal?.cols,
-					terminal?.rows
-				);
+				await conn.openTerminal(terminalId, terminal?.cols, terminal?.rows);
 			} catch (error: unknown) {
-				console.error("Failed to initialize terminal", error);
+				handleTerminalActionError(error, terminalId, actor, "initialize");
 			}
 		};
 		initialize().catch((error: unknown) => {
-			console.error("Failed to initialize terminal", error);
+			handleTerminalActionError(error, terminalId, actor, "initialize");
 		});
 
 		return () => {
-			actor.connection
-				?.unsubscribeTerminal(terminalId)
-				.catch((error: unknown) => {
-					console.error("Failed to unsubscribe terminal", error);
-				});
+			conn.unsubscribeTerminal(terminalId).catch((error: unknown) => {
+				handleTerminalActionError(error, terminalId, actor, "unsubscribe");
+			});
 		};
-	}, [actor.connStatus, actor.connection, terminalId]);
+	}, [actor, actor.connStatus, actor.connection, terminalId]);
 
 	// Strip mouse tracking escape sequences from tmux output so xterm.js
 	// doesn't enter mouse-reporting mode. This lets xterm.js handle text

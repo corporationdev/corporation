@@ -1,11 +1,10 @@
 import { env } from "@corporation/env/server";
+import { createLogger } from "@corporation/logger";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
-import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
-import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
 import { type SpaceTab, schema, tabs } from "./db/schema";
 import { SqliteSessionPersistDriver } from "./db/session-persist-driver";
@@ -14,8 +13,8 @@ import {
 	collectDriverActions,
 } from "./space/action-registration";
 import { lifecycleDrivers } from "./space/driver-registry";
+import { ensureRuntimeServices } from "./space/runtime-services";
 import {
-	clearSubscriptions,
 	createSubscriptionHub,
 	unsubscribeConnection,
 } from "./space/subscriptions";
@@ -30,6 +29,9 @@ export type {
 } from "./db/schema";
 
 const driverActions = collectDriverActions(lifecycleDrivers);
+const log = createLogger("space:lifecycle");
+const CREATE_VARS_TIMEOUT_MS = 15_000;
+const ACTION_TIMEOUT_MS = 180_000;
 
 export const space = actor({
 	createState: (
@@ -53,6 +55,7 @@ export const space = actor({
 	},
 
 	createVars: async (c, driverCtx: DriverContext): Promise<SpaceVars> => {
+		const startedAt = Date.now();
 		const db = drizzle(driverCtx.state.storage, { schema });
 
 		await migrate(db, bundledMigrations);
@@ -62,44 +65,68 @@ export const space = actor({
 		}
 
 		const persist = new SqliteSessionPersistDriver(db);
-		const sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: c.state.agentUrl,
-			persist,
-		});
-		const sandbox = await Sandbox.connect(c.state.sandboxId, {
-			apiKey: env.E2B_API_KEY,
-		});
 
 		const vars: SpaceVars = {
 			db,
 			persist,
-			sandbox,
-			sandboxClient,
+			runtimeServices: {
+				sandbox: null,
+				sandboxClient: null,
+				inFlight: null,
+			},
 			terminalHandles: new Map(),
 			terminalEnsures: new Map(),
 			subscriptions: createSubscriptionHub(),
 			lastTimeoutRefreshAt: 0,
 		};
 
-		for (const driver of lifecycleDrivers) {
-			if (driver.onWake) {
-				await driver.onWake(vars);
-			}
-		}
-
+		log.info(
+			{
+				actorKey: c.key.join("/"),
+				durationMs: Date.now() - startedAt,
+			},
+			"space.create-vars.ok"
+		);
 		return vars;
+	},
+
+	onWake: async (c) => {
+		const startedAt = Date.now();
+		const runtime = augmentContext(c, lifecycleDrivers);
+		try {
+			await ensureRuntimeServices(runtime);
+
+			for (const driver of lifecycleDrivers) {
+				await driver.onWake?.(runtime);
+			}
+
+			log.info(
+				{
+					actorId: runtime.actorId,
+					durationMs: Date.now() - startedAt,
+				},
+				"space.on-wake.ok"
+			);
+		} catch (error) {
+			log.error(
+				{
+					actorId: runtime.actorId,
+					durationMs: Date.now() - startedAt,
+					err: error,
+				},
+				"space.on-wake.failed"
+			);
+			throw error;
+		}
+	},
+
+	options: {
+		createVarsTimeout: CREATE_VARS_TIMEOUT_MS,
+		actionTimeout: ACTION_TIMEOUT_MS,
 	},
 
 	onDisconnect: (c, conn) => {
 		unsubscribeConnection(c.vars.subscriptions, conn.id);
-	},
-
-	onSleep: async (c) => {
-		const ctx = augmentContext(c, lifecycleDrivers);
-		for (const driver of lifecycleDrivers) {
-			await driver.onSleep?.(ctx);
-		}
-		clearSubscriptions(c.vars.subscriptions);
 	},
 
 	actions: {

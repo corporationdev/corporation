@@ -15,6 +15,12 @@ import { EventsView } from "@/components/events-view";
 import { Button } from "@/components/ui/button";
 import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
+import {
+	isDisposedConnError,
+	isInFlightMismatchError,
+	isTransientActorConnError,
+	requestActorConnectionSoftReset,
+} from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
@@ -184,6 +190,9 @@ function useAgentModels(actor: SpaceActor) {
 			setAgentModels(models);
 			setDefaultModels(defaults);
 		})().catch((error: unknown) => {
+			if (isTransientActorConnError(error)) {
+				return;
+			}
 			console.warn("Failed to load agent models", error);
 		});
 	}, [actor.connStatus, actor.connection]);
@@ -338,6 +347,21 @@ const ConnectedSessionView: FC<{
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
+				if (isTransientActorConnError(error)) {
+					if (isInFlightMismatchError(error)) {
+						requestActorConnectionSoftReset(
+							"session-pending-send-inflight-mismatch",
+							spaceSlug
+						);
+					} else if (isDisposedConnError(error)) {
+						requestActorConnectionSoftReset(
+							"session-pending-send-disposed",
+							spaceSlug
+						);
+					}
+					pendingRef.current = pending;
+					return;
+				}
 				console.error("Failed to send pending message", error);
 				pendingRef.current = pending;
 				toast.error("Failed to send message");
@@ -370,6 +394,18 @@ const ConnectedSessionView: FC<{
 
 			await conn.sendMessage(sessionId, text, agent, modelId);
 		} catch (error) {
+			if (isTransientActorConnError(error)) {
+				if (isInFlightMismatchError(error)) {
+					requestActorConnectionSoftReset(
+						"session-send-inflight-mismatch",
+						spaceSlug
+					);
+				} else if (isDisposedConnError(error)) {
+					requestActorConnectionSoftReset("session-send-disposed", spaceSlug);
+				}
+				setMessage((current) => (current ? current : text));
+				return;
+			}
 			console.error("Failed to send message", { error, sessionId });
 			setMessage((current) => (current ? current : text));
 			toast.error("Failed to send message");
@@ -392,10 +428,21 @@ const ConnectedSessionView: FC<{
 			}
 			await conn.cancelSession(sessionId);
 		} catch (error) {
+			if (isTransientActorConnError(error)) {
+				if (isInFlightMismatchError(error)) {
+					requestActorConnectionSoftReset(
+						"session-cancel-inflight-mismatch",
+						spaceSlug
+					);
+				} else if (isDisposedConnError(error)) {
+					requestActorConnectionSoftReset("session-cancel-disposed", spaceSlug);
+				}
+				return;
+			}
 			console.error("Failed to cancel session", { error, sessionId });
 			toast.error("Failed to stop session");
 		}
-	}, [actor.connection, sessionId]);
+	}, [actor.connection, sessionId, spaceSlug]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {
