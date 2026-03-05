@@ -6,6 +6,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { FunctionReturnType } from "convex/server";
 import {
 	ClipboardIcon,
+	CodeXmlIcon,
 	ExternalLinkIcon,
 	GitPullRequestIcon,
 	GlobeIcon,
@@ -233,6 +234,17 @@ const SpaceSidebarContent: FC<{
 				<TerminalIcon className="size-4" />
 				New Terminal
 			</Button>
+			{space.editorUrl && space.status === "running" && (
+				<Button
+					className="w-full justify-start gap-2"
+					onClick={() => window.open(space.editorUrl, "_blank")}
+					size="sm"
+					variant="outline"
+				>
+					<CodeXmlIcon className="size-4" />
+					Open Editor
+				</Button>
+			)}
 			{env.VITE_STAGE_KIND === "dev" && space.sandboxId && (
 				<Button
 					className="w-full justify-start gap-2"

@@ -56,6 +56,7 @@ export default defineSchema(
 			environmentId: v.id("environments"),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),
+			editorUrl: v.optional(v.string()),
 			branchName: v.string(),
 			status: spaceStatusValidator,
 			lastSyncedCommitSha: v.optional(v.string()),

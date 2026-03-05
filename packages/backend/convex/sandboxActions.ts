@@ -16,6 +16,7 @@ type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 type ActionCtx = GenericActionCtx<DataModel>;
 
 const SANDBOX_AGENT_PORT = 5799;
+const CODE_SERVER_PORT = 8080;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 // TODO: Timeout errors are not handled correctly end-to-end yet; prompt calls can still appear to hang.
@@ -72,6 +73,60 @@ async function ensureSandboxAgentRunning(sandbox: Sandbox): Promise<void> {
 	const healthy = await isSandboxAgentHealthy(sandbox);
 	if (!healthy) {
 		await bootSandboxAgent(sandbox);
+	}
+}
+
+async function waitForCodeServerReady(sandbox: Sandbox): Promise<void> {
+	const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
+
+	while (Date.now() < deadline) {
+		try {
+			await sandbox.commands.run(
+				`curl -sf http://localhost:${CODE_SERVER_PORT}`
+			);
+			return;
+		} catch (error) {
+			if (!(error instanceof CommandExitError)) {
+				throw error;
+			}
+		}
+		await sleep(SERVER_POLL_INTERVAL_MS);
+	}
+
+	throw new Error("code-server failed to start within timeout");
+}
+
+async function bootCodeServer(
+	sandbox: Sandbox,
+	workdir: string
+): Promise<void> {
+	await sandbox.commands.run(
+		`nohup code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} --auth none ${workdir} >/tmp/code-server.log 2>&1 &`
+	);
+	await waitForCodeServerReady(sandbox);
+}
+
+async function isCodeServerHealthy(sandbox: Sandbox): Promise<boolean> {
+	try {
+		await sandbox.commands.run(
+			`curl -sf --max-time 1 http://localhost:${CODE_SERVER_PORT}`
+		);
+		return true;
+	} catch (error) {
+		if (error instanceof CommandExitError) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+async function ensureCodeServerRunning(
+	sandbox: Sandbox,
+	workdir: string
+): Promise<void> {
+	const healthy = await isCodeServerHealthy(sandbox);
+	if (!healthy) {
+		await bootCodeServer(sandbox, workdir);
 	}
 }
 
@@ -264,11 +319,15 @@ export const ensureSandbox = internalAction({
 				repository.defaultBranch
 			);
 
+			await ensureCodeServerRunning(sandbox, workdir);
+			const editorUrl = getPreviewUrl(sandbox, CODE_SERVER_PORT);
+
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "running",
 				sandboxId,
 				agentUrl,
+				editorUrl,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {
