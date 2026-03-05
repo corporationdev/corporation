@@ -31,6 +31,7 @@ export const update = authedMutation({
 		id: v.id("environments"),
 		name: v.optional(v.string()),
 		setupCommand: v.optional(v.string()),
+		updateCommand: v.optional(v.string()),
 		devCommand: v.optional(v.string()),
 		devPort: v.number(),
 		envByPath: v.optional(
@@ -68,6 +69,7 @@ export async function createEnvironmentHelper(
 		repositoryId: Id<"repositories">;
 		name: string;
 		setupCommand: string;
+		updateCommand?: string;
 		devCommand: string;
 		devPort: number;
 		envByPath?: Record<string, Record<string, string>>;
@@ -81,6 +83,7 @@ export async function createEnvironmentHelper(
 		repositoryId: args.repositoryId,
 		name: args.name,
 		setupCommand: args.setupCommand,
+		updateCommand: args.updateCommand,
 		devCommand: args.devCommand,
 		devPort: args.devPort,
 		envByPath: normalizeEnvByPath(args.envByPath),
@@ -93,7 +96,7 @@ export async function createEnvironmentHelper(
 		throw new ConvexError("Environment not found");
 	}
 
-	await scheduleSnapshot(ctx, environment, "build");
+	await scheduleSnapshot(ctx, environment, "setup");
 
 	return environmentId;
 }
@@ -103,6 +106,7 @@ export const create = authedMutation({
 		repositoryId: v.id("repositories"),
 		name: v.string(),
 		setupCommand: v.string(),
+		updateCommand: v.optional(v.string()),
 		devCommand: v.string(),
 		devPort: v.number(),
 		envByPath: v.optional(

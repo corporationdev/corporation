@@ -88,7 +88,7 @@ const RepositorySpaceSection: FC<{
 		createSnapshot(
 			{
 				request: {
-					type: "rebuild",
+					type: "update",
 					environmentId,
 				},
 			},

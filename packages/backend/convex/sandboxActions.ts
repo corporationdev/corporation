@@ -14,7 +14,7 @@ import {
 	getSandboxWorkdir,
 	pushBranch,
 	SANDBOX_AGENT_PORT,
-	setupSandbox,
+	updateSandbox,
 } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
@@ -266,11 +266,10 @@ export const syncRepository = internalAction({
 
 		const sandbox = await Sandbox.connect(space.sandboxId);
 
-		const lastSyncedCommitSha = await setupSandbox(
+		const lastSyncedCommitSha = await updateSandbox(
 			sandbox,
 			space.environment,
-			githubToken,
-			"pull"
+			githubToken
 		);
 
 		if (lastSyncedCommitSha) {

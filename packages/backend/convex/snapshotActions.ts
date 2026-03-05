@@ -13,11 +13,11 @@ import {
 	CODE_SERVER_SESSION_NAME,
 	DEV_SERVER_SESSION_NAME,
 	getSandboxWorkdir,
-	killDevServer,
 	SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS,
 	SANDBOX_AGENT_PORT,
 	SANDBOX_AGENT_SESSION_NAME,
 	setupSandbox,
+	updateSandbox,
 } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
@@ -95,7 +95,7 @@ async function runTrackedSnapshot(
 	ctx: ActionCtx,
 	args: {
 		snapshotId: Id<"snapshots">;
-		type: "build" | "rebuild";
+		type: "setup" | "update";
 		environmentId: Id<"environments">;
 		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
 	}
@@ -152,12 +152,12 @@ export const buildSnapshot = internalAction({
 	args: {
 		request: v.union(
 			v.object({
-				type: v.literal("build"),
+				type: v.literal("setup"),
 				environmentId: v.id("environments"),
 				snapshotId: v.id("snapshots"),
 			}),
 			v.object({
-				type: v.literal("rebuild"),
+				type: v.literal("update"),
 				environmentId: v.id("environments"),
 				snapshotId: v.id("snapshots"),
 				oldExternalSnapshotId: v.string(),
@@ -188,30 +188,21 @@ export const buildSnapshot = internalAction({
 				const nango = new Nango({ secretKey: nangoSecretKey });
 				const githubToken = await getGitHubToken(nango, environment.userId);
 
-				const shouldUseRebuildBase = request.type === "rebuild";
-				const template = shouldUseRebuildBase
-					? request.oldExternalSnapshotId
-					: BASE_TEMPLATE;
+				let sandbox: Sandbox;
+				let snapshotCommitSha: string;
 
-				const sandbox = await Sandbox.betaCreate(template, {
-					envs: { ANTHROPIC_API_KEY: anthropicApiKey },
-					network: { allowPublicTraffic: true },
-				});
+				if (request.type === "setup") {
+					sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+						network: { allowPublicTraffic: true },
+					});
 
-				try {
-					const snapshotCommitSha = await setupSandbox(
+					snapshotCommitSha = await setupSandbox(
 						sandbox,
 						environment,
 						githubToken,
-						shouldUseRebuildBase ? "pull" : "clone",
-						(chunk) => {
-							reporter.appendLog(chunk);
-						}
+						(chunk) => reporter.appendLog(chunk)
 					);
-
-					if (shouldUseRebuildBase) {
-						await killDevServer(sandbox);
-					}
 
 					const workdir = getSandboxWorkdir(environment.repository);
 					await Promise.all([
@@ -233,7 +224,21 @@ export const buildSnapshot = internalAction({
 							healthUrl: `http://localhost:${CODE_SERVER_PORT}`,
 						}),
 					]);
+				} else {
+					sandbox = await Sandbox.betaCreate(request.oldExternalSnapshotId, {
+						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+						network: { allowPublicTraffic: true },
+					});
 
+					snapshotCommitSha = await updateSandbox(
+						sandbox,
+						environment,
+						githubToken,
+						(chunk) => reporter.appendLog(chunk)
+					);
+				}
+
+				try {
 					reporter.appendLog("Creating snapshot...\n");
 					const snapshot = await sandbox.createSnapshot();
 					reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);

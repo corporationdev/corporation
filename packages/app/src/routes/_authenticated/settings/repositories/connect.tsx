@@ -44,6 +44,7 @@ function ConnectRepositoryPage() {
 	const { mutateAsync: connectRepo } = useMutation({
 		mutationFn: async (value: {
 			setupCommand: string;
+			updateCommand: string;
 			devCommand: string;
 			devPort: string | number;
 			envFiles: EnvFileValues[];
@@ -62,6 +63,7 @@ function ConnectRepositoryPage() {
 				defaultBranch: selectedRepo.defaultBranch,
 				environmentConfig: {
 					setupCommand: value.setupCommand,
+					updateCommand: value.updateCommand || undefined,
 					devCommand: value.devCommand,
 					devPort,
 					envByPath,
@@ -79,6 +81,7 @@ function ConnectRepositoryPage() {
 	const form = useForm({
 		defaultValues: {
 			setupCommand: "",
+			updateCommand: "",
 			devCommand: "",
 			devPort: "",
 			envFiles: [{ path: "", envVars: [{ key: "", value: "" }] }],

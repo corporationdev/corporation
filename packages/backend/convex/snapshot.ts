@@ -104,7 +104,7 @@ export async function withDerivedSnapshotState(
 export async function scheduleSnapshot(
 	ctx: MutationCtx,
 	environment: Doc<"environments">,
-	type: "build" | "rebuild"
+	type: "setup" | "update"
 ): Promise<Id<"snapshots">> {
 	const [latestSnapshot, activeSnapshot] = await Promise.all([
 		ctx.db
@@ -127,12 +127,12 @@ export async function scheduleSnapshot(
 	}
 
 	const buildRequest =
-		type === "rebuild" && activeSnapshot?.externalSnapshotId
+		type === "update" && activeSnapshot?.externalSnapshotId
 			? {
-					type: "rebuild" as const,
+					type: "update" as const,
 					oldExternalSnapshotId: activeSnapshot.externalSnapshotId,
 				}
-			: { type: "build" as const };
+			: { type: "setup" as const };
 
 	const now = Date.now();
 	const snapshotId = await ctx.db.insert("snapshots", {
@@ -162,11 +162,11 @@ export const createSnapshot = authedMutation({
 	args: {
 		request: v.union(
 			v.object({
-				type: v.literal("build"),
+				type: v.literal("setup"),
 				environmentId: v.id("environments"),
 			}),
 			v.object({
-				type: v.literal("rebuild"),
+				type: v.literal("update"),
 				environmentId: v.id("environments"),
 			})
 		),

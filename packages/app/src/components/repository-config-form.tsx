@@ -38,6 +38,7 @@ const envFileSchema = z.object({
 
 export const repositoryConfigSchema = z.object({
 	setupCommand: z.string().min(1, "Setup command is required"),
+	updateCommand: z.string(),
 	devCommand: z.string().min(1, "Dev command is required"),
 	devPort: z
 		.string()
@@ -351,6 +352,28 @@ export function RepositoryConfigForm({
 									onBlur={field.handleBlur}
 									onChange={(e) => field.handleChange(e.target.value)}
 									placeholder="e.g. npm install"
+									value={field.state.value}
+								/>
+								{isInvalid && <FieldError errors={field.state.meta.errors} />}
+							</Field>
+						);
+					}}
+				</form.Field>
+
+				<form.Field name="updateCommand">
+					{(field: FieldState) => {
+						const isInvalid =
+							field.state.meta.isTouched && !field.state.meta.isValid;
+						return (
+							<Field data-invalid={isInvalid}>
+								<FieldLabel htmlFor={field.name}>Update Command</FieldLabel>
+								<Input
+									aria-invalid={isInvalid}
+									id={field.name}
+									name={field.name}
+									onBlur={field.handleBlur}
+									onChange={(e) => field.handleChange(e.target.value)}
+									placeholder="e.g. npm install (defaults to setup command)"
 									value={field.state.value}
 								/>
 								{isInvalid && <FieldError errors={field.state.meta.errors} />}

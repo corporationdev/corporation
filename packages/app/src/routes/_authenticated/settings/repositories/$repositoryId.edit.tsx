@@ -71,6 +71,7 @@ function EditRepositoryForm({
 	const form = useForm({
 		defaultValues: {
 			setupCommand: defaultEnvironment.setupCommand,
+			updateCommand: defaultEnvironment.updateCommand ?? "",
 			devCommand: defaultEnvironment.devCommand,
 			devPort: defaultEnvironment.devPort?.toString() ?? "",
 			envFiles: envFilesFromEnvByPath(defaultEnvironment.envByPath),
@@ -82,6 +83,7 @@ function EditRepositoryForm({
 			await updateEnvironment({
 				id: defaultEnvironment._id,
 				setupCommand: value.setupCommand,
+				updateCommand: value.updateCommand || undefined,
 				devCommand: value.devCommand,
 				devPort: parseDevPort(value.devPort),
 				envByPath: buildEnvByPath(value.envFiles),
