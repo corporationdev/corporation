@@ -43,8 +43,9 @@ const NewSpaceView: FC<{
 	repositoryId: Id<"repositories">;
 }> = ({ repositoryId }) => {
 	const navigate = useNavigate();
-	const setPending = usePendingMessageStore((s) => s.setPending);
-	const [message, setMessage] = useState("");
+	const setSpace = usePendingMessageStore((s) => s.setSpace);
+	const setMessage = usePendingMessageStore((s) => s.setMessage);
+	const [input, setInput] = useState("");
 	const [agent, setAgent] = useState(INITIAL_AGENT);
 	const [modelId, setModelId] = useState(INITIAL_MODEL);
 
@@ -52,7 +53,7 @@ const NewSpaceView: FC<{
 	const defaultEnvironment = repository?.defaultEnvironment;
 
 	const handleSend = useCallback(() => {
-		const text = message.trim();
+		const text = input.trim();
 		if (!(text && defaultEnvironment)) {
 			return;
 		}
@@ -60,8 +61,9 @@ const NewSpaceView: FC<{
 		const spaceSlug = nanoid();
 		const sessionId = nanoid();
 
-		setPending({ text, agent, modelId, environmentId: defaultEnvironment._id });
-		setMessage("");
+		setSpace({ slug: spaceSlug, environmentId: defaultEnvironment._id });
+		setMessage({ text, agent, modelId });
+		setInput("");
 
 		navigate({
 			to: "/space/$spaceSlug",
@@ -70,7 +72,15 @@ const NewSpaceView: FC<{
 				tab: serializeTab({ type: "session", id: sessionId }),
 			},
 		});
-	}, [message, defaultEnvironment, agent, modelId, setPending, navigate]);
+	}, [
+		input,
+		defaultEnvironment,
+		agent,
+		modelId,
+		setSpace,
+		setMessage,
+		navigate,
+	]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -90,8 +100,8 @@ const NewSpaceView: FC<{
 						onModelIdChange={setModelId}
 					/>
 				}
-				message={message}
-				onMessageChange={setMessage}
+				message={input}
+				onMessageChange={setInput}
 				onSendMessage={handleSend}
 				placeholder="Send a message..."
 			/>

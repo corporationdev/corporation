@@ -1,9 +1,10 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { SpaceTab } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, XIcon } from "lucide-react";
 import { type FC, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
 import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
@@ -17,6 +18,7 @@ import { type SpaceActor, useActor } from "@/lib/rivetkit";
 import { type TabParam, tabRegistry } from "@/lib/tab-registry";
 import { parseTab, serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
+import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 export function SpaceLayout() {
 	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
@@ -28,6 +30,26 @@ export function SpaceLayout() {
 	const isSpaceMissing = space === null;
 	const [connectionResetNonce, setConnectionResetNonce] = useState(0);
 	const lastResetAtRef = useRef(0);
+	const [spaceCreating, setSpaceCreating] = useState(false);
+
+	const ensureSpace = useMutation(api.spaces.ensure);
+	const consumeSpace = usePendingMessageStore((s) => s.consumeSpace);
+
+	useEffect(() => {
+		const pending = consumeSpace();
+		if (!pending) {
+			return;
+		}
+		setSpaceCreating(true);
+		ensureSpace({ slug: pending.slug, environmentId: pending.environmentId })
+			.catch((error: unknown) => {
+				console.error("Failed to create space", error);
+				toast.error("Failed to create space");
+			})
+			.finally(() => {
+				setSpaceCreating(false);
+			});
+	}, [consumeSpace, ensureSpace]);
 
 	const sandboxReady = !!space?.sandboxId && !!space?.agentUrl;
 
@@ -94,7 +116,7 @@ export function SpaceLayout() {
 					tabs={tabs}
 				/>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-					{isSpaceMissing ? (
+					{isSpaceMissing && !spaceCreating ? (
 						<SpaceNotFoundPanel />
 					) : shouldWaitForSandboxStatus ? (
 						<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">

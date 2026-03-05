@@ -1,7 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import type { SessionTab } from "@corporation/server/space";
-import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { ListIcon } from "lucide-react";
@@ -136,7 +134,7 @@ const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
 	actor,
 }) => {
 	const navigate = useNavigate();
-	const setPending = usePendingMessageStore((s) => s.setPending);
+	const setMessageStore = usePendingMessageStore((s) => s.setMessage);
 	const [message, setMessage] = useState("");
 	const [agent, setAgent] = useState(INITIAL_AGENT);
 	const [modelId, setModelId] = useState(INITIAL_MODEL);
@@ -150,7 +148,7 @@ const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
 
 		const sessionId = nanoid();
 
-		setPending({ text, agent, modelId, spaceSlug });
+		setMessageStore({ text, agent, modelId });
 		setMessage("");
 
 		navigate({
@@ -160,7 +158,7 @@ const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
 				tab: serializeTab({ type: "session", id: sessionId }),
 			},
 		});
-	}, [message, agent, modelId, setPending, spaceSlug, navigate]);
+	}, [message, agent, modelId, setMessageStore, spaceSlug, navigate]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -205,7 +203,7 @@ export const ConnectedSessionView: FC<{
 	const modelId = modelIdOverride ?? sessionTab?.modelId ?? INITIAL_MODEL;
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
-	const consumePending = usePendingMessageStore((s) => s.consumePending);
+	const consumeMessage = usePendingMessageStore((s) => s.consumeMessage);
 	const ensureSpace = useMutation(api.spaces.ensure);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const { agentModels, defaultModels } = useAgentModels(actor);
@@ -217,66 +215,40 @@ export const ConnectedSessionView: FC<{
 		agent: string;
 		modelId: string;
 	} | null>(null);
-	const initMutation = useTanstackMutation({
-		mutationFn: async (pending: {
-			text: string;
-			agent: string;
-			modelId: string;
-			environmentId?: Id<"environments">;
-		}) => {
-			await ensureSpace({
-				slug: spaceSlug,
-				environmentId: pending.environmentId,
-			});
-			pendingRef.current = {
-				text: pending.text,
-				agent: pending.agent,
-				modelId: pending.modelId,
-			};
+	const sentRef = useRef(false);
+
+	// Consume pending message from store on mount
+	useEffect(() => {
+		if (sentRef.current) {
+			return;
+		}
+		const pending = consumeMessage();
+		if (pending) {
+			pendingRef.current = pending;
 			setAgentOverride(pending.agent);
 			setModelIdOverride(pending.modelId);
-		},
-		onError: (error) => {
-			toast.error("Failed to start chat");
-			console.error("initMutation failed", error);
-		},
-	});
+		}
+	}, [consumeMessage]);
 
+	// Send pending message once actor is connected and space has agentUrl
 	useEffect(() => {
-		if (initMutation.isPending || initMutation.isSuccess) {
+		if (sentRef.current) {
 			return;
 		}
-
-		const consumed = consumePending();
-		if (!consumed) {
-			return;
-		}
-
-		initMutation.mutate(consumed);
-	}, [
-		consumePending,
-		initMutation.isPending,
-		initMutation.isSuccess,
-		initMutation.mutate,
-	]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: initMutation.isSuccess is intentionally included to re-trigger this effect when the mutation completes, since it sets pendingRef (a ref that doesn't cause re-renders on its own).
-	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
-			return;
-		}
-
-		if (!space?.agentUrl) {
-			return;
-		}
-
 		const pending = pendingRef.current;
 		if (!pending) {
 			return;
 		}
-		pendingRef.current = null;
+		if (actor.connStatus !== "connected" || !actor.connection) {
+			return;
+		}
+		if (!space?.agentUrl) {
+			return;
+		}
 
-		// Optimistically set status to running
+		pendingRef.current = null;
+		sentRef.current = true;
+
 		sessionState.setStatus("running");
 
 		const conn = actor.connection;
@@ -290,10 +262,10 @@ export const ConnectedSessionView: FC<{
 				});
 				if (kind) {
 					pendingRef.current = pending;
+					sentRef.current = false;
 					return;
 				}
 				console.error("Failed to send pending message", error);
-				pendingRef.current = pending;
 				toast.error("Failed to send message");
 			});
 	}, [
@@ -301,7 +273,7 @@ export const ConnectedSessionView: FC<{
 		actor.connection,
 		sessionId,
 		space?.agentUrl,
-		initMutation.isSuccess,
+		spaceSlug,
 		sessionState,
 	]);
 
@@ -313,7 +285,6 @@ export const ConnectedSessionView: FC<{
 
 		setMessage("");
 
-		// Optimistically set status to running
 		sessionState.setStatus("running");
 
 		try {
