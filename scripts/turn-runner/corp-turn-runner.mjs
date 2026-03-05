@@ -177,28 +177,6 @@ function createResponseWaiter(map, requestId, timeoutMs) {
 	};
 }
 
-async function setModelViaRawAcp({ agentUrl, acpPath, sessionId, modelId }) {
-	const requestId = `set-model-${crypto.randomUUID()}`;
-	const envelope = {
-		jsonrpc: "2.0",
-		id: requestId,
-		method: "session/set_model",
-		params: { sessionId, modelId },
-	};
-	const response = await fetch(new URL(acpPath, agentUrl), {
-		method: "POST",
-		headers: { "Content-Type": "application/json", Accept: "application/json" },
-		body: JSON.stringify(envelope),
-		signal: AbortSignal.timeout(10_000),
-	});
-	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		console.error(
-			`[corp-turn-runner] set_model failed (${response.status}): ${text}`
-		);
-	}
-}
-
 async function sendPromptViaRawAcp({
 	agentUrl,
 	acpPath,
@@ -410,9 +388,7 @@ async function main() {
 		}
 
 		if (modelId) {
-			await setModelViaRawAcp({
-				agentUrl,
-				acpPath,
+			await acp.unstableSetSessionModel({
 				sessionId: created.sessionId,
 				modelId,
 			});
