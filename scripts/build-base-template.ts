@@ -37,6 +37,7 @@ const template = Template()
 	.runCmd(
 		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
 	)
+	.runCmd("curl -fsSL https://code-server.dev/install.sh | sh")
 	.runCmd(
 		`curl -fsSL https://releases.rivet.dev/sandbox-agent/${SANDBOX_AGENT_CLI_VERSION}/install.sh | sh`
 	)

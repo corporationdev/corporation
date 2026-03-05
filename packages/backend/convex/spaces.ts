@@ -267,6 +267,7 @@ export const internalUpdate = internalMutation({
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
 		agentUrl: v.optional(v.string()),
+		editorUrl: v.optional(v.string()),
 		lastSyncedCommitSha: v.optional(v.string()),
 		prUrl: v.optional(v.string()),
 		error: v.optional(v.string()),
