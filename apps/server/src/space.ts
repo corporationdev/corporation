@@ -31,8 +31,6 @@ export type {
 
 const driverActions = collectDriverActions(lifecycleDrivers);
 const log = createLogger("space:lifecycle");
-const CREATE_VARS_TIMEOUT_MS = 15_000;
-const ACTION_TIMEOUT_MS = 180_000;
 
 export const space = actor({
 	createState: (
@@ -121,11 +119,6 @@ export const space = actor({
 			);
 			throw error;
 		}
-	},
-
-	options: {
-		createVarsTimeout: CREATE_VARS_TIMEOUT_MS,
-		actionTimeout: ACTION_TIMEOUT_MS,
 	},
 
 	onDisconnect: (c, conn) => {
