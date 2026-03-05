@@ -39,6 +39,7 @@ const actorDO = DurableObjectNamespace("actor-do", {
 });
 
 const actorKV = await KVNamespace("actor-kv");
+const tunnelRegex = /https:\/\/([^\s]+)\.trycloudflare\.com/;
 const createSilentQuickTunnel = async (localUrl: string) => ({
 	localUrl,
 	tunnelUrl: await app.spawn("tunnel", {
@@ -46,7 +47,7 @@ const createSilentQuickTunnel = async (localUrl: string) => ({
 		processName: "cloudflared",
 		quiet: true,
 		extract: (line) => {
-			const match = line.match(/https:\/\/([^\s]+)\.trycloudflare\.com/);
+			const match = line.match(tunnelRegex);
 			if (match) {
 				return `https://${match[1]}.trycloudflare.com`;
 			}
