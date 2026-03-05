@@ -18,6 +18,28 @@ export const DEV_SERVER_SESSION_NAME = "devserver";
 export const SANDBOX_AGENT_SESSION_NAME = "sandbox-agent";
 export const CODE_SERVER_SESSION_NAME = "code-server";
 
+const AI_API_KEY_NAMES = [
+	"ANTHROPIC_API_KEY",
+	"OPENAI_API_KEY",
+	"OPENCODE_API_KEY",
+] as const;
+
+export function getAiEnvs(): Record<string, string> {
+	const envs: Record<string, string> = {};
+	for (const key of AI_API_KEY_NAMES) {
+		const value = process.env[key];
+		if (value) {
+			envs[key] = value;
+		}
+	}
+	if (Object.keys(envs).length === 0) {
+		throw new Error(
+			`Missing AI API key env vars (need at least one of: ${AI_API_KEY_NAMES.join(", ")})`
+		);
+	}
+	return envs;
+}
+
 type EnvVar = { key: string; value: string };
 type CommandExitErrorLike = {
 	exitCode: number;

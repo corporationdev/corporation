@@ -65,7 +65,6 @@ export const server = await Worker("agent-server", {
 	compatibility: "node",
 	bindings: {
 		E2B_API_KEY: alchemy.secret(process.env.E2B_API_KEY),
-		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
 		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
 		...runtime.serverBindings,
