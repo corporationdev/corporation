@@ -41,7 +41,8 @@ function parseBranchNameOrThrow(branchName: string): string {
 async function applyBranchNameUpdate(
 	ctx: BranchRenameCtx,
 	space: Doc<"spaces">,
-	branchName: string
+	branchName: string,
+	options?: { updateTimestamp?: boolean }
 ): Promise<void> {
 	const newBranchName = parseBranchNameOrThrow(branchName);
 	const oldBranchName = space.branchName;
@@ -49,10 +50,14 @@ async function applyBranchNameUpdate(
 		return;
 	}
 
+	const timestampPatch = options?.updateTimestamp
+		? { updatedAt: Date.now() }
+		: {};
+
 	if (space.sandboxId && space.status === "running") {
 		await ctx.db.patch(space._id, {
 			error: "",
-			updatedAt: Date.now(),
+			...timestampPatch,
 		});
 		await ctx.scheduler.runAfter(0, internal.sandboxActions.renameBranch, {
 			spaceId: space._id,
@@ -65,7 +70,7 @@ async function applyBranchNameUpdate(
 	await ctx.db.patch(space._id, {
 		branchName: newBranchName,
 		error: "",
-		updatedAt: Date.now(),
+		...timestampPatch,
 	});
 }
 
@@ -252,12 +257,24 @@ export const update = authedMutation({
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
-			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
-				([, v]) => v !== undefined
-			)
+			Object.entries(fields).filter(([, v]) => v !== undefined)
 		);
 
 		await ctx.db.patch(id, patch);
+	},
+});
+
+export const touch = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+		await ctx.db.patch(args.id, { updatedAt: Date.now() });
 	},
 });
 
@@ -277,9 +294,7 @@ export const internalUpdate = internalMutation({
 	handler: async (ctx, args) => {
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
-			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
-				([, val]) => val !== undefined
-			)
+			Object.entries(fields).filter(([, val]) => val !== undefined)
 		);
 		await ctx.db.patch(id, patch);
 	},
@@ -474,7 +489,9 @@ export const updateBranchName = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		await applyBranchNameUpdate(ctx, space, args.branchName);
+		await applyBranchNameUpdate(ctx, space, args.branchName, {
+			updateTimestamp: true,
+		});
 	},
 });
 

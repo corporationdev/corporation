@@ -205,6 +205,7 @@ export const ConnectedSessionView: FC<{
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumeMessage = usePendingMessageStore((s) => s.consumeMessage);
 	const ensureSpace = useMutation(api.spaces.ensure);
+	const touchSpace = useMutation(api.spaces.touch);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const { agentModels, defaultModels } = useAgentModels(actor);
 	const sessionState = useSessionEventState({ sessionId, actor });
@@ -252,6 +253,9 @@ export const ConnectedSessionView: FC<{
 		sessionState.setStatus("running");
 
 		const conn = actor.connection;
+		if (space?._id) {
+			touchSpace({ id: space._id }).catch(() => {});
+		}
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
@@ -273,8 +277,10 @@ export const ConnectedSessionView: FC<{
 		actor.connection,
 		sessionId,
 		space?.agentUrl,
+		space?._id,
 		spaceSlug,
 		sessionState,
+		touchSpace,
 	]);
 
 	const handleSend = useCallback(async () => {
@@ -296,6 +302,9 @@ export const ConnectedSessionView: FC<{
 			}
 
 			await conn.sendMessage(sessionId, text, agent, modelId);
+			if (space?._id) {
+				touchSpace({ id: space._id }).catch(() => {});
+			}
 		} catch (error) {
 			const kind = softResetActorConnectionOnTransientError({
 				error,
@@ -319,6 +328,8 @@ export const ConnectedSessionView: FC<{
 		agent,
 		modelId,
 		sessionState,
+		space?._id,
+		touchSpace,
 	]);
 
 	const handleStop = useCallback(async () => {
