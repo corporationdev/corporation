@@ -10,54 +10,61 @@ import type { SpaceActor } from "@/lib/rivetkit";
 export type SessionState = {
 	entries: TimelineEntry[];
 	rawEvents: SessionEvent[];
-	isRunning: boolean;
+	status: string;
+	setStatus: (status: string) => void;
 };
 
 const TRANSCRIPT_PAGE_SIZE = 200;
 
-type TranscriptConnection = {
-	getTranscript: (
+type SessionStateConnection = {
+	getSessionState: (
 		sessionId: string,
 		offset: number,
 		limit: number
-	) => Promise<SessionEvent[] | Promise<SessionEvent[]>>;
+	) =>
+		| Promise<{ events: SessionEvent[]; status: string }>
+		| Promise<Promise<{ events: SessionEvent[]; status: string }>>;
 };
 
-async function loadTranscriptEvents(
-	conn: TranscriptConnection,
+async function loadSessionState(
+	conn: SessionStateConnection,
 	sessionId: string,
 	isCancelled: () => boolean
-): Promise<SessionEvent[]> {
+): Promise<{ events: SessionEvent[]; status: string }> {
 	const events: SessionEvent[] = [];
 	let offset = 0;
+	let status = "idle";
 
 	while (true) {
 		if (isCancelled()) {
 			break;
 		}
 
-		const pageResult = await conn.getTranscript(
+		const resultPromise = await conn.getSessionState(
 			sessionId,
 			offset,
 			TRANSCRIPT_PAGE_SIZE
 		);
-		const page = await pageResult;
+		const result = await resultPromise;
 		if (isCancelled()) {
 			break;
 		}
 
-		if (page.length === 0) {
+		// Update status from the latest response
+		status = result.status;
+
+		if (result.events.length === 0) {
 			break;
 		}
 
-		events.push(...page);
-		offset += page.length;
-		if (page.length < TRANSCRIPT_PAGE_SIZE) {
+		events.push(...result.events);
+		offset += result.events.length;
+		if (result.events.length < TRANSCRIPT_PAGE_SIZE) {
 			break;
 		}
 	}
 
-	return events;
+	return { events, status };
 }
 
 function sortSessionEvents(events: SessionEvent[]): void {
@@ -302,7 +309,7 @@ export function useSessionEventState({
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<SessionEvent[]>([]);
 	const [events, setEvents] = useState<SessionEvent[]>([]);
-	const [sessionStatus, setSessionStatus] = useState<string | null>(null);
+	const [sessionStatus, setSessionStatus] = useState<string>("idle");
 
 	const addEvents = useCallback((newEvents: SessionEvent[]) => {
 		const unseen: SessionEvent[] = [];
@@ -325,7 +332,7 @@ export function useSessionEventState({
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 		setEvents([]);
-		setSessionStatus(null);
+		setSessionStatus("idle");
 	}, [sessionId]);
 
 	useEffect(() => {
@@ -340,7 +347,7 @@ export function useSessionEventState({
 		const conn = actor.connection;
 		(async () => {
 			await conn.subscribeSession(sessionId);
-			const loaded = await loadTranscriptEvents(
+			const { events: loaded, status } = await loadSessionState(
 				conn,
 				sessionId,
 				() => isCancelled
@@ -350,6 +357,7 @@ export function useSessionEventState({
 			}
 			sortSessionEvents(loaded);
 			addEvents(loaded);
+			setSessionStatus(status);
 			addEvents(bufferRef.current);
 			bufferRef.current = [];
 			caughtUpRef.current = true;
@@ -400,7 +408,10 @@ export function useSessionEventState({
 
 	const entries = useMemo(() => eventsToEntries(events), [events]);
 
-	const isRunning = useMemo(() => sessionStatus === "running", [sessionStatus]);
-
-	return { entries, rawEvents: events, isRunning };
+	return {
+		entries,
+		rawEvents: events,
+		status: sessionStatus,
+		setStatus: setSessionStatus,
+	};
 }

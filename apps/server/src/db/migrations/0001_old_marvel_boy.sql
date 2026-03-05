@@ -1,1 +1,0 @@
-ALTER TABLE `terminals` DROP COLUMN `scrollback_blob`;

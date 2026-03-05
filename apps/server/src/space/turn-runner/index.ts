@@ -23,9 +23,8 @@ const log = createLogger("space:turn-runner");
 type TextPromptPart = { type: "text"; text: string };
 
 export const SESSION_STATUS_RUNNING = "running";
-export const SESSION_STATUS_COMPLETED = "completed";
-export const SESSION_STATUS_FAILED = "failed";
 export const SESSION_STATUS_IDLE = "idle";
+export const SESSION_STATUS_ERROR = "error";
 
 export function publishSessionStatus(
 	ctx: SpaceRuntimeContext,
@@ -206,7 +205,7 @@ export async function startTurnRunner(
 		await ctx.vars.db
 			.update(sessions)
 			.set({
-				status: SESSION_STATUS_FAILED,
+				status: SESSION_STATUS_ERROR,
 				error: {
 					message: error instanceof Error ? error.message : String(error),
 				},
@@ -260,18 +259,18 @@ export async function ingestTurnRunnerBatch(
 	if (parsed.kind === "completed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: SESSION_STATUS_COMPLETED, pid: null, error: null })
+			.set({ status: SESSION_STATUS_IDLE, pid: null, error: null })
 			.where(eq(sessions.id, session.id));
-		publishSessionStatus(ctx, session.id, SESSION_STATUS_COMPLETED);
+		publishSessionStatus(ctx, session.id, SESSION_STATUS_IDLE);
 		return;
 	}
 
 	if (parsed.kind === "failed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: SESSION_STATUS_FAILED, pid: null, error: parsed.error })
+			.set({ status: SESSION_STATUS_ERROR, pid: null, error: parsed.error })
 			.where(eq(sessions.id, session.id));
-		publishSessionStatus(ctx, session.id, SESSION_STATUS_FAILED);
+		publishSessionStatus(ctx, session.id, SESSION_STATUS_ERROR);
 		log.error(
 			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },
 			"turn runner reported failure"

@@ -276,6 +276,8 @@ const ConnectedSessionView: FC<{
 	const ensureSpace = useMutation(api.spaces.ensure);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const { agentModels, defaultModels } = useAgentModels(actor);
+	const sessionState = useSessionEventState({ sessionId, actor });
+	const isRunning = sessionState.status === "running";
 
 	const pendingRef = useRef<{
 		text: string;
@@ -341,6 +343,9 @@ const ConnectedSessionView: FC<{
 		}
 		pendingRef.current = null;
 
+		// Optimistically set status to running
+		sessionState.setStatus("running");
+
 		const conn = actor.connection;
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
@@ -364,9 +369,8 @@ const ConnectedSessionView: FC<{
 		sessionId,
 		space?.agentUrl,
 		initMutation.isSuccess,
+		sessionState,
 	]);
-
-	const sessionState = useSessionEventState({ sessionId, actor });
 
 	const handleSend = useCallback(async () => {
 		const text = message.trim();
@@ -375,6 +379,9 @@ const ConnectedSessionView: FC<{
 		}
 
 		setMessage("");
+
+		// Optimistically set status to running
+		sessionState.setStatus("running");
 
 		try {
 			await ensureSpace({ slug: spaceSlug });
@@ -407,10 +414,14 @@ const ConnectedSessionView: FC<{
 		sessionId,
 		agent,
 		modelId,
+		sessionState,
 	]);
 
 	const handleStop = useCallback(async () => {
 		try {
+			// Optimistically update the status to idle
+			sessionState.setStatus("idle");
+
 			const conn = actor.connection;
 			if (!conn) {
 				return;
@@ -428,7 +439,7 @@ const ConnectedSessionView: FC<{
 			console.error("Failed to cancel session", { error, sessionId });
 			toast.error("Failed to stop session");
 		}
-	}, [actor.connection, sessionId, spaceSlug]);
+	}, [actor.connection, sessionId, spaceSlug, sessionState]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {
@@ -462,7 +473,7 @@ const ConnectedSessionView: FC<{
 					</Button>
 					<ChatMessages
 						entries={sessionState.entries}
-						isThinking={sessionState.isRunning}
+						isThinking={isRunning}
 						messagesEndRef={messagesEndRef}
 					/>
 				</div>
@@ -482,7 +493,7 @@ const ConnectedSessionView: FC<{
 							onModelIdChange={setModelIdOverride}
 						/>
 					}
-					isRunning={sessionState.isRunning}
+					isRunning={isRunning}
 					message={message}
 					onMessageChange={setMessage}
 					onSendMessage={handleSend}

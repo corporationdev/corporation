@@ -9,7 +9,6 @@ import { actor } from "rivetkit";
 import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
 import { type SpaceTab, schema, tabs } from "./db/schema";
-import { SqliteSessionPersistDriver } from "./db/session-persist-driver";
 import {
 	augmentContext,
 	collectDriverActions,
@@ -63,10 +62,8 @@ export const space = actor({
 			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const persist = new SqliteSessionPersistDriver(db);
 		const sandboxClient = await SandboxAgentClient.connect({
 			baseUrl: c.state.agentUrl,
-			persist,
 		});
 		const sandbox = await Sandbox.connect(c.state.sandboxId, {
 			apiKey: env.E2B_API_KEY,
@@ -74,7 +71,6 @@ export const space = actor({
 
 		const vars: SpaceVars = {
 			db,
-			persist,
 			sandbox,
 			sandboxClient,
 			terminalHandles: new Map(),
