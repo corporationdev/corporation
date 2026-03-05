@@ -4,7 +4,6 @@ import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
 	KVNamespace,
-	quickTunnel,
 	Vite,
 	Worker,
 } from "alchemy/cloudflare";
@@ -40,9 +39,25 @@ const actorDO = DurableObjectNamespace("actor-do", {
 });
 
 const actorKV = await KVNamespace("actor-kv");
+const tunnelRegex = /https:\/\/([^\s]+)\.trycloudflare\.com/;
+const createSilentQuickTunnel = async (localUrl: string) => ({
+	localUrl,
+	tunnelUrl: await app.spawn("tunnel", {
+		cmd: `cloudflared tunnel --url ${localUrl}`,
+		processName: "cloudflared",
+		quiet: true,
+		extract: (line) => {
+			const match = line.match(tunnelRegex);
+			if (match) {
+				return `https://${match[1]}.trycloudflare.com`;
+			}
+		},
+	}),
+});
+
 const devCallbackTunnel =
 	stageKind === "dev" || stageKind === "sandbox"
-		? await quickTunnel(app, "http://localhost:3000")
+		? await createSilentQuickTunnel("http://localhost:3000")
 		: undefined;
 
 export const server = await Worker("agent-server", {
@@ -51,7 +66,6 @@ export const server = await Worker("agent-server", {
 	compatibility: "node",
 	bindings: {
 		E2B_API_KEY: alchemy.secret(process.env.E2B_API_KEY),
-		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
 		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
 		...runtime.serverBindings,

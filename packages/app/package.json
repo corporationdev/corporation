@@ -7,12 +7,13 @@
     ".": "./src/index.tsx"
   },
   "dependencies": {
-    "@base-ui/react": "catalog:",
+    "@base-ui/react": "^1.2.0",
     "@convex-dev/better-auth": "catalog:",
     "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
     "@radix-ui/react-slot": "catalog:",
     "@rivetkit/react": "catalog:",
+    "@streamdown/code": "catalog:",
     "@tanstack/react-form": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
@@ -33,7 +34,6 @@
     "sandbox-agent": "catalog:",
     "shadcn": "catalog:",
     "sonner": "catalog:",
-    "@streamdown/code": "catalog:",
     "streamdown": "catalog:",
     "tailwind-merge": "catalog:",
     "tw-animate-css": "catalog:",

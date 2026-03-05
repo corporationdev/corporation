@@ -11,6 +11,7 @@ import { normalizeBranchName, quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
 	CODE_SERVER_PORT,
+	getAiEnvs,
 	getSandboxWorkdir,
 	pushBranch,
 	SANDBOX_AGENT_PORT,
@@ -70,10 +71,7 @@ async function provisionSandbox(
 	spaceId: Id<"spaces">,
 	snapshotId: string
 ): Promise<Sandbox> {
-	const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-	if (!anthropicApiKey) {
-		throw new Error("Missing ANTHROPIC_API_KEY env var");
-	}
+	const aiEnvs = getAiEnvs();
 
 	await ctx.runMutation(internal.spaces.internalUpdate, {
 		id: spaceId,
@@ -81,7 +79,7 @@ async function provisionSandbox(
 	});
 
 	const sandbox = await Sandbox.betaCreate(snapshotId, {
-		envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+		envs: aiEnvs,
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
