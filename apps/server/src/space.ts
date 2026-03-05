@@ -4,7 +4,9 @@ import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
+import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
+import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
 import { type SpaceTab, schema, tabs } from "./db/schema";
 import { SqliteSessionPersistDriver } from "./db/session-persist-driver";
@@ -13,7 +15,6 @@ import {
 	collectDriverActions,
 } from "./space/action-registration";
 import { lifecycleDrivers } from "./space/driver-registry";
-import { ensureRuntimeServices } from "./space/runtime-services";
 import {
 	createSubscriptionHub,
 	unsubscribeConnection,
@@ -65,15 +66,19 @@ export const space = actor({
 		}
 
 		const persist = new SqliteSessionPersistDriver(db);
+		const sandboxClient = await SandboxAgentClient.connect({
+			baseUrl: c.state.agentUrl,
+			persist,
+		});
+		const sandbox = await Sandbox.connect(c.state.sandboxId, {
+			apiKey: env.E2B_API_KEY,
+		});
 
 		const vars: SpaceVars = {
 			db,
 			persist,
-			runtimeServices: {
-				sandbox: null,
-				sandboxClient: null,
-				inFlight: null,
-			},
+			sandbox,
+			sandboxClient,
 			terminalHandles: new Map(),
 			terminalEnsures: new Map(),
 			subscriptions: createSubscriptionHub(),
@@ -94,8 +99,6 @@ export const space = actor({
 		const startedAt = Date.now();
 		const runtime = augmentContext(c, lifecycleDrivers);
 		try {
-			await ensureRuntimeServices(runtime);
-
 			for (const driver of lifecycleDrivers) {
 				await driver.onWake?.(runtime);
 			}

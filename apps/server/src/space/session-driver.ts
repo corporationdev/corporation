@@ -5,7 +5,6 @@ import type { AgentListResponse, Session, SessionEvent } from "sandbox-agent";
 import { type SessionTab, sessions, tabs } from "../db/schema";
 import { createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
-import { getSandbox, getSandboxClient } from "./runtime-services";
 import {
 	buildPromptWithReplay,
 	type SessionPromptPart,
@@ -165,8 +164,7 @@ async function sendMessage(
 		);
 	}
 
-	const sandboxClient = await getSandboxClient(ctx);
-	const session = await sandboxClient.resumeOrCreateSession({
+	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
 		id: sessionId,
 		agent,
 		sessionInit: {
@@ -196,8 +194,7 @@ async function sendMessage(
 async function listAgents(
 	ctx: SpaceRuntimeContext
 ): Promise<AgentListResponse> {
-	const sandboxClient = await getSandboxClient(ctx);
-	return await sandboxClient.listAgents({ config: true });
+	return await ctx.vars.sandboxClient.listAgents({ config: true });
 }
 
 async function cancelSession(
@@ -238,8 +235,7 @@ async function cancelSession(
 		? `kill ${pid} 2>/dev/null || true`
 		: "pkill -f corp-turn-runner || true";
 	try {
-		const sandbox = await getSandbox(ctx);
-		await sandbox.commands.run(killCmd, {
+		await ctx.vars.sandbox.commands.run(killCmd, {
 			timeoutMs: 5000,
 		});
 	} catch (error) {

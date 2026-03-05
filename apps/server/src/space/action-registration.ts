@@ -7,7 +7,6 @@ import type {
 	DriverActionMap,
 	TabDriverLifecycle,
 } from "./driver-types";
-import { ensureRuntimeServices } from "./runtime-services";
 import { subscribeToChannel, unsubscribeFromChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
@@ -30,8 +29,8 @@ export function refreshSandboxTimeout(runtime: SpaceRuntimeContext): void {
 	const sandboxId = runtime.state.sandboxId;
 	const expiresAt = now + SANDBOX_TIMEOUT_MS;
 
-	ensureRuntimeServices(runtime)
-		.then(({ sandbox }) => sandbox.setTimeout(SANDBOX_TIMEOUT_MS))
+	runtime.vars.sandbox
+		.setTimeout(SANDBOX_TIMEOUT_MS)
 		.then(() => {
 			log.info({ actorId: runtime.actorId }, "sandbox-timeout.refreshed");
 

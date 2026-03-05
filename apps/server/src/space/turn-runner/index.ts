@@ -6,7 +6,6 @@ import type { SessionEvent } from "sandbox-agent";
 import { sessionEvents, sessions } from "../../db/schema";
 import { refreshSandboxTimeout } from "../action-registration";
 import { createTabChannel } from "../channels";
-import { getSandbox } from "../runtime-services";
 import { publishToChannel } from "../subscriptions";
 import type { SpaceRuntimeContext } from "../types";
 import {
@@ -98,7 +97,6 @@ async function launchTurnRunner(
 		callbackToken: string;
 	}
 ): Promise<number | null> {
-	const sandbox = await getSandbox(ctx);
 	const launchCommand = [
 		"set -euo pipefail",
 		`command -v ${TURN_RUNNER_COMMAND} >/dev/null 2>&1`,
@@ -109,7 +107,7 @@ async function launchTurnRunner(
 		'kill -0 "$pid" >/dev/null 2>&1',
 	].join("\n");
 
-	const result = await sandbox.commands.run(launchCommand, {
+	const result = await ctx.vars.sandbox.commands.run(launchCommand, {
 		cwd: ctx.state.workdir,
 		timeoutMs: 15_000,
 		user: "root",

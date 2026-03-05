@@ -4,7 +4,6 @@ import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
-import { getSandbox } from "./runtime-services";
 import { publishToChannel, subscribeToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
@@ -97,7 +96,7 @@ async function sendTerminalSnapshotToConnection(
 	}
 
 	try {
-		const sandbox = await getSandbox(ctx);
+		const sandbox = ctx.vars.sandbox;
 		const result = await runRootCommand(
 			sandbox,
 			`tmux capture-pane -p -e -t ${quoteShellArg(terminalId)} -S -`
@@ -401,7 +400,7 @@ async function ensureTerminalOnce(
 
 	const existingHandle = ctx.vars.terminalHandles.get(terminalId);
 	if (!existingHandle) {
-		const sandbox = await getSandbox(ctx);
+		const sandbox = ctx.vars.sandbox;
 		const row = await ctx.vars.db
 			.select({
 				ptyPid: terminals.ptyPid,
@@ -477,7 +476,7 @@ async function input(
 	}
 
 	const handle = getTerminalHandleOrThrow(ctx, terminalId);
-	const sandbox = await getSandbox(ctx);
+	const sandbox = ctx.vars.sandbox;
 
 	try {
 		await sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
@@ -504,7 +503,7 @@ async function resize(
 	await ensureTerminal(ctx, terminalId, cols, rows);
 
 	const handle = getTerminalHandleOrThrow(ctx, terminalId);
-	const sandbox = await getSandbox(ctx);
+	const sandbox = ctx.vars.sandbox;
 
 	try {
 		await sandbox.pty.resize(handle.pid, { cols, rows });
@@ -578,7 +577,7 @@ async function startDevServerAction(
 		throw new Error("Dev command must not be empty");
 	}
 
-	const sandbox = await getSandbox(ctx);
+	const sandbox = ctx.vars.sandbox;
 	const exists = await hasTmuxSession(sandbox, DEV_SERVER_TERMINAL_ID);
 	if (exists) {
 		// Already running — just ensure the tab + PTY are attached
@@ -641,7 +640,7 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 
 	// Kill the tmux session
 	try {
-		const sandbox = await getSandbox(ctx);
+		const sandbox = ctx.vars.sandbox;
 		const safeSessionName = quoteShellArg(DEV_SERVER_TERMINAL_ID);
 		await runRootCommand(sandbox, `tmux kill-session -t ${safeSessionName}`);
 	} catch (error) {
@@ -662,7 +661,7 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 }
 
 async function onWake(ctx: SpaceRuntimeContext): Promise<void> {
-	const sandbox = await getSandbox(ctx);
+	const sandbox = ctx.vars.sandbox;
 	const exists = await hasTmuxSession(sandbox, DEV_SERVER_TERMINAL_ID);
 	if (!exists) {
 		// Clean up stale tab if tmux session is gone (e.g. sandbox restart)
