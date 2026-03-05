@@ -56,31 +56,20 @@ async function ensureBranchCheckedOut(
 	const safeBranchName = quoteShellArg(normalizeBranchName(branchName));
 	const safeDefaultBranch = quoteShellArg(defaultBranch);
 
-	try {
-		await sandbox.commands.run(`git checkout ${safeBranchName}`, {
+	await sandbox.commands.run(
+		`git checkout ${safeBranchName} 2>/dev/null || git checkout -b ${safeBranchName} ${safeDefaultBranch}`,
+		{
 			cwd: workdir,
 			user: "root",
-		});
-	} catch (error) {
-		if (!(error instanceof CommandExitError)) {
-			throw error;
 		}
-
-		await sandbox.commands.run(
-			`git checkout -b ${safeBranchName} ${safeDefaultBranch}`,
-			{
-				cwd: workdir,
-				user: "root",
-			}
-		);
-	}
+	);
 }
 
 async function provisionSandbox(
 	ctx: ActionCtx,
 	spaceId: Id<"spaces">,
 	snapshotId: string
-): Promise<string> {
+): Promise<Sandbox> {
 	const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 	if (!anthropicApiKey) {
 		throw new Error("Missing ANTHROPIC_API_KEY env var");
@@ -93,7 +82,6 @@ async function provisionSandbox(
 
 	const sandbox = await Sandbox.betaCreate(snapshotId, {
 		envs: { ANTHROPIC_API_KEY: anthropicApiKey },
-		allowInternetAccess: true,
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
@@ -104,10 +92,10 @@ async function provisionSandbox(
 		sandboxExpiresAt: Date.now() + SANDBOX_TIMEOUT_MS,
 	});
 
-	return sandbox.sandboxId;
+	return sandbox;
 }
 
-async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<string> {
+async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
 	const externalSnapshotId =
 		space.environment.activeSnapshot?.externalSnapshotId;
 
@@ -125,8 +113,7 @@ async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<string> {
 			status: "creating" as const,
 		});
 
-		await Sandbox.connect(space.sandboxId);
-		return space.sandboxId;
+		return await Sandbox.connect(space.sandboxId);
 	} catch {
 		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
@@ -199,9 +186,8 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 			});
 
-			const sandboxId = await resolveSandbox(ctx, space);
+			const sandbox = await resolveSandbox(ctx, space);
 
-			const sandbox = await Sandbox.connect(sandboxId);
 			const { repository } = space.environment;
 			const workdir = getSandboxWorkdir(repository);
 			await ensureBranchCheckedOut(
@@ -217,6 +203,7 @@ export const ensureSandbox = internalAction({
 				AGENT_HEALTH_URL,
 				"sandbox-agent"
 			);
+
 			const editorUrl = await assertHealthyAndGetUrl(
 				sandbox,
 				CODE_SERVER_PORT,
@@ -227,7 +214,7 @@ export const ensureSandbox = internalAction({
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "running",
-				sandboxId,
+				sandboxId: sandbox.sandboxId,
 				agentUrl,
 				editorUrl,
 			});
