@@ -83,7 +83,7 @@ export const create = authedMutation({
 		environmentConfig: v.object({
 			name: v.optional(v.string()),
 			setupCommand: v.string(),
-			updateCommand: v.optional(v.string()),
+			updateCommand: v.string(),
 			devCommand: v.string(),
 			devPort: v.number(),
 			envByPath: v.optional(

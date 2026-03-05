@@ -9,7 +9,7 @@ export const SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS = 60 * 60_000;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
-const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
+export const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
 const NEEDS_QUOTING_RE = /[\s"'#]/;
 const LOCALHOST_PORT_RE = /http:\/\/localhost:(\d+)/g;
 const TRAILING_SLASH_RE = /\/$/;
@@ -43,7 +43,7 @@ export type SandboxEnv = {
 		defaultBranch: string;
 	};
 	setupCommand: string;
-	updateCommand?: string | null;
+	updateCommand: string;
 	devCommand: string;
 	devPort: number;
 	envByPath?: Record<string, Record<string, string>> | null;
@@ -145,7 +145,7 @@ export async function runRootCommand(
 	}
 }
 
-async function writeEnvFiles(
+export async function writeEnvFiles(
 	sandbox: Sandbox,
 	env: SandboxEnv,
 	workdir: string
@@ -172,91 +172,6 @@ async function writeEnvFiles(
 	}
 
 	await sandbox.files.writeFiles(files);
-}
-
-/**
- * Fresh clone + full setup. Returns the HEAD commit SHA.
- */
-export async function setupSandbox(
-	sandbox: Sandbox,
-	env: SandboxEnv,
-	githubToken: string,
-	appendLog?: (chunk: string) => void
-): Promise<string> {
-	const { repository } = env;
-	const workdir = getSandboxWorkdir(repository);
-	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
-	const safeRepoUrl = quoteShellArg(repoUrl);
-	const safeWorkdir = quoteShellArg(workdir);
-	const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
-
-	await runRootCommand(
-		sandbox,
-		`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
-		{
-			timeoutMs: REPO_SYNC_TIMEOUT_MS,
-			onStdout: appendLog,
-			onStderr: appendLog,
-		}
-	);
-
-	await writeEnvFiles(sandbox, env, workdir);
-	appendLog?.("Environment files written.\n");
-
-	await runRootCommand(sandbox, env.setupCommand, {
-		cwd: workdir,
-		timeoutMs: REPO_SYNC_TIMEOUT_MS,
-		onStdout: appendLog,
-		onStderr: appendLog,
-	});
-
-	const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
-		cwd: workdir,
-	});
-	return shaResult.stdout.trim();
-}
-
-/**
- * Pull latest changes + run update command. Returns the HEAD commit SHA.
- */
-export async function updateSandbox(
-	sandbox: Sandbox,
-	env: SandboxEnv,
-	githubToken: string,
-	appendLog?: (chunk: string) => void
-): Promise<string> {
-	const { repository } = env;
-	const workdir = getSandboxWorkdir(repository);
-	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
-	const safeRepoUrl = quoteShellArg(repoUrl);
-	const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
-
-	await runRootCommand(
-		sandbox,
-		`git remote set-url origin ${safeRepoUrl} && git pull origin ${safeDefaultBranch}`,
-		{
-			cwd: workdir,
-			timeoutMs: REPO_SYNC_TIMEOUT_MS,
-			onStdout: appendLog,
-			onStderr: appendLog,
-		}
-	);
-
-	await writeEnvFiles(sandbox, env, workdir);
-	appendLog?.("Environment files written.\n");
-
-	const command = env.updateCommand || env.setupCommand;
-	await runRootCommand(sandbox, command, {
-		cwd: workdir,
-		timeoutMs: REPO_SYNC_TIMEOUT_MS,
-		onStdout: appendLog,
-		onStderr: appendLog,
-	});
-
-	const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
-		cwd: workdir,
-	});
-	return shaResult.stdout.trim();
 }
 
 /**

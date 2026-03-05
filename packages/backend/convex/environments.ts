@@ -69,7 +69,7 @@ export async function createEnvironmentHelper(
 		repositoryId: Id<"repositories">;
 		name: string;
 		setupCommand: string;
-		updateCommand?: string;
+		updateCommand: string;
 		devCommand: string;
 		devPort: number;
 		envByPath?: Record<string, Record<string, string>>;
@@ -106,7 +106,7 @@ export const create = authedMutation({
 		repositoryId: v.id("repositories"),
 		name: v.string(),
 		setupCommand: v.string(),
-		updateCommand: v.optional(v.string()),
+		updateCommand: v.string(),
 		devCommand: v.string(),
 		devPort: v.number(),
 		envByPath: v.optional(

@@ -14,7 +14,6 @@ import {
 	getSandboxWorkdir,
 	pushBranch,
 	SANDBOX_AGENT_PORT,
-	updateSandbox,
 } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
@@ -239,44 +238,6 @@ export const ensureSandbox = internalAction({
 			});
 
 			throw error;
-		}
-	},
-});
-
-export const syncRepository = internalAction({
-	args: {
-		spaceId: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!nangoSecretKey) {
-			throw new Error("Missing NANGO_SECRET_KEY env var");
-		}
-
-		const space = await ctx.runQuery(internal.spaces.internalGet, {
-			id: args.spaceId,
-		});
-
-		if (!space.sandboxId) {
-			throw new Error("Space has no sandbox to sync");
-		}
-
-		const nango = new Nango({ secretKey: nangoSecretKey });
-		const githubToken = await getGitHubToken(nango, space.environment.userId);
-
-		const sandbox = await Sandbox.connect(space.sandboxId);
-
-		const lastSyncedCommitSha = await updateSandbox(
-			sandbox,
-			space.environment,
-			githubToken
-		);
-
-		if (lastSyncedCommitSha) {
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: args.spaceId,
-				lastSyncedCommitSha,
-			});
 		}
 	},
 });

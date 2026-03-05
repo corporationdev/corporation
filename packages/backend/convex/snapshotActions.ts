@@ -6,6 +6,7 @@ import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type ActionCtx, internalAction } from "./_generated/server";
+import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
 	bootServer,
@@ -13,11 +14,12 @@ import {
 	CODE_SERVER_SESSION_NAME,
 	DEV_SERVER_SESSION_NAME,
 	getSandboxWorkdir,
+	REPO_SYNC_TIMEOUT_MS,
+	runRootCommand,
 	SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS,
 	SANDBOX_AGENT_PORT,
 	SANDBOX_AGENT_SESSION_NAME,
-	setupSandbox,
-	updateSandbox,
+	writeEnvFiles,
 } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
@@ -188,30 +190,78 @@ export const buildSnapshot = internalAction({
 				const nango = new Nango({ secretKey: nangoSecretKey });
 				const githubToken = await getGitHubToken(nango, environment.userId);
 
-				let sandbox: Sandbox;
-				let snapshotCommitSha: string;
+				const { repository } = environment;
+				const workdir = getSandboxWorkdir(repository);
+				const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
+				const safeRepoUrl = quoteShellArg(repoUrl);
+				const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
+				const appendLog = (chunk: string) => reporter.appendLog(chunk);
 
+				// Create sandbox and sync repo (diverges by type)
+				let sandbox: Sandbox;
 				if (request.type === "setup") {
 					sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
 						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
 						network: { allowPublicTraffic: true },
 					});
 
-					snapshotCommitSha = await setupSandbox(
+					const safeWorkdir = quoteShellArg(workdir);
+					await runRootCommand(
 						sandbox,
-						environment,
-						githubToken,
-						(chunk) => reporter.appendLog(chunk)
+						`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
+						{
+							timeoutMs: REPO_SYNC_TIMEOUT_MS,
+							onStdout: appendLog,
+							onStderr: appendLog,
+						}
 					);
+				} else {
+					sandbox = await Sandbox.betaCreate(request.oldExternalSnapshotId, {
+						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+						network: { allowPublicTraffic: true },
+					});
 
-					const workdir = getSandboxWorkdir(environment.repository);
+					await runRootCommand(
+						sandbox,
+						`git remote set-url origin ${safeRepoUrl} && git pull origin ${safeDefaultBranch}`,
+						{
+							cwd: workdir,
+							timeoutMs: REPO_SYNC_TIMEOUT_MS,
+							onStdout: appendLog,
+							onStderr: appendLog,
+						}
+					);
+				}
+
+				// Shared: write env files, run command, get commit SHA
+				await writeEnvFiles(sandbox, environment, workdir);
+				appendLog("Environment files written.\n");
+
+				const installCommand =
+					request.type === "update"
+						? environment.updateCommand
+						: environment.setupCommand;
+				await runRootCommand(sandbox, installCommand, {
+					cwd: workdir,
+					timeoutMs: REPO_SYNC_TIMEOUT_MS,
+					onStdout: appendLog,
+					onStderr: appendLog,
+				});
+
+				const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
+					cwd: workdir,
+				});
+				const snapshotCommitSha = shaResult.stdout.trim();
+
+				// Setup-only: boot all servers
+				if (request.type === "setup") {
 					await Promise.all([
 						bootServer(sandbox, {
 							sessionName: DEV_SERVER_SESSION_NAME,
 							command: environment.devCommand,
 							healthUrl: `http://localhost:${environment.devPort}/`,
 							workdir,
-							appendLog: (chunk) => reporter.appendLog(chunk),
+							appendLog,
 						}),
 						bootServer(sandbox, {
 							sessionName: SANDBOX_AGENT_SESSION_NAME,
@@ -224,20 +274,9 @@ export const buildSnapshot = internalAction({
 							healthUrl: `http://localhost:${CODE_SERVER_PORT}`,
 						}),
 					]);
-				} else {
-					sandbox = await Sandbox.betaCreate(request.oldExternalSnapshotId, {
-						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
-						network: { allowPublicTraffic: true },
-					});
-
-					snapshotCommitSha = await updateSandbox(
-						sandbox,
-						environment,
-						githubToken,
-						(chunk) => reporter.appendLog(chunk)
-					);
 				}
 
+				// Shared: create snapshot and cleanup
 				try {
 					reporter.appendLog("Creating snapshot...\n");
 					const snapshot = await sandbox.createSnapshot();

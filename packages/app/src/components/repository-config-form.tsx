@@ -38,7 +38,7 @@ const envFileSchema = z.object({
 
 export const repositoryConfigSchema = z.object({
 	setupCommand: z.string().min(1, "Setup command is required"),
-	updateCommand: z.string(),
+	updateCommand: z.string().min(1, "Update command is required"),
 	devCommand: z.string().min(1, "Dev command is required"),
 	devPort: z
 		.string()

@@ -27,7 +27,7 @@ export default defineSchema(
 			repositoryId: v.id("repositories"),
 			name: v.string(),
 			setupCommand: v.string(),
-			updateCommand: v.optional(v.string()),
+			updateCommand: v.string(),
 			devCommand: v.string(),
 			devPort: v.number(),
 			envByPath: v.optional(

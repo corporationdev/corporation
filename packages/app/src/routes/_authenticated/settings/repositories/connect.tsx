@@ -63,7 +63,7 @@ function ConnectRepositoryPage() {
 				defaultBranch: selectedRepo.defaultBranch,
 				environmentConfig: {
 					setupCommand: value.setupCommand,
-					updateCommand: value.updateCommand || undefined,
+					updateCommand: value.updateCommand,
 					devCommand: value.devCommand,
 					devPort,
 					envByPath,
