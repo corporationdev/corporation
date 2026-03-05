@@ -1,11 +1,6 @@
 import type { SpaceTab } from "@corporation/server/space";
 import { useEffect, useState } from "react";
-import {
-	isDisposedConnError,
-	isInFlightMismatchError,
-	isTransientActorConnError,
-	requestActorConnectionSoftReset,
-} from "@/lib/actor-errors";
+import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 
 function getActorSpaceSlug(actor: SpaceActor): string | undefined {
@@ -17,25 +12,15 @@ function getActorSpaceSlug(actor: SpaceActor): string | undefined {
 }
 
 function handleListTabsError(actor: SpaceActor, error: unknown): void {
-	if (!isTransientActorConnError(error)) {
-		console.error("Failed to fetch tabs", error);
+	const kind = softResetActorConnectionOnTransientError({
+		error,
+		reasonPrefix: "space-tabs",
+		spaceSlug: getActorSpaceSlug(actor),
+	});
+	if (kind) {
 		return;
 	}
-
-	if (isInFlightMismatchError(error)) {
-		requestActorConnectionSoftReset(
-			"space-tabs-inflight-mismatch",
-			getActorSpaceSlug(actor)
-		);
-		return;
-	}
-
-	if (isDisposedConnError(error)) {
-		requestActorConnectionSoftReset(
-			"space-tabs-disposed-connection",
-			getActorSpaceSlug(actor)
-		);
-	}
+	console.error("Failed to fetch tabs", error);
 }
 
 export function useSpaceTabs(actor: SpaceActor): SpaceTab[] {

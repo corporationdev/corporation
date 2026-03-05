@@ -16,10 +16,8 @@ import { Button } from "@/components/ui/button";
 import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
 import {
-	isDisposedConnError,
-	isInFlightMismatchError,
 	isTransientActorConnError,
-	requestActorConnectionSoftReset,
+	softResetActorConnectionOnTransientError,
 } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
@@ -347,18 +345,12 @@ const ConnectedSessionView: FC<{
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
-				if (isTransientActorConnError(error)) {
-					if (isInFlightMismatchError(error)) {
-						requestActorConnectionSoftReset(
-							"session-pending-send-inflight-mismatch",
-							spaceSlug
-						);
-					} else if (isDisposedConnError(error)) {
-						requestActorConnectionSoftReset(
-							"session-pending-send-disposed",
-							spaceSlug
-						);
-					}
+				const kind = softResetActorConnectionOnTransientError({
+					error,
+					reasonPrefix: "session-pending-send",
+					spaceSlug,
+				});
+				if (kind) {
 					pendingRef.current = pending;
 					return;
 				}
@@ -394,15 +386,12 @@ const ConnectedSessionView: FC<{
 
 			await conn.sendMessage(sessionId, text, agent, modelId);
 		} catch (error) {
-			if (isTransientActorConnError(error)) {
-				if (isInFlightMismatchError(error)) {
-					requestActorConnectionSoftReset(
-						"session-send-inflight-mismatch",
-						spaceSlug
-					);
-				} else if (isDisposedConnError(error)) {
-					requestActorConnectionSoftReset("session-send-disposed", spaceSlug);
-				}
+			const kind = softResetActorConnectionOnTransientError({
+				error,
+				reasonPrefix: "session-send",
+				spaceSlug,
+			});
+			if (kind) {
 				setMessage((current) => (current ? current : text));
 				return;
 			}
@@ -428,15 +417,12 @@ const ConnectedSessionView: FC<{
 			}
 			await conn.cancelSession(sessionId);
 		} catch (error) {
-			if (isTransientActorConnError(error)) {
-				if (isInFlightMismatchError(error)) {
-					requestActorConnectionSoftReset(
-						"session-cancel-inflight-mismatch",
-						spaceSlug
-					);
-				} else if (isDisposedConnError(error)) {
-					requestActorConnectionSoftReset("session-cancel-disposed", spaceSlug);
-				}
+			const kind = softResetActorConnectionOnTransientError({
+				error,
+				reasonPrefix: "session-cancel",
+				spaceSlug,
+			});
+			if (kind) {
 				return;
 			}
 			console.error("Failed to cancel session", { error, sessionId });

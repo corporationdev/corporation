@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionEvent } from "sandbox-agent";
 import type { TimelineEntry } from "@/components/chat/types";
 import {
-	isDisposedConnError,
-	isInFlightMismatchError,
 	isTransientActorConnError,
-	requestActorConnectionSoftReset,
+	softResetActorConnectionOnTransientError,
 } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 
@@ -356,16 +354,15 @@ export function useSessionEventState({
 			bufferRef.current = [];
 			caughtUpRef.current = true;
 		})().catch((error: unknown) => {
-			if (isTransientActorConnError(error)) {
-				if (isInFlightMismatchError(error)) {
+			const kind = softResetActorConnectionOnTransientError({
+				error,
+				reasonPrefix: "session-stream",
+			});
+			if (kind) {
+				if (kind === "inflight-mismatch") {
 					console.warn("actor-conn.session-stream.inflight-mismatch", {
 						sessionId,
 					});
-					requestActorConnectionSoftReset("session-stream-inflight-mismatch");
-					return;
-				}
-				if (isDisposedConnError(error)) {
-					requestActorConnectionSoftReset("session-stream-disposed");
 				}
 				return;
 			}

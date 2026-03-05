@@ -5,6 +5,8 @@ type SoftResetDetail = {
 	spaceSlug?: string;
 };
 
+export type ActorConnTransientKind = "inflight-mismatch" | "disposed";
+
 function extractErrorText(error: unknown): string {
 	if (error instanceof Error) {
 		return `${error.name} ${error.message}`.toLowerCase();
@@ -41,8 +43,36 @@ export function isInFlightMismatchError(error: unknown): boolean {
 	);
 }
 
+export function getTransientActorConnKind(
+	error: unknown
+): ActorConnTransientKind | null {
+	if (isInFlightMismatchError(error)) {
+		return "inflight-mismatch";
+	}
+	if (isDisposedConnError(error)) {
+		return "disposed";
+	}
+	return null;
+}
+
 export function isTransientActorConnError(error: unknown): boolean {
-	return isDisposedConnError(error) || isInFlightMismatchError(error);
+	return getTransientActorConnKind(error) !== null;
+}
+
+export function softResetActorConnectionOnTransientError(input: {
+	error: unknown;
+	reasonPrefix: string;
+	spaceSlug?: string;
+}): ActorConnTransientKind | null {
+	const kind = getTransientActorConnKind(input.error);
+	if (!kind) {
+		return null;
+	}
+	requestActorConnectionSoftReset(
+		`${input.reasonPrefix}-${kind}`,
+		input.spaceSlug
+	);
+	return kind;
 }
 
 export function requestActorConnectionSoftReset(

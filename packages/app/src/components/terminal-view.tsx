@@ -2,12 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTermTerminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
-import {
-	isDisposedConnError,
-	isInFlightMismatchError,
-	isTransientActorConnError,
-	requestActorConnectionSoftReset,
-} from "@/lib/actor-errors";
+import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 import "@xterm/xterm/css/xterm.css";
 
@@ -33,16 +28,12 @@ function handleTerminalActionError(
 	actor: SpaceActor,
 	action: string
 ): void {
-	if (isTransientActorConnError(error)) {
-		const spaceSlug = getSpaceSlug(actor);
-		if (isInFlightMismatchError(error)) {
-			requestActorConnectionSoftReset(
-				`terminal-${action}-inflight-mismatch`,
-				spaceSlug
-			);
-		} else if (isDisposedConnError(error)) {
-			requestActorConnectionSoftReset(`terminal-${action}-disposed`, spaceSlug);
-		}
+	const kind = softResetActorConnectionOnTransientError({
+		error,
+		reasonPrefix: `terminal-${action}`,
+		spaceSlug: getSpaceSlug(actor),
+	});
+	if (kind) {
 		return;
 	}
 	console.error(`Failed to ${action} terminal action`, { error, terminalId });
