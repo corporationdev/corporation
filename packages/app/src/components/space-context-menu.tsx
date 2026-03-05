@@ -54,7 +54,7 @@ export const SpaceContextMenu: FC<{
 
 	const navigateAway = () => {
 		if (isActive) {
-			navigate({ to: "/space" });
+			navigate({ to: "/" });
 		}
 	};
 

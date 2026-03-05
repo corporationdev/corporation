@@ -7,7 +7,7 @@ type SpaceSearchParams = {
 	tab?: string;
 };
 
-export const Route = createFileRoute("/_authenticated/space/$spaceSlug")({
+export const Route = createFileRoute("/_authenticated/space_/$spaceSlug")({
 	component: SpaceWithIdRoute,
 	validateSearch: (search: Record<string, unknown>): SpaceSearchParams => ({
 		tab: typeof search.tab === "string" ? search.tab : undefined,

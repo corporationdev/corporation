@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Building } from "lucide-react";
 import type * as React from "react";
 import { NavUser } from "@/components/nav-user";
@@ -19,10 +20,13 @@ export function SpaceListSidebar({
 	return (
 		<Sidebar {...props}>
 			<SidebarHeader className="aui-sidebar-header mb-2">
-				<div className="aui-sidebar-header-content flex items-center gap-2 p-2">
+				<Link
+					className="aui-sidebar-header-content flex items-center gap-2 p-2"
+					to="/"
+				>
 					<Building />
 					The Corporation
-				</div>
+				</Link>
 			</SidebarHeader>
 			<SidebarContent className="aui-sidebar-content px-2">
 				<SpaceList />

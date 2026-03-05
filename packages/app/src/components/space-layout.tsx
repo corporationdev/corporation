@@ -19,19 +19,13 @@ import { parseTab, serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 
 export function SpaceLayout() {
-	const match = useMatch({
-		from: "/_authenticated/space/$spaceSlug",
-		shouldThrow: false,
-	});
-	const spaceSlug = match?.params.spaceSlug;
-	const tab = parseTab(match?.search.tab);
+	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
+	const { spaceSlug } = match.params;
+	const tab = parseTab(match.search.tab);
 
-	const space = useQuery(
-		api.spaces.getBySlug,
-		spaceSlug ? { slug: spaceSlug } : "skip"
-	);
+	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const isSpaceLoading = space === undefined;
-	const isSpaceMissing = !!spaceSlug && space === null;
+	const isSpaceMissing = space === null;
 	const [connectionResetNonce, setConnectionResetNonce] = useState(0);
 	const lastResetAtRef = useRef(0);
 
@@ -40,9 +34,6 @@ export function SpaceLayout() {
 	useEffect(() => {
 		return addActorConnectionSoftResetListener(
 			({ reason, spaceSlug: target }) => {
-				if (!spaceSlug) {
-					return;
-				}
 				if (target && target !== spaceSlug) {
 					return;
 				}
@@ -64,7 +55,7 @@ export function SpaceLayout() {
 
 	const actor = useActor({
 		name: "space",
-		key: spaceSlug ? [spaceSlug] : [],
+		key: [spaceSlug],
 		params: { reconnectNonce: String(connectionResetNonce) },
 		createWithInput: sandboxReady
 			? {
@@ -73,7 +64,7 @@ export function SpaceLayout() {
 					workdir: space.workdir,
 				}
 			: undefined,
-		enabled: !!spaceSlug && sandboxReady,
+		enabled: sandboxReady,
 	});
 
 	const tabs = useSpaceTabs(actor);
@@ -96,14 +87,12 @@ export function SpaceLayout() {
 						<SpaceSidebarToggle />
 					</div>
 				</header>
-				{spaceSlug && (
-					<SpaceTabBar
-						activeTab={tab}
-						actor={actor}
-						spaceSlug={spaceSlug}
-						tabs={tabs}
-					/>
-				)}
+				<SpaceTabBar
+					activeTab={tab}
+					actor={actor}
+					spaceSlug={spaceSlug}
+					tabs={tabs}
+				/>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					{isSpaceMissing ? (
 						<SpaceNotFoundPanel />

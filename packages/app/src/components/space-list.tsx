@@ -5,9 +5,7 @@ import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArchiveIcon, BoxIcon, FolderIcon, PlusIcon } from "lucide-react";
-import { nanoid } from "nanoid";
 import { type FC, useEffect, useRef } from "react";
-import { toast } from "sonner";
 
 import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
@@ -115,12 +113,10 @@ const RepositorySpaceSection: FC<{
 						{repository.owner}/{repository.name}
 					</span>
 				</div>
-				{defaultEnvironment ? (
-					<NewSpaceButton
-						environmentId={defaultEnvironment._id}
-						repositoryName={repository.name}
-					/>
-				) : null}
+				<NewSpaceButton
+					repositoryId={repository._id}
+					repositoryName={repository.name}
+				/>
 			</div>
 			<div className="ml-2 flex flex-col gap-1 border-l pl-2">
 				{spaces.length === 0 ? (
@@ -143,47 +139,25 @@ const RepositorySpaceSection: FC<{
 };
 
 const NewSpaceButton: FC<{
-	environmentId: Id<"environments">;
+	repositoryId: Id<"repositories">;
 	repositoryName: string;
-}> = ({ environmentId, repositoryName }) => {
+}> = ({ repositoryId, repositoryName }) => {
 	const navigate = useNavigate();
-	const ensureSpace = useMutation(api.spaces.ensure);
-
-	const createSpaceMutation = useTanstackMutation({
-		mutationFn: async () => {
-			const spaceSlug = nanoid();
-			await ensureSpace({
-				slug: spaceSlug,
-				environmentId,
-			});
-
-			return spaceSlug;
-		},
-		onSuccess: (spaceSlug) => {
-			navigate({
-				to: "/space/$spaceSlug",
-				params: { spaceSlug },
-			});
-		},
-		onError: () => {
-			toast.error(`Failed to create a space in ${repositoryName}`);
-		},
-	});
 
 	return (
 		<Button
 			className="size-6 rounded-sm p-0 hover:bg-muted"
-			disabled={createSpaceMutation.isPending}
-			onClick={() => createSpaceMutation.mutate()}
+			onClick={() =>
+				navigate({
+					to: "/repository/$repositoryId",
+					params: { repositoryId },
+				})
+			}
 			size="icon"
 			variant="outline"
 		>
 			<PlusIcon className="size-3.5" />
-			<span className="sr-only">
-				{createSpaceMutation.isPending
-					? "Creating space..."
-					: `New space in ${repositoryName}`}
-			</span>
+			<span className="sr-only">New space in {repositoryName}</span>
 		</Button>
 	);
 };
@@ -239,7 +213,7 @@ const SpaceListItem: FC<{
 }> = ({ id, slug, branchName }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
-		from: "/_authenticated/space/$spaceSlug",
+		from: "/_authenticated/space_/$spaceSlug",
 		shouldThrow: false,
 	});
 	const isActive = match?.params.spaceSlug === slug;
@@ -249,7 +223,7 @@ const SpaceListItem: FC<{
 		mutationFn: () => archiveSpace({ id }),
 		onSuccess: () => {
 			if (isActive) {
-				navigate({ to: "/space" });
+				navigate({ to: "/" });
 			}
 		},
 	});

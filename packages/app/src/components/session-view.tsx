@@ -32,12 +32,8 @@ export const SessionView: FC<{
 	actor: SpaceActor;
 	sessionId?: string;
 	sessionTab?: SessionTab;
-	spaceSlug: string | undefined;
+	spaceSlug: string;
 }> = ({ actor, sessionId, sessionTab, spaceSlug }) => {
-	if (!spaceSlug) {
-		return <NewSpaceView />;
-	}
-
 	if (sessionId) {
 		return (
 			<ConnectedSessionView
@@ -51,69 +47,6 @@ export const SessionView: FC<{
 	}
 
 	return <NewSessionView actor={actor} key={spaceSlug} spaceSlug={spaceSlug} />;
-};
-
-const NewSpaceView: FC = () => {
-	const navigate = useNavigate();
-	const setPending = usePendingMessageStore((s) => s.setPending);
-	const [message, setMessage] = useState("");
-	const [agent, setAgent] = useState(INITIAL_AGENT);
-	const [modelId, setModelId] = useState(INITIAL_MODEL);
-
-	const repositories = useQuery(api.repositories.list);
-	const firstRepo = repositories?.[0];
-	const environments = useQuery(
-		api.environments.listByRepository,
-		firstRepo ? { repositoryId: firstRepo._id } : "skip"
-	);
-	const firstEnv = environments?.[0];
-
-	const handleSend = useCallback(() => {
-		const text = message.trim();
-		if (!(text && firstEnv)) {
-			return;
-		}
-
-		const spaceSlug = nanoid();
-		const sessionId = nanoid();
-
-		setPending({ text, agent, modelId, environmentId: firstEnv._id });
-		setMessage("");
-
-		navigate({
-			to: "/space/$spaceSlug",
-			params: { spaceSlug },
-			search: {
-				tab: serializeTab({ type: "session", id: sessionId }),
-			},
-		});
-	}, [message, firstEnv, agent, modelId, setPending, navigate]);
-
-	return (
-		<div className="flex min-h-0 flex-1 flex-col bg-background">
-			<div className="flex flex-1 flex-col items-center justify-center px-4">
-				<h1 className="font-semibold text-2xl">Hello there!</h1>
-				<p className="mt-1 text-muted-foreground text-xl">
-					How can I help you today?
-				</p>
-			</div>
-			<ChatInput
-				disabled={!firstEnv}
-				footer={
-					<AgentModelPicker
-						agent={agent}
-						modelId={modelId}
-						onAgentChange={setAgent}
-						onModelIdChange={setModelId}
-					/>
-				}
-				message={message}
-				onMessageChange={setMessage}
-				onSendMessage={handleSend}
-				placeholder="Send a message..."
-			/>
-		</div>
-	);
 };
 
 type ConfigSelectOption = { value: string; name: string };
@@ -258,7 +191,7 @@ const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
 	);
 };
 
-const ConnectedSessionView: FC<{
+export const ConnectedSessionView: FC<{
 	sessionId: string;
 	sessionTab?: SessionTab;
 	spaceSlug: string;
