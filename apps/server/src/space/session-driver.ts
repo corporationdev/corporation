@@ -1,8 +1,8 @@
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
-import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import type { AgentListResponse, SessionEvent } from "sandbox-agent";
-import { type SessionTab, sessions, tabs } from "../db/schema";
+import { type SessionTab, sessionEvents, sessions, tabs } from "../db/schema";
 import { createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import {
@@ -225,20 +225,37 @@ async function getSessionState(
 	offset: number,
 	limit?: number
 ): Promise<{ events: SessionEvent[]; status: string }> {
-	const [page, sessionRows] = await Promise.all([
-		ctx.vars.persist.listEvents({
-			sessionId,
-			cursor: offset > 0 ? String(offset) : undefined,
-			limit,
-		}),
+	const conditions = [eq(sessionEvents.sessionId, sessionId)];
+	if (offset > 0) {
+		conditions.push(gt(sessionEvents.eventIndex, offset));
+	}
+
+	const [eventRows, sessionRows] = await Promise.all([
+		ctx.vars.db
+			.select()
+			.from(sessionEvents)
+			.where(and(...conditions))
+			.orderBy(asc(sessionEvents.eventIndex))
+			.limit(limit ?? 100),
 		ctx.vars.db
 			.select({ status: sessions.status })
 			.from(sessions)
 			.where(eq(sessions.id, sessionId))
 			.limit(1),
 	]);
+
+	const events: SessionEvent[] = eventRows.map((r) => ({
+		id: r.id,
+		eventIndex: r.eventIndex,
+		sessionId: r.sessionId,
+		createdAt: r.createdAt,
+		connectionId: r.connectionId,
+		sender: r.sender as SessionEvent["sender"],
+		payload: r.payload as SessionEvent["payload"],
+	}));
+
 	const status = sessionRows[0]?.status ?? SESSION_STATUS_IDLE;
-	return { events: page.items, status };
+	return { events, status };
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {

@@ -1,4 +1,6 @@
+import { and, asc, eq, gt } from "drizzle-orm";
 import type { SessionEvent } from "sandbox-agent";
+import { sessionEvents } from "../db/schema";
 import type { SpaceRuntimeContext } from "./types";
 
 const REPLAY_PREFIX = "Previous session history is replayed below";
@@ -134,6 +136,18 @@ function buildReplayHistory(events: SessionEvent[]): string | null {
 	return `${prefix}${lastTurn.text.slice(-budget)}`;
 }
 
+function toSessionEvent(row: typeof sessionEvents.$inferSelect): SessionEvent {
+	return {
+		id: row.id,
+		eventIndex: row.eventIndex,
+		sessionId: row.sessionId,
+		createdAt: row.createdAt,
+		connectionId: row.connectionId,
+		sender: row.sender as SessionEvent["sender"],
+		payload: row.payload as SessionEvent["payload"],
+	};
+}
+
 export async function buildPromptWithReplay(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
@@ -141,22 +155,37 @@ export async function buildPromptWithReplay(
 ): Promise<SessionPromptPart[]> {
 	const fallbackPrompt: SessionPromptPart[] = [{ type: "text", text: content }];
 	const events: SessionEvent[] = [];
-	let cursor: string | undefined;
+	let lastEventIndex: number | undefined;
 
 	while (events.length < MAX_REPLAY_EVENTS) {
-		const page = await ctx.vars.persist.listEvents({
-			sessionId,
-			cursor,
-			limit: Math.min(REPLAY_PAGE_SIZE, MAX_REPLAY_EVENTS - events.length),
-		});
-		if (page.items.length === 0) {
+		const conditions = [eq(sessionEvents.sessionId, sessionId)];
+		if (lastEventIndex !== undefined) {
+			conditions.push(gt(sessionEvents.eventIndex, lastEventIndex));
+		}
+
+		const pageLimit = Math.min(
+			REPLAY_PAGE_SIZE,
+			MAX_REPLAY_EVENTS - events.length
+		);
+		const rows = await ctx.vars.db
+			.select()
+			.from(sessionEvents)
+			.where(and(...conditions))
+			.orderBy(asc(sessionEvents.eventIndex))
+			.limit(pageLimit);
+
+		if (rows.length === 0) {
 			break;
 		}
-		events.push(...page.items);
-		if (!page.nextCursor) {
+
+		const pageEvents = rows.map(toSessionEvent);
+		events.push(...pageEvents);
+
+		const lastRow = rows.at(-1);
+		if (!lastRow || rows.length < pageLimit) {
 			break;
 		}
-		cursor = page.nextCursor;
+		lastEventIndex = lastRow.eventIndex;
 	}
 
 	const replayHistory = buildReplayHistory(events);
