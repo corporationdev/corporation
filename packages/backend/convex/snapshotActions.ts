@@ -6,8 +6,21 @@ import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type ActionCtx, internalAction } from "./_generated/server";
+import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
-import { killDevServer, setupSandbox, startDevServer } from "./lib/sandbox";
+import {
+	bootServer,
+	CODE_SERVER_PORT,
+	CODE_SERVER_SESSION_NAME,
+	DEV_SERVER_SESSION_NAME,
+	getSandboxWorkdir,
+	REPO_SYNC_TIMEOUT_MS,
+	runRootCommand,
+	SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS,
+	SANDBOX_AGENT_PORT,
+	SANDBOX_AGENT_SESSION_NAME,
+	writeEnvFiles,
+} from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
@@ -84,7 +97,7 @@ async function runTrackedSnapshot(
 	ctx: ActionCtx,
 	args: {
 		snapshotId: Id<"snapshots">;
-		type: "build" | "rebuild";
+		type: "setup" | "update";
 		environmentId: Id<"environments">;
 		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
 	}
@@ -141,12 +154,12 @@ export const buildSnapshot = internalAction({
 	args: {
 		request: v.union(
 			v.object({
-				type: v.literal("build"),
+				type: v.literal("setup"),
 				environmentId: v.id("environments"),
 				snapshotId: v.id("snapshots"),
 			}),
 			v.object({
-				type: v.literal("rebuild"),
+				type: v.literal("update"),
 				environmentId: v.id("environments"),
 				snapshotId: v.id("snapshots"),
 				oldExternalSnapshotId: v.string(),
@@ -177,38 +190,94 @@ export const buildSnapshot = internalAction({
 				const nango = new Nango({ secretKey: nangoSecretKey });
 				const githubToken = await getGitHubToken(nango, environment.userId);
 
-				const shouldUseRebuildBase = request.type === "rebuild";
-				const template = shouldUseRebuildBase
-					? request.oldExternalSnapshotId
-					: BASE_TEMPLATE;
+				const { repository } = environment;
+				const workdir = getSandboxWorkdir(repository);
+				const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
+				const safeRepoUrl = quoteShellArg(repoUrl);
+				const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
+				const appendLog = (chunk: string) => reporter.appendLog(chunk);
 
-				const sandbox = await Sandbox.betaCreate(template, {
-					envs: { ANTHROPIC_API_KEY: anthropicApiKey },
-					network: { allowPublicTraffic: true },
-				});
-
-				try {
-					const snapshotCommitSha = await setupSandbox(
-						sandbox,
-						environment,
-						githubToken,
-						shouldUseRebuildBase ? "pull" : "clone",
-						(chunk) => {
-							reporter.appendLog(chunk);
-						}
-					);
-
-					if (shouldUseRebuildBase) {
-						await killDevServer(sandbox);
-					}
-
-					reporter.appendLog(
-						`[dev-server] running dev command devPort=${environment.devPort}\n`
-					);
-					await startDevServer(sandbox, environment, (chunk) => {
-						reporter.appendLog(chunk);
+				// Create sandbox and sync repo (diverges by type)
+				let sandbox: Sandbox;
+				if (request.type === "setup") {
+					sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+						network: { allowPublicTraffic: true },
 					});
 
+					const safeWorkdir = quoteShellArg(workdir);
+					await runRootCommand(
+						sandbox,
+						`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
+						{
+							timeoutMs: REPO_SYNC_TIMEOUT_MS,
+							onStdout: appendLog,
+							onStderr: appendLog,
+						}
+					);
+				} else {
+					sandbox = await Sandbox.betaCreate(request.oldExternalSnapshotId, {
+						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+						network: { allowPublicTraffic: true },
+					});
+
+					await runRootCommand(
+						sandbox,
+						`git remote set-url origin ${safeRepoUrl} && git pull origin ${safeDefaultBranch}`,
+						{
+							cwd: workdir,
+							timeoutMs: REPO_SYNC_TIMEOUT_MS,
+							onStdout: appendLog,
+							onStderr: appendLog,
+						}
+					);
+				}
+
+				// Shared: write env files, run command, get commit SHA
+				await writeEnvFiles(sandbox, environment, workdir);
+				appendLog("Environment files written.\n");
+
+				const installCommand =
+					request.type === "update"
+						? environment.updateCommand
+						: environment.setupCommand;
+				await runRootCommand(sandbox, installCommand, {
+					cwd: workdir,
+					timeoutMs: REPO_SYNC_TIMEOUT_MS,
+					onStdout: appendLog,
+					onStderr: appendLog,
+				});
+
+				const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
+					cwd: workdir,
+				});
+				const snapshotCommitSha = shaResult.stdout.trim();
+
+				// Setup-only: boot all servers
+				if (request.type === "setup") {
+					await Promise.all([
+						bootServer(sandbox, {
+							sessionName: DEV_SERVER_SESSION_NAME,
+							command: environment.devCommand,
+							healthUrl: `http://localhost:${environment.devPort}/`,
+							workdir,
+							appendLog,
+						}),
+						bootServer(sandbox, {
+							sessionName: SANDBOX_AGENT_SESSION_NAME,
+							command: `env SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS=${SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS} sandbox-agent server --no-token --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
+							healthUrl: `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`,
+						}),
+						bootServer(sandbox, {
+							sessionName: CODE_SERVER_SESSION_NAME,
+							command: `code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} --auth none ${workdir}`,
+							healthUrl: `http://localhost:${CODE_SERVER_PORT}`,
+						}),
+					]);
+				}
+
+				// Shared: create snapshot and cleanup
+				try {
 					reporter.appendLog("Creating snapshot...\n");
 					const snapshot = await sandbox.createSnapshot();
 					reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);

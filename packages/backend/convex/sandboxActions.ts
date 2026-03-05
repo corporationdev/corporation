@@ -9,128 +9,37 @@ import type { DataModel, Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { normalizeBranchName, quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
-import { getSandboxWorkdir, pushBranch, setupSandbox } from "./lib/sandbox";
+import {
+	CODE_SERVER_PORT,
+	getSandboxWorkdir,
+	pushBranch,
+	SANDBOX_AGENT_PORT,
+} from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
-const SANDBOX_AGENT_PORT = 5799;
-const CODE_SERVER_PORT = 8080;
-const SERVER_STARTUP_TIMEOUT_MS = 30_000;
-const SERVER_POLL_INTERVAL_MS = 500;
-// TODO: Timeout errors are not handled correctly end-to-end yet; prompt calls can still appear to hang.
-const SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS = 60 * 60_000;
 // Keep in sync with SANDBOX_TIMEOUT_MS in apps/server/src/space/sandbox-keepalive.ts
 const SANDBOX_TIMEOUT_MS = 900_000;
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
+const CODE_SERVER_HEALTH_URL = `http://localhost:${CODE_SERVER_PORT}`;
 
-async function waitForServerReady(sandbox: Sandbox): Promise<void> {
-	const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
-
-	while (Date.now() < deadline) {
-		try {
-			await sandbox.commands.run(
-				`curl -sf http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
-			);
-			return;
-		} catch (error) {
-			if (!(error instanceof CommandExitError)) {
-				throw error;
-			}
-		}
-		await sleep(SERVER_POLL_INTERVAL_MS);
-	}
-
-	throw new Error("sandbox-agent server failed to start within timeout");
-}
-
-async function bootSandboxAgent(sandbox: Sandbox): Promise<void> {
-	await sandbox.commands.run(
-		`nohup env SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS=${SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS} sandbox-agent server --no-token --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >/tmp/sandbox-agent.log 2>&1 &`
-	);
-	await waitForServerReady(sandbox);
-}
-
-async function isSandboxAgentHealthy(sandbox: Sandbox): Promise<boolean> {
+async function assertHealthyAndGetUrl(
+	sandbox: Sandbox,
+	port: number,
+	healthUrl: string,
+	name: string
+): Promise<string> {
 	try {
-		await sandbox.commands.run(
-			`curl -sf --max-time 1 http://localhost:${SANDBOX_AGENT_PORT}/v1/health`
-		);
-		return true;
+		await sandbox.commands.run(`curl -sf --max-time 2 ${healthUrl}`);
 	} catch (error) {
 		if (error instanceof CommandExitError) {
-			return false;
+			throw new Error(`${name} is not healthy`);
 		}
 		throw error;
 	}
-}
-
-async function ensureSandboxAgentRunning(sandbox: Sandbox): Promise<void> {
-	const healthy = await isSandboxAgentHealthy(sandbox);
-	if (!healthy) {
-		await bootSandboxAgent(sandbox);
-	}
-}
-
-async function waitForCodeServerReady(sandbox: Sandbox): Promise<void> {
-	const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
-
-	while (Date.now() < deadline) {
-		try {
-			await sandbox.commands.run(
-				`curl -sf http://localhost:${CODE_SERVER_PORT}`
-			);
-			return;
-		} catch (error) {
-			if (!(error instanceof CommandExitError)) {
-				throw error;
-			}
-		}
-		await sleep(SERVER_POLL_INTERVAL_MS);
-	}
-
-	throw new Error("code-server failed to start within timeout");
-}
-
-async function bootCodeServer(
-	sandbox: Sandbox,
-	workdir: string
-): Promise<void> {
-	await sandbox.commands.run(
-		`nohup code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} --auth none ${workdir} >/tmp/code-server.log 2>&1 &`
-	);
-	await waitForCodeServerReady(sandbox);
-}
-
-async function isCodeServerHealthy(sandbox: Sandbox): Promise<boolean> {
-	try {
-		await sandbox.commands.run(
-			`curl -sf --max-time 1 http://localhost:${CODE_SERVER_PORT}`
-		);
-		return true;
-	} catch (error) {
-		if (error instanceof CommandExitError) {
-			return false;
-		}
-		throw error;
-	}
-}
-
-async function ensureCodeServerRunning(
-	sandbox: Sandbox,
-	workdir: string
-): Promise<void> {
-	const healthy = await isCodeServerHealthy(sandbox);
-	if (!healthy) {
-		await bootCodeServer(sandbox, workdir);
-	}
-}
-
-function getPreviewUrl(sandbox: Sandbox, port: number): string {
 	return `https://${sandbox.getHost(port)}`;
 }
 
@@ -171,10 +80,7 @@ async function provisionSandbox(
 	ctx: ActionCtx,
 	spaceId: Id<"spaces">,
 	snapshotId: string
-): Promise<{
-	sandboxId: string;
-	agentUrl: string;
-}> {
+): Promise<string> {
 	const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 	if (!anthropicApiKey) {
 		throw new Error("Missing ANTHROPIC_API_KEY env var");
@@ -198,19 +104,10 @@ async function provisionSandbox(
 		sandboxExpiresAt: Date.now() + SANDBOX_TIMEOUT_MS,
 	});
 
-	await bootSandboxAgent(sandbox);
-
-	const agentUrl = getPreviewUrl(sandbox, SANDBOX_AGENT_PORT);
-	return { sandboxId: sandbox.sandboxId, agentUrl };
+	return sandbox.sandboxId;
 }
 
-async function resolveSandbox(
-	ctx: ActionCtx,
-	space: Space
-): Promise<{
-	sandboxId: string;
-	agentUrl?: string;
-}> {
+async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<string> {
 	const externalSnapshotId =
 		space.environment.activeSnapshot?.externalSnapshotId;
 
@@ -228,13 +125,8 @@ async function resolveSandbox(
 			status: "creating" as const,
 		});
 
-		const sandbox = await Sandbox.connect(space.sandboxId);
-		await ensureSandboxAgentRunning(sandbox);
-
-		return {
-			sandboxId: sandbox.sandboxId,
-			agentUrl: getPreviewUrl(sandbox, SANDBOX_AGENT_PORT),
-		};
+		await Sandbox.connect(space.sandboxId);
+		return space.sandboxId;
 	} catch {
 		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
@@ -307,7 +199,7 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 			});
 
-			const { sandboxId, agentUrl } = await resolveSandbox(ctx, space);
+			const sandboxId = await resolveSandbox(ctx, space);
 
 			const sandbox = await Sandbox.connect(sandboxId);
 			const { repository } = space.environment;
@@ -319,8 +211,18 @@ export const ensureSandbox = internalAction({
 				repository.defaultBranch
 			);
 
-			await ensureCodeServerRunning(sandbox, workdir);
-			const editorUrl = getPreviewUrl(sandbox, CODE_SERVER_PORT);
+			const agentUrl = await assertHealthyAndGetUrl(
+				sandbox,
+				SANDBOX_AGENT_PORT,
+				AGENT_HEALTH_URL,
+				"sandbox-agent"
+			);
+			const editorUrl = await assertHealthyAndGetUrl(
+				sandbox,
+				CODE_SERVER_PORT,
+				CODE_SERVER_HEALTH_URL,
+				"code-server"
+			);
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
@@ -336,45 +238,6 @@ export const ensureSandbox = internalAction({
 			});
 
 			throw error;
-		}
-	},
-});
-
-export const syncRepository = internalAction({
-	args: {
-		spaceId: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-		if (!nangoSecretKey) {
-			throw new Error("Missing NANGO_SECRET_KEY env var");
-		}
-
-		const space = await ctx.runQuery(internal.spaces.internalGet, {
-			id: args.spaceId,
-		});
-
-		if (!space.sandboxId) {
-			throw new Error("Space has no sandbox to sync");
-		}
-
-		const nango = new Nango({ secretKey: nangoSecretKey });
-		const githubToken = await getGitHubToken(nango, space.environment.userId);
-
-		const sandbox = await Sandbox.connect(space.sandboxId);
-
-		const lastSyncedCommitSha = await setupSandbox(
-			sandbox,
-			space.environment,
-			githubToken,
-			"pull"
-		);
-
-		if (lastSyncedCommitSha) {
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: args.spaceId,
-				lastSyncedCommitSha,
-			});
 		}
 	},
 });

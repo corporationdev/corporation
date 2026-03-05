@@ -136,7 +136,7 @@ function RepositoryDetail({
 							onClick={() =>
 								createSnapshot({
 									request: {
-										type: "rebuild",
+										type: "update",
 										environmentId: defaultEnvironment._id,
 									},
 								})
@@ -146,10 +146,10 @@ function RepositoryDetail({
 							variant="outline"
 						>
 							<RefreshCw className="size-4" />
-							Rebuild
+							Update
 						</Button>
 						<TooltipContent>
-							Incremental rebuild from current snapshot
+							Incremental update from current snapshot
 						</TooltipContent>
 					</Tooltip>
 					<Tooltip>
@@ -158,7 +158,7 @@ function RepositoryDetail({
 							onClick={() =>
 								createSnapshot({
 									request: {
-										type: "build",
+										type: "setup",
 										environmentId: defaultEnvironment._id,
 									},
 								})
@@ -168,9 +168,9 @@ function RepositoryDetail({
 							variant="outline"
 						>
 							<Hammer className="size-4" />
-							Full Build
+							Full Setup
 						</Button>
-						<TooltipContent>Fresh build from scratch</TooltipContent>
+						<TooltipContent>Fresh setup from scratch</TooltipContent>
 					</Tooltip>
 					<Link
 						params={{ repositoryId: repository._id }}

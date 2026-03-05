@@ -3,14 +3,20 @@
 import type { Sandbox } from "e2b";
 import { normalizeBranchName, quoteShellArg } from "./git";
 
-const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
+export const SANDBOX_AGENT_PORT = 5799;
+export const CODE_SERVER_PORT = 8080;
+export const SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS = 60 * 60_000;
+const SERVER_STARTUP_TIMEOUT_MS = 30_000;
+const SERVER_POLL_INTERVAL_MS = 500;
+
+export const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
 const NEEDS_QUOTING_RE = /[\s"'#]/;
 const LOCALHOST_PORT_RE = /http:\/\/localhost:(\d+)/g;
 const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
-const DEV_SERVER_SESSION_NAME = "devserver";
-const DEV_SERVER_STARTUP_TIMEOUT_MS = 120_000;
-const DEV_SERVER_POLL_INTERVAL_MS = 1000;
+export const DEV_SERVER_SESSION_NAME = "devserver";
+export const SANDBOX_AGENT_SESSION_NAME = "sandbox-agent";
+export const CODE_SERVER_SESSION_NAME = "code-server";
 
 type EnvVar = { key: string; value: string };
 type CommandExitErrorLike = {
@@ -37,6 +43,7 @@ export type SandboxEnv = {
 		defaultBranch: string;
 	};
 	setupCommand: string;
+	updateCommand: string;
 	devCommand: string;
 	devPort: number;
 	envByPath?: Record<string, Record<string, string>> | null;
@@ -138,7 +145,7 @@ export async function runRootCommand(
 	}
 }
 
-async function writeEnvFiles(
+export async function writeEnvFiles(
 	sandbox: Sandbox,
 	env: SandboxEnv,
 	workdir: string
@@ -165,66 +172,6 @@ async function writeEnvFiles(
 	}
 
 	await sandbox.files.writeFiles(files);
-}
-
-/**
- * Sets up a sandbox with the repository: syncs git, writes env files,
- * runs setup command. Returns the HEAD commit SHA.
- *
- * - "clone": fresh git clone (for initial builds)
- * - "pull": git pull on existing repo (for rebuilds and syncs)
- */
-export async function setupSandbox(
-	sandbox: Sandbox,
-	env: SandboxEnv,
-	githubToken: string,
-	mode: "clone" | "pull",
-	appendLog?: (chunk: string) => void
-): Promise<string> {
-	const { repository } = env;
-	const workdir = getSandboxWorkdir(repository);
-	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
-	const safeRepoUrl = quoteShellArg(repoUrl);
-	const safeWorkdir = quoteShellArg(workdir);
-	const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
-
-	if (mode === "clone") {
-		await runRootCommand(
-			sandbox,
-			`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
-			{
-				timeoutMs: REPO_SYNC_TIMEOUT_MS,
-				onStdout: appendLog,
-				onStderr: appendLog,
-			}
-		);
-	} else {
-		await runRootCommand(
-			sandbox,
-			`git remote set-url origin ${safeRepoUrl} && git pull origin ${safeDefaultBranch}`,
-			{
-				cwd: workdir,
-				timeoutMs: REPO_SYNC_TIMEOUT_MS,
-				onStdout: appendLog,
-				onStderr: appendLog,
-			}
-		);
-	}
-
-	await writeEnvFiles(sandbox, env, workdir);
-	appendLog?.("Environment files written.\n");
-
-	await runRootCommand(sandbox, env.setupCommand, {
-		cwd: workdir,
-		timeoutMs: REPO_SYNC_TIMEOUT_MS,
-		onStdout: appendLog,
-		onStderr: appendLog,
-	});
-
-	const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
-		cwd: workdir,
-	});
-	return shaResult.stdout.trim();
 }
 
 /**
@@ -286,33 +233,35 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function startDevServer(
+export type BootServerOptions = {
+	sessionName: string;
+	command: string;
+	healthUrl: string;
+	workdir?: string;
+	appendLog?: (chunk: string) => void;
+};
+
+export async function bootServer(
 	sandbox: Sandbox,
-	env: SandboxEnv,
-	appendLog?: (chunk: string) => void
+	opts: BootServerOptions
 ): Promise<void> {
-	const { repository } = env;
-	const workdir = getSandboxWorkdir(repository);
-	const safeCommand = quoteShellArg(env.devCommand);
+	const { sessionName, command, healthUrl, workdir, appendLog } = opts;
 
-	appendLog?.(
-		`Starting dev server (tmux session: ${DEV_SERVER_SESSION_NAME})...\n`
-	);
+	appendLog?.(`Starting ${sessionName} (tmux session)...\n`);
 
+	const cwdFlag = workdir ? `-c ${quoteShellArg(workdir)} ` : "";
 	await runRootCommand(
 		sandbox,
-		`tmux new-session -d -s ${DEV_SERVER_SESSION_NAME} -c ${quoteShellArg(workdir)} ${safeCommand} \\; set-option -t ${DEV_SERVER_SESSION_NAME} mouse on \\; set-option -t ${DEV_SERVER_SESSION_NAME} status off`
+		`tmux new-session -d -s ${sessionName} ${cwdFlag}${quoteShellArg(command)} \\; set-option -t ${sessionName} mouse on \\; set-option -t ${sessionName} status off`
 	);
 
-	appendLog?.(`Waiting for dev server on port ${env.devPort}...\n`);
+	appendLog?.(`Waiting for ${sessionName} to be ready...\n`);
 
-	const deadline = Date.now() + DEV_SERVER_STARTUP_TIMEOUT_MS;
+	const deadline = Date.now() + SERVER_STARTUP_TIMEOUT_MS;
 	while (Date.now() < deadline) {
 		try {
-			await sandbox.commands.run(
-				`curl -sf --max-time 2 http://localhost:${env.devPort}/`
-			);
-			appendLog?.(`Dev server is ready on port ${env.devPort}.\n`);
+			await sandbox.commands.run(`curl -sf --max-time 2 ${healthUrl}`);
+			appendLog?.(`${sessionName} is ready.\n`);
 			return;
 		} catch (error) {
 			if (!isCommandExitError(error)) {
@@ -320,23 +269,20 @@ export async function startDevServer(
 			}
 		}
 
-		// Check that the tmux session is still alive
 		try {
-			await sandbox.commands.run(
-				`tmux has-session -t ${DEV_SERVER_SESSION_NAME}`
-			);
+			await sandbox.commands.run(`tmux has-session -t ${sessionName}`);
 		} catch (error) {
 			if (isCommandExitError(error)) {
-				throw new Error("Dev server process exited before becoming ready");
+				throw new Error(`${sessionName} process exited before becoming ready`);
 			}
 			throw error;
 		}
 
-		await sleep(DEV_SERVER_POLL_INTERVAL_MS);
+		await sleep(SERVER_POLL_INTERVAL_MS);
 	}
 
 	throw new Error(
-		`Dev server did not become ready on port ${env.devPort} within ${DEV_SERVER_STARTUP_TIMEOUT_MS / 1000}s`
+		`${sessionName} did not become ready within ${SERVER_STARTUP_TIMEOUT_MS / 1000}s`
 	);
 }
 
@@ -347,7 +293,7 @@ export async function killDevServer(sandbox: Sandbox): Promise<void> {
 		);
 	} catch (error) {
 		if (isCommandExitError(error)) {
-			return; // Session doesn't exist
+			return;
 		}
 		throw error;
 	}
@@ -366,5 +312,3 @@ export async function hasDevServerSession(sandbox: Sandbox): Promise<boolean> {
 		throw error;
 	}
 }
-
-export { DEV_SERVER_SESSION_NAME };

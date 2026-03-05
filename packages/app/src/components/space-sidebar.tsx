@@ -43,7 +43,6 @@ import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { useLayoutStore } from "@/stores/layout-store";
 import { SandboxCountdown } from "./sandbox-countdown";
-import { SyncCodeButton } from "./sync-code-button";
 
 export type Space = NonNullable<
 	FunctionReturnType<typeof api.spaces.getBySlug>
@@ -217,7 +216,7 @@ const SpaceSidebarContent: FC<{
 					Creating...
 				</Button>
 			)}
-			{isStarted && <SyncCodeButton space={space} />}
+
 			{isStarted && <GitButtons space={space} />}
 			{isStarted && (
 				<DevServerButtons actor={actor} space={space} tabs={tabs} />

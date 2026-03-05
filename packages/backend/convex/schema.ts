@@ -8,8 +8,8 @@ export const snapshotStatusValidator = v.union(
 );
 
 export const snapshotTypeValidator = v.union(
-	v.literal("build"),
-	v.literal("rebuild")
+	v.literal("setup"),
+	v.literal("update")
 );
 
 export const spaceStatusValidator = v.union(
@@ -27,6 +27,7 @@ export default defineSchema(
 			repositoryId: v.id("repositories"),
 			name: v.string(),
 			setupCommand: v.string(),
+			updateCommand: v.string(),
 			devCommand: v.string(),
 			devPort: v.number(),
 			envByPath: v.optional(

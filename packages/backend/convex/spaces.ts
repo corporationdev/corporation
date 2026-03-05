@@ -462,27 +462,6 @@ export const archive = authedMutation({
 	},
 });
 
-export const syncCode = authedMutation({
-	args: {
-		id: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const space = await ctx.db.get(args.id);
-		if (!space) {
-			throw new ConvexError("Space not found");
-		}
-		await requireOwnedSpace(ctx, space);
-
-		if (space.status !== "running") {
-			throw new ConvexError("Space must be running to sync code");
-		}
-
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.syncRepository, {
-			spaceId: args.id,
-		});
-	},
-});
-
 export const updateBranchName = authedMutation({
 	args: {
 		id: v.id("spaces"),
