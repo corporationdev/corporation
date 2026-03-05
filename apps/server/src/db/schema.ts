@@ -40,12 +40,7 @@ export const previews = sqliteTable("previews", {
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
 
-export const sessionStatusValues = [
-	"idle",
-	"running",
-	"completed",
-	"failed",
-] as const;
+export const sessionStatusValues = ["idle", "running", "error"] as const;
 export type SessionStatus = (typeof sessionStatusValues)[number];
 
 export const sessions = sqliteTable("sessions", {

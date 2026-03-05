@@ -219,18 +219,26 @@ async function cancelSession(
 	}
 }
 
-async function getTranscript(
+async function getSessionState(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
 	offset: number,
 	limit?: number
-): Promise<SessionEvent[]> {
-	const page = await ctx.vars.persist.listEvents({
-		sessionId,
-		cursor: offset > 0 ? String(offset) : undefined,
-		limit,
-	});
-	return page.items;
+): Promise<{ events: SessionEvent[]; status: string }> {
+	const [page, sessionRows] = await Promise.all([
+		ctx.vars.persist.listEvents({
+			sessionId,
+			cursor: offset > 0 ? String(offset) : undefined,
+			limit,
+		}),
+		ctx.vars.db
+			.select({ status: sessions.status })
+			.from(sessions)
+			.where(eq(sessions.id, sessionId))
+			.limit(1),
+	]);
+	const status = sessionRows[0]?.status ?? SESSION_STATUS_IDLE;
+	return { events: page.items, status };
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
@@ -297,12 +305,12 @@ type SessionPublicActions = {
 		payload: unknown
 	) => Promise<void>;
 	cancelSession: (ctx: SpaceRuntimeContext, sessionId: string) => Promise<void>;
-	getTranscript: (
+	getSessionState: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
 		offset: number,
 		limit?: number
-	) => Promise<SessionEvent[]>;
+	) => Promise<{ events: SessionEvent[]; status: string }>;
 	listAgents: (ctx: SpaceRuntimeContext) => Promise<AgentListResponse>;
 };
 
@@ -317,7 +325,7 @@ export const sessionDriver: SessionDriver = {
 		sendMessage,
 		ingestTurnRunnerBatch,
 		cancelSession,
-		getTranscript,
+		getSessionState,
 		listAgents,
 	},
 };
