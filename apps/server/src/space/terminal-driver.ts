@@ -13,6 +13,7 @@ const DEFAULT_TERMINAL_COLS = 120;
 const DEFAULT_TERMINAL_ROWS = 30;
 const PTY_TIMEOUT_MS = 0;
 const TMUX_HISTORY_LIMIT = 50_000;
+const SNAPSHOT_DEBOUNCE_MS = 1000;
 const DEV_SERVER_TERMINAL_ID = "devserver";
 const ENCODER = new TextEncoder();
 
@@ -28,6 +29,10 @@ function quoteShellArg(value: string): string {
 
 function runRootCommand(sandbox: Sandbox, command: string) {
 	return sandbox.commands.run(command, { user: "root" });
+}
+
+function connectionTerminalKey(connId: string, terminalId: string): string {
+	return `${connId}:${terminalId}`;
 }
 
 function toBytes(value: string): number[] {
@@ -612,17 +617,47 @@ async function openTerminalAction(
 		throw new Error("Terminal subscriptions require an active connection");
 	}
 
-	subscribeToChannel(
-		ctx.vars.subscriptions,
-		createTabChannel("terminal", terminalId),
-		ctx.conn.id
-	);
+	const connId = ctx.conn.id;
+	const openActionKey = connectionTerminalKey(connId, terminalId);
+	const existingOpenAction = ctx.vars.terminalOpenActions.get(openActionKey);
+	if (existingOpenAction) {
+		await existingOpenAction;
+		return;
+	}
 
-	const hadHandle = ctx.vars.terminalHandles.has(terminalId);
-	await ensureTerminal(ctx, terminalId, cols, rows);
+	const openAction = (async () => {
+		subscribeToChannel(
+			ctx.vars.subscriptions,
+			createTabChannel("terminal", terminalId),
+			connId
+		);
 
-	if (hadHandle) {
+		const hadHandle = ctx.vars.terminalHandles.has(terminalId);
+		await ensureTerminal(ctx, terminalId, cols, rows);
+
+		if (!hadHandle) {
+			return;
+		}
+
+		const now = Date.now();
+		const snapshotKey = connectionTerminalKey(connId, terminalId);
+		const lastSnapshotAt =
+			ctx.vars.lastTerminalSnapshotAt.get(snapshotKey) ?? 0;
+		if (now - lastSnapshotAt < SNAPSHOT_DEBOUNCE_MS) {
+			return;
+		}
+
 		await sendTerminalSnapshotToConnection(ctx, terminalId);
+		ctx.vars.lastTerminalSnapshotAt.set(snapshotKey, now);
+	})();
+
+	ctx.vars.terminalOpenActions.set(openActionKey, openAction);
+	try {
+		await openAction;
+	} finally {
+		if (ctx.vars.terminalOpenActions.get(openActionKey) === openAction) {
+			ctx.vars.terminalOpenActions.delete(openActionKey);
+		}
 	}
 }
 
