@@ -79,6 +79,8 @@ export const space = actor({
 			sandboxClient,
 			terminalHandles: new Map(),
 			terminalEnsures: new Map(),
+			terminalOpenActions: new Map(),
+			lastTerminalSnapshotAt: new Map(),
 			subscriptions: createSubscriptionHub(),
 			lastTimeoutRefreshAt: 0,
 		};
@@ -123,6 +125,17 @@ export const space = actor({
 
 	onDisconnect: (c, conn) => {
 		unsubscribeConnection(c.vars.subscriptions, conn.id);
+		const prefix = `${conn.id}:`;
+		for (const key of c.vars.terminalOpenActions.keys()) {
+			if (key.startsWith(prefix)) {
+				c.vars.terminalOpenActions.delete(key);
+			}
+		}
+		for (const key of c.vars.lastTerminalSnapshotAt.keys()) {
+			if (key.startsWith(prefix)) {
+				c.vars.lastTerminalSnapshotAt.delete(key);
+			}
+		}
 	},
 
 	actions: {

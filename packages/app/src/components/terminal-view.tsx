@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTermTerminal } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 import "@xterm/xterm/css/xterm.css";
@@ -12,6 +12,13 @@ const MOUSE_TRACKING_RE = /\x1b\[\?100[0-6][hl]/g;
 type TerminalViewProps = {
 	terminalId: string;
 	actor: SpaceActor;
+};
+
+type SpaceConnection = NonNullable<SpaceActor["connection"]>;
+
+type TerminalDimensions = {
+	cols: number;
+	rows: number;
 };
 
 function getSpaceSlug(actor: SpaceActor): string | undefined {
@@ -25,13 +32,13 @@ function getSpaceSlug(actor: SpaceActor): string | undefined {
 function handleTerminalActionError(
 	error: unknown,
 	terminalId: string,
-	actor: SpaceActor,
+	spaceSlug: string | undefined,
 	action: string
 ): void {
 	const kind = softResetActorConnectionOnTransientError({
 		error,
 		reasonPrefix: `terminal-${action}`,
-		spaceSlug: getSpaceSlug(actor),
+		spaceSlug,
 	});
 	if (kind) {
 		return;
@@ -43,6 +50,56 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const terminalRef = useRef<XTermTerminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
+	const spaceSlug = getSpaceSlug(actor);
+	const terminalReadyRef = useRef(false);
+	const activeSubscriptionRef = useRef<{
+		conn: SpaceConnection;
+		terminalId: string;
+	} | null>(null);
+	const openAttemptRef = useRef(0);
+	const pendingResizeRef = useRef<TerminalDimensions | null>(null);
+	const lastResizeSentRef = useRef<TerminalDimensions | null>(null);
+	const resizeFrameRef = useRef<number | null>(null);
+
+	const handleActionError = useCallback(
+		(error: unknown, failedTerminalId: string, action: string) => {
+			handleTerminalActionError(error, failedTerminalId, spaceSlug, action);
+		},
+		[spaceSlug]
+	);
+
+	const queueResize = useCallback(
+		(conn: SpaceConnection, cols: number, rows: number): void => {
+			pendingResizeRef.current = { cols, rows };
+
+			if (resizeFrameRef.current !== null) {
+				return;
+			}
+
+			resizeFrameRef.current = requestAnimationFrame(() => {
+				resizeFrameRef.current = null;
+				if (!terminalReadyRef.current) {
+					return;
+				}
+
+				const next = pendingResizeRef.current;
+				if (!next) {
+					return;
+				}
+
+				const last = lastResizeSentRef.current;
+				if (last && last.cols === next.cols && last.rows === next.rows) {
+					return;
+				}
+
+				lastResizeSentRef.current = next;
+				conn
+					.resize(terminalId, next.cols, next.rows)
+					.catch((error) => handleActionError(error, terminalId, "resize"));
+			});
+		},
+		[handleActionError, terminalId]
+	);
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -108,27 +165,32 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		const conn = actor.connection;
 
 		const dataDisposable = terminal.onData((data) => {
+			if (!terminalReadyRef.current) {
+				return;
+			}
 			const bytes = Array.from(new TextEncoder().encode(data));
 			conn
 				.input(terminalId, bytes)
-				.catch((error) =>
-					handleTerminalActionError(error, terminalId, actor, "input")
-				);
+				.catch((error) => handleActionError(error, terminalId, "input"));
 		});
 
 		const resizeDisposable = terminal.onResize(({ cols, rows }) => {
-			conn
-				.resize(terminalId, cols, rows)
-				.catch((error) =>
-					handleTerminalActionError(error, terminalId, actor, "resize")
-				);
+			pendingResizeRef.current = { cols, rows };
+			if (!terminalReadyRef.current) {
+				return;
+			}
+			queueResize(conn, cols, rows);
 		});
 
 		return () => {
 			dataDisposable.dispose();
 			resizeDisposable.dispose();
+			if (resizeFrameRef.current !== null) {
+				cancelAnimationFrame(resizeFrameRef.current);
+				resizeFrameRef.current = null;
+			}
 		};
-	}, [actor, actor.connection, terminalId]);
+	}, [actor.connection, handleActionError, queueResize, terminalId]);
 
 	// Intercept wheel events and send them as SGR mouse scroll sequences to
 	// tmux (which has mouse on). We prevent xterm.js from seeing the wheel
@@ -150,9 +212,7 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 			const bytes = Array.from(new TextEncoder().encode(seq));
 			conn
 				.input(terminalId, bytes)
-				.catch((error) =>
-					handleTerminalActionError(error, terminalId, actor, "wheel-input")
-				);
+				.catch((error) => handleActionError(error, terminalId, "wheel-input"));
 		};
 
 		container.addEventListener("wheel", handleWheel, {
@@ -161,32 +221,97 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 		});
 		return () =>
 			container.removeEventListener("wheel", handleWheel, { capture: true });
-	}, [actor, actor.connection, terminalId]);
+	}, [actor.connection, handleActionError, terminalId]);
 
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
+			terminalReadyRef.current = false;
 			return;
 		}
 		const conn = actor.connection;
+		const previous = activeSubscriptionRef.current;
+
+		// Connection churn can trigger duplicate open/unsubscribe loops. Keep a
+		// single active subscription per (connection, terminalId).
+		if (
+			previous &&
+			(previous.conn !== conn || previous.terminalId !== terminalId)
+		) {
+			previous.conn.unsubscribeTerminal(previous.terminalId).catch((error) => {
+				handleActionError(error, previous.terminalId, "unsubscribe");
+			});
+			activeSubscriptionRef.current = null;
+		}
+
+		if (
+			activeSubscriptionRef.current &&
+			activeSubscriptionRef.current.conn === conn &&
+			activeSubscriptionRef.current.terminalId === terminalId
+		) {
+			return;
+		}
 
 		const initialize = async () => {
+			const openAttempt = openAttemptRef.current + 1;
+			openAttemptRef.current = openAttempt;
+			terminalReadyRef.current = false;
+
 			try {
 				const terminal = terminalRef.current;
+				const dims =
+					terminal && terminal.cols > 0 && terminal.rows > 0
+						? { cols: terminal.cols, rows: terminal.rows }
+						: null;
+
 				await conn.openTerminal(terminalId, terminal?.cols, terminal?.rows);
+
+				if (openAttemptRef.current !== openAttempt) {
+					return;
+				}
+
+				activeSubscriptionRef.current = { conn, terminalId };
+				terminalReadyRef.current = true;
+
+				const latestDims = pendingResizeRef.current ?? dims;
+				if (latestDims) {
+					queueResize(conn, latestDims.cols, latestDims.rows);
+				}
 			} catch (error: unknown) {
-				handleTerminalActionError(error, terminalId, actor, "initialize");
+				handleActionError(error, terminalId, "initialize");
 			}
 		};
 		initialize().catch((error: unknown) => {
-			handleTerminalActionError(error, terminalId, actor, "initialize");
+			handleActionError(error, terminalId, "initialize");
 		});
+	}, [
+		actor.connStatus,
+		actor.connection,
+		handleActionError,
+		queueResize,
+		terminalId,
+	]);
 
+	useEffect(() => {
 		return () => {
-			conn.unsubscribeTerminal(terminalId).catch((error: unknown) => {
-				handleTerminalActionError(error, terminalId, actor, "unsubscribe");
-			});
+			terminalReadyRef.current = false;
+			if (resizeFrameRef.current !== null) {
+				cancelAnimationFrame(resizeFrameRef.current);
+				resizeFrameRef.current = null;
+			}
+
+			const active = activeSubscriptionRef.current;
+			activeSubscriptionRef.current = null;
+			if (!active) {
+				return;
+			}
+
+			active.conn
+				.unsubscribeTerminal(active.terminalId)
+				.catch((error: unknown) => {
+					handleActionError(error, active.terminalId, "unsubscribe");
+				});
 		};
-	}, [actor, actor.connStatus, actor.connection, terminalId]);
+	}, [handleActionError]);
 
 	// Strip mouse tracking escape sequences from tmux output so xterm.js
 	// doesn't enter mouse-reporting mode. This lets xterm.js handle text
