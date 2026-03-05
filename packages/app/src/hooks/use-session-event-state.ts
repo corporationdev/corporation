@@ -382,9 +382,6 @@ export function useSessionEventState({
 
 	actor.useEvent("session.event", (event) => {
 		const typed = event as SessionEvent;
-		console.log(
-			`⚡⚡⚡ [TTFT] session.event received (type=${typed.payload?.type}) at ${performance.now().toFixed(1)}`
-		);
 		if (!caughtUpRef.current) {
 			bufferRef.current.push(typed);
 			return;

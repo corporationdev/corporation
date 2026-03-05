@@ -1,7 +1,7 @@
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
-import type { AgentListResponse, Session, SessionEvent } from "sandbox-agent";
+import type { AgentListResponse, SessionEvent } from "sandbox-agent";
 import { type SessionTab, sessions, tabs } from "../db/schema";
 import { createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
@@ -111,26 +111,6 @@ async function requestAutoBranchName(
 	}
 }
 
-async function applyModel(session: Session, modelId: string): Promise<boolean> {
-	try {
-		await session.send("unstable/set_session_model", { modelId });
-		return true;
-	} catch {
-		// Fall through to protocol-native method name.
-	}
-
-	try {
-		await session.send("session/set_model", { modelId });
-		return true;
-	} catch (error) {
-		log.warn(
-			{ err: error, sessionId: session.id, modelId },
-			"applyModel: failed to set model"
-		);
-		return false;
-	}
-}
-
 async function sendMessage(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
@@ -138,9 +118,6 @@ async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
-	const t0 = performance.now();
-	log.info("❤️❤️❤️ [TTFT] sendMessage START");
-
 	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
 	if (isFirstMessageForSpace) {
 		ctx.waitUntil(
@@ -152,19 +129,10 @@ async function sendMessage(
 			})
 		);
 	}
-	log.info(
-		`❤️❤️❤️ [TTFT] hasNoSessionTabs done +${(performance.now() - t0).toFixed(1)}ms`
-	);
 
 	await ensureSession(ctx, sessionId);
-	log.info(
-		`❤️❤️❤️ [TTFT] ensureSession done +${(performance.now() - t0).toFixed(1)}ms`
-	);
 
 	await ensureNoRunningTurn(ctx, sessionId);
-	log.info(
-		`❤️❤️❤️ [TTFT] ensureNoRunningTurn done +${(performance.now() - t0).toFixed(1)}ms`
-	);
 
 	let prompt: SessionPromptPart[] = [{ type: "text", text: content }];
 	try {
@@ -175,34 +143,18 @@ async function sendMessage(
 			"sendMessage: failed to build replay context"
 		);
 	}
-	log.info(
-		`❤️❤️❤️ [TTFT] buildPromptWithReplay done +${(performance.now() - t0).toFixed(1)}ms`
-	);
 
-	const session = await ctx.vars.sandboxClient.resumeOrCreateSession({
-		id: sessionId,
-		agent,
-		sessionInit: {
-			cwd: ctx.state.workdir,
-			mcpServers: [],
-		},
-	});
-	log.info(
-		`❤️❤️❤️ [TTFT] resumeOrCreateSession done +${(performance.now() - t0).toFixed(1)}ms`
-	);
-
-	const modelApplied = await applyModel(session, modelId);
-	if (modelApplied) {
-		await ctx.vars.persist.setModelId(sessionId, modelId);
-	} else {
-		log.warn(
-			{ actorId: ctx.actorId, sessionId, modelId },
-			"sendMessage: model not applied"
-		);
-	}
-	log.info(
-		`❤️❤️❤️ [TTFT] applyModel done +${(performance.now() - t0).toFixed(1)}ms`
-	);
+	await ctx.vars.db
+		.insert(sessions)
+		.values({
+			id: sessionId,
+			agent,
+			agentSessionId: "",
+			lastConnectionId: "",
+			createdAt: Date.now(),
+			modelId,
+		})
+		.onConflictDoNothing({ target: sessions.id });
 
 	await startTurnRunner(ctx, {
 		sessionId,
@@ -210,9 +162,6 @@ async function sendMessage(
 		agent,
 		modelId,
 	});
-	log.info(
-		`❤️❤️❤️ [TTFT] startTurnRunner done +${(performance.now() - t0).toFixed(1)}ms`
-	);
 }
 
 async function listAgents(

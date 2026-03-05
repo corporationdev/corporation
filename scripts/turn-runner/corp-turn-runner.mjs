@@ -1,19 +1,9 @@
 #!/usr/bin/env node
 
 import crypto from "node:crypto";
-import fs from "node:fs";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { AcpHttpClient, PROTOCOL_VERSION } from "acp-http-client";
-
-const LOG_FILE = "/tmp/turn-runner.log";
-const _logStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
-
-function trLog(msg) {
-	const line = `[${new Date().toISOString()}] ${msg}`;
-	console.log(line);
-	_logStream.write(`${line}\n`);
-}
 
 const CALLBACK_TIMEOUT_MS = 10_000;
 const CALLBACK_MAX_ATTEMPTS = 8;
@@ -187,6 +177,28 @@ function createResponseWaiter(map, requestId, timeoutMs) {
 	};
 }
 
+async function setModelViaRawAcp({ agentUrl, acpPath, sessionId, modelId }) {
+	const requestId = `set-model-${crypto.randomUUID()}`;
+	const envelope = {
+		jsonrpc: "2.0",
+		id: requestId,
+		method: "session/set_model",
+		params: { sessionId, modelId },
+	};
+	const response = await fetch(new URL(acpPath, agentUrl), {
+		method: "POST",
+		headers: { "Content-Type": "application/json", Accept: "application/json" },
+		body: JSON.stringify(envelope),
+		signal: AbortSignal.timeout(10_000),
+	});
+	if (!response.ok) {
+		const text = await response.text().catch(() => "");
+		console.error(
+			`[corp-turn-runner] set_model failed (${response.status}): ${text}`
+		);
+	}
+}
+
 async function sendPromptViaRawAcp({
 	agentUrl,
 	acpPath,
@@ -266,15 +278,13 @@ async function sendPromptViaRawAcp({
 }
 
 async function main() {
-	const t0 = performance.now();
-	trLog("🚀🚀🚀 [TTFT] turn-runner main() START");
-
 	const turnId = requireEnv("TURN_ID");
 	const sessionId = requireEnv("SESSION_ID");
 	const agent = requireEnv("AGENT");
 	const callbackUrl = requireEnv("CALLBACK_URL");
 	const callbackToken = requireEnv("CALLBACK_TOKEN");
 
+	const modelId = process.env.MODEL_ID || "";
 	const agentUrl = process.env.AGENT_URL || "http://127.0.0.1:5799";
 	const cwd = process.env.CWD || "/";
 	const promptJson = requireEnv("PROMPT_JSON");
@@ -292,7 +302,6 @@ async function main() {
 	if (!Array.isArray(prompt)) {
 		throw new Error("PROMPT_JSON must parse to an array");
 	}
-	trLog(`🚀🚀🚀 [TTFT] env parsed +${(performance.now() - t0).toFixed(1)}ms`);
 
 	const connectionId = `corp-turn-runner-${turnId}-${crypto.randomUUID()}`;
 	const acpPath = `/v1/acp/${encodeURIComponent(connectionId)}`;
@@ -302,7 +311,6 @@ async function main() {
 	let eventIndex = 0;
 	let callbackChain = Promise.resolve();
 
-	let firstCallbackLogged = false;
 	const queueCallback = (kind, payload = {}) => {
 		sequence += 1;
 		const envelope = {
@@ -314,12 +322,6 @@ async function main() {
 			timestamp: Date.now(),
 			...payload,
 		};
-		if (!firstCallbackLogged && kind === "events") {
-			firstCallbackLogged = true;
-			trLog(
-				`🚀🚀🚀 [TTFT] first callback POST queued (seq=${sequence}) +${(performance.now() - t0).toFixed(1)}ms`
-			);
-		}
 		callbackChain = callbackChain
 			.catch(() => undefined)
 			.then(() =>
@@ -333,18 +335,10 @@ async function main() {
 		return callbackChain;
 	};
 
-	let firstInboundLogged = false;
 	const queueEnvelopeEvent = (envelope, direction) => {
 		const id = envelopeId(envelope);
 		if (direction === "inbound" && id && pendingResponseResolvers.has(id)) {
 			pendingResponseResolvers.get(id)?.(envelope);
-		}
-
-		if (direction === "inbound" && !firstInboundLogged) {
-			firstInboundLogged = true;
-			trLog(
-				`🚀🚀🚀 [TTFT] first inbound envelope received +${(performance.now() - t0).toFixed(1)}ms`
-			);
 		}
 
 		eventIndex += 1;
@@ -399,9 +393,6 @@ async function main() {
 	});
 
 	try {
-		trLog(
-			`🚀🚀🚀 [TTFT] acp.initialize starting +${(performance.now() - t0).toFixed(1)}ms`
-		);
 		await acp.initialize({
 			protocolVersion: PROTOCOL_VERSION,
 			clientInfo: {
@@ -409,9 +400,6 @@ async function main() {
 				version: "v1",
 			},
 		});
-		trLog(
-			`🚀🚀🚀 [TTFT] acp.initialize done +${(performance.now() - t0).toFixed(1)}ms`
-		);
 
 		const created = await acp.newSession({
 			cwd,
@@ -420,13 +408,16 @@ async function main() {
 		if (!created.sessionId) {
 			throw new Error("session/new did not return a sessionId");
 		}
-		trLog(
-			`🚀🚀🚀 [TTFT] acp.newSession done +${(performance.now() - t0).toFixed(1)}ms`
-		);
 
-		trLog(
-			`🚀🚀🚀 [TTFT] sendPromptViaRawAcp starting +${(performance.now() - t0).toFixed(1)}ms`
-		);
+		if (modelId) {
+			await setModelViaRawAcp({
+				agentUrl,
+				acpPath,
+				sessionId: created.sessionId,
+				modelId,
+			});
+		}
+
 		await sendPromptViaRawAcp({
 			agentUrl,
 			acpPath,
@@ -436,9 +427,6 @@ async function main() {
 			timeoutMs: rawPromptResponseTimeoutMs,
 			onClientEnvelope: (envelope) => queueEnvelopeEvent(envelope, "outbound"),
 		});
-		trLog(
-			`🚀🚀🚀 [TTFT] sendPromptViaRawAcp done +${(performance.now() - t0).toFixed(1)}ms`
-		);
 
 		await queueCallback("completed");
 		await callbackChain;

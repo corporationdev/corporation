@@ -151,20 +151,14 @@ export async function startTurnRunner(
 		modelId: string;
 	}
 ): Promise<void> {
-	const t0 = performance.now();
-	log.info("💜💜💜 [TTFT] startTurnRunner START");
-
 	const persistedSession = await ctx.vars.db
 		.select({ id: sessions.id })
 		.from(sessions)
 		.where(eq(sessions.id, params.sessionId))
 		.limit(1);
 	if (persistedSession.length === 0) {
-		throw new Error("Session record not found after resumeOrCreateSession");
+		throw new Error("Session record not found");
 	}
-	log.info(
-		`💜💜💜 [TTFT] db select session done +${(performance.now() - t0).toFixed(1)}ms`
-	);
 
 	const turnId = nanoid();
 	const callbackToken = crypto.randomUUID();
@@ -184,18 +178,11 @@ export async function startTurnRunner(
 			error: null,
 		})
 		.where(eq(sessions.id, params.sessionId));
-	log.info(
-		`💜💜💜 [TTFT] db update session status done +${(performance.now() - t0).toFixed(1)}ms`
-	);
-
 	publishSessionStatus(ctx, params.sessionId, SESSION_STATUS_RUNNING);
 
 	refreshSandboxTimeout(ctx);
 
 	try {
-		log.info(
-			`💜💜💜 [TTFT] launching turn runner... +${(performance.now() - t0).toFixed(1)}ms`
-		);
 		const pid = await launchTurnRunner(ctx, {
 			turnId,
 			sessionId: params.sessionId,
@@ -205,17 +192,11 @@ export async function startTurnRunner(
 			callbackUrl,
 			callbackToken,
 		});
-		log.info(
-			`💜💜💜 [TTFT] launchTurnRunner done (pid=${pid}) +${(performance.now() - t0).toFixed(1)}ms`
-		);
 		if (pid != null) {
 			await ctx.vars.db
 				.update(sessions)
 				.set({ pid })
 				.where(eq(sessions.id, params.sessionId));
-			log.info(
-				`💜💜💜 [TTFT] db update pid done +${(performance.now() - t0).toFixed(1)}ms`
-			);
 		}
 	} catch (error) {
 		log.error(
@@ -239,9 +220,6 @@ export async function ingestTurnRunnerBatch(
 	ctx: SpaceRuntimeContext,
 	payload: unknown
 ): Promise<void> {
-	const t0 = performance.now();
-	log.info("🌟🌟🌟 [TTFT] ingestTurnRunnerBatch START");
-
 	let parsed: TurnRunnerCallbackPayload;
 	try {
 		parsed = parseTurnRunnerCallbackPayload(payload);
@@ -252,9 +230,6 @@ export async function ingestTurnRunnerBatch(
 		);
 		throw error;
 	}
-	log.info(
-		`🌟🌟🌟 [TTFT] parsed payload (kind=${parsed.kind}) +${(performance.now() - t0).toFixed(1)}ms`
-	);
 
 	const rows = await ctx.vars.db
 		.select({
@@ -269,9 +244,6 @@ export async function ingestTurnRunnerBatch(
 	if (!session) {
 		throw new Error(`Unknown session: ${parsed.sessionId}`);
 	}
-	log.info(
-		`🌟🌟🌟 [TTFT] db select session done +${(performance.now() - t0).toFixed(1)}ms`
-	);
 
 	if (session.runId !== parsed.turnId) {
 		throw new Error("Stale callback for non-current run");
@@ -282,9 +254,6 @@ export async function ingestTurnRunnerBatch(
 
 	if (parsed.kind === "events") {
 		await insertSessionEvents(ctx, session.id, parsed.events);
-		log.info(
-			`🌟🌟🌟 [TTFT] insertSessionEvents done +${(performance.now() - t0).toFixed(1)}ms`
-		);
 		return;
 	}
 
