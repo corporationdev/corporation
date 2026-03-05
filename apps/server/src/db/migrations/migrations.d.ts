@@ -1,3 +1,8 @@
+declare module "*.sql" {
+	const content: string;
+	export default content;
+}
+
 declare const bundledMigrations: {
 	journal: {
 		entries: Array<{
