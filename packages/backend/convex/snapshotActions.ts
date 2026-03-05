@@ -7,7 +7,18 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { type ActionCtx, internalAction } from "./_generated/server";
 import { getGitHubToken } from "./lib/nango";
-import { killDevServer, setupSandbox, startDevServer } from "./lib/sandbox";
+import {
+	bootServer,
+	CODE_SERVER_PORT,
+	CODE_SERVER_SESSION_NAME,
+	DEV_SERVER_SESSION_NAME,
+	getSandboxWorkdir,
+	killDevServer,
+	SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS,
+	SANDBOX_AGENT_PORT,
+	SANDBOX_AGENT_SESSION_NAME,
+	setupSandbox,
+} from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
@@ -202,12 +213,26 @@ export const buildSnapshot = internalAction({
 						await killDevServer(sandbox);
 					}
 
-					reporter.appendLog(
-						`[dev-server] running dev command devPort=${environment.devPort}\n`
-					);
-					await startDevServer(sandbox, environment, (chunk) => {
-						reporter.appendLog(chunk);
-					});
+					const workdir = getSandboxWorkdir(environment.repository);
+					await Promise.all([
+						bootServer(sandbox, {
+							sessionName: DEV_SERVER_SESSION_NAME,
+							command: environment.devCommand,
+							healthUrl: `http://localhost:${environment.devPort}/`,
+							workdir,
+							appendLog: (chunk) => reporter.appendLog(chunk),
+						}),
+						bootServer(sandbox, {
+							sessionName: SANDBOX_AGENT_SESSION_NAME,
+							command: `env SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS=${SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS} sandbox-agent server --no-token --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
+							healthUrl: `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`,
+						}),
+						bootServer(sandbox, {
+							sessionName: CODE_SERVER_SESSION_NAME,
+							command: `code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} --auth none ${workdir}`,
+							healthUrl: `http://localhost:${CODE_SERVER_PORT}`,
+						}),
+					]);
 
 					reporter.appendLog("Creating snapshot...\n");
 					const snapshot = await sandbox.createSnapshot();
