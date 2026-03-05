@@ -13,6 +13,7 @@ import {
 	CODE_SERVER_PORT,
 	CODE_SERVER_SESSION_NAME,
 	DEV_SERVER_SESSION_NAME,
+	getAiEnvs,
 	getSandboxWorkdir,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
@@ -174,12 +175,10 @@ export const buildSnapshot = internalAction({
 			environmentId: request.environmentId,
 			execute: async (reporter) => {
 				const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-				const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-				if (!(nangoSecretKey && anthropicApiKey)) {
-					throw new Error(
-						"Missing NANGO_SECRET_KEY or ANTHROPIC_API_KEY env var"
-					);
+				if (!nangoSecretKey) {
+					throw new Error("Missing NANGO_SECRET_KEY env var");
 				}
+				const aiEnvs = getAiEnvs();
 
 				const environment = await ctx.runQuery(
 					internal.environments.internalGet,
@@ -201,7 +200,7 @@ export const buildSnapshot = internalAction({
 				let sandbox: Sandbox;
 				if (request.type === "setup") {
 					sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
-						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+						envs: aiEnvs,
 						network: { allowPublicTraffic: true },
 					});
 
@@ -217,7 +216,7 @@ export const buildSnapshot = internalAction({
 					);
 				} else {
 					sandbox = await Sandbox.betaCreate(request.oldExternalSnapshotId, {
-						envs: { ANTHROPIC_API_KEY: anthropicApiKey },
+						envs: aiEnvs,
 						network: { allowPublicTraffic: true },
 					});
 

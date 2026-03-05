@@ -100,7 +100,7 @@
       "name": "@corporation/app",
       "version": "0.0.0",
       "dependencies": {
-        "@base-ui/react": "catalog:",
+        "@base-ui/react": "^1.2.0",
         "@convex-dev/better-auth": "catalog:",
         "@corporation/backend": "workspace:*",
         "@corporation/env": "workspace:*",

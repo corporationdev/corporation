@@ -1,6 +1,14 @@
 import { ChevronDownIcon, LoaderCircleIcon } from "lucide-react";
 import { type FC, useCallback, useMemo } from "react";
 import {
+	Combobox,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxInput,
+	ComboboxItem,
+	ComboboxList,
+} from "@/components/ui/combobox";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -78,6 +86,16 @@ export const AgentModelPicker: FC<{
 
 	const locked = agentLocked && modelLocked;
 
+	const modelNames = useMemo(() => models.map((m) => m.name ?? m.id), [models]);
+
+	const nameToId = useMemo(() => {
+		const map: Record<string, string> = {};
+		for (const m of models) {
+			map[m.name ?? m.id] = m.id;
+		}
+		return map;
+	}, [models]);
+
 	return (
 		<div className="flex items-center gap-2">
 			<DropdownMenu>
@@ -92,7 +110,7 @@ export const AgentModelPicker: FC<{
 				</DropdownMenuTrigger>
 				<DropdownMenuContent>
 					{KNOWN_AGENTS.map((id) => (
-						<DropdownMenuItem key={id} onSelect={() => handleAgentChange(id)}>
+						<DropdownMenuItem key={id} onClick={() => handleAgentChange(id)}>
 							{AGENT_LABELS[id] ?? id}
 						</DropdownMenuItem>
 					))}
@@ -104,27 +122,38 @@ export const AgentModelPicker: FC<{
 					<span>Loading models…</span>
 				</div>
 			) : models.length > 0 ? (
-				<DropdownMenu>
-					<DropdownMenuTrigger
+				<Combobox
+					disabled={modelLocked || locked}
+					items={modelNames}
+					onValueChange={(val) => {
+						if (val) {
+							const id = nameToId[val as string];
+							if (id) {
+								onModelIdChange(id);
+							}
+						}
+					}}
+					value={currentModelLabel}
+				>
+					<ComboboxInput
 						className={cn(
-							"inline-flex h-7 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground",
+							"h-7 rounded-full border-border/50 bg-muted/50 text-muted-foreground text-xs",
 							(modelLocked || locked) && "pointer-events-none opacity-50"
 						)}
-					>
-						{currentModelLabel}
-						<ChevronDownIcon className="size-3" />
-					</DropdownMenuTrigger>
-					<DropdownMenuContent>
-						{models.map((m) => (
-							<DropdownMenuItem
-								key={m.id}
-								onSelect={() => onModelIdChange(m.id)}
-							>
-								{m.name ?? m.id}
-							</DropdownMenuItem>
-						))}
-					</DropdownMenuContent>
-				</DropdownMenu>
+						onFocus={(e) => e.currentTarget.select()}
+						placeholder="Select model..."
+					/>
+					<ComboboxContent>
+						<ComboboxEmpty>No model found.</ComboboxEmpty>
+						<ComboboxList>
+							{(item) => (
+								<ComboboxItem key={item} value={item}>
+									{item}
+								</ComboboxItem>
+							)}
+						</ComboboxList>
+					</ComboboxContent>
+				</Combobox>
 			) : null}
 		</div>
 	);

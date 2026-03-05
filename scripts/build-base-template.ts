@@ -13,6 +13,8 @@ import { defaultBuildLogger, Template } from "e2b";
 config({ path: resolve(import.meta.dirname, "../apps/server/.env") });
 
 const SANDBOX_AGENT_CLI_VERSION = "0.2.1";
+const TEMPLATE_CPU_COUNT = 4;
+const TEMPLATE_MEMORY_MB = 8192;
 
 const apiKey = process.env.E2B_API_KEY;
 if (!apiKey) {
@@ -56,7 +58,8 @@ console.log("Building base template…");
 
 const result = await Template.build(template, "corporation-base", {
 	apiKey,
-	memoryMB: 4096,
+	cpuCount: TEMPLATE_CPU_COUNT,
+	memoryMB: TEMPLATE_MEMORY_MB,
 	onBuildLogs: defaultBuildLogger(),
 });
 
