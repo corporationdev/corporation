@@ -1,4 +1,5 @@
 import { env } from "@corporation/env/server";
+import { createLogger } from "@corporation/logger";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
@@ -15,7 +16,6 @@ import {
 } from "./space/action-registration";
 import { lifecycleDrivers } from "./space/driver-registry";
 import {
-	clearSubscriptions,
 	createSubscriptionHub,
 	unsubscribeConnection,
 } from "./space/subscriptions";
@@ -30,6 +30,7 @@ export type {
 } from "./db/schema";
 
 const driverActions = collectDriverActions(lifecycleDrivers);
+const log = createLogger("space:lifecycle");
 
 export const space = actor({
 	createState: (
@@ -53,6 +54,7 @@ export const space = actor({
 	},
 
 	createVars: async (c, driverCtx: DriverContext): Promise<SpaceVars> => {
+		const startedAt = Date.now();
 		const db = drizzle(driverCtx.state.storage, { schema });
 
 		await migrate(db, bundledMigrations);
@@ -81,25 +83,46 @@ export const space = actor({
 			lastTimeoutRefreshAt: 0,
 		};
 
-		for (const driver of lifecycleDrivers) {
-			if (driver.onWake) {
-				await driver.onWake(vars);
-			}
-		}
-
+		log.info(
+			{
+				actorKey: c.key.join("/"),
+				durationMs: Date.now() - startedAt,
+			},
+			"space.create-vars.ok"
+		);
 		return vars;
+	},
+
+	onWake: async (c) => {
+		const startedAt = Date.now();
+		const runtime = augmentContext(c, lifecycleDrivers);
+		try {
+			for (const driver of lifecycleDrivers) {
+				await driver.onWake?.(runtime);
+			}
+
+			log.info(
+				{
+					actorId: runtime.actorId,
+					durationMs: Date.now() - startedAt,
+				},
+				"space.on-wake.ok"
+			);
+		} catch (error) {
+			log.error(
+				{
+					actorId: runtime.actorId,
+					durationMs: Date.now() - startedAt,
+					err: error,
+				},
+				"space.on-wake.failed"
+			);
+			throw error;
+		}
 	},
 
 	onDisconnect: (c, conn) => {
 		unsubscribeConnection(c.vars.subscriptions, conn.id);
-	},
-
-	onSleep: async (c) => {
-		const ctx = augmentContext(c, lifecycleDrivers);
-		for (const driver of lifecycleDrivers) {
-			await driver.onSleep?.(ctx);
-		}
-		clearSubscriptions(c.vars.subscriptions);
 	},
 
 	actions: {

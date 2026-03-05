@@ -7,11 +7,6 @@ export function createSubscriptionHub(): SubscriptionHub {
 	};
 }
 
-export function clearSubscriptions(hub: SubscriptionHub): void {
-	hub.channels.clear();
-	hub.connToChannels.clear();
-}
-
 export function subscribeToChannel(
 	hub: SubscriptionHub,
 	channel: string,

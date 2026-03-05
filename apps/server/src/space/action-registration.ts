@@ -32,7 +32,7 @@ export function refreshSandboxTimeout(runtime: SpaceRuntimeContext): void {
 	runtime.vars.sandbox
 		.setTimeout(SANDBOX_TIMEOUT_MS)
 		.then(() => {
-			log.info("sandbox timeout refreshed");
+			log.info({ actorId: runtime.actorId }, "sandbox-timeout.refreshed");
 
 			const convexSiteUrl = env.CONVEX_SITE_URL;
 			const internalApiKey = env.INTERNAL_API_KEY;
@@ -48,11 +48,17 @@ export function refreshSandboxTimeout(runtime: SpaceRuntimeContext): void {
 				},
 				body: JSON.stringify({ sandboxId, expiresAt }),
 			}).catch((error) => {
-				log.warn({ err: error }, "failed to update sandbox expiry in convex");
+				log.warn(
+					{ actorId: runtime.actorId, err: error },
+					"sandbox-timeout.convex-update-failed"
+				);
 			});
 		})
 		.catch((error) => {
-			log.warn({ err: error }, "failed to refresh sandbox timeout");
+			log.warn(
+				{ actorId: runtime.actorId, err: error },
+				"sandbox-timeout.refresh-failed"
+			);
 			runtime.vars.lastTimeoutRefreshAt = 0;
 		});
 }

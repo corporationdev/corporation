@@ -191,8 +191,10 @@ async function sendMessage(
 	});
 }
 
-function listAgents(ctx: SpaceRuntimeContext): Promise<AgentListResponse> {
-	return ctx.vars.sandboxClient.listAgents({ config: true });
+async function listAgents(
+	ctx: SpaceRuntimeContext
+): Promise<AgentListResponse> {
+	return await ctx.vars.sandboxClient.listAgents({ config: true });
 }
 
 async function cancelSession(
