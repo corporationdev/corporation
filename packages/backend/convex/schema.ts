@@ -47,7 +47,7 @@ export default defineSchema(
 			repositoryId: v.id("repositories"),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),
-			branchName: v.string(),
+			name: v.string(),
 			status: spaceStatusValidator,
 			lastSyncedCommitSha: v.optional(v.string()),
 			error: v.optional(v.string()),

@@ -64,9 +64,9 @@ export const SpaceList: FC = () => {
 			) : (
 				spaces.map(({ space }) => (
 					<SpaceListItem
-						branchName={space.branchName}
 						id={space._id}
 						key={space._id}
+						name={space.name}
 						slug={space.slug}
 					/>
 				))
@@ -188,8 +188,8 @@ const NoSpacesState: FC = () => {
 const SpaceListItem: FC<{
 	id: Id<"spaces">;
 	slug: string;
-	branchName: string;
-}> = ({ id, slug, branchName }) => {
+	name: string;
+}> = ({ id, slug, name }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
 		from: "/_authenticated/space_/$spaceSlug",
@@ -208,12 +208,7 @@ const SpaceListItem: FC<{
 	});
 
 	return (
-		<SpaceContextMenu
-			branchName={branchName}
-			isActive={isActive}
-			slug={slug}
-			spaceId={id}
-		>
+		<SpaceContextMenu isActive={isActive} name={name} slug={slug} spaceId={id}>
 			<button
 				className="flex h-full min-w-0 flex-1 items-center gap-2 truncate px-3 text-start text-sm"
 				onClick={() =>
@@ -225,7 +220,7 @@ const SpaceListItem: FC<{
 				type="button"
 			>
 				<BoxIcon className="size-3.5 shrink-0" />
-				<span className="truncate">{branchName}</span>
+				<span className="truncate">{name}</span>
 			</button>
 			<button
 				className="mr-1 flex size-6 shrink-0 items-center justify-center rounded opacity-0 transition-opacity hover:bg-accent group-hover/item:opacity-100"

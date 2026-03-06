@@ -18,17 +18,17 @@ import { cn } from "@/lib/utils";
 export const SpaceContextMenu: FC<{
 	spaceId: Id<"spaces">;
 	slug: string;
-	branchName: string;
+	name: string;
 	isActive: boolean;
 	children: ReactNode;
-}> = ({ spaceId, branchName, isActive, children }) => {
+}> = ({ spaceId, name, isActive, children }) => {
 	const navigate = useNavigate();
 	const [isRenaming, setIsRenaming] = useState(false);
-	const [renameValue, setRenameValue] = useState(branchName);
+	const [renameValue, setRenameValue] = useState(name);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const skipCommitRef = useRef(false);
 
-	const updateBranchName = useMutation(api.spaces.updateBranchName);
+	const updateName = useMutation(api.spaces.updateName);
 	const archiveSpace = useMutation(api.spaces.archive);
 	const deleteSpace = useMutation(api.spaces.delete);
 
@@ -45,9 +45,9 @@ export const SpaceContextMenu: FC<{
 			return;
 		}
 		setIsRenaming(false);
-		if (renameValue !== branchName) {
-			updateBranchName({ id: spaceId, branchName: renameValue }).catch(() => {
-				toast.error("Failed to rename branch");
+		if (renameValue !== name) {
+			updateName({ id: spaceId, name: renameValue }).catch(() => {
+				toast.error("Failed to rename space");
 			});
 		}
 	};
@@ -83,7 +83,7 @@ export const SpaceContextMenu: FC<{
 								}
 								if (e.key === "Escape") {
 									skipCommitRef.current = true;
-									setRenameValue(branchName);
+									setRenameValue(name);
 									setIsRenaming(false);
 								}
 							}}
@@ -99,7 +99,7 @@ export const SpaceContextMenu: FC<{
 			<ContextMenuContent>
 				<ContextMenuItem
 					onClick={() => {
-						setRenameValue(branchName);
+						setRenameValue(name);
 						setIsRenaming(true);
 					}}
 				>

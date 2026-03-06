@@ -2,11 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { generateBranchName, isGeneratedBranchName } from "./lib/branchName";
-import { normalizeBranchName } from "./lib/git";
+import { generateName, isGeneratedName } from "./lib/branchName";
 import { getSandboxWorkdir } from "./lib/sandbox";
 import { spaceStatusValidator } from "./schema";
 import { withDerivedSnapshotState } from "./snapshot";
@@ -27,47 +26,6 @@ async function requireOwnedSpace(
 	}
 
 	return { space, repository };
-}
-
-type BranchRenameCtx = Pick<MutationCtx, "db" | "scheduler">;
-
-function parseBranchNameOrThrow(branchName: string): string {
-	try {
-		return normalizeBranchName(branchName);
-	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Invalid branch name";
-		throw new ConvexError(message);
-	}
-}
-
-async function applyBranchNameUpdate(
-	ctx: BranchRenameCtx,
-	space: Doc<"spaces">,
-	branchName: string
-): Promise<void> {
-	const newBranchName = parseBranchNameOrThrow(branchName);
-	const oldBranchName = space.branchName;
-	if (oldBranchName === newBranchName) {
-		return;
-	}
-
-	if (space.sandboxId && space.status === "running") {
-		await ctx.db.patch(space._id, {
-			error: "",
-		});
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.renameBranch, {
-			spaceId: space._id,
-			oldBranchName,
-			newBranchName,
-		});
-		return;
-	}
-
-	await ctx.db.patch(space._id, {
-		branchName: newBranchName,
-		error: "",
-	});
 }
 
 export const list = authedQuery({
@@ -235,7 +193,7 @@ export const internalUpdate = internalMutation({
 		agentUrl: v.optional(v.string()),
 		lastSyncedCommitSha: v.optional(v.string()),
 		error: v.optional(v.string()),
-		branchName: v.optional(v.string()),
+		name: v.optional(v.string()),
 		sandboxExpiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
@@ -247,22 +205,22 @@ export const internalUpdate = internalMutation({
 	},
 });
 
-export const internalUpdateBranchName = internalMutation({
+export const internalUpdateName = internalMutation({
 	args: {
 		id: v.id("spaces"),
-		expectedBranchName: v.string(),
-		branchName: v.string(),
+		expectedName: v.string(),
+		name: v.string(),
 	},
 	handler: async (ctx, args) => {
 		const space = await ctx.db.get(args.id);
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		if (space.branchName !== args.expectedBranchName) {
+		if (space.name !== args.expectedName) {
 			return;
 		}
 
-		await applyBranchNameUpdate(ctx, space, args.branchName);
+		await ctx.db.patch(space._id, { name: args.name });
 	},
 });
 
@@ -300,7 +258,7 @@ export const getBySandboxId = internalQuery({
 	},
 });
 
-export const requestAutoBranchRename = internalMutation({
+export const requestAutoRename = internalMutation({
 	args: {
 		spaceId: v.id("spaces"),
 		firstMessage: v.string(),
@@ -312,36 +270,19 @@ export const requestAutoBranchRename = internalMutation({
 		}
 
 		const firstMessage = args.firstMessage.trim();
-		if (!(firstMessage && isGeneratedBranchName(space.branchName))) {
+		if (!(firstMessage && isGeneratedName(space.name))) {
 			return;
 		}
 
 		await ctx.scheduler.runAfter(
 			0,
-			internal.spaceBranchActions.generateAndApplyBranchName,
+			internal.spaceBranchActions.generateAndApplyName,
 			{
 				spaceId: args.spaceId,
-				oldBranchName: space.branchName,
+				oldName: space.name,
 				firstMessage: firstMessage.slice(0, 2000),
 			}
 		);
-	},
-});
-
-export const stop = authedMutation({
-	args: {
-		id: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const space = await ctx.db.get(args.id);
-		if (!space) {
-			throw new ConvexError("Space not found");
-		}
-		await requireOwnedSpace(ctx, space);
-
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.stopSandbox, {
-			spaceId: args.id,
-		});
 	},
 });
 
@@ -381,7 +322,7 @@ export const ensure = authedMutation({
 		const spaceId = await ctx.db.insert("spaces", {
 			slug,
 			repositoryId: args.repositoryId,
-			branchName: generateBranchName(),
+			name: generateName(),
 			status: "creating",
 			createdAt: now,
 			updatedAt: now,
@@ -419,10 +360,10 @@ export const archive = authedMutation({
 	},
 });
 
-export const updateBranchName = authedMutation({
+export const updateName = authedMutation({
 	args: {
 		id: v.id("spaces"),
-		branchName: v.string(),
+		name: v.string(),
 	},
 	handler: async (ctx, args) => {
 		const space = await ctx.db.get(args.id);
@@ -431,7 +372,15 @@ export const updateBranchName = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		await applyBranchNameUpdate(ctx, space, args.branchName);
+		const name = args.name.trim();
+		if (!name) {
+			throw new ConvexError("Name cannot be empty");
+		}
+		if (name === space.name) {
+			return;
+		}
+
+		await ctx.db.patch(space._id, { name });
 	},
 });
 

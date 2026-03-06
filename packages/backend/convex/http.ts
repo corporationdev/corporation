@@ -142,7 +142,7 @@ http.route({
 			return new Response("Space not found", { status: 404 });
 		}
 
-		await ctx.runMutation(internal.spaces.requestAutoBranchRename, {
+		await ctx.runMutation(internal.spaces.requestAutoRename, {
 			spaceId: space._id,
 			firstMessage,
 		});
