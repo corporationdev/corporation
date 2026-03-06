@@ -388,6 +388,47 @@ type SessionBridge = {
 };
 
 const sessionBridges = new Map<string, SessionBridge>();
+// Preserved agentSessionIds from dead bridges, keyed by corporation sessionId.
+// Used to attempt session/load when the agent process restarts.
+const previousAgentSessionIds = new Map<string, string>();
+
+async function performAuth(
+	bridge: StdioBridge,
+	agent: string,
+	initResult: Record<string, unknown>,
+	queueEnvelopeEvent: (
+		envelope: Record<string, unknown>,
+		direction: "inbound" | "outbound"
+	) => void
+): Promise<void> {
+	const authMethods = extractAuthMethods(initResult);
+	if (authMethods.length === 0) {
+		return;
+	}
+	const selectedAuth = selectAuthMethod(authMethods);
+	if (selectedAuth) {
+		const authEnvelope = {
+			jsonrpc: "2.0" as const,
+			id: `authenticate-${crypto.randomUUID()}`,
+			method: "authenticate",
+			params: { methodId: selectedAuth.methodId },
+		};
+		queueEnvelopeEvent(authEnvelope, "outbound");
+		await stdioRequest(bridge, "authenticate", {
+			methodId: selectedAuth.methodId,
+		});
+		log("info", "ACP authentication succeeded", {
+			agent,
+			methodId: selectedAuth.methodId,
+			envVar: selectedAuth.envVar,
+		});
+	} else {
+		log("info", "ACP auth methods advertised but no env-backed match", {
+			agent,
+			authMethodIds: authMethods.map((method) => method.id),
+		});
+	}
+}
 
 async function initBridge(
 	sessionId: string,
@@ -454,41 +495,47 @@ async function initBridge(
 		protocolVersion: ACP_PROTOCOL_VERSION,
 		clientInfo: { name: "corp-agent", version: "v1" },
 	});
-	const authMethods = extractAuthMethods(initResult);
-	if (authMethods.length > 0) {
-		const selectedAuth = selectAuthMethod(authMethods);
-		if (selectedAuth) {
-			const authEnvelope = {
-				jsonrpc: "2.0" as const,
-				id: `authenticate-${crypto.randomUUID()}`,
-				method: "authenticate",
-				params: { methodId: selectedAuth.methodId },
-			};
-			queueEnvelopeEvent(authEnvelope, "outbound");
-			await stdioRequest(bridge, "authenticate", {
-				methodId: selectedAuth.methodId,
+	await performAuth(bridge, agent, initResult, queueEnvelopeEvent);
+
+	const capabilities = initResult.agentCapabilities as
+		| Record<string, unknown>
+		| undefined;
+	const supportsLoad = capabilities?.loadSession === true;
+	const previousAgentSessionId = previousAgentSessionIds.get(sessionId);
+
+	let agentSessionId: string | null = null;
+
+	if (supportsLoad && previousAgentSessionId) {
+		try {
+			const loadResult = await stdioRequest(bridge, "session/load", {
+				sessionId: previousAgentSessionId,
+				cwd,
+				mcpServers: [],
 			});
-			log("info", "ACP authentication succeeded", {
-				agent,
-				methodId: selectedAuth.methodId,
-				envVar: selectedAuth.envVar,
-			});
-		} else {
-			log("info", "ACP auth methods advertised but no env-backed match", {
-				agent,
-				authMethodIds: authMethods.map((method) => method.id),
+			agentSessionId =
+				(loadResult.sessionId as string) || previousAgentSessionId;
+			log("info", "session/load succeeded", { sessionId, agentSessionId });
+		} catch (error) {
+			log("warn", "session/load failed, falling back to session/new", {
+				sessionId,
+				previousAgentSessionId,
+				error: error instanceof Error ? error.message : String(error),
 			});
 		}
 	}
 
-	const sessionResult = await stdioRequest(bridge, "session/new", {
-		cwd,
-		mcpServers: [],
-	});
-	const agentSessionId = sessionResult.sessionId as string;
 	if (!agentSessionId) {
-		throw new Error("session/new did not return a sessionId");
+		const sessionResult = await stdioRequest(bridge, "session/new", {
+			cwd,
+			mcpServers: [],
+		});
+		agentSessionId = sessionResult.sessionId as string;
+		if (!agentSessionId) {
+			throw new Error("session/new did not return a sessionId");
+		}
 	}
+
+	previousAgentSessionIds.delete(sessionId);
 	sessionBridge.agentSessionId = agentSessionId;
 
 	if (modelId) {
@@ -516,6 +563,7 @@ function getSessionBridge(sessionId: string): SessionBridge | null {
 				sessionId,
 				exitCode: existing.bridge.proc.exitCode,
 			});
+			previousAgentSessionIds.set(sessionId, existing.agentSessionId);
 			sessionBridges.delete(sessionId);
 		}
 		return null;
