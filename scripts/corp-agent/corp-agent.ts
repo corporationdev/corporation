@@ -78,6 +78,14 @@ const ACP_PROTOCOL_VERSION = 1;
 const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const CALLBACK_TIMEOUT_MS = 10_000;
 const CALLBACK_MAX_ATTEMPTS = 8;
+const AUTH_METHOD_ENV_CANDIDATES: Record<string, string[]> = {
+	"anthropic-api-key": ["ANTHROPIC_API_KEY"],
+	"codex-api-key": ["CODEX_API_KEY"],
+	"openai-api-key": ["OPENAI_API_KEY"],
+	"opencode-api-key": ["OPENCODE_API_KEY"],
+};
+
+type AuthMethod = { id: string };
 
 function formatError(error: unknown): {
 	name: string;
@@ -118,6 +126,40 @@ function pickPermissionOption(
 			typeof (o as Record<string, unknown>).optionId === "string"
 	) as { kind: string; optionId: string } | undefined;
 	return allowOnce ?? null;
+}
+
+function extractAuthMethods(initResult: Record<string, unknown>): AuthMethod[] {
+	const authMethods = initResult.authMethods;
+	if (!Array.isArray(authMethods)) {
+		return [];
+	}
+
+	return authMethods
+		.map((method) => {
+			if (!method || typeof method !== "object") {
+				return null;
+			}
+			const methodId = (method as Record<string, unknown>).id;
+			if (typeof methodId !== "string" || methodId.length === 0) {
+				return null;
+			}
+			return { id: methodId };
+		})
+		.filter((method): method is AuthMethod => method !== null);
+}
+
+function selectAuthMethod(
+	authMethods: AuthMethod[]
+): { methodId: string; envVar: string } | null {
+	for (const method of authMethods) {
+		const envCandidates = AUTH_METHOD_ENV_CANDIDATES[method.id] ?? [];
+		for (const envVar of envCandidates) {
+			if (typeof process.env[envVar] === "string" && process.env[envVar]) {
+				return { methodId: method.id, envVar };
+			}
+		}
+	}
+	return null;
 }
 
 async function postJsonWithRetry(
@@ -517,10 +559,36 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			},
 		};
 		queueEnvelopeEvent(initEnvelope, "outbound");
-		await stdioRequest(bridge, "initialize", {
+		const initResult = await stdioRequest(bridge, "initialize", {
 			protocolVersion: ACP_PROTOCOL_VERSION,
 			clientInfo: { name: "corp-agent", version: "v1" },
 		});
+		const authMethods = extractAuthMethods(initResult);
+		if (authMethods.length > 0) {
+			const selectedAuth = selectAuthMethod(authMethods);
+			if (selectedAuth) {
+				const authEnvelope = {
+					jsonrpc: "2.0" as const,
+					id: `authenticate-${crypto.randomUUID()}`,
+					method: "authenticate",
+					params: { methodId: selectedAuth.methodId },
+				};
+				queueEnvelopeEvent(authEnvelope, "outbound");
+				await stdioRequest(bridge, "authenticate", {
+					methodId: selectedAuth.methodId,
+				});
+				log("info", "ACP authentication succeeded", {
+					agent,
+					methodId: selectedAuth.methodId,
+					envVar: selectedAuth.envVar,
+				});
+			} else {
+				log("info", "ACP auth methods advertised but no env-backed match", {
+					agent,
+					authMethodIds: authMethods.map((method) => method.id),
+				});
+			}
+		}
 
 		const sessionResult = await stdioRequest(bridge, "session/new", {
 			cwd,
