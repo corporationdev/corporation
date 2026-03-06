@@ -78,6 +78,8 @@ const ACP_PROTOCOL_VERSION = 1;
 const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const CALLBACK_TIMEOUT_MS = 10_000;
 const CALLBACK_MAX_ATTEMPTS = 8;
+const EVENT_BATCH_MAX_SIZE = 10;
+const EVENT_BATCH_MAX_DELAY_MS = 5;
 const AUTH_METHOD_ENV_CANDIDATES: Record<string, string[]> = {
 	"anthropic-api-key": ["ANTHROPIC_API_KEY"],
 	"codex-api-key": ["CODEX_API_KEY"],
@@ -604,6 +606,8 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 	let callbackDeliveryError: unknown = null;
 	let droppedEventCallbacks = 0;
 	let hasLoggedDroppedEvents = false;
+	let pendingEventBatch: SessionEvent[] = [];
+	let pendingEventFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const sendCallback = (
 		kind: string,
@@ -657,23 +661,67 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		return callbackChain;
 	};
 
+	const logDroppedEvents = () => {
+		if (hasLoggedDroppedEvents) {
+			return;
+		}
+		hasLoggedDroppedEvents = true;
+		log("warn", "Dropping events callbacks after callback delivery failure", {
+			turnId,
+			droppedEventCallbacks,
+		});
+	};
+
+	const clearPendingEventFlushTimer = () => {
+		if (!pendingEventFlushTimer) {
+			return;
+		}
+		clearTimeout(pendingEventFlushTimer);
+		pendingEventFlushTimer = null;
+	};
+
+	const flushEventBatch = (
+		options: { force?: boolean } = {}
+	): Promise<void> => {
+		clearPendingEventFlushTimer();
+		if (pendingEventBatch.length === 0) {
+			return Promise.resolve();
+		}
+
+		const events = pendingEventBatch;
+		pendingEventBatch = [];
+
+		if (callbackDeliveryBroken && !options.force) {
+			droppedEventCallbacks += events.length;
+			logDroppedEvents();
+			return Promise.resolve();
+		}
+
+		return sendCallback("events", { events }, options);
+	};
+
+	const scheduleEventBatchFlush = (): void => {
+		if (pendingEventFlushTimer || pendingEventBatch.length === 0) {
+			return;
+		}
+		pendingEventFlushTimer = setTimeout(() => {
+			pendingEventFlushTimer = null;
+			flushEventBatch().catch((error) => {
+				log("error", "Failed to flush events callback batch", {
+					turnId,
+					error: formatError(error),
+				});
+			});
+		}, EVENT_BATCH_MAX_DELAY_MS);
+	};
+
 	const queueEnvelopeEvent = (
 		envelope: Record<string, unknown>,
 		direction: "inbound" | "outbound"
 	): void => {
 		if (callbackDeliveryBroken) {
 			droppedEventCallbacks += 1;
-			if (!hasLoggedDroppedEvents) {
-				hasLoggedDroppedEvents = true;
-				log(
-					"warn",
-					"Dropping events callbacks after callback delivery failure",
-					{
-						turnId,
-						droppedEventCallbacks,
-					}
-				);
-			}
+			logDroppedEvents();
 			return;
 		}
 
@@ -687,11 +735,17 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			sender: direction === "outbound" ? "client" : "agent",
 			payload: envelope,
 		};
-		sendCallback("events", { events: [event] }).catch((error) => {
-			log("error", "Failed to queue events callback", {
-				error: error instanceof Error ? error.message : String(error),
+		pendingEventBatch.push(event);
+		if (pendingEventBatch.length >= EVENT_BATCH_MAX_SIZE) {
+			flushEventBatch().catch((error) => {
+				log("error", "Failed to flush events callback batch", {
+					turnId,
+					error: formatError(error),
+				});
 			});
-		});
+			return;
+		}
+		scheduleEventBatchFlush();
 	};
 
 	let sessionBridge: SessionBridge | null = null;
@@ -738,6 +792,8 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			throw new Error(`Prompt ACP error: ${JSON.stringify(promptResult)}`);
 		}
 
+		await flushEventBatch();
+
 		if (callbackDeliveryBroken) {
 			throw new Error(
 				`Callback delivery failed before completion: ${
@@ -751,6 +807,12 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		await sendCallback("completed");
 		await callbackChain.catch(() => undefined);
 	} catch (error) {
+		await flushEventBatch({ force: true }).catch((flushError) => {
+			log("error", "Failed to flush events callback batch", {
+				turnId,
+				error: formatError(flushError),
+			});
+		});
 		await sendCallback(
 			"failed",
 			{ error: formatError(error) },
@@ -764,6 +826,8 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		await callbackChain.catch(() => undefined);
 		log("error", "Turn failed", { turnId, error: formatError(error) });
 	} finally {
+		clearPendingEventFlushTimer();
+		pendingEventBatch = [];
 		if (sessionBridge) {
 			sessionBridge.activeTurnId = null;
 			sessionBridge.onEvent = null;

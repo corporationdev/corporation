@@ -290,25 +290,35 @@ export function appendSessionEventFrames(
 
 		let nextOffset = session.lastOffset;
 		for (const event of events) {
-			nextOffset += 1;
+			const candidateOffset = nextOffset + 1;
 			const data: SessionStreamFrameData = { kind: "event", event };
-			tx.insert(sessionStreamFrames)
+			const inserted = tx
+				.insert(sessionStreamFrames)
 				.values({
-					id: `${sessionId}:${nextOffset}:${nanoid()}`,
+					id: `${sessionId}:${candidateOffset}:${nanoid()}`,
 					sessionId,
-					offset: nextOffset,
+					offset: candidateOffset,
 					createdAt: event.createdAt,
 					kind: "event",
 					eventId: event.id,
 					data: data as Record<string, unknown>,
 				})
-				.run();
+				.onConflictDoNothing({
+					target: [sessionStreamFrames.sessionId, sessionStreamFrames.eventId],
+				})
+				.returning({ id: sessionStreamFrames.id })
+				.all();
+			if (inserted.length > 0) {
+				nextOffset = candidateOffset;
+			}
 		}
 
-		tx.update(sessions)
-			.set({ lastStreamOffset: nextOffset })
-			.where(eq(sessions.id, sessionId))
-			.run();
+		if (nextOffset > session.lastOffset) {
+			tx.update(sessions)
+				.set({ lastStreamOffset: nextOffset })
+				.where(eq(sessions.id, sessionId))
+				.run();
+		}
 		return nextOffset > session.lastOffset;
 	});
 

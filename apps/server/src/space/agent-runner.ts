@@ -4,9 +4,9 @@ import {
 	promptRequestBodySchema,
 	turnRunnerCallbackPayloadSchema,
 } from "@corporation/shared/session-protocol";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { sessionStreamFrames, sessions } from "../db/schema";
+import { sessions } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
 import {
 	appendSessionEventFrames,
@@ -206,28 +206,8 @@ export async function ingestAgentRunnerBatch(
 		const validEvents = parsed.events.filter(
 			(event) => event.sessionId === session.id
 		);
-		const eventIds = validEvents.map((event) => event.id);
-		if (eventIds.length > 0) {
-			const existing = await ctx.vars.db
-				.select({ eventId: sessionStreamFrames.eventId })
-				.from(sessionStreamFrames)
-				.where(
-					and(
-						eq(sessionStreamFrames.sessionId, session.id),
-						inArray(sessionStreamFrames.eventId, eventIds)
-					)
-				);
-			const existingIds = new Set(
-				existing
-					.map((row) => row.eventId)
-					.filter((eventId): eventId is string => typeof eventId === "string")
-			);
-			const newEvents = validEvents.filter(
-				(event) => !existingIds.has(event.id)
-			);
-			if (newEvents.length > 0) {
-				appendSessionEventFrames(ctx, session.id, newEvents);
-			}
+		if (validEvents.length > 0) {
+			appendSessionEventFrames(ctx, session.id, validEvents);
 		}
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		return;
