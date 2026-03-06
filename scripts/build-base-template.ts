@@ -45,9 +45,10 @@ const template = Template()
 	// Install corp-agent binary
 	.copy("corp-agent/dist/corp-agent", "/usr/local/bin/corp-agent")
 	.runCmd("chmod +x /usr/local/bin/corp-agent")
-	// Pre-cache ACP agent packages so npx doesn't download at runtime
+	// Pre-cache ACP agent npm packages so npx doesn't download at runtime
+	// Note: amp and opencode are native binaries installed separately
 	.runCmd(
-		"set -euo pipefail; npm install -g @anthropic-ai/claude-code @openai/codex amp-acp pi-acp @blowmage/cursor-agent-acp"
+		"set -euo pipefail; npm install -g @zed-industries/claude-code-acp @zed-industries/codex-acp pi-acp @blowmage/cursor-agent-acp"
 	);
 
 console.log("Building base template…");

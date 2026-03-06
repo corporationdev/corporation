@@ -9,13 +9,34 @@
  *      - GET  /v1/agents
  *      - POST /v1/prompt
  *   2. ACP JSON-RPC bridge: spawns an agent subprocess, communicates
- *      via stdin/stdout using the Streamable HTTP transport (POST/GET/DELETE).
+ *      via stdin/stdout using newline-delimited JSON (ndjson).
  *   3. Streams session events back to a Rivet actor over a persistent
  *      WebSocket connection using the RivetKit client SDK.
  */
 
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { createClient } from "rivetkit/client";
+
+// ---------------------------------------------------------------------------
+// Logging — append to /tmp/corp-agent.log for debugging
+// ---------------------------------------------------------------------------
+
+const LOG_PATH = "/tmp/corp-agent.log";
+const logStream = fs.createWriteStream(LOG_PATH, { flags: "a" });
+
+function log(level: "info" | "warn" | "error", msg: string, data?: unknown) {
+	const line = JSON.stringify({
+		ts: new Date().toISOString(),
+		level,
+		msg,
+		...(data !== undefined ? { data } : {}),
+	});
+	logStream.write(`${line}\n`);
+	if (level === "error") {
+		console.error(`[corp-agent] ${msg}`, data ?? "");
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,23 +70,26 @@ interface PromptRequestBody {
 // ACP agent process registry — maps agent name → npx package / binary
 // ---------------------------------------------------------------------------
 
-const AGENT_ACP_PACKAGES: Record<string, string> = {
-	claude: "@anthropic-ai/claude-code",
-	codex: "@openai/codex",
-	amp: "amp-acp",
-	opencode: "opencode",
+// Maps agent name → npx package for npm-based agents
+const AGENT_NPX_PACKAGES: Record<string, string> = {
+	claude: "@zed-industries/claude-code-acp",
+	codex: "@zed-industries/codex-acp",
 	pi: "pi-acp",
 	cursor: "@blowmage/cursor-agent-acp",
 };
 
 function agentCommand(agent: string): string[] {
-	const pkg = AGENT_ACP_PACKAGES[agent];
-	if (!pkg) {
-		throw new Error(`Unknown agent: ${agent}`);
-	}
-	// For opencode, the binary itself supports `acp` subcommand
+	// Native binary agents
 	if (agent === "opencode") {
 		return ["opencode", "acp"];
+	}
+	if (agent === "amp") {
+		return ["amp-acp"];
+	}
+
+	const pkg = AGENT_NPX_PACKAGES[agent];
+	if (!pkg) {
+		throw new Error(`Unknown agent: ${agent}`);
 	}
 	return ["npx", "-y", pkg];
 }
@@ -128,101 +152,141 @@ function pickPermissionOption(
 }
 
 // ---------------------------------------------------------------------------
-// ACP subprocess bridge
+// ACP stdio bridge — ndjson over stdin/stdout
 // ---------------------------------------------------------------------------
 
-/**
- * AcpSubprocessBridge manages a single ACP agent subprocess.
- * It communicates using the ACP Streamable HTTP transport:
- *   - Spawns the agent subprocess
- *   - Sends JSON-RPC envelopes via POST to the agent's stdin-based HTTP server
- *   - Receives responses and notifications via SSE (GET)
- *
- * Wait — actually, the ACP subprocess bridge used by sandbox-agent works
- * differently: the Rust binary spawns the agent process with piped stdio,
- * writes JSON-RPC envelopes line-by-line to stdin, and reads responses
- * line-by-line from stdout. But the `acp-http-client` uses HTTP transport
- * (POST/GET/DELETE to the server's HTTP endpoint).
- *
- * Since we're replacing the sandbox-agent server (which was the HTTP endpoint),
- * our binary IS the server. The approach is:
- *   - We use acp-http-client style HTTP transport
- *   - The agent subprocess starts its own HTTP server (that's what the -acp
- *     packages do — they start an ACP-compliant HTTP server)
- *   - We connect to it via HTTP, same as the old corp-turn-runner did
- *
- * So we don't need a stdio bridge — the agent ACP process starts its own
- * HTTP server and we talk to it over HTTP. We just need to:
- *   1. Spawn the agent process
- *   2. Wait for it to be ready
- *   3. Forward ACP JSON-RPC to it (initialize, newSession, prompt)
- *   4. Collect events via SSE and forward to the Rivet actor
- */
-
 const ACP_PROTOCOL_VERSION = 1;
-const ACP_AGENT_PORT = 8900; // Port for the agent's ACP HTTP server
 const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000; // 10 minutes
 
-interface AcpConnection {
-	acpPath: string;
-	baseUrl: string;
-	bootstrapped: boolean;
-	bootstrapQuery: Record<string, string>;
+interface StdioBridge {
+	dead: boolean;
+	onNotification: ((envelope: Record<string, unknown>) => void) | null;
 	pendingResolvers: Map<string, (envelope: Record<string, unknown>) => void>;
-	sseAbort: AbortController | null;
+	proc: ReturnType<typeof Bun.spawn>;
 }
 
-function createAcpConnection(port: number, agent: string): AcpConnection {
-	return {
-		baseUrl: `http://127.0.0.1:${port}`,
-		acpPath: "/v1/rpc",
-		bootstrapped: false,
-		bootstrapQuery: { agent },
-		sseAbort: null,
-		pendingResolvers: new Map(),
-	};
-}
+/**
+ * Spawn an ACP agent subprocess and set up the stdio bridge.
+ * The agent reads JSON-RPC from stdin and writes JSON-RPC to stdout,
+ * both as newline-delimited JSON.
+ */
+function spawnStdioBridge(
+	agent: string,
+	onNotification: (envelope: Record<string, unknown>) => void
+): StdioBridge {
+	const cmd = agentCommand(agent);
+	log("info", "Spawning agent command (stdio)", { cmd: cmd.join(" ") });
 
-function buildUrl(conn: AcpConnection): string {
-	const base = `${conn.baseUrl}${conn.acpPath}`;
-	if (!conn.bootstrapped) {
-		conn.bootstrapped = true;
-		const params = new URLSearchParams(conn.bootstrapQuery);
-		return `${base}?${params.toString()}`;
-	}
-	return base;
-}
-
-async function acpPost(
-	conn: AcpConnection,
-	envelope: Record<string, unknown>,
-	timeoutMs: number = ACP_REQUEST_TIMEOUT_MS
-): Promise<Record<string, unknown> | null> {
-	const url = buildUrl(conn);
-	const response = await fetch(url, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Accept: "application/json, text/event-stream",
-		},
-		body: JSON.stringify(envelope),
-		signal: AbortSignal.timeout(timeoutMs),
+	const proc = Bun.spawn(cmd, {
+		env: { ...process.env },
+		stdin: "pipe",
+		stdout: "pipe",
+		stderr: "pipe",
 	});
 
-	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		throw new Error(`ACP POST failed (${response.status}): ${text}`);
+	const bridge: StdioBridge = {
+		proc,
+		pendingResolvers: new Map(),
+		onNotification,
+		dead: false,
+	};
+
+	// Read stdout line-by-line for JSON-RPC messages
+	if (proc.stdout) {
+		const reader = proc.stdout.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+
+		(async () => {
+			try {
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) {
+						break;
+					}
+					buffer += decoder.decode(value, { stream: true });
+
+					// Process complete lines
+					let newlineIdx: number;
+					while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+						const line = buffer.slice(0, newlineIdx).trim();
+						buffer = buffer.slice(newlineIdx + 1);
+
+						if (!line) {
+							continue;
+						}
+
+						try {
+							const envelope = JSON.parse(line) as Record<string, unknown>;
+							const envId = envelope.id != null ? String(envelope.id) : null;
+
+							// If it has an id and we have a pending resolver, it's a response
+							if (envId && bridge.pendingResolvers.has(envId)) {
+								const resolver = bridge.pendingResolvers.get(envId)!;
+								bridge.pendingResolvers.delete(envId);
+								resolver(envelope);
+							} else {
+								// It's a notification or unsolicited message
+								bridge.onNotification?.(envelope);
+							}
+						} catch {
+							log("warn", "Failed to parse agent stdout line", {
+								line: line.slice(0, 200),
+							});
+						}
+					}
+				}
+			} catch {
+				// Stream ended
+			}
+			bridge.dead = true;
+			log("info", "Agent stdout stream ended");
+		})();
 	}
 
-	const bodyText = await response.text();
-	if (bodyText.trim()) {
-		return JSON.parse(bodyText);
+	// Stream stderr to log
+	if (proc.stderr) {
+		const reader = proc.stderr.getReader();
+		const decoder = new TextDecoder();
+		(async () => {
+			try {
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) {
+						break;
+					}
+					const text = decoder.decode(value, { stream: true });
+					for (const line of text.split("\n")) {
+						if (line.trim()) {
+							log("info", `[${agent} stderr] ${line.trimEnd()}`);
+						}
+					}
+				}
+			} catch {
+				// Process exited
+			}
+		})();
 	}
-	return null; // 202-style: response will come via SSE
+
+	return bridge;
 }
 
-async function acpRequest(
-	conn: AcpConnection,
+/**
+ * Write a JSON-RPC envelope to the agent's stdin.
+ */
+function stdioWrite(
+	bridge: StdioBridge,
+	envelope: Record<string, unknown>
+): void {
+	const line = `${JSON.stringify(envelope)}\n`;
+	bridge.proc.stdin.write(line);
+}
+
+/**
+ * Send a JSON-RPC request and wait for the response.
+ */
+async function stdioRequest(
+	bridge: StdioBridge,
 	method: string,
 	params: unknown,
 	timeoutMs: number = ACP_REQUEST_TIMEOUT_MS
@@ -235,210 +299,42 @@ async function acpRequest(
 		params,
 	};
 
-	const waiterPromise = new Promise<Record<string, unknown>>(
+	const responsePromise = new Promise<Record<string, unknown>>(
 		(resolve, reject) => {
 			const timer = setTimeout(() => {
-				conn.pendingResolvers.delete(id);
+				bridge.pendingResolvers.delete(id);
 				reject(new Error(`ACP request timed out: ${method} (${id})`));
 			}, timeoutMs);
 
-			conn.pendingResolvers.set(id, (result) => {
+			bridge.pendingResolvers.set(id, (result) => {
 				clearTimeout(timer);
-				conn.pendingResolvers.delete(id);
 				resolve(result);
 			});
 		}
 	);
 
-	const directResponse = await acpPost(conn, envelope, timeoutMs);
-	if (
-		directResponse &&
-		typeof directResponse === "object" &&
-		"id" in directResponse
-	) {
-		// Direct response — cancel waiter and return
-		conn.pendingResolvers.delete(id);
-		if ("error" in directResponse) {
-			const err = directResponse.error as Record<string, unknown>;
-			throw new Error(
-				`ACP error (${err.code}): ${err.message ?? JSON.stringify(err)}`
-			);
-		}
-		return (directResponse.result as Record<string, unknown>) ?? {};
-	}
+	stdioWrite(bridge, envelope);
+	const result = await responsePromise;
 
-	// Wait for response via SSE
-	const result = await waiterPromise;
 	if ("error" in result) {
 		const err = result.error as Record<string, unknown>;
 		throw new Error(
 			`ACP error (${err.code}): ${err.message ?? JSON.stringify(err)}`
 		);
 	}
+
 	return (result.result as Record<string, unknown>) ?? {};
 }
 
-/**
- * Start the SSE loop to receive notifications and responses from the agent.
- */
-function startSseLoop(
-	conn: AcpConnection,
-	onEnvelope: (envelope: Record<string, unknown>, direction: "inbound") => void
-): void {
-	conn.sseAbort = new AbortController();
-	const signal = conn.sseAbort.signal;
-
-	(async () => {
-		let lastEventId: string | undefined;
-
-		while (!signal.aborted) {
-			try {
-				const headers: Record<string, string> = {
-					Accept: "text/event-stream",
-				};
-				if (lastEventId) {
-					headers["Last-Event-ID"] = lastEventId;
-				}
-
-				const response = await fetch(`${conn.baseUrl}${conn.acpPath}`, {
-					method: "GET",
-					headers,
-					signal,
-				});
-
-				if (!(response.ok && response.body)) {
-					await new Promise((r) => setTimeout(r, 500));
-					continue;
-				}
-
-				const reader = response.body.getReader();
-				const decoder = new TextDecoder();
-				let buffer = "";
-				let currentId: string | undefined;
-				let currentData = "";
-
-				while (!signal.aborted) {
-					const { done, value } = await reader.read();
-					if (done) {
-						break;
-					}
-
-					buffer += decoder.decode(value, { stream: true });
-					const lines = buffer.split("\n");
-					buffer = lines.pop() ?? "";
-
-					for (const line of lines) {
-						if (line.startsWith("id: ")) {
-							currentId = line.slice(4).trim();
-						} else if (line.startsWith("data: ")) {
-							currentData += (currentData ? "\n" : "") + line.slice(6);
-						} else if (line === "") {
-							// End of event
-							if (currentData) {
-								if (currentId) {
-									lastEventId = currentId;
-								}
-								try {
-									const envelope = JSON.parse(currentData);
-									// Resolve pending request if this is a response
-									const envId =
-										envelope?.id != null ? String(envelope.id) : null;
-									if (envId && conn.pendingResolvers.has(envId)) {
-										conn.pendingResolvers.get(envId)?.(envelope);
-									}
-									onEnvelope(envelope, "inbound");
-								} catch {
-									// Ignore malformed JSON
-								}
-							}
-							currentId = undefined;
-							currentData = "";
-						}
-					}
-				}
-			} catch (error) {
-				if (signal.aborted) {
-					break;
-				}
-				// Reconnect after brief delay
-				await new Promise((r) => setTimeout(r, 150));
-			}
-		}
-	})();
-}
-
-function stopSseLoop(conn: AcpConnection): void {
-	conn.sseAbort?.abort();
-	conn.sseAbort = null;
-}
-
-async function acpDelete(conn: AcpConnection): Promise<void> {
+function killBridge(bridge: StdioBridge): void {
+	bridge.dead = true;
 	try {
-		await fetch(`${conn.baseUrl}${conn.acpPath}`, {
-			method: "DELETE",
-			headers: { Accept: "application/json" },
-			signal: AbortSignal.timeout(5000),
-		});
+		bridge.proc.stdin.end();
 	} catch {
-		// Best effort
+		// Already closed
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Agent subprocess management
-// ---------------------------------------------------------------------------
-
-interface AgentProcess {
-	port: number;
-	proc: ReturnType<typeof Bun.spawn>;
-}
-
-async function spawnAgentProcess(agent: string): Promise<AgentProcess> {
-	const port = ACP_AGENT_PORT + Math.floor(Math.random() * 1000);
-	const cmd = agentCommand(agent);
-
-	const proc = Bun.spawn(cmd, {
-		env: {
-			...process.env,
-			PORT: String(port),
-			// Some ACP agents use HOST/PORT env vars
-			HOST: "127.0.0.1",
-		},
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-
-	// Wait for the agent's HTTP server to be ready
-	const deadline = Date.now() + 30_000;
-	while (Date.now() < deadline) {
-		try {
-			const resp = await fetch(`http://127.0.0.1:${port}/v1/rpc`, {
-				method: "GET",
-				headers: { Accept: "text/event-stream" },
-				signal: AbortSignal.timeout(2000),
-			});
-			// Any response (even error) means the server is up
-			if (resp.body) {
-				// Close the SSE stream immediately
-				await resp.body.cancel();
-			}
-			break;
-		} catch {
-			await new Promise((r) => setTimeout(r, 300));
-		}
-	}
-
-	if (Date.now() >= deadline) {
-		proc.kill();
-		throw new Error(`Agent ${agent} did not start within 30s`);
-	}
-
-	return { proc, port };
-}
-
-function killAgentProcess(ap: AgentProcess): void {
 	try {
-		ap.proc.kill();
+		bridge.proc.kill();
 	} catch {
 		// Already dead
 	}
@@ -461,17 +357,100 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		callbackToken,
 	} = params;
 
+	log("info", "executeTurn started", {
+		turnId,
+		sessionId,
+		agent,
+		modelId,
+		cwd,
+		actorEndpoint,
+		actorKey,
+	});
+
 	const connectionId = `corp-agent-${turnId}-${crypto.randomUUID()}`;
 	let eventIndex = 0;
 	let sequence = 0;
 
-	// Connect to actor via RivetKit client SDK
-	const client = createClient({ endpoint: actorEndpoint });
+	// Test actor resolution (same PUT /actors the SDK does internally)
+	try {
+		const actorsUrl = `${actorEndpoint}/actors`;
+		const putBody = {
+			name: "space",
+			key: JSON.stringify(actorKey),
+			crash_policy: "sleep",
+		};
+		log("info", "Testing actor resolution (PUT /actors)", {
+			url: actorsUrl,
+			body: putBody,
+		});
+		const resolveResp = await fetch(actorsUrl, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(putBody),
+			signal: AbortSignal.timeout(5000),
+		});
+		const resolveBody = await resolveResp.text();
+		log("info", "Actor resolution result", {
+			status: resolveResp.status,
+			body: resolveBody.slice(0, 500),
+		});
+	} catch (error) {
+		log("error", "Actor resolution test FAILED", {
+			actorEndpoint,
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+
+	// Connect to actor via RivetKit client SDK (persistent WebSocket)
+	log("info", "Connecting to actor via RivetKit WebSocket", {
+		actorEndpoint,
+		actorKey,
+	});
+	const client = createClient({
+		endpoint: actorEndpoint,
+		disableMetadataLookup: true,
+		devtools: false,
+	});
 	const actorHandle = (
 		client as Record<string, Record<string, Function>>
 	).space.getOrCreate(actorKey);
+	const actorConn = actorHandle.connect() as Record<string, Function>;
+	log("info", "Actor connect() called (connection is lazy)");
 
-	// Helper to send a callback to the actor
+	// Hook into connection lifecycle events
+	if (typeof actorConn.onOpen === "function") {
+		actorConn.onOpen(() => {
+			log("info", "WS EVENT: connection OPENED", {
+				connStatus: actorConn.connStatus,
+			});
+		});
+	}
+	if (typeof actorConn.onClose === "function") {
+		actorConn.onClose(() => {
+			log("warn", "WS EVENT: connection CLOSED", {
+				connStatus: actorConn.connStatus,
+			});
+		});
+	}
+	if (typeof actorConn.onError === "function") {
+		actorConn.onError((error: unknown) => {
+			log("error", "WS EVENT: connection ERROR", {
+				error: error instanceof Error ? error.message : String(error),
+				errorType: error?.constructor?.name,
+			});
+		});
+	}
+	if (typeof actorConn.onStatusChange === "function") {
+		actorConn.onStatusChange((status: string) => {
+			log("info", "WS EVENT: status changed", { status });
+		});
+	}
+
+	log("info", "Initial connStatus", {
+		connStatus: actorConn.connStatus ?? "unknown",
+	});
+
+	// Helper to send a callback to the actor over WebSocket
 	const sendCallback = async (
 		kind: string,
 		extra: Record<string, unknown> = {}
@@ -487,12 +466,22 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			...extra,
 		};
 		try {
-			await actorHandle.ingestTurnRunnerBatch(payload);
+			log("info", `Sending ${kind} callback (seq=${sequence})`, {
+				turnId,
+				kind,
+				payloadKeys: Object.keys(payload),
+				hasEvents: "events" in extra ? (extra.events as unknown[]).length : 0,
+			});
+			const result = await actorConn.ingestTurnRunnerBatch(payload);
+			log("info", `Sent ${kind} callback OK (seq=${sequence})`, {
+				result: result !== undefined ? JSON.stringify(result) : "void",
+			});
 		} catch (error) {
-			console.error(
-				`[corp-agent] Failed to send ${kind} callback:`,
-				error instanceof Error ? error.message : String(error)
-			);
+			log("error", `Failed to send ${kind} callback`, {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				errorType: error?.constructor?.name,
+			});
 		}
 	};
 
@@ -514,22 +503,23 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		sendCallback("events", { events: [event] });
 	};
 
-	let agentProcess: AgentProcess | null = null;
-	let conn: AcpConnection | null = null;
+	let bridge: StdioBridge | null = null;
 
 	try {
-		// 1. Spawn agent subprocess
-		agentProcess = await spawnAgentProcess(agent);
-		conn = createAcpConnection(agentProcess.port, agent);
-
-		// 2. Start SSE loop to receive notifications
-		startSseLoop(conn, (envelope, direction) => {
-			queueEnvelopeEvent(envelope, direction);
+		// 1. Spawn agent subprocess with stdio bridge
+		log("info", "Spawning agent subprocess", { agent });
+		bridge = spawnStdioBridge(agent, (envelope) => {
+			// Every inbound notification/message from the agent
+			queueEnvelopeEvent(envelope, "inbound");
 
 			// Handle requestPermission from agent
 			if (envelope.method === "requestPermission" && envelope.id != null) {
-				const params = envelope.params as Record<string, unknown> | undefined;
-				const request = params?.request as Record<string, unknown> | undefined;
+				const reqParams = envelope.params as
+					| Record<string, unknown>
+					| undefined;
+				const request = reqParams?.request as
+					| Record<string, unknown>
+					| undefined;
 				const options = Array.isArray(request?.options) ? request.options : [];
 				const selected = pickPermissionOption(options);
 
@@ -542,14 +532,24 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 							: { outcome: "cancelled" },
 					},
 				};
-				acpPost(conn!, response).catch(() => {});
+				stdioWrite(bridge!, response);
 				queueEnvelopeEvent(response, "outbound");
 			}
 		});
 
-		// 3. Initialize
+		// Brief pause to check if process exits immediately
+		await new Promise((r) => setTimeout(r, 500));
+		if (bridge.proc.exitCode !== null) {
+			throw new Error(
+				`Agent ${agent} exited immediately with code ${bridge.proc.exitCode}`
+			);
+		}
+		log("info", "Agent subprocess running", { agent });
+
+		// 2. Initialize
+		log("info", "Sending ACP initialize");
 		const initEnvelope = {
-			jsonrpc: "2.0",
+			jsonrpc: "2.0" as const,
 			id: `initialize-${crypto.randomUUID()}`,
 			method: "initialize",
 			params: {
@@ -558,13 +558,15 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			},
 		};
 		queueEnvelopeEvent(initEnvelope, "outbound");
-		await acpRequest(conn, "initialize", {
+		await stdioRequest(bridge, "initialize", {
 			protocolVersion: ACP_PROTOCOL_VERSION,
 			clientInfo: { name: "corp-agent", version: "v1" },
 		});
+		log("info", "ACP initialized OK");
 
-		// 4. Create session
-		const sessionResult = await acpRequest(conn, "session/new", {
+		// 3. Create session
+		log("info", "Creating ACP session");
+		const sessionResult = await stdioRequest(bridge, "session/new", {
 			cwd,
 			mcpServers: [],
 		});
@@ -572,80 +574,66 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		if (!agentSessionId) {
 			throw new Error("session/new did not return a sessionId");
 		}
+		log("info", "ACP session created", { agentSessionId });
 
-		// 5. Set model (optional)
+		// 4. Set model (optional, best-effort — not all agents support this)
 		if (modelId) {
-			await acpRequest(conn, "unstable/setSessionModel", {
-				sessionId: agentSessionId,
-				modelId,
+			log("info", "Setting model", { modelId });
+			try {
+				await stdioRequest(bridge, "unstable/setSessionModel", {
+					sessionId: agentSessionId,
+					modelId,
+				});
+			} catch (error) {
+				log("warn", "setSessionModel not supported, skipping", {
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+
+		// 5. Send prompt and wait for response
+		log("info", "Sending prompt to agent");
+		const promptResult = await stdioRequest(bridge, "session/prompt", {
+			sessionId: agentSessionId,
+			prompt,
+		});
+
+		// Record the outbound prompt envelope for events
+		queueEnvelopeEvent(
+			{
+				jsonrpc: "2.0",
+				method: "session/prompt",
+				params: { sessionId: agentSessionId, prompt },
+			},
+			"outbound"
+		);
+
+		if ("error" in promptResult) {
+			const err = promptResult as Record<string, unknown>;
+			throw new Error(`Prompt ACP error: ${JSON.stringify(err)}`);
+		}
+
+		// 6. Send completed callback
+		log("info", "Turn completed successfully", { turnId });
+		await sendCallback("completed");
+	} catch (error) {
+		log("error", "Turn failed", { turnId, error: formatError(error) });
+		await sendCallback("failed", { error: formatError(error) });
+	} finally {
+		// Disconnect actor WebSocket
+		try {
+			if (typeof actorConn.dispose === "function") {
+				await actorConn.dispose();
+				log("info", "Actor connection disposed");
+			}
+		} catch (error) {
+			log("warn", "Error disposing actor connection", {
+				error: error instanceof Error ? error.message : String(error),
 			});
 		}
 
-		// 6. Send prompt
-		const promptId = `prompt-${crypto.randomUUID()}`;
-		const promptEnvelope: Record<string, unknown> = {
-			jsonrpc: "2.0",
-			id: promptId,
-			method: "session/prompt",
-			params: { sessionId: agentSessionId, prompt },
-		};
-		queueEnvelopeEvent(promptEnvelope, "outbound");
-
-		// Send prompt and wait for response
-		const promptWaiter = new Promise<Record<string, unknown>>(
-			(resolve, reject) => {
-				const timer = setTimeout(() => {
-					conn!.pendingResolvers.delete(promptId);
-					reject(new Error("Prompt timed out"));
-				}, ACP_REQUEST_TIMEOUT_MS);
-
-				conn!.pendingResolvers.set(promptId, (result) => {
-					clearTimeout(timer);
-					conn!.pendingResolvers.delete(promptId);
-					resolve(result);
-				});
-			}
-		);
-
-		const directResponse = await acpPost(
-			conn,
-			promptEnvelope,
-			ACP_REQUEST_TIMEOUT_MS
-		);
-		let promptResult: Record<string, unknown>;
-
-		if (
-			directResponse &&
-			typeof directResponse === "object" &&
-			"id" in directResponse
-		) {
-			conn.pendingResolvers.delete(promptId);
-			promptResult = directResponse;
-		} else {
-			promptResult = await promptWaiter;
-		}
-
-		if ("error" in promptResult) {
-			const err = promptResult.error as Record<string, unknown>;
-			throw new Error(
-				`Prompt ACP error (${err.code}): ${err.message ?? JSON.stringify(err)}`
-			);
-		}
-
-		// 7. Send completed callback
-		await sendCallback("completed");
-	} catch (error) {
-		await sendCallback("failed", { error: formatError(error) });
-		console.error(
-			`[corp-agent] Turn failed: ${error instanceof Error ? error.message : String(error)}`
-		);
-	} finally {
-		if (conn) {
-			stopSseLoop(conn);
-			await acpDelete(conn);
-		}
-		if (agentProcess) {
-			killAgentProcess(agentProcess);
+		if (bridge) {
+			killBridge(bridge);
 		}
 	}
 }
@@ -654,15 +642,18 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 // Agent discovery (for /v1/agents)
 // ---------------------------------------------------------------------------
 
+const ALL_AGENT_IDS = [...Object.keys(AGENT_NPX_PACKAGES), "amp", "opencode"];
+
 async function discoverAgents(): Promise<
 	Array<{ id: string; installed: boolean }>
 > {
 	const agents: Array<{ id: string; installed: boolean }> = [];
-	for (const id of Object.keys(AGENT_ACP_PACKAGES)) {
+	for (const id of ALL_AGENT_IDS) {
 		// Check if the command exists by trying `which`
 		let installed = false;
 		try {
-			const result = Bun.spawnSync(["which", id === "claude" ? "claude" : id]);
+			const bin = id === "amp" ? "amp-acp" : id;
+			const result = Bun.spawnSync(["which", bin]);
 			installed = result.exitCode === 0;
 		} catch {
 			// not installed
@@ -721,10 +712,12 @@ Bun.serve({
 
 		// Prompt
 		if (req.method === "POST" && url.pathname === "/v1/prompt") {
+			log("info", "Received POST /v1/prompt");
 			let body: PromptRequestBody;
 			try {
 				body = (await req.json()) as PromptRequestBody;
 			} catch {
+				log("error", "Invalid JSON body in /v1/prompt");
 				return Response.json({ error: "Invalid JSON body" }, { status: 400 });
 			}
 
@@ -738,11 +731,24 @@ Bun.serve({
 			}
 
 			if (!(body.actorEndpoint && body.actorKey)) {
+				log("error", "Missing actorEndpoint or actorKey", {
+					actorEndpoint: body.actorEndpoint,
+					actorKey: body.actorKey,
+				});
 				return Response.json(
 					{ error: "Missing required fields: actorEndpoint, actorKey" },
 					{ status: 400 }
 				);
 			}
+
+			log("info", "Prompt request body received", {
+				turnId: body.turnId,
+				sessionId: body.sessionId,
+				agent: body.agent,
+				actorEndpoint: body.actorEndpoint,
+				actorKey: body.actorKey,
+				callbackToken: body.callbackToken ? "present" : "missing",
+			});
 
 			// Prevent duplicate turns
 			if (activeTurns.has(body.turnId)) {
@@ -755,11 +761,17 @@ Bun.serve({
 			activeTurns.set(body.turnId, true);
 
 			// Fire and forget — respond immediately
+			log("info", "Accepted turn", {
+				turnId: body.turnId,
+				agent: body.agent,
+				sessionId: body.sessionId,
+			});
 			executeTurn(body)
 				.catch((error) => {
-					console.error(
-						`[corp-agent] Unhandled turn error: ${error instanceof Error ? error.message : String(error)}`
-					);
+					log("error", "Unhandled turn error", {
+						turnId: body.turnId,
+						error: error instanceof Error ? error.message : String(error),
+					});
 				})
 				.finally(() => {
 					activeTurns.delete(body.turnId);
@@ -772,4 +784,5 @@ Bun.serve({
 	},
 });
 
+log("info", `Listening on ${host}:${port}`);
 console.log(`[corp-agent] Listening on ${host}:${port}`);

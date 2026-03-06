@@ -53,8 +53,14 @@ console.log(`Syncing corp-agent to sandbox ${sandboxId}...`);
 
 try {
 	const sandbox = await Sandbox.connect(sandboxId);
-	const binaryData = await readFile(localBinaryPath);
 
+	// Stop the running process first (file is "text file busy" while running)
+	await sandbox.commands.run(
+		"tmux kill-session -t sandbox-agent 2>/dev/null || true",
+		{ timeoutMs: 5000 }
+	);
+
+	const binaryData = await readFile(localBinaryPath);
 	await sandbox.files.write([
 		{
 			path: remoteBinaryPath,
@@ -67,10 +73,6 @@ try {
 	});
 
 	// Restart the corp-agent tmux session
-	await sandbox.commands.run(
-		"tmux kill-session -t sandbox-agent 2>/dev/null || true",
-		{ timeoutMs: 5000 }
-	);
 	await sandbox.commands.run(
 		'tmux new-session -d -s sandbox-agent "corp-agent --host 0.0.0.0 --port 5799"',
 		{ timeoutMs: 5000 }

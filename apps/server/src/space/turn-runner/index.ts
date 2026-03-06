@@ -99,7 +99,11 @@ async function launchTurnRunner(
 		throw new Error("Missing SERVER_PUBLIC_URL env var");
 	}
 	const actorEndpoint = baseUrl.replace(TRAILING_SLASH_RE, "") + "/rivet";
-	const spaceSlug = ctx.actorId;
+
+	log.info(
+		{ actorEndpoint, actorKey: ctx.key, agentUrl: ctx.state.agentUrl },
+		"launchTurnRunner: sending prompt to corp-agent"
+	);
 
 	const promptUrl = `${ctx.state.agentUrl}/v1/prompt`;
 	const response = await fetch(promptUrl, {
@@ -113,7 +117,7 @@ async function launchTurnRunner(
 			prompt: JSON.parse(params.promptJson),
 			cwd: ctx.state.workdir,
 			actorEndpoint,
-			actorKey: [spaceSlug],
+			actorKey: ctx.key,
 			callbackToken: params.callbackToken,
 		}),
 		signal: AbortSignal.timeout(15_000),
@@ -205,12 +209,24 @@ export async function ingestTurnRunnerBatch(
 	ctx: SpaceRuntimeContext,
 	payload: unknown
 ): Promise<void> {
+	log.info(
+		{
+			actorId: ctx.actorId,
+			payloadType: typeof payload,
+			payloadKeys:
+				payload && typeof payload === "object"
+					? Object.keys(payload as Record<string, unknown>)
+					: null,
+		},
+		"ingestTurnRunnerBatch called"
+	);
+
 	let parsed: TurnRunnerCallbackPayload;
 	try {
 		parsed = parseTurnRunnerCallbackPayload(payload);
 	} catch (error) {
 		log.error(
-			{ err: error, actorId: ctx.actorId },
+			{ err: error, actorId: ctx.actorId, payload },
 			"failed to parse callback payload"
 		);
 		throw error;

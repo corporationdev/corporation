@@ -31,6 +31,7 @@ export type ConnectionSender = {
 
 export type SpaceRuntimeContext = {
 	actorId: string;
+	key: string[];
 	state: PersistedState;
 	vars: SpaceVars;
 	conns: Map<string, ConnectionSender>;

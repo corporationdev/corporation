@@ -93,6 +93,7 @@
     "setup": "bun scripts/setup.ts",
     "build:corp-agent": "bun build --compile --target=bun-linux-x64 scripts/corp-agent/corp-agent.ts --outfile scripts/corp-agent/dist/corp-agent",
     "sync:corp-agent": "bun scripts/sync-corp-agent.ts",
+    "logs:corp-agent": "bun scripts/corp-agent-logs.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:models": "bun scripts/generate-agent-models.ts"
   },
