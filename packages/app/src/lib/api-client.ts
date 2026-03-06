@@ -52,11 +52,7 @@ export function clearTokenCache() {
 	cachedTokenExp = null;
 }
 
-export function getApiAuthHeaders() {
-	return getAuthHeaders();
-}
-
-async function getAuthHeaders() {
+export async function getAuthHeaders() {
 	const token = await getToken();
 	return {
 		Authorization: `Bearer ${token}`,

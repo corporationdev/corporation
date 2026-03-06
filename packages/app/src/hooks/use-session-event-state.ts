@@ -8,7 +8,7 @@ import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/components/chat/types";
-import { getApiAuthHeaders } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { toAbsoluteUrl } from "@/lib/url";
 
@@ -46,7 +46,7 @@ async function fetchSessionStreamState(
 	signal: AbortSignal
 ): Promise<SessionStreamState> {
 	const baseUrl = buildSessionStreamBaseUrl(spaceSlug, sessionId);
-	const authHeaders = await getApiAuthHeaders();
+	const authHeaders = await getAuthHeaders();
 	const response = await fetch(`${baseUrl}/state`, {
 		headers: authHeaders,
 		signal,
@@ -491,7 +491,7 @@ export function useSessionEventState({
 				offset: "-1",
 				live: true,
 				headers: {
-					Authorization: async () => (await getApiAuthHeaders()).Authorization,
+					Authorization: async () => (await getAuthHeaders()).Authorization,
 				},
 				signal: abortController.signal,
 			});
