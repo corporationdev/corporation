@@ -209,14 +209,28 @@ export const ConnectedSessionView: FC<{
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const { agentModels, defaultModels } = useAgentModels(actor);
 	const sessionState = useSessionEventState({ sessionId, actor });
+	const addOptimisticUserMessage = sessionState.addOptimisticUserMessage;
+	const removeOptimisticUserMessage = sessionState.removeOptimisticUserMessage;
+	const setSessionStatus = sessionState.setStatus;
 	const isRunning = sessionState.status === "running";
 
 	const pendingRef = useRef<{
 		text: string;
 		agent: string;
 		modelId: string;
+		clientId: string;
 	} | null>(null);
 	const sentRef = useRef(false);
+
+	const beginOptimisticSend = useCallback(
+		(text: string): string => {
+			const clientId = nanoid();
+			addOptimisticUserMessage({ clientId, text });
+			setSessionStatus("running");
+			return clientId;
+		},
+		[addOptimisticUserMessage, setSessionStatus]
+	);
 
 	// Consume pending message from store on mount
 	useEffect(() => {
@@ -225,11 +239,15 @@ export const ConnectedSessionView: FC<{
 		}
 		const pending = consumeMessage();
 		if (pending) {
-			pendingRef.current = pending;
+			const clientId = beginOptimisticSend(pending.text);
+			pendingRef.current = {
+				...pending,
+				clientId,
+			};
 			setAgentOverride(pending.agent);
 			setModelIdOverride(pending.modelId);
 		}
-	}, [consumeMessage]);
+	}, [consumeMessage, beginOptimisticSend]);
 
 	// Send pending message once actor is connected and space has agentUrl
 	useEffect(() => {
@@ -250,11 +268,9 @@ export const ConnectedSessionView: FC<{
 		pendingRef.current = null;
 		sentRef.current = true;
 
-		sessionState.setStatus("running");
-
 		const conn = actor.connection;
 		if (space?._id) {
-			touchSpace({ id: space._id }).catch(() => {});
+			touchSpace({ id: space._id }).catch(() => undefined);
 		}
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
@@ -269,6 +285,8 @@ export const ConnectedSessionView: FC<{
 					sentRef.current = false;
 					return;
 				}
+				removeOptimisticUserMessage(pending.clientId);
+				setSessionStatus("idle");
 				console.error("Failed to send pending message", error);
 				toast.error("Failed to send message");
 			});
@@ -279,8 +297,9 @@ export const ConnectedSessionView: FC<{
 		space?.agentUrl,
 		space?._id,
 		spaceSlug,
-		sessionState,
 		touchSpace,
+		removeOptimisticUserMessage,
+		setSessionStatus,
 	]);
 
 	const handleSend = useCallback(async () => {
@@ -290,8 +309,7 @@ export const ConnectedSessionView: FC<{
 		}
 
 		setMessage("");
-
-		sessionState.setStatus("running");
+		const optimisticClientId = beginOptimisticSend(text);
 
 		try {
 			await ensureSpace({ slug: spaceSlug });
@@ -303,7 +321,7 @@ export const ConnectedSessionView: FC<{
 
 			await conn.sendMessage(sessionId, text, agent, modelId);
 			if (space?._id) {
-				touchSpace({ id: space._id }).catch(() => {});
+				touchSpace({ id: space._id }).catch(() => undefined);
 			}
 		} catch (error) {
 			const kind = softResetActorConnectionOnTransientError({
@@ -312,10 +330,14 @@ export const ConnectedSessionView: FC<{
 				spaceSlug,
 			});
 			if (kind) {
+				removeOptimisticUserMessage(optimisticClientId);
+				setSessionStatus("idle");
 				setMessage((current) => (current ? current : text));
 				return;
 			}
 			console.error("Failed to send message", { error, sessionId });
+			removeOptimisticUserMessage(optimisticClientId);
+			setSessionStatus("idle");
 			setMessage((current) => (current ? current : text));
 			toast.error("Failed to send message");
 		}
@@ -327,9 +349,11 @@ export const ConnectedSessionView: FC<{
 		sessionId,
 		agent,
 		modelId,
-		sessionState,
 		space?._id,
 		touchSpace,
+		beginOptimisticSend,
+		removeOptimisticUserMessage,
+		setSessionStatus,
 	]);
 
 	const handleStop = useCallback(async () => {
