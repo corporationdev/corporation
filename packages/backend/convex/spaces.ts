@@ -10,6 +10,7 @@ import { normalizeBranchName } from "./lib/git";
 import { getSandboxWorkdir } from "./lib/sandbox";
 import { spaceStatusValidator } from "./schema";
 import { withDerivedSnapshotState } from "./snapshot";
+import { claimWarmSandboxForSpace } from "./warmSandboxes";
 
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string },
@@ -412,6 +413,10 @@ export const ensure = authedMutation({
 		if (existing) {
 			await requireOwnedSpace(ctx, existing);
 			if (existing.status !== "running") {
+				if (!existing.sandboxId) {
+					await claimWarmSandboxForSpace(ctx, existing._id);
+				}
+
 				await ctx.scheduler.runAfter(0, internal.sandboxActions.ensureSandbox, {
 					spaceId: existing._id,
 				});
@@ -437,6 +442,8 @@ export const ensure = authedMutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+
+		await claimWarmSandboxForSpace(ctx, spaceId);
 
 		await ctx.scheduler.runAfter(0, internal.sandboxActions.ensureSandbox, {
 			spaceId,
