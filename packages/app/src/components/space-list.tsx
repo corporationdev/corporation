@@ -4,8 +4,8 @@ import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { ArchiveIcon, BoxIcon, FolderIcon, PlusIcon } from "lucide-react";
-import { type FC, useEffect, useRef } from "react";
+import { ArchiveIcon, BoxIcon } from "lucide-react";
+import { type FC, useEffect, useMemo, useRef } from "react";
 
 import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,31 @@ import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 export const SpaceList: FC = () => {
 	const groupedSpaces = useQuery(api.spaces.listByRepository);
 
-	const repos =
+	const repositoriesWithDefaultEnvironment =
 		groupedSpaces
 			?.filter((g) => g.defaultEnvironment)
 			.map((g) => g.repository) ?? [];
-	const { data: latestShas } = useLatestShas(repos, repos.length > 0);
+	const { data: latestShas } = useLatestShas(
+		repositoriesWithDefaultEnvironment,
+		repositoriesWithDefaultEnvironment.length > 0
+	);
+	const spaces = useMemo(() => {
+		if (!groupedSpaces) {
+			return [];
+		}
+		return groupedSpaces
+			.flatMap((group) =>
+				group.spaces.map((space) => ({
+					repository: group.repository,
+					space,
+				}))
+			)
+			.sort((a, b) => b.space.updatedAt - a.space.updatedAt);
+	}, [groupedSpaces]);
 
 	if (groupedSpaces === undefined) {
 		return (
-			<div className="flex flex-col gap-1">
+			<div className="flex flex-col gap-2">
 				<SpaceListSkeleton />
 			</div>
 		);
@@ -35,16 +51,28 @@ export const SpaceList: FC = () => {
 	}
 
 	return (
-		<div className="flex flex-col gap-3">
+		<div className="flex flex-col gap-1">
 			{groupedSpaces.map((group) => (
-				<RepositorySpaceSection
-					group={group}
+				<RepositorySnapshotSync
+					defaultEnvironment={group.defaultEnvironment}
 					key={group.repository._id}
 					latestSha={
 						latestShas?.[`${group.repository.owner}/${group.repository.name}`]
 					}
 				/>
 			))}
+			{spaces.length === 0 ? (
+				<NoSpacesState />
+			) : (
+				spaces.map(({ space }) => (
+					<SpaceListItem
+						branchName={space.branchName}
+						id={space._id}
+						key={space._id}
+						slug={space.slug}
+					/>
+				))
+			)}
 		</div>
 	);
 };
@@ -53,12 +81,10 @@ type RepositorySpaceGroup = FunctionReturnType<
 	typeof api.spaces.listByRepository
 >[number];
 
-const RepositorySpaceSection: FC<{
-	group: RepositorySpaceGroup;
+const RepositorySnapshotSync: FC<{
+	defaultEnvironment: RepositorySpaceGroup["defaultEnvironment"];
 	latestSha: string | undefined;
-}> = ({ group, latestSha }) => {
-	const { repository, spaces, defaultEnvironment } = group;
-
+}> = ({ defaultEnvironment, latestSha }) => {
 	const snapshotCommitSha =
 		defaultEnvironment?.activeSnapshot?.snapshotCommitSha;
 	const snapshotStatus = defaultEnvironment?.latestSnapshot?.status;
@@ -104,83 +130,22 @@ const RepositorySpaceSection: FC<{
 		);
 	}, [environmentId, isOutdated, latestSha, snapshotStatus, createSnapshot]);
 
-	return (
-		<div className="flex flex-col gap-1">
-			<div className="flex items-center justify-between gap-2 px-2 text-muted-foreground text-sm">
-				<div className="flex min-w-0 items-center gap-2">
-					<FolderIcon className="size-3.5 shrink-0" />
-					<span className="truncate font-medium">
-						{repository.owner}/{repository.name}
-					</span>
-				</div>
-				<NewSpaceButton
-					repositoryId={repository._id}
-					repositoryName={repository.name}
-				/>
-			</div>
-			<div className="ml-2 flex flex-col gap-1 border-l pl-2">
-				{spaces.length === 0 ? (
-					<div className="px-2 py-1 text-muted-foreground text-xs">
-						No spaces yet
-					</div>
-				) : (
-					spaces.map((space) => (
-						<SpaceListItem
-							branchName={space.branchName}
-							id={space._id}
-							key={space._id}
-							slug={space.slug}
-						/>
-					))
-				)}
-			</div>
-		</div>
-	);
-};
-
-const NewSpaceButton: FC<{
-	repositoryId: Id<"repositories">;
-	repositoryName: string;
-}> = ({ repositoryId, repositoryName }) => {
-	const navigate = useNavigate();
-
-	return (
-		<Button
-			className="size-6 rounded-sm p-0 hover:bg-muted"
-			onClick={() =>
-				navigate({
-					to: "/repository/$repositoryId",
-					params: { repositoryId },
-				})
-			}
-			size="icon"
-			variant="outline"
-		>
-			<PlusIcon className="size-3.5" />
-			<span className="sr-only">New space in {repositoryName}</span>
-		</Button>
-	);
+	return null;
 };
 
 const SpaceListSkeleton: FC = () => {
-	const repositorySkeletonKeys = [
+	const spaceSkeletonKeys = [
 		"repo-skeleton-0",
 		"repo-skeleton-1",
+		"repo-skeleton-2",
+		"repo-skeleton-3",
 	] as const;
-	const spaceSkeletonKeys = ["space-skeleton-0", "space-skeleton-1"] as const;
 
 	return (
-		<div className="flex flex-col gap-3">
-			{repositorySkeletonKeys.map((repoKey) => (
-				<div className="flex flex-col gap-1" key={repoKey}>
-					<div className="flex h-6 items-center px-2">
-						<Skeleton className="h-4 w-28" />
-					</div>
-					{spaceSkeletonKeys.map((spaceKey) => (
-						<div className="flex h-9 items-center pl-4" key={spaceKey}>
-							<Skeleton className="h-4 w-full" />
-						</div>
-					))}
+		<div className="flex flex-col gap-1">
+			{spaceSkeletonKeys.map((spaceKey) => (
+				<div className="flex h-9 items-center px-2" key={spaceKey}>
+					<Skeleton className="h-4 w-full" />
 				</div>
 			))}
 		</div>
@@ -201,6 +166,23 @@ const NoRepositoriesState: FC = () => {
 				variant="outline"
 			>
 				Connect Repository
+			</Button>
+		</div>
+	);
+};
+
+const NoSpacesState: FC = () => {
+	const navigate = useNavigate();
+
+	return (
+		<div className="flex flex-col gap-2 px-2 py-3">
+			<p className="text-muted-foreground text-xs">No spaces yet.</p>
+			<Button
+				className="h-8 justify-start px-2 text-xs"
+				onClick={() => navigate({ to: "/" })}
+				variant="outline"
+			>
+				Start a space
 			</Button>
 		</div>
 	);
