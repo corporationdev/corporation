@@ -8,14 +8,8 @@ import bundledMigrations from "../db/migrations/migrations";
 import { type SessionRow, schema } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
 import { ingestAgentRunnerBatch } from "./agent-runner";
-import {
-	cancelSession,
-	closeSessionFeed,
-	listSessions,
-	openSessionFeed,
-	sendMessage,
-} from "./sessions";
-import { createSubscriptionHub, unsubscribeConnection } from "./subscriptions";
+import { getSessionStreamState, readSessionStream } from "./session-stream";
+import { cancelSession, listSessions, sendMessage } from "./sessions";
 import type { PersistedState, SpaceVars } from "./types";
 
 export type { SessionRow } from "../db/schema";
@@ -61,7 +55,7 @@ export const space = actor({
 			terminalEnsures: new Map(),
 			terminalOpenActions: new Map(),
 			lastTerminalSnapshotAt: new Map(),
-			subscriptions: createSubscriptionHub(),
+			sessionStreamWaiters: new Map(),
 			lastTimeoutRefreshAt: 0,
 			agentRunnerSequenceBySessionId: new Map(),
 		};
@@ -79,7 +73,6 @@ export const space = actor({
 	},
 
 	onDisconnect: (c, conn) => {
-		unsubscribeConnection(c.vars.subscriptions, conn.id);
 		const prefix = `${conn.id}:`;
 		for (const key of c.vars.terminalOpenActions.keys()) {
 			if (key.startsWith(prefix)) {
@@ -105,13 +98,16 @@ export const space = actor({
 		ingestAgentRunnerBatch: (c, payload: unknown) =>
 			ingestAgentRunnerBatch(c, payload),
 		cancelSession: (c, sessionId: string) => cancelSession(c, sessionId),
-		openSessionFeed: (
+		getSessionStreamState: (c, sessionId: string) =>
+			getSessionStreamState(c, sessionId),
+		readSessionStream: (
 			c,
 			sessionId: string,
-			afterEventIndex?: number,
-			limit?: number
-		) => openSessionFeed(c, sessionId, afterEventIndex, limit),
-		closeSessionFeed: (c, sessionId: string) => closeSessionFeed(c, sessionId),
+			afterOffset?: number,
+			limit?: number,
+			live?: boolean,
+			timeoutMs?: number
+		) => readSessionStream(c, sessionId, afterOffset, limit, live, timeoutMs),
 		resetTimeout: (c) => {
 			c.vars.lastTimeoutRefreshAt = 0;
 		},

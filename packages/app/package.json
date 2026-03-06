@@ -12,6 +12,7 @@
     "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/shared": "workspace:*",
+    "@durable-streams/client": "^0.2.1",
     "@radix-ui/react-slot": "catalog:",
     "@rivetkit/react": "catalog:",
     "@streamdown/code": "catalog:",

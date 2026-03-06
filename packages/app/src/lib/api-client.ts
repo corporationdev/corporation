@@ -52,6 +52,10 @@ export function clearTokenCache() {
 	cachedTokenExp = null;
 }
 
+export function getApiAuthHeaders() {
+	return getAuthHeaders();
+}
+
 async function getAuthHeaders() {
 	const token = await getToken();
 	return {

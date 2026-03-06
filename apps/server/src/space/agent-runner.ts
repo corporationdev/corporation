@@ -4,33 +4,21 @@ import {
 	promptRequestBodySchema,
 	turnRunnerCallbackPayloadSchema,
 } from "@corporation/shared/session-protocol";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { sessionEvents, sessions } from "../db/schema";
+import { sessionStreamFrames, sessions } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
-import { createSessionChannel, publishToChannel } from "./subscriptions";
+import {
+	appendSessionEventFrames,
+	appendSessionStatusFrame,
+} from "./session-stream";
 import type { SpaceRuntimeContext } from "./types";
 
-const SESSION_EVENT_NAME = "session.event";
-const SESSION_STATUS_EVENT_NAME = "session.status";
 const TRAILING_SLASH_RE = /\/$/;
 const AGENT_RUNNER_ACTION = "ingestAgentRunnerBatch";
 const log = createLogger("space:agent-runner");
 
 type TextPromptPart = { type: "text"; text: string };
-
-export function publishSessionStatus(
-	ctx: SpaceRuntimeContext,
-	sessionId: string,
-	status: string
-): void {
-	publishToChannel(
-		ctx,
-		createSessionChannel(sessionId),
-		SESSION_STATUS_EVENT_NAME,
-		{ sessionId, status }
-	);
-}
 
 async function launchAgentRunner(
 	ctx: SpaceRuntimeContext,
@@ -119,7 +107,11 @@ export async function startAgentRunner(
 	}
 
 	ctx.vars.agentRunnerSequenceBySessionId.set(params.sessionId, 0);
-	publishSessionStatus(ctx, params.sessionId, "running");
+	appendSessionStatusFrame(ctx, {
+		sessionId: params.sessionId,
+		status: "running",
+		reason: "run_started",
+	});
 
 	refreshSandboxTimeout(ctx);
 
@@ -147,6 +139,11 @@ export async function startAgentRunner(
 				},
 			})
 			.where(eq(sessions.id, params.sessionId));
+		appendSessionStatusFrame(ctx, {
+			sessionId: params.sessionId,
+			status: "error",
+			reason: "run_launch_failed",
+		});
 		throw error;
 	}
 }
@@ -209,19 +206,28 @@ export async function ingestAgentRunnerBatch(
 		const validEvents = parsed.events.filter(
 			(event) => event.sessionId === session.id
 		);
-		if (validEvents.length > 0) {
-			for (const event of validEvents) {
-				publishToChannel(
-					ctx,
-					createSessionChannel(session.id),
-					SESSION_EVENT_NAME,
-					event
+		const eventIds = validEvents.map((event) => event.id);
+		if (eventIds.length > 0) {
+			const existing = await ctx.vars.db
+				.select({ eventId: sessionStreamFrames.eventId })
+				.from(sessionStreamFrames)
+				.where(
+					and(
+						eq(sessionStreamFrames.sessionId, session.id),
+						inArray(sessionStreamFrames.eventId, eventIds)
+					)
 				);
+			const existingIds = new Set(
+				existing
+					.map((row) => row.eventId)
+					.filter((eventId): eventId is string => typeof eventId === "string")
+			);
+			const newEvents = validEvents.filter(
+				(event) => !existingIds.has(event.id)
+			);
+			if (newEvents.length > 0) {
+				appendSessionEventFrames(ctx, session.id, newEvents);
 			}
-			await ctx.vars.db
-				.insert(sessionEvents)
-				.values(validEvents)
-				.onConflictDoNothing({ target: sessionEvents.id });
 		}
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		return;
@@ -233,7 +239,11 @@ export async function ingestAgentRunnerBatch(
 			.set({ status: "idle", pid: null, error: null })
 			.where(eq(sessions.id, session.id));
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
-		publishSessionStatus(ctx, session.id, "idle");
+		appendSessionStatusFrame(ctx, {
+			sessionId: session.id,
+			status: "idle",
+			reason: "run_completed",
+		});
 		return;
 	}
 
@@ -243,7 +253,11 @@ export async function ingestAgentRunnerBatch(
 			.set({ status: "error", pid: null, error: parsed.error })
 			.where(eq(sessions.id, session.id));
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
-		publishSessionStatus(ctx, session.id, "error");
+		appendSessionStatusFrame(ctx, {
+			sessionId: session.id,
+			status: "error",
+			reason: "run_failed",
+		});
 		log.error(
 			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },
 			"turn runner reported failure"

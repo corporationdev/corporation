@@ -1,11 +1,16 @@
-import type { SessionEvent } from "@corporation/shared/session-protocol";
+import { env } from "@corporation/env/web";
+import type {
+	SessionEvent,
+	SessionStreamFrame,
+	SessionStreamState,
+} from "@corporation/shared/session-protocol";
+import type { JsonBatch, StreamResponse } from "@durable-streams/client";
+import { stream } from "@durable-streams/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/components/chat/types";
-import {
-	isTransientActorConnError,
-	softResetActorConnectionOnTransientError,
-} from "@/lib/actor-errors";
+import { getApiAuthHeaders } from "@/lib/api-client";
 import type { SpaceActor } from "@/lib/rivetkit";
+import { toAbsoluteUrl } from "@/lib/url";
 
 export type SessionState = {
 	entries: TimelineEntry[];
@@ -22,60 +27,60 @@ export type SessionState = {
 	removeOptimisticUserMessage: (clientId: string) => void;
 };
 
-const TRANSCRIPT_PAGE_SIZE = 200;
 const OPTIMISTIC_MATCH_TIME_TOLERANCE_MS = 5000;
 
-type SpaceActorConnection = NonNullable<SpaceActor["connection"]>;
+function buildSessionStreamBaseUrl(
+	spaceSlug: string,
+	sessionId: string
+): string {
+	const encodedSpaceSlug = encodeURIComponent(spaceSlug);
+	const encodedSessionId = encodeURIComponent(sessionId);
+	return toAbsoluteUrl(
+		`${env.VITE_SERVER_URL}/spaces/${encodedSpaceSlug}/sessions/${encodedSessionId}`
+	);
+}
 
-async function loadSessionState(
-	conn: SpaceActorConnection,
+async function fetchSessionStreamState(
+	spaceSlug: string,
 	sessionId: string,
-	isCancelled: () => boolean
-): Promise<{
+	signal: AbortSignal
+): Promise<SessionStreamState> {
+	const baseUrl = buildSessionStreamBaseUrl(spaceSlug, sessionId);
+	const authHeaders = await getApiAuthHeaders();
+	const response = await fetch(`${baseUrl}/state`, {
+		headers: authHeaders,
+		signal,
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to fetch session state (${response.status})`);
+	}
+	return response.json() as Promise<SessionStreamState>;
+}
+
+function readStreamBatch(
+	batch: JsonBatch<SessionStreamFrame>,
+	sessionId: string
+): {
 	events: SessionEvent[];
-	status: string;
-	agent: string | null;
-	modelId: string | null;
-	lastEventIndex: number;
-}> {
+	status: string | null;
+} {
 	const events: SessionEvent[] = [];
-	let lastEventIndex = 0;
-	let status = "idle";
-	let agent: string | null = null;
-	let modelId: string | null = null;
+	let status: string | null = null;
 
-	while (true) {
-		if (isCancelled()) {
-			break;
+	for (const frame of batch.items) {
+		if (frame.kind === "event") {
+			if (frame.event.sessionId === sessionId) {
+				events.push(frame.event);
+			}
+			continue;
 		}
 
-		const resultPromise = await conn.openSessionFeed(
-			sessionId,
-			lastEventIndex,
-			TRANSCRIPT_PAGE_SIZE
-		);
-		const result = await resultPromise;
-		if (isCancelled()) {
-			break;
-		}
-
-		// Update status from the latest response
-		status = result.status;
-		agent = result.agent;
-		modelId = result.modelId;
-
-		if (result.events.length === 0) {
-			break;
-		}
-
-		events.push(...result.events);
-		lastEventIndex = result.lastEventIndex;
-		if (result.events.length < TRANSCRIPT_PAGE_SIZE) {
-			break;
+		if (frame.kind === "status_changed") {
+			status = frame.status;
 		}
 	}
 
-	return { events, status, agent, modelId, lastEventIndex };
+	return { events, status };
 }
 
 function sortSessionEvents(events: SessionEvent[]): void {
@@ -384,15 +389,14 @@ function optimisticMessageToEntry(
 
 export function useSessionEventState({
 	sessionId,
+	spaceSlug,
 	actor,
 }: {
 	sessionId: string;
+	spaceSlug: string;
 	actor: SpaceActor;
 }): SessionState {
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
-	const caughtUpRef = useRef(false);
-	const bufferRef = useRef<SessionEvent[]>([]);
-	const bufferedStatusRef = useRef<string | null>(null);
 	const [events, setEvents] = useState<SessionEvent[]>([]);
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		OptimisticUserMessage[]
@@ -419,8 +423,6 @@ export function useSessionEventState({
 			return;
 		}
 		seenEventIdsRef.current = new Set();
-		caughtUpRef.current = false;
-		bufferRef.current = [];
 		setEvents([]);
 		setOptimisticMessages([]);
 		setSessionStatus("idle");
@@ -460,46 +462,62 @@ export function useSessionEventState({
 	}, []);
 
 	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
+		if (!sessionId || actor.connStatus !== "connected" || !actor.connection) {
 			return;
 		}
 
+		const abortController = new AbortController();
 		let isCancelled = false;
-		caughtUpRef.current = false;
-		bufferRef.current = [];
-		bufferedStatusRef.current = null;
+		let unsubscribe: (() => void) | null = null;
+		let streamResponse: StreamResponse<SessionStreamFrame> | null = null;
 
-		const conn = actor.connection;
 		(async () => {
-			const {
-				events: loaded,
-				status,
-				agent,
-				modelId,
-			} = await loadSessionState(conn, sessionId, () => isCancelled);
+			const state = await fetchSessionStreamState(
+				spaceSlug,
+				sessionId,
+				abortController.signal
+			);
 			if (isCancelled) {
 				return;
 			}
-			sortSessionEvents(loaded);
-			addEvents(loaded);
-			setSessionStatus(bufferedStatusRef.current ?? status);
-			setSessionAgent(agent);
-			setSessionModelId(modelId);
-			bufferedStatusRef.current = null;
-			addEvents(bufferRef.current);
-			bufferRef.current = [];
-			caughtUpRef.current = true;
-		})().catch((error: unknown) => {
-			const kind = softResetActorConnectionOnTransientError({
-				error,
-				reasonPrefix: "session-stream",
+
+			setSessionStatus(state.status);
+			setSessionAgent(state.agent);
+			setSessionModelId(state.modelId);
+
+			const streamUrl = `${buildSessionStreamBaseUrl(spaceSlug, sessionId)}/stream`;
+			streamResponse = await stream<SessionStreamFrame>({
+				url: streamUrl,
+				offset: "-1",
+				live: true,
+				headers: {
+					Authorization: async () => (await getApiAuthHeaders()).Authorization,
+				},
+				signal: abortController.signal,
 			});
-			if (kind) {
-				if (kind === "inflight-mismatch") {
-					console.warn("actor-conn.session-stream.inflight-mismatch", {
-						sessionId,
-					});
+			if (isCancelled) {
+				streamResponse.cancel();
+				return;
+			}
+
+			unsubscribe = streamResponse.subscribeJson(
+				(batch: JsonBatch<SessionStreamFrame>) => {
+					if (isCancelled) {
+						return;
+					}
+
+					const updates = readStreamBatch(batch, sessionId);
+					if (updates.events.length > 0) {
+						sortSessionEvents(updates.events);
+						addEvents(updates.events);
+					}
+					if (updates.status) {
+						setSessionStatus(updates.status);
+					}
 				}
+			);
+		})().catch((error: unknown) => {
+			if (isCancelled) {
 				return;
 			}
 			console.error("Failed to initialize session stream", error);
@@ -507,39 +525,11 @@ export function useSessionEventState({
 
 		return () => {
 			isCancelled = true;
-			conn.closeSessionFeed(sessionId).catch((error: unknown) => {
-				if (isTransientActorConnError(error)) {
-					return;
-				}
-				console.error("Failed to unsubscribe session", error);
-			});
+			abortController.abort("session-stream-cleanup");
+			unsubscribe?.();
+			streamResponse?.cancel("session-stream-cleanup");
 		};
-	}, [actor.connStatus, actor.connection, addEvents, sessionId]);
-
-	actor.useEvent("session.event", (event) => {
-		const typed = event as SessionEvent;
-		if (typed.sessionId !== sessionId) {
-			return;
-		}
-		if (!caughtUpRef.current) {
-			bufferRef.current.push(typed);
-			return;
-		}
-		addEvents([typed]);
-	});
-
-	actor.useEvent(
-		"session.status",
-		(event: { sessionId: string; status: string }) => {
-			if (event.sessionId === sessionId) {
-				if (!caughtUpRef.current) {
-					bufferedStatusRef.current = event.status;
-					return;
-				}
-				setSessionStatus(event.status);
-			}
-		}
-	);
+	}, [actor.connStatus, actor.connection, addEvents, sessionId, spaceSlug]);
 
 	const realEntries = useMemo(() => eventsToEntries(events), [events]);
 	const unmatchedOptimisticMessages = useMemo(

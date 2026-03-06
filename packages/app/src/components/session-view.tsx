@@ -107,7 +107,7 @@ export const ConnectedSessionView: FC<{
 	const ensureSpace = useMutation(api.spaces.ensure);
 	const touchSpace = useMutation(api.spaces.touch);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
-	const sessionState = useSessionEventState({ sessionId, actor });
+	const sessionState = useSessionEventState({ sessionId, spaceSlug, actor });
 	const agent = agentOverride ?? sessionState.agent ?? INITIAL_AGENT;
 	const modelId = modelIdOverride ?? sessionState.modelId ?? INITIAL_MODEL;
 	const addOptimisticUserMessage = sessionState.addOptimisticUserMessage;

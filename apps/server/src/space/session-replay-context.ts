@@ -1,6 +1,6 @@
 import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { and, asc, eq, gt } from "drizzle-orm";
-import { sessionEvents } from "../db/schema";
+import { sessionStreamFrames } from "../db/schema";
 import type { SpaceRuntimeContext } from "./types";
 
 const REPLAY_PREFIX = "Previous session history is replayed below";
@@ -116,16 +116,18 @@ function buildReplayHistory(events: SessionEvent[]): string | null {
 		.join("\n\n");
 }
 
-function toSessionEvent(row: typeof sessionEvents.$inferSelect): SessionEvent {
-	return {
-		id: row.id,
-		eventIndex: row.eventIndex,
-		sessionId: row.sessionId,
-		createdAt: row.createdAt,
-		connectionId: row.connectionId,
-		sender: row.sender,
-		payload: row.payload,
-	};
+function toSessionEvent(row: {
+	data: Record<string, unknown>;
+}): SessionEvent | null {
+	const kind = row.data.kind;
+	if (kind !== "event") {
+		return null;
+	}
+	const event = row.data.event;
+	if (!event || typeof event !== "object") {
+		return null;
+	}
+	return event as SessionEvent;
 }
 
 export async function buildPromptWithReplay(
@@ -135,33 +137,39 @@ export async function buildPromptWithReplay(
 ): Promise<SessionPromptPart[]> {
 	const fallbackPrompt: SessionPromptPart[] = [{ type: "text", text: content }];
 	const events: SessionEvent[] = [];
-	let lastEventIndex: number | undefined;
+	let lastOffset = -1;
 
 	for (;;) {
-		const conditions = [eq(sessionEvents.sessionId, sessionId)];
-		if (lastEventIndex !== undefined) {
-			conditions.push(gt(sessionEvents.eventIndex, lastEventIndex));
-		}
+		const conditions = [
+			eq(sessionStreamFrames.sessionId, sessionId),
+			eq(sessionStreamFrames.kind, "event"),
+			gt(sessionStreamFrames.offset, lastOffset),
+		];
 
 		const rows = await ctx.vars.db
-			.select()
-			.from(sessionEvents)
+			.select({
+				offset: sessionStreamFrames.offset,
+				data: sessionStreamFrames.data,
+			})
+			.from(sessionStreamFrames)
 			.where(and(...conditions))
-			.orderBy(asc(sessionEvents.eventIndex))
+			.orderBy(asc(sessionStreamFrames.offset))
 			.limit(REPLAY_PAGE_SIZE);
 
 		if (rows.length === 0) {
 			break;
 		}
 
-		const pageEvents = rows.map(toSessionEvent);
+		const pageEvents = rows
+			.map(toSessionEvent)
+			.filter((event): event is SessionEvent => event !== null);
 		events.push(...pageEvents);
 
 		const lastRow = rows.at(-1);
 		if (!lastRow || rows.length < REPLAY_PAGE_SIZE) {
 			break;
 		}
-		lastEventIndex = lastRow.eventIndex;
+		lastOffset = lastRow.offset;
 	}
 
 	const replayHistory = buildReplayHistory(events);
