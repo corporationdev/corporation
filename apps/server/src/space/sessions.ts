@@ -6,10 +6,6 @@ import { asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { type SessionRow, sessions } from "../db/schema";
 import { startAgentRunner } from "./agent-runner";
-import {
-	buildPromptWithReplay,
-	type SessionPromptPart,
-} from "./session-replay-context";
 import { appendSessionStatusFrame } from "./session-stream";
 import type { SpaceRuntimeContext } from "./types";
 
@@ -193,15 +189,7 @@ export async function sendMessage(
 		);
 	}
 
-	let prompt: SessionPromptPart[] = [{ type: "text", text: content }];
-	try {
-		prompt = await buildPromptWithReplay(ctx, sessionId, content);
-	} catch (error) {
-		log.warn(
-			{ err: error, actorId: ctx.actorId, sessionId },
-			"sendMessage: failed to build replay context"
-		);
-	}
+	const prompt = [{ type: "text" as const, text: content }];
 
 	await startAgentRunner(ctx, {
 		sessionId,
