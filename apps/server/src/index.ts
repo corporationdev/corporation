@@ -5,80 +5,62 @@ import { registry } from "./registry";
 const { handler, ActorHandler } = createHandler(registry, {
 	fetch: app.fetch,
 });
-const baseFetch = handler.fetch;
 
-function isRivetManagerPath(pathname: string): boolean {
-	return pathname.startsWith("/api/rivet");
-}
-
-function setRivetCorsHeaders(
+function applyRivetCorsHeaders(
 	headers: Headers,
 	origin: string,
-	allowHeaders?: string | null
+	requestHeaders: string | null
 ): void {
 	headers.set("Access-Control-Allow-Origin", origin);
 	headers.set("Access-Control-Allow-Credentials", "true");
 	headers.set(
 		"Access-Control-Allow-Methods",
-		"GET, POST, PUT, PATCH, DELETE, OPTIONS"
+		"GET,POST,PUT,PATCH,DELETE,OPTIONS"
 	);
 	headers.set(
 		"Access-Control-Allow-Headers",
-		allowHeaders ?? "Authorization, Content-Type"
+		requestHeaders ?? "Authorization, Content-Type"
 	);
-	headers.append("Vary", "Origin");
-	headers.append("Vary", "Access-Control-Request-Headers");
+	headers.set("Vary", "Origin, Access-Control-Request-Headers");
 }
 
 const wrappedHandler: ExportedHandler<Env> = {
 	fetch: async (request, env, ctx) => {
-		const url = new URL(request.url);
-		const isRivetRequest = isRivetManagerPath(url.pathname);
-		const origin = request.headers.get("origin");
+		const isRivetRequest = new URL(request.url).pathname.startsWith(
+			"/api/rivet"
+		);
+		const fetchFn = handler.fetch;
+		if (!fetchFn) {
+			throw new Error("Rivet handler fetch is not configured");
+		}
+		if (!isRivetRequest) {
+			return fetchFn(request, env, ctx);
+		}
 
-		if (isRivetRequest && request.method === "OPTIONS" && origin) {
+		const origin = request.headers.get("origin");
+		const requestHeaders = request.headers.get(
+			"Access-Control-Request-Headers"
+		);
+
+		if (request.method === "OPTIONS" && origin) {
 			const headers = new Headers();
-			setRivetCorsHeaders(
-				headers,
-				origin,
-				request.headers.get("Access-Control-Request-Headers")
-			);
+			applyRivetCorsHeaders(headers, origin, requestHeaders);
 			headers.set("Access-Control-Max-Age", "86400");
 			return new Response(null, { status: 204, headers });
 		}
 
-		if (!baseFetch) {
-			throw new Error("Rivet handler fetch is not configured");
-		}
-		const response = await baseFetch(request, env, ctx);
-		if (!(isRivetRequest && origin)) {
+		const response = await fetchFn(request, env, ctx);
+		if (!origin || response.status === 101) {
 			return response;
 		}
 
-		try {
-			setRivetCorsHeaders(
-				response.headers,
-				origin,
-				request.headers.get("Access-Control-Request-Headers")
-			);
-			return response;
-		} catch {
-			// Preserve WebSocket upgrade responses without cloning.
-			if (response.status === 101) {
-				return response;
-			}
-			const headers = new Headers(response.headers);
-			setRivetCorsHeaders(
-				headers,
-				origin,
-				request.headers.get("Access-Control-Request-Headers")
-			);
-			return new Response(response.body, {
-				status: response.status,
-				statusText: response.statusText,
-				headers,
-			});
-		}
+		const headers = new Headers(response.headers);
+		applyRivetCorsHeaders(headers, origin, requestHeaders);
+		return new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers,
+		});
 	},
 };
 
