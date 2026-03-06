@@ -209,7 +209,7 @@ const SpaceTabBar: FC<{
 				}
 
 				const isActive =
-					activeTab?.type === tabParam.type && activeTab.id === tabParam.id;
+					activeTab?.type === tabParam.type && activeTab?.id === tabParam.id;
 				const title = tab.title || tabConfig.defaultTitle;
 				const tabIndex = tabs.findIndex((candidate) => candidate.id === tab.id);
 

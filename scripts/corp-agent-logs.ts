@@ -57,7 +57,6 @@ if (follow) {
 	};
 
 	console.error(`[tailing /tmp/corp-agent.log on sandbox ${sandboxId}...]`);
-	// biome-ignore lint: using setInterval intentionally
 	setInterval(poll, 1000);
 	await poll();
 } else {
