@@ -66,7 +66,7 @@ function EditRepositoryForm({
 	>;
 }) {
 	const navigate = useNavigate();
-	const updateEnvironment = useMutation(api.environments.update);
+	const updateRepository = useMutation(api.repositories.update);
 
 	const form = useForm({
 		defaultValues: {
@@ -80,8 +80,8 @@ function EditRepositoryForm({
 			onSubmit: repositoryConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
-			await updateEnvironment({
-				id: defaultEnvironment._id,
+			await updateRepository({
+				id: repository._id,
 				setupCommand: value.setupCommand,
 				updateCommand: value.updateCommand,
 				devCommand: value.devCommand,

@@ -137,7 +137,7 @@ function RepositoryDetail({
 								createSnapshot({
 									request: {
 										type: "update",
-										environmentId: defaultEnvironment._id,
+										repositoryId: defaultEnvironment._id,
 									},
 								})
 							}
@@ -159,7 +159,7 @@ function RepositoryDetail({
 								createSnapshot({
 									request: {
 										type: "setup",
-										environmentId: defaultEnvironment._id,
+										repositoryId: defaultEnvironment._id,
 									},
 								})
 							}
@@ -193,16 +193,14 @@ function RepositoryDetail({
 				</div>
 			</div>
 
-			{isError && (
-				<LatestSnapshotError environmentId={defaultEnvironment._id} />
-			)}
+			{isError && <LatestSnapshotError repositoryId={defaultEnvironment._id} />}
 
 			<LatestSnapshotLogs
-				environmentId={defaultEnvironment._id}
 				isBuilding={isBuilding}
+				repositoryId={defaultEnvironment._id}
 			/>
 
-			<SnapshotHistory environmentId={defaultEnvironment._id} />
+			<SnapshotHistory repositoryId={defaultEnvironment._id} />
 		</div>
 	);
 }
@@ -243,11 +241,11 @@ function StatusIndicator({
 }
 
 function LatestSnapshotError({
-	environmentId,
+	repositoryId,
 }: {
-	environmentId: Id<"environments">;
+	repositoryId: Id<"repositories">;
 }) {
-	const latestSnapshot = useQuery(api.snapshot.getLatest, { environmentId });
+	const latestSnapshot = useQuery(api.snapshot.getLatest, { repositoryId });
 
 	if (!latestSnapshot?.error) {
 		return null;
@@ -264,13 +262,13 @@ function LatestSnapshotError({
 }
 
 function LatestSnapshotLogs({
-	environmentId,
+	repositoryId,
 	isBuilding,
 }: {
-	environmentId: Id<"environments">;
+	repositoryId: Id<"repositories">;
 	isBuilding: boolean;
 }) {
-	const latestSnapshot = useQuery(api.snapshot.getLatest, { environmentId });
+	const latestSnapshot = useQuery(api.snapshot.getLatest, { repositoryId });
 	const [isOpen, setIsOpen] = useState(false);
 	const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -344,12 +342,12 @@ function formatTime(timestamp: number): string {
 }
 
 function SnapshotHistory({
-	environmentId,
+	repositoryId,
 }: {
-	environmentId: Id<"environments">;
+	repositoryId: Id<"repositories">;
 }) {
-	const snapshots = useQuery(api.snapshot.listByEnvironment, {
-		environmentId,
+	const snapshots = useQuery(api.snapshot.listByRepository, {
+		repositoryId,
 	});
 
 	if (snapshots === undefined) {
@@ -373,7 +371,7 @@ function SnapshotHistory({
 }
 
 type SnapshotSummary = NonNullable<
-	ReturnType<typeof useQuery<typeof api.snapshot.listByEnvironment>>
+	ReturnType<typeof useQuery<typeof api.snapshot.listByRepository>>
 >[number];
 
 function SnapshotRow({ snapshot }: { snapshot: SnapshotSummary }) {

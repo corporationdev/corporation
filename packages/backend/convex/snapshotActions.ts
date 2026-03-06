@@ -96,13 +96,13 @@ async function runTrackedSnapshot(
 	args: {
 		snapshotId: Id<"snapshots">;
 		type: "setup" | "update";
-		environmentId: Id<"environments">;
+		repositoryId: Id<"repositories">;
 		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
 	}
 ): Promise<void> {
 	const snapshotId = await ctx.runMutation(internal.snapshot.startSnapshot, {
 		snapshotId: args.snapshotId,
-		environmentId: args.environmentId,
+		repositoryId: args.repositoryId,
 		type: args.type,
 	});
 
@@ -124,7 +124,7 @@ async function runTrackedSnapshot(
 
 		await ctx.runMutation(internal.snapshot.completeSnapshot, {
 			snapshotId,
-			environmentId: args.environmentId,
+			repositoryId: args.repositoryId,
 			status: "ready",
 			...result,
 		});
@@ -142,8 +142,8 @@ async function runTrackedSnapshot(
 		});
 		throw error;
 	} finally {
-		await ctx.runMutation(internal.environments.completeSnapshotBuild, {
-			id: args.environmentId,
+		await ctx.runMutation(internal.repositories.completeSnapshotBuild, {
+			id: args.repositoryId,
 		});
 	}
 }
@@ -153,12 +153,12 @@ export const buildSnapshot = internalAction({
 		request: v.union(
 			v.object({
 				type: v.literal("setup"),
-				environmentId: v.id("environments"),
+				repositoryId: v.id("repositories"),
 				snapshotId: v.id("snapshots"),
 			}),
 			v.object({
 				type: v.literal("update"),
-				environmentId: v.id("environments"),
+				repositoryId: v.id("repositories"),
 				snapshotId: v.id("snapshots"),
 				oldExternalSnapshotId: v.string(),
 			})
@@ -169,7 +169,7 @@ export const buildSnapshot = internalAction({
 		await runTrackedSnapshot(ctx, {
 			snapshotId: request.snapshotId,
 			type: request.type,
-			environmentId: request.environmentId,
+			repositoryId: request.repositoryId,
 			execute: async (reporter) => {
 				const nangoSecretKey = process.env.NANGO_SECRET_KEY;
 				if (!nangoSecretKey) {
@@ -177,16 +177,15 @@ export const buildSnapshot = internalAction({
 				}
 				const aiEnvs = getAiEnvs();
 
-				const environment = await ctx.runQuery(
-					internal.environments.internalGet,
+				const repository = await ctx.runQuery(
+					internal.repositories.internalGet,
 					{
-						id: request.environmentId,
+						id: request.repositoryId,
 					}
 				);
 				const nango = new Nango({ secretKey: nangoSecretKey });
-				const githubToken = await getGitHubToken(nango, environment.userId);
+				const githubToken = await getGitHubToken(nango, repository.userId);
 
-				const { repository } = environment;
 				const workdir = getSandboxWorkdir(repository);
 				const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
 				const safeRepoUrl = quoteShellArg(repoUrl);
@@ -230,13 +229,13 @@ export const buildSnapshot = internalAction({
 				}
 
 				// Shared: write env files, run command, get commit SHA
-				await writeEnvFiles(sandbox, environment, workdir);
+				await writeEnvFiles(sandbox, { ...repository, repository }, workdir);
 				appendLog("Environment files written.\n");
 
 				const installCommand =
 					request.type === "update"
-						? environment.updateCommand
-						: environment.setupCommand;
+						? repository.updateCommand
+						: repository.setupCommand;
 				await runRootCommand(sandbox, installCommand, {
 					cwd: workdir,
 					timeoutMs: REPO_SYNC_TIMEOUT_MS,
@@ -254,8 +253,8 @@ export const buildSnapshot = internalAction({
 					await Promise.all([
 						bootServer(sandbox, {
 							sessionName: DEV_SERVER_SESSION_NAME,
-							command: environment.devCommand,
-							healthUrl: `http://localhost:${environment.devPort}/`,
+							command: repository.devCommand,
+							healthUrl: `http://localhost:${repository.devPort}/`,
 							workdir,
 							appendLog,
 						}),

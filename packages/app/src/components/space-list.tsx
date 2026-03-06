@@ -95,16 +95,16 @@ const RepositorySnapshotSync: FC<{
 		api.snapshot.createSnapshot
 	);
 
-	const lastTriggeredShaRef = useRef<Map<Id<"environments">, string>>(
+	const lastTriggeredShaRef = useRef<Map<Id<"repositories">, string>>(
 		new Map()
 	);
-	const environmentId = defaultEnvironment?._id;
+	const repositoryId = defaultEnvironment?._id;
 
 	useEffect(() => {
 		if (
-			!(environmentId && isOutdated && latestSha) ||
+			!(repositoryId && isOutdated && latestSha) ||
 			snapshotStatus === "building" ||
-			lastTriggeredShaRef.current.get(environmentId) === latestSha
+			lastTriggeredShaRef.current.get(repositoryId) === latestSha
 		) {
 			return;
 		}
@@ -113,22 +113,22 @@ const RepositorySnapshotSync: FC<{
 			{
 				request: {
 					type: "update",
-					environmentId,
+					repositoryId,
 				},
 			},
 			{
 				onSuccess: () => {
-					lastTriggeredShaRef.current.set(environmentId, latestSha);
+					lastTriggeredShaRef.current.set(repositoryId, latestSha);
 				},
 				onError: () => {
-					// Failed rebuilds must not block retries for this environment + SHA.
-					if (lastTriggeredShaRef.current.get(environmentId) === latestSha) {
-						lastTriggeredShaRef.current.delete(environmentId);
+					// Failed rebuilds must not block retries for this repository + SHA.
+					if (lastTriggeredShaRef.current.get(repositoryId) === latestSha) {
+						lastTriggeredShaRef.current.delete(repositoryId);
 					}
 				},
 			}
 		);
-	}, [environmentId, isOutdated, latestSha, snapshotStatus, createSnapshot]);
+	}, [repositoryId, isOutdated, latestSha, snapshotStatus, createSnapshot]);
 
 	return null;
 };

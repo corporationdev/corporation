@@ -3,7 +3,7 @@ import { create } from "zustand";
 
 type PendingSpace = {
 	slug: string;
-	environmentId: Id<"environments">;
+	repositoryId: Id<"repositories">;
 };
 
 type PendingMessage = {

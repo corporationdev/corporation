@@ -56,7 +56,7 @@ function RepositoryCard({
 		owner: string;
 		name: string;
 		defaultEnvironment: {
-			_id: Id<"environments">;
+			_id: Id<"repositories">;
 			latestSnapshot: { status: "building" | "ready" | "error" } | null;
 		} | null;
 	};

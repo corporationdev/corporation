@@ -94,7 +94,7 @@ function AuthenticatedIndex() {
 		const spaceSlug = nanoid();
 		const sessionId = nanoid();
 
-		setSpace({ slug: spaceSlug, environmentId: defaultEnvironment._id });
+		setSpace({ slug: spaceSlug, repositoryId: defaultEnvironment._id });
 		setMessage({ text, agent, modelId });
 		setInput("");
 

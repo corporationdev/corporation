@@ -41,7 +41,7 @@ export function SpaceLayout() {
 			return;
 		}
 		setSpaceCreating(true);
-		ensureSpace({ slug: pending.slug, environmentId: pending.environmentId })
+		ensureSpace({ slug: pending.slug, repositoryId: pending.repositoryId })
 			.catch((error: unknown) => {
 				console.error("Failed to create space", error);
 				toast.error("Failed to create space");
