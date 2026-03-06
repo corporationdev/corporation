@@ -599,7 +599,8 @@ async function initBridge(
 	queueEnvelopeEvent: (
 		envelope: Record<string, unknown>,
 		direction: "inbound" | "outbound"
-	) => void
+	) => void,
+	pendingTurnId: string
 ): Promise<SessionBridge> {
 	log("info", "Spawning new agent subprocess", { agent, sessionId });
 
@@ -609,7 +610,7 @@ async function initBridge(
 		agent,
 		cwd,
 		modelId,
-		activeTurnId: null,
+		activeTurnId: pendingTurnId,
 		onEvent: queueEnvelopeEvent,
 	};
 
@@ -632,6 +633,14 @@ async function initBridge(
 			cwd,
 			modelId
 		);
+		if (
+			activeTurns.get(pendingTurnId) !== sessionId ||
+			activeSessionTurns.get(sessionId) !== pendingTurnId
+		) {
+			throw new Error(
+				`Turn reservation for ${pendingTurnId} was released before bridge bootstrap completed`
+			);
+		}
 
 		sessionBridges.set(sessionId, sessionBridge);
 		bootstrapComplete = true;
@@ -688,6 +697,22 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		cwd,
 		callbackUrl,
 	});
+	if (
+		activeTurns.get(turnId) !== sessionId ||
+		activeSessionTurns.get(sessionId) !== turnId
+	) {
+		log("warn", "Skipping executeTurn without matching reservation", {
+			turnId,
+			sessionId,
+		});
+		if (activeTurns.get(turnId) === sessionId) {
+			activeTurns.delete(turnId);
+		}
+		if (activeSessionTurns.get(sessionId) === turnId) {
+			activeSessionTurns.delete(sessionId);
+		}
+		return;
+	}
 
 	const connectionId = `corp-agent-${turnId}-${crypto.randomUUID()}`;
 	let eventIndex = 0;
@@ -870,6 +895,12 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 				sessionId,
 				agentSessionId: sessionBridge.agentSessionId,
 			});
+			if (sessionBridge.activeTurnId && sessionBridge.activeTurnId !== turnId) {
+				throw new Error(
+					`Session ${sessionId} is already reserved for turn ${sessionBridge.activeTurnId}`
+				);
+			}
+			sessionBridge.activeTurnId = turnId;
 			sessionBridge.onEvent = queueEnvelopeEvent;
 		} else {
 			sessionBridge = await initBridge(
@@ -877,12 +908,10 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 				agent,
 				cwd,
 				modelId,
-				queueEnvelopeEvent
+				queueEnvelopeEvent,
+				turnId
 			);
 		}
-
-		sessionBridge.activeTurnId = turnId;
-		activeTurns.set(turnId, sessionId);
 
 		const promptResult = await stdioRequest(
 			sessionBridge.bridge,
@@ -934,10 +963,17 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		clearPendingEventFlushTimer();
 		pendingEventBatch = [];
 		if (sessionBridge) {
-			sessionBridge.activeTurnId = null;
+			if (sessionBridge.activeTurnId === turnId) {
+				sessionBridge.activeTurnId = null;
+			}
 			sessionBridge.onEvent = null;
 		}
-		activeTurns.delete(turnId);
+		if (activeTurns.get(turnId) === sessionId) {
+			activeTurns.delete(turnId);
+		}
+		if (activeSessionTurns.get(sessionId) === turnId) {
+			activeSessionTurns.delete(sessionId);
+		}
 	}
 }
 
@@ -968,6 +1004,7 @@ function parseArgs(): { host: string; port: number } {
 
 const { host, port } = parseArgs();
 const activeTurns = new Map<string, string>(); // turnId -> sessionId
+const activeSessionTurns = new Map<string, string>(); // sessionId -> turnId
 
 Bun.serve({
 	hostname: host,
@@ -1004,6 +1041,12 @@ Bun.serve({
 					{ status: 409 }
 				);
 			}
+			if (activeSessionTurns.has(body.sessionId)) {
+				return Response.json(
+					{ error: "Session already has an active turn" },
+					{ status: 409 }
+				);
+			}
 
 			const existingBridge = getSessionBridge(body.sessionId);
 			if (existingBridge?.activeTurnId) {
@@ -1011,6 +1054,11 @@ Bun.serve({
 					{ error: "Session already has an active turn" },
 					{ status: 409 }
 				);
+			}
+			activeTurns.set(body.turnId, body.sessionId);
+			activeSessionTurns.set(body.sessionId, body.turnId);
+			if (existingBridge) {
+				existingBridge.activeTurnId = body.turnId;
 			}
 
 			executeTurn(body).catch((error) => {
