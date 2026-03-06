@@ -51,7 +51,6 @@ export default defineSchema(
 			status: spaceStatusValidator,
 			error: v.optional(v.string()),
 			archived: v.optional(v.boolean()),
-			sandboxExpiresAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})

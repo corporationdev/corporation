@@ -193,7 +193,6 @@ export const internalUpdate = internalMutation({
 		agentUrl: v.optional(v.string()),
 		error: v.optional(v.string()),
 		name: v.optional(v.string()),
-		sandboxExpiresAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...fields } = args;

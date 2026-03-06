@@ -12,7 +12,6 @@ type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
-// Keep in sync with SANDBOX_TIMEOUT_MS in apps/server/src/space/sandbox-keepalive.ts
 const SANDBOX_TIMEOUT_MS = 900_000;
 
 const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
@@ -51,11 +50,6 @@ async function provisionSandbox(
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
-	});
-
-	await ctx.runMutation(internal.spaces.internalUpdate, {
-		id: spaceId,
-		sandboxExpiresAt: Date.now() + SANDBOX_TIMEOUT_MS,
 	});
 
 	return sandbox;
