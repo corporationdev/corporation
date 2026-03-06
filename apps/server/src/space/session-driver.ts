@@ -2,7 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import type { SessionEvent } from "@corporation/shared/session-protocol";
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { and, asc, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { type SessionTab, sessionEvents, sessions, tabs } from "../db/schema";
@@ -13,7 +13,6 @@ import {
 	type SessionPromptPart,
 } from "./session-replay-context";
 import {
-	ensureNoRunningTurn,
 	ingestTurnRunnerBatch,
 	publishSessionStatus,
 	SESSION_STATUS_IDLE,
@@ -48,16 +47,14 @@ async function requestAutoSessionTitle(
 		`User message: ${firstMessage}`,
 	].join("\n");
 
-	const { object } = await generateObject({
+	const { output } = await generateText({
 		model: provider("claude-haiku-4-5"),
-		schema: z.object({
-			title: z.string(),
-		}),
+		output: Output.object({ schema: z.object({ title: z.string() }) }),
 		temperature: 0,
 		prompt,
 	});
 
-	const title = object.title.trim();
+	const title = output?.title.trim();
 	if (!title) {
 		return;
 	}
@@ -74,6 +71,8 @@ async function requestAutoSessionTitle(
 async function ensureSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
+	agent: string,
+	modelId: string,
 	title?: string
 ): Promise<void> {
 	const now = Date.now();
@@ -101,35 +100,37 @@ async function ensureSession(
 					archivedAt: null,
 				})
 				.run();
-			return;
+		} else {
+			const tabPatch: {
+				active: boolean;
+				archivedAt: null;
+				updatedAt: number;
+				title?: string;
+			} = {
+				active: true,
+				archivedAt: null,
+				updatedAt: now,
+			};
+			if (title) {
+				tabPatch.title = title;
+			}
+			tx.update(tabs).set(tabPatch).where(eq(tabs.sessionId, sessionId)).run();
 		}
 
-		const tabPatch: {
-			active: boolean;
-			archivedAt: null;
-			updatedAt: number;
-			title?: string;
-		} = {
-			active: true,
-			archivedAt: null,
-			updatedAt: now,
-		};
-		if (title) {
-			tabPatch.title = title;
-		}
-		tx.update(tabs).set(tabPatch).where(eq(tabs.sessionId, sessionId)).run();
+		tx.insert(sessions)
+			.values({
+				id: sessionId,
+				agent,
+				agentSessionId: "",
+				lastConnectionId: "",
+				createdAt: now,
+				modelId,
+			})
+			.onConflictDoNothing({ target: sessions.id })
+			.run();
 	});
 
 	await ctx.broadcastTabsChanged();
-}
-
-async function hasNoSessionTabs(ctx: SpaceRuntimeContext): Promise<boolean> {
-	const existingTabs = await ctx.vars.db
-		.select({ id: tabs.id })
-		.from(tabs)
-		.where(eq(tabs.type, "session"))
-		.limit(1);
-	return existingTabs.length === 0;
 }
 
 async function requestAutoBranchName(
@@ -166,8 +167,12 @@ async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
-	const isFirstMessageForSpace = await hasNoSessionTabs(ctx);
-	if (isFirstMessageForSpace) {
+	const existingTabs = await ctx.vars.db
+		.select({ id: tabs.id })
+		.from(tabs)
+		.where(eq(tabs.type, "session"))
+		.limit(1);
+	if (existingTabs.length === 0) {
 		ctx.waitUntil(
 			requestAutoBranchName(ctx, content).catch((error) => {
 				log.warn(
@@ -178,7 +183,7 @@ async function sendMessage(
 		);
 	}
 
-	await ensureSession(ctx, sessionId);
+	await ensureSession(ctx, sessionId, agent, modelId);
 
 	// Auto-generate tab title on first message of this session
 	const tabRow = ctx.vars.db
@@ -198,7 +203,15 @@ async function sendMessage(
 		);
 	}
 
-	await ensureNoRunningTurn(ctx, sessionId);
+	// Prevent sending a new message while a turn is already running
+	const existing = await ctx.vars.db
+		.select({ status: sessions.status })
+		.from(sessions)
+		.where(eq(sessions.id, sessionId))
+		.limit(1);
+	if (existing[0]?.status === SESSION_STATUS_RUNNING) {
+		throw new Error("Session already has a running turn");
+	}
 
 	let prompt: SessionPromptPart[] = [{ type: "text", text: content }];
 	try {
@@ -209,18 +222,6 @@ async function sendMessage(
 			"sendMessage: failed to build replay context"
 		);
 	}
-
-	await ctx.vars.db
-		.insert(sessions)
-		.values({
-			id: sessionId,
-			agent,
-			agentSessionId: "",
-			lastConnectionId: "",
-			createdAt: Date.now(),
-			modelId,
-		})
-		.onConflictDoNothing({ target: sessions.id });
 
 	await startTurnRunner(ctx, {
 		sessionId,

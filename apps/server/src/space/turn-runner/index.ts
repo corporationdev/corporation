@@ -2,8 +2,6 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import {
 	promptRequestBodySchema,
-	type SessionEvent,
-	type TurnRunnerCallbackPayload,
 	turnRunnerCallbackPayloadSchema,
 } from "@corporation/shared/session-protocol";
 import { eq } from "drizzle-orm";
@@ -22,10 +20,6 @@ const log = createLogger("space:turn-runner");
 
 type TextPromptPart = { type: "text"; text: string };
 
-export const SESSION_STATUS_RUNNING = "running";
-export const SESSION_STATUS_IDLE = "idle";
-export const SESSION_STATUS_ERROR = "error";
-
 export function publishSessionStatus(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
@@ -39,45 +33,6 @@ export function publishSessionStatus(
 	);
 }
 
-function publishSessionEvents(
-	ctx: SpaceRuntimeContext,
-	sessionId: string,
-	events: SessionEvent[]
-): void {
-	for (const event of events) {
-		publishToChannel(
-			ctx,
-			createTabChannel("session", sessionId),
-			SESSION_EVENT_NAME,
-			event
-		);
-	}
-}
-
-async function persistSessionEvents(
-	ctx: SpaceRuntimeContext,
-	events: SessionEvent[]
-): Promise<void> {
-	if (events.length === 0) {
-		return;
-	}
-
-	await ctx.vars.db
-		.insert(sessionEvents)
-		.values(
-			events.map((event) => ({
-				id: event.id,
-				eventIndex: event.eventIndex,
-				sessionId: event.sessionId,
-				createdAt: event.createdAt,
-				connectionId: event.connectionId,
-				sender: event.sender,
-				payload: event.payload as Record<string, unknown>,
-			}))
-		)
-		.onConflictDoNothing({ target: sessionEvents.id });
-}
-
 async function launchTurnRunner(
 	ctx: SpaceRuntimeContext,
 	params: {
@@ -85,16 +40,11 @@ async function launchTurnRunner(
 		sessionId: string;
 		agent: string;
 		modelId: string;
-		promptJson: string;
+		prompt: TextPromptPart[];
 		callbackUrl: string;
 		callbackToken: string;
 	}
 ): Promise<void> {
-	log.info(
-		{ callbackUrl: params.callbackUrl, agentUrl: ctx.state.agentUrl },
-		"launchTurnRunner: sending prompt to corp-agent"
-	);
-
 	const promptUrl = `${ctx.state.agentUrl}/v1/prompt`;
 	const response = await fetch(promptUrl, {
 		method: "POST",
@@ -105,7 +55,7 @@ async function launchTurnRunner(
 				sessionId: params.sessionId,
 				agent: params.agent,
 				modelId: params.modelId,
-				prompt: JSON.parse(params.promptJson),
+				prompt: params.prompt,
 				cwd: ctx.state.workdir,
 				callbackUrl: params.callbackUrl,
 				callbackToken: params.callbackToken,
@@ -117,20 +67,6 @@ async function launchTurnRunner(
 	if (!response.ok) {
 		const text = await response.text().catch(() => "");
 		throw new Error(`corp-agent prompt failed (${response.status}): ${text}`);
-	}
-}
-
-export async function ensureNoRunningTurn(
-	ctx: SpaceRuntimeContext,
-	sessionId: string
-): Promise<void> {
-	const existingSession = await ctx.vars.db
-		.select({ status: sessions.status })
-		.from(sessions)
-		.where(eq(sessions.id, sessionId))
-		.limit(1);
-	if (existingSession[0]?.status === SESSION_STATUS_RUNNING) {
-		throw new Error("Session already has a running turn");
 	}
 }
 
@@ -159,19 +95,17 @@ export async function startTurnRunner(
 		throw new Error("Missing SERVER_PUBLIC_URL env var");
 	}
 	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
-	const promptJson = JSON.stringify(params.prompt);
-
 	await ctx.vars.db
 		.update(sessions)
 		.set({
 			runId: turnId,
-			status: SESSION_STATUS_RUNNING,
+			status: "running",
 			callbackToken,
 			error: null,
 		})
 		.where(eq(sessions.id, params.sessionId));
 	ctx.vars.turnRunnerSequenceBySessionId.set(params.sessionId, 0);
-	publishSessionStatus(ctx, params.sessionId, SESSION_STATUS_RUNNING);
+	publishSessionStatus(ctx, params.sessionId, "running");
 
 	refreshSandboxTimeout(ctx);
 
@@ -181,7 +115,7 @@ export async function startTurnRunner(
 			sessionId: params.sessionId,
 			agent: params.agent,
 			modelId: params.modelId,
-			promptJson,
+			prompt: params.prompt,
 			callbackUrl,
 			callbackToken,
 		});
@@ -193,7 +127,7 @@ export async function startTurnRunner(
 		await ctx.vars.db
 			.update(sessions)
 			.set({
-				status: SESSION_STATUS_ERROR,
+				status: "error",
 				error: {
 					message: error instanceof Error ? error.message : String(error),
 				},
@@ -207,18 +141,6 @@ export async function ingestTurnRunnerBatch(
 	ctx: SpaceRuntimeContext,
 	payload: unknown
 ): Promise<void> {
-	log.info(
-		{
-			actorId: ctx.actorId,
-			payloadType: typeof payload,
-			payloadKeys:
-				payload && typeof payload === "object"
-					? Object.keys(payload as Record<string, unknown>)
-					: null,
-		},
-		"ingestTurnRunnerBatch called"
-	);
-
 	const result = turnRunnerCallbackPayloadSchema.safeParse(payload);
 	if (!result.success) {
 		log.error(
@@ -227,9 +149,9 @@ export async function ingestTurnRunnerBatch(
 		);
 		throw new Error(`Invalid callback payload: ${result.error.message}`);
 	}
-	const parsed: TurnRunnerCallbackPayload = result.data;
+	const parsed = result.data;
 
-	const rows = await ctx.vars.db
+	const [session] = await ctx.vars.db
 		.select({
 			id: sessions.id,
 			runId: sessions.runId,
@@ -238,7 +160,7 @@ export async function ingestTurnRunnerBatch(
 		.from(sessions)
 		.where(eq(sessions.id, parsed.sessionId))
 		.limit(1);
-	const session = rows[0];
+
 	if (!session) {
 		throw new Error(`Unknown session: ${parsed.sessionId}`);
 	}
@@ -270,28 +192,38 @@ export async function ingestTurnRunnerBatch(
 		if (validEvents.length === 0) {
 			return;
 		}
-		publishSessionEvents(ctx, session.id, validEvents);
-		await persistSessionEvents(ctx, validEvents);
+		for (const event of validEvents) {
+			publishToChannel(
+				ctx,
+				createTabChannel("session", session.id),
+				SESSION_EVENT_NAME,
+				event
+			);
+		}
+		await ctx.vars.db
+			.insert(sessionEvents)
+			.values(validEvents)
+			.onConflictDoNothing({ target: sessionEvents.id });
 		return;
 	}
 
 	if (parsed.kind === "completed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: SESSION_STATUS_IDLE, pid: null, error: null })
+			.set({ status: "idle", pid: null, error: null })
 			.where(eq(sessions.id, session.id));
 		ctx.vars.turnRunnerSequenceBySessionId.set(session.id, parsed.sequence);
-		publishSessionStatus(ctx, session.id, SESSION_STATUS_IDLE);
+		publishSessionStatus(ctx, session.id, "idle");
 		return;
 	}
 
 	if (parsed.kind === "failed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: SESSION_STATUS_ERROR, pid: null, error: parsed.error })
+			.set({ status: "error", pid: null, error: parsed.error })
 			.where(eq(sessions.id, session.id));
 		ctx.vars.turnRunnerSequenceBySessionId.set(session.id, parsed.sequence);
-		publishSessionStatus(ctx, session.id, SESSION_STATUS_ERROR);
+		publishSessionStatus(ctx, session.id, "error");
 		log.error(
 			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },
 			"turn runner reported failure"
