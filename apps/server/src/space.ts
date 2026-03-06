@@ -11,7 +11,7 @@ import {
 	collectDriverActions,
 	refreshSandboxTimeout,
 } from "./space/action-registration";
-import { lifecycleDrivers } from "./space/driver-registry";
+
 import {
 	createSubscriptionHub,
 	unsubscribeConnection,
@@ -20,6 +20,11 @@ import { broadcastTabsChanged, listSpaceTabs } from "./space/tab-list";
 import type { PersistedState, SpaceVars } from "./space/types";
 
 export type { TabRow, TabType } from "./db/schema";
+
+import { sessionDriver } from "./session-driver";
+import { terminalDriver } from "./terminal-driver";
+
+export const lifecycleDrivers = [sessionDriver, terminalDriver];
 
 const driverActions = collectDriverActions(lifecycleDrivers);
 

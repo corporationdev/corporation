@@ -356,11 +356,22 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 	let eventIndex = 0;
 	let sequence = 0;
 	let callbackChain = Promise.resolve();
+	let callbackDeliveryBroken = false;
+	let callbackDeliveryError: unknown = null;
+	let droppedEventCallbacks = 0;
+	let hasLoggedDroppedEvents = false;
 
 	const sendCallback = (
 		kind: string,
-		extra: Record<string, unknown> = {}
+		extra: Record<string, unknown> = {},
+		options: { force?: boolean } = {}
 	): Promise<void> => {
+		if (callbackDeliveryBroken && !options.force) {
+			return Promise.reject(
+				new Error("Callback delivery unavailable after prior failure")
+			);
+		}
+
 		sequence += 1;
 		const payload = turnRunnerCallbackPayloadSchema.parse({
 			turnId,
@@ -375,12 +386,28 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		callbackChain = callbackChain
 			.catch(() => undefined)
 			.then(async () => {
-				await postJsonWithRetry(
-					callbackUrl,
-					{ args: [payload] },
-					CALLBACK_TIMEOUT_MS,
-					CALLBACK_MAX_ATTEMPTS
-				);
+				if (callbackDeliveryBroken && !options.force) {
+					throw new Error("Callback delivery unavailable after prior failure");
+				}
+				try {
+					await postJsonWithRetry(
+						callbackUrl,
+						{ args: [payload] },
+						CALLBACK_TIMEOUT_MS,
+						CALLBACK_MAX_ATTEMPTS
+					);
+				} catch (error) {
+					if (!callbackDeliveryBroken) {
+						callbackDeliveryBroken = true;
+						callbackDeliveryError = error;
+						log("error", "Callback delivery failed; halting event callbacks", {
+							turnId,
+							sequence,
+							error: formatError(error),
+						});
+					}
+					throw error;
+				}
 			});
 
 		return callbackChain;
@@ -390,6 +417,22 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		envelope: Record<string, unknown>,
 		direction: "inbound" | "outbound"
 	): void => {
+		if (callbackDeliveryBroken) {
+			droppedEventCallbacks += 1;
+			if (!hasLoggedDroppedEvents) {
+				hasLoggedDroppedEvents = true;
+				log(
+					"warn",
+					"Dropping events callbacks after callback delivery failure",
+					{
+						turnId,
+						droppedEventCallbacks,
+					}
+				);
+			}
+			return;
+		}
+
 		eventIndex += 1;
 		const event: SessionEvent = {
 			id: crypto.randomUUID(),
@@ -501,12 +544,29 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			throw new Error(`Prompt ACP error: ${JSON.stringify(promptResult)}`);
 		}
 
+		if (callbackDeliveryBroken) {
+			throw new Error(
+				`Callback delivery failed before completion: ${
+					callbackDeliveryError instanceof Error
+						? callbackDeliveryError.message
+						: String(callbackDeliveryError)
+				}`
+			);
+		}
+
 		await sendCallback("completed");
 		await callbackChain.catch(() => undefined);
 	} catch (error) {
-		await sendCallback("failed", { error: formatError(error) }).catch(
-			() => undefined
-		);
+		await sendCallback(
+			"failed",
+			{ error: formatError(error) },
+			{ force: true }
+		).catch((callbackError) => {
+			log("error", "Failed to deliver terminal failed callback", {
+				turnId,
+				error: formatError(callbackError),
+			});
+		});
 		await callbackChain.catch(() => undefined);
 		log("error", "Turn failed", { turnId, error: formatError(error) });
 	} finally {

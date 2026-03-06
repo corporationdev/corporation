@@ -8,8 +8,7 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { sessionEvents, sessions } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
-import { createTabChannel } from "./channels";
-import { publishToChannel } from "./subscriptions";
+import { createTabChannel, publishToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
 const SESSION_EVENT_NAME = "session.event";
@@ -177,9 +176,16 @@ export async function ingestAgentRunnerBatch(
 		if (parsed.sequence <= lastSequence) {
 			return;
 		}
-		if (parsed.sequence !== lastSequence + 1) {
-			throw new Error(
-				`Out-of-order callback sequence: expected ${lastSequence + 1}, got ${parsed.sequence}`
+		if (parsed.sequence > lastSequence + 1) {
+			log.warn(
+				{
+					actorId: ctx.actorId,
+					sessionId: session.id,
+					turnId: parsed.turnId,
+					expected: lastSequence + 1,
+					received: parsed.sequence,
+				},
+				"callback sequence gap detected; accepting newer callback"
 			);
 		}
 	}

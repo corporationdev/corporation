@@ -2,9 +2,10 @@ import { createLogger } from "@corporation/logger";
 import { eq } from "drizzle-orm";
 import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { tabs, terminals } from "../db/schema";
-import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import {
+	createTabChannel,
+	createTabId,
 	publishToChannel,
 	subscribeToChannel,
 	unsubscribeFromChannel,

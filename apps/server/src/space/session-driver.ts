@@ -11,13 +11,17 @@ import {
 	publishSessionStatus,
 	startAgentRunner,
 } from "./agent-runner";
-import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import {
 	buildPromptWithReplay,
 	type SessionPromptPart,
 } from "./session-replay-context";
-import { subscribeToChannel, unsubscribeFromChannel } from "./subscriptions";
+import {
+	createTabChannel,
+	createTabId,
+	subscribeToChannel,
+	unsubscribeFromChannel,
+} from "./subscriptions";
 import { broadcastTabsChanged } from "./tab-list";
 import type { SpaceRuntimeContext } from "./types";
 
