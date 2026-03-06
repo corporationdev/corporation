@@ -48,12 +48,14 @@
     "apps/server": {
       "name": "@corporation/server",
       "dependencies": {
+        "@ai-sdk/anthropic": "catalog:",
         "@corporation/backend": "workspace:*",
         "@corporation/env": "workspace:*",
         "@corporation/logger": "workspace:*",
         "@hono/zod-openapi": "catalog:",
         "@nangohq/node": "catalog:",
         "@rivetkit/cloudflare-workers": "catalog:",
+        "ai": "catalog:",
         "convex": "catalog:",
         "drizzle-orm": "catalog:",
         "e2b": "catalog:",

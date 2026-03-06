@@ -9,7 +9,7 @@ type TabRenderContext = {
 	actor: SpaceActor;
 	tab: SpaceTab | undefined;
 	routeParamId: string | undefined;
-	spaceSlug: string | undefined;
+	spaceSlug: string;
 };
 
 type TabRouteParam = {
@@ -41,6 +41,7 @@ export const tabRegistry: TabConfigMap = {
 			return (
 				<SessionView
 					actor={actor}
+					key={routeParamId}
 					sessionId={routeParamId}
 					sessionTab={sessionTab}
 					spaceSlug={spaceSlug}

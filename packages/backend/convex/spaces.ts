@@ -52,7 +52,6 @@ async function applyBranchNameUpdate(
 	if (space.sandboxId && space.status === "running") {
 		await ctx.db.patch(space._id, {
 			error: "",
-			updatedAt: Date.now(),
 		});
 		await ctx.scheduler.runAfter(0, internal.sandboxActions.renameBranch, {
 			spaceId: space._id,
@@ -65,7 +64,6 @@ async function applyBranchNameUpdate(
 	await ctx.db.patch(space._id, {
 		branchName: newBranchName,
 		error: "",
-		updatedAt: Date.now(),
 	});
 }
 
@@ -252,12 +250,24 @@ export const update = authedMutation({
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
-			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
-				([, v]) => v !== undefined
-			)
+			Object.entries(fields).filter(([, v]) => v !== undefined)
 		);
 
 		await ctx.db.patch(id, patch);
+	},
+});
+
+export const touch = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+		await ctx.db.patch(args.id, { updatedAt: Date.now() });
 	},
 });
 
@@ -277,9 +287,7 @@ export const internalUpdate = internalMutation({
 	handler: async (ctx, args) => {
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
-			Object.entries({ ...fields, updatedAt: Date.now() }).filter(
-				([, val]) => val !== undefined
-			)
+			Object.entries(fields).filter(([, val]) => val !== undefined)
 		);
 		await ctx.db.patch(id, patch);
 	},

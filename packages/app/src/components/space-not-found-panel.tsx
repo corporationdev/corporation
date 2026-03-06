@@ -14,7 +14,7 @@ export function SpaceNotFoundPanel() {
 				</p>
 				<Button
 					className="mt-4 w-full"
-					onClick={() => navigate({ to: "/space" })}
+					onClick={() => navigate({ to: "/" })}
 					type="button"
 					variant="outline"
 				>

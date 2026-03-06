@@ -1,6 +1,6 @@
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -33,6 +33,20 @@ export function ChatInput({
 		textarea.style.height = "auto";
 		textarea.style.height = `${textarea.scrollHeight}px`;
 	}, []);
+
+	useEffect(() => {
+		const textarea = textareaRef.current;
+		if (!textarea) {
+			return;
+		}
+
+		if (message.length === 0) {
+			textarea.style.height = "";
+			return;
+		}
+
+		adjustHeight();
+	}, [message, adjustHeight]);
 
 	const handleChange = useCallback(
 		(e: React.ChangeEvent<HTMLTextAreaElement>) => {

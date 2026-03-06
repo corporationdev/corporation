@@ -12,9 +12,16 @@ export type SessionState = {
 	rawEvents: SessionEvent[];
 	status: string;
 	setStatus: (status: string) => void;
+	addOptimisticUserMessage: (message: {
+		clientId: string;
+		text: string;
+		createdAt?: number;
+	}) => void;
+	removeOptimisticUserMessage: (clientId: string) => void;
 };
 
 const TRANSCRIPT_PAGE_SIZE = 200;
+const OPTIMISTIC_MATCH_TIME_TOLERANCE_MS = 5000;
 
 type SessionStateConnection = {
 	getSessionState: (
@@ -298,6 +305,79 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 	return entries;
 }
 
+type OptimisticUserMessage = {
+	clientId: string;
+	text: string;
+	createdAt: number;
+};
+
+function normalizeMessageText(text: string): string {
+	return text.trim().replace(/\s+/g, " ");
+}
+
+function reconcileOptimisticMessages(
+	realEntries: TimelineEntry[],
+	optimisticMessages: OptimisticUserMessage[]
+): OptimisticUserMessage[] {
+	const realUserEntries = realEntries.filter(
+		(entry) =>
+			entry.kind === "message" &&
+			entry.role === "user" &&
+			typeof entry.text === "string"
+	);
+
+	let searchStart = 0;
+	const remaining: OptimisticUserMessage[] = [];
+
+	for (const optimistic of optimisticMessages) {
+		const targetText = normalizeMessageText(optimistic.text);
+		let matchedIndex = -1;
+
+		for (let index = searchStart; index < realUserEntries.length; index += 1) {
+			const candidate = realUserEntries[index];
+			const candidateText = candidate.text;
+			if (!candidateText) {
+				continue;
+			}
+
+			const candidateTime = Date.parse(candidate.time);
+			if (
+				Number.isFinite(candidateTime) &&
+				candidateTime + OPTIMISTIC_MATCH_TIME_TOLERANCE_MS <
+					optimistic.createdAt
+			) {
+				continue;
+			}
+
+			if (normalizeMessageText(candidateText) === targetText) {
+				matchedIndex = index;
+				break;
+			}
+		}
+
+		if (matchedIndex === -1) {
+			remaining.push(optimistic);
+			continue;
+		}
+
+		searchStart = matchedIndex + 1;
+	}
+
+	return remaining;
+}
+
+function optimisticMessageToEntry(
+	message: OptimisticUserMessage
+): TimelineEntry {
+	return {
+		id: `optimistic-${message.clientId}`,
+		kind: "message",
+		time: new Date(message.createdAt).toISOString(),
+		role: "user",
+		text: message.text,
+	};
+}
+
 export function useSessionEventState({
 	sessionId,
 	actor,
@@ -309,6 +389,9 @@ export function useSessionEventState({
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<SessionEvent[]>([]);
 	const [events, setEvents] = useState<SessionEvent[]>([]);
+	const [optimisticMessages, setOptimisticMessages] = useState<
+		OptimisticUserMessage[]
+	>([]);
 	const [sessionStatus, setSessionStatus] = useState<string>("idle");
 
 	const addEvents = useCallback((newEvents: SessionEvent[]) => {
@@ -332,8 +415,40 @@ export function useSessionEventState({
 		caughtUpRef.current = false;
 		bufferRef.current = [];
 		setEvents([]);
+		setOptimisticMessages([]);
 		setSessionStatus("idle");
 	}, [sessionId]);
+
+	const addOptimisticUserMessage = useCallback(
+		(message: { clientId: string; text: string; createdAt?: number }) => {
+			const text = message.text.trim();
+			if (!text) {
+				return;
+			}
+			setOptimisticMessages((current) => {
+				if (
+					current.some((candidate) => candidate.clientId === message.clientId)
+				) {
+					return current;
+				}
+				return [
+					...current,
+					{
+						clientId: message.clientId,
+						text,
+						createdAt: message.createdAt ?? Date.now(),
+					},
+				];
+			});
+		},
+		[]
+	);
+
+	const removeOptimisticUserMessage = useCallback((clientId: string) => {
+		setOptimisticMessages((current) =>
+			current.filter((candidate) => candidate.clientId !== clientId)
+		);
+	}, []);
 
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
@@ -406,12 +521,43 @@ export function useSessionEventState({
 		}
 	);
 
-	const entries = useMemo(() => eventsToEntries(events), [events]);
+	const realEntries = useMemo(() => eventsToEntries(events), [events]);
+	const unmatchedOptimisticMessages = useMemo(
+		() => reconcileOptimisticMessages(realEntries, optimisticMessages),
+		[realEntries, optimisticMessages]
+	);
+
+	useEffect(() => {
+		setOptimisticMessages((current) => {
+			if (current.length !== unmatchedOptimisticMessages.length) {
+				return unmatchedOptimisticMessages;
+			}
+			for (let index = 0; index < current.length; index += 1) {
+				if (
+					current[index].clientId !==
+					unmatchedOptimisticMessages[index]?.clientId
+				) {
+					return unmatchedOptimisticMessages;
+				}
+			}
+			return current;
+		});
+	}, [unmatchedOptimisticMessages]);
+
+	const entries = useMemo(
+		() => [
+			...realEntries,
+			...unmatchedOptimisticMessages.map(optimisticMessageToEntry),
+		],
+		[realEntries, unmatchedOptimisticMessages]
+	);
 
 	return {
 		entries,
 		rawEvents: events,
 		status: sessionStatus,
 		setStatus: setSessionStatus,
+		addOptimisticUserMessage,
+		removeOptimisticUserMessage,
 	};
 }

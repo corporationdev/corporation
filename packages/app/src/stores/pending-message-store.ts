@@ -1,29 +1,40 @@
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { create } from "zustand";
 
+type PendingSpace = {
+	slug: string;
+	environmentId: Id<"environments">;
+};
+
 type PendingMessage = {
 	text: string;
 	agent: string;
 	modelId: string;
-	/** Set when creating a brand new space (no existing space yet) */
-	environmentId?: Id<"environments">;
-	/** Set when creating a session in an existing space */
-	spaceSlug?: string;
 };
 
 type PendingMessageStore = {
-	pending: PendingMessage | null;
-	setPending: (message: PendingMessage) => void;
-	consumePending: () => PendingMessage | null;
+	space: PendingSpace | null;
+	message: PendingMessage | null;
+	setSpace: (space: PendingSpace) => void;
+	consumeSpace: () => PendingSpace | null;
+	setMessage: (message: PendingMessage) => void;
+	consumeMessage: () => PendingMessage | null;
 };
 
 export const usePendingMessageStore = create<PendingMessageStore>(
 	(set, get) => ({
-		pending: null,
-		setPending: (message) => set({ pending: message }),
-		consumePending: () => {
-			const message = get().pending;
-			set({ pending: null });
+		space: null,
+		message: null,
+		setSpace: (space) => set({ space }),
+		consumeSpace: () => {
+			const space = get().space;
+			set({ space: null });
+			return space;
+		},
+		setMessage: (message) => set({ message }),
+		consumeMessage: () => {
+			const message = get().message;
+			set({ message: null });
 			return message;
 		},
 	})

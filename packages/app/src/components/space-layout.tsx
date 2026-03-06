@@ -1,9 +1,10 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { SpaceTab } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, XIcon } from "lucide-react";
 import { type FC, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
 import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
@@ -17,32 +18,44 @@ import { type SpaceActor, useActor } from "@/lib/rivetkit";
 import { type TabParam, tabRegistry } from "@/lib/tab-registry";
 import { parseTab, serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
+import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 export function SpaceLayout() {
-	const match = useMatch({
-		from: "/_authenticated/space/$spaceSlug",
-		shouldThrow: false,
-	});
-	const spaceSlug = match?.params.spaceSlug;
-	const tab = parseTab(match?.search.tab);
+	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
+	const { spaceSlug } = match.params;
+	const tab = parseTab(match.search.tab);
 
-	const space = useQuery(
-		api.spaces.getBySlug,
-		spaceSlug ? { slug: spaceSlug } : "skip"
-	);
+	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const isSpaceLoading = space === undefined;
-	const isSpaceMissing = !!spaceSlug && space === null;
+	const isSpaceMissing = space === null;
 	const [connectionResetNonce, setConnectionResetNonce] = useState(0);
 	const lastResetAtRef = useRef(0);
+	const [spaceCreating, setSpaceCreating] = useState(false);
+
+	const ensureSpace = useMutation(api.spaces.ensure);
+	const consumeSpace = usePendingMessageStore((s) => s.consumeSpace);
+
+	useEffect(() => {
+		const pending = consumeSpace();
+		if (!pending) {
+			return;
+		}
+		setSpaceCreating(true);
+		ensureSpace({ slug: pending.slug, environmentId: pending.environmentId })
+			.catch((error: unknown) => {
+				console.error("Failed to create space", error);
+				toast.error("Failed to create space");
+			})
+			.finally(() => {
+				setSpaceCreating(false);
+			});
+	}, [consumeSpace, ensureSpace]);
 
 	const sandboxReady = !!space?.sandboxId && !!space?.agentUrl;
 
 	useEffect(() => {
 		return addActorConnectionSoftResetListener(
 			({ reason, spaceSlug: target }) => {
-				if (!spaceSlug) {
-					return;
-				}
 				if (target && target !== spaceSlug) {
 					return;
 				}
@@ -64,7 +77,7 @@ export function SpaceLayout() {
 
 	const actor = useActor({
 		name: "space",
-		key: spaceSlug ? [spaceSlug] : [],
+		key: [spaceSlug],
 		params: { reconnectNonce: String(connectionResetNonce) },
 		createWithInput: sandboxReady
 			? {
@@ -73,10 +86,57 @@ export function SpaceLayout() {
 					workdir: space.workdir,
 				}
 			: undefined,
-		enabled: !!spaceSlug && sandboxReady,
+		enabled: sandboxReady,
 	});
 
-	const tabs = useSpaceTabs(actor);
+	const navigate = useNavigate();
+	const { tabs, isLoading: isTabsLoading } = useSpaceTabs(actor);
+
+	// Persist the active tab so we can restore it when returning to this space
+	useEffect(() => {
+		if (tab) {
+			localStorage.setItem(`space-tab:${spaceSlug}`, serializeTab(tab));
+		}
+	}, [tab, spaceSlug]);
+
+	// Restore the last active tab on initial navigation (not when pressing "+")
+	const hasInitializedTab = useRef(false);
+	const prevSpaceSlug = useRef(spaceSlug);
+	useEffect(() => {
+		if (prevSpaceSlug.current !== spaceSlug) {
+			prevSpaceSlug.current = spaceSlug;
+			hasInitializedTab.current = false;
+		}
+		if (hasInitializedTab.current || isTabsLoading) {
+			return;
+		}
+		hasInitializedTab.current = true;
+		if (tab || tabs.length === 0) {
+			return;
+		}
+
+		// Try to restore the last active tab, fall back to the first tab
+		const saved = localStorage.getItem(`space-tab:${spaceSlug}`);
+		const savedParam = parseTab(saved ?? undefined);
+		const targetParam =
+			savedParam &&
+			tabs.some((t) => {
+				const p = tabRegistry[t.type].tabParamFromSpaceTab(t);
+				return p?.type === savedParam.type && p.id === savedParam.id;
+			})
+				? savedParam
+				: tabRegistry[tabs[0].type].tabParamFromSpaceTab(tabs[0]);
+
+		if (!targetParam) {
+			return;
+		}
+		navigate({
+			to: "/space/$spaceSlug",
+			params: { spaceSlug },
+			search: { tab: serializeTab(targetParam) },
+			replace: true,
+		});
+	}, [tab, tabs, isTabsLoading, spaceSlug, navigate]);
 
 	const activeTabType = tab?.type ?? "session";
 	const activeTabConfig = tabRegistry[activeTabType];
@@ -96,16 +156,14 @@ export function SpaceLayout() {
 						<SpaceSidebarToggle />
 					</div>
 				</header>
-				{spaceSlug && (
-					<SpaceTabBar
-						activeTab={tab}
-						actor={actor}
-						spaceSlug={spaceSlug}
-						tabs={tabs}
-					/>
-				)}
+				<SpaceTabBar
+					activeTab={tab}
+					actor={actor}
+					spaceSlug={spaceSlug}
+					tabs={tabs}
+				/>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-					{isSpaceMissing ? (
+					{isSpaceMissing && !spaceCreating ? (
 						<SpaceNotFoundPanel />
 					) : shouldWaitForSandboxStatus ? (
 						<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">

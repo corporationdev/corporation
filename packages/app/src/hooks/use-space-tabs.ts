@@ -1,5 +1,5 @@
 import type { SpaceTab } from "@corporation/server/space";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 
@@ -11,41 +11,39 @@ function getActorSpaceSlug(actor: SpaceActor): string | undefined {
 	return key[0];
 }
 
-function handleListTabsError(actor: SpaceActor, error: unknown): void {
-	const kind = softResetActorConnectionOnTransientError({
-		error,
-		reasonPrefix: "space-tabs",
-		spaceSlug: getActorSpaceSlug(actor),
-	});
-	if (kind) {
-		return;
-	}
-	console.error("Failed to fetch tabs", error);
-}
+type SpaceTabsResult = {
+	tabs: SpaceTab[];
+	isLoading: boolean;
+};
 
-export function useSpaceTabs(actor: SpaceActor): SpaceTab[] {
-	const [tabs, setTabs] = useState<SpaceTab[]>([]);
+export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
+	const spaceSlug = getActorSpaceSlug(actor);
+	const queryClient = useQueryClient();
+	const isConnected = actor.connStatus === "connected" && !!actor.connection;
 
-	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
-			return;
-		}
-		const conn = actor.connection;
-
-		const fetchTabs = async () => {
-			try {
-				const result = await conn.listTabs();
-				setTabs(await result);
-			} catch (error: unknown) {
-				handleListTabsError(actor, error);
+	const { data, isLoading } = useQuery({
+		queryKey: ["space-tabs", spaceSlug],
+		queryFn: () => {
+			const conn = actor.connection;
+			if (!conn) {
+				throw new Error("Actor connection is unavailable");
 			}
-		};
-		fetchTabs();
-	}, [actor, actor.connStatus, actor.connection, actor.opts.key]);
+			return conn.listTabs();
+		},
+		enabled: isConnected,
+		retry: (_, error) => {
+			const kind = softResetActorConnectionOnTransientError({
+				error,
+				reasonPrefix: "space-tabs",
+				spaceSlug,
+			});
+			return !!kind;
+		},
+	});
 
 	actor.useEvent("tabs.changed", (event) => {
-		setTabs(event as SpaceTab[]);
+		queryClient.setQueryData(["space-tabs", spaceSlug], event as SpaceTab[]);
 	});
 
-	return tabs;
+	return { tabs: data ?? [], isLoading: isLoading && isConnected };
 }
