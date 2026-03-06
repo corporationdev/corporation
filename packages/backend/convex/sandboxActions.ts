@@ -18,9 +18,6 @@ import {
 } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
-type WarmSandbox = Awaited<
-	FunctionReturnType<typeof internal.warmSandboxes.internalGet>
->;
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
@@ -69,11 +66,18 @@ async function ensureBranchCheckedOut(
 	);
 }
 
-async function createSandbox(snapshotId: string): Promise<{
-	sandbox: Sandbox;
-	sandboxExpiresAt: number;
-}> {
+async function provisionSandbox(
+	ctx: ActionCtx,
+	spaceId: Id<"spaces">,
+	snapshotId: string
+): Promise<Sandbox> {
 	const aiEnvs = getAiEnvs();
+
+	await ctx.runMutation(internal.spaces.internalUpdate, {
+		id: spaceId,
+		status: "creating" as const,
+	});
+
 	const sandbox = await Sandbox.betaCreate(snapshotId, {
 		envs: aiEnvs,
 		network: { allowPublicTraffic: true },
@@ -81,37 +85,15 @@ async function createSandbox(snapshotId: string): Promise<{
 		timeoutMs: SANDBOX_TIMEOUT_MS,
 	});
 
-	return {
-		sandbox,
+	await ctx.runMutation(internal.spaces.internalUpdate, {
+		id: spaceId,
 		sandboxExpiresAt: Date.now() + SANDBOX_TIMEOUT_MS,
-	};
+	});
+
+	return sandbox;
 }
 
-async function getSandboxUrls(sandbox: Sandbox): Promise<{
-	agentUrl: string;
-	editorUrl: string;
-}> {
-	const agentUrl = await assertHealthyAndGetUrl(
-		sandbox,
-		SANDBOX_AGENT_PORT,
-		AGENT_HEALTH_URL,
-		"sandbox-agent"
-	);
-
-	const editorUrl = await assertHealthyAndGetUrl(
-		sandbox,
-		CODE_SERVER_PORT,
-		CODE_SERVER_HEALTH_URL,
-		"code-server"
-	);
-
-	return { agentUrl, editorUrl };
-}
-
-async function resolveSpaceSandbox(space: Space): Promise<{
-	sandbox: Sandbox;
-	sandboxExpiresAt: number | undefined;
-}> {
+async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
 	const externalSnapshotId =
 		space.environment.activeSnapshot?.externalSnapshotId;
 
@@ -120,39 +102,18 @@ async function resolveSpaceSandbox(space: Space): Promise<{
 	}
 
 	if (!space.sandboxId) {
-		return await createSandbox(externalSnapshotId);
+		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
 
 	try {
-		return {
-			sandbox: await Sandbox.connect(space.sandboxId),
-			sandboxExpiresAt: space.sandboxExpiresAt,
-		};
+		await ctx.runMutation(internal.spaces.internalUpdate, {
+			id: space._id,
+			status: "creating" as const,
+		});
+
+		return await Sandbox.connect(space.sandboxId);
 	} catch {
-		return await createSandbox(externalSnapshotId);
-	}
-}
-
-async function resolveWarmSandbox(warmSandbox: WarmSandbox): Promise<{
-	sandbox: Sandbox;
-	sandboxExpiresAt: number;
-}> {
-	const externalSnapshotId = warmSandbox.snapshot.externalSnapshotId;
-	if (!(warmSandbox.snapshot.status === "ready" && externalSnapshotId)) {
-		throw new Error("Snapshot is not ready for warming");
-	}
-
-	if (!warmSandbox.sandboxId) {
-		return await createSandbox(externalSnapshotId);
-	}
-
-	try {
-		return {
-			sandbox: await Sandbox.connect(warmSandbox.sandboxId),
-			sandboxExpiresAt: warmSandbox.expiresAt,
-		};
-	} catch {
-		return await createSandbox(externalSnapshotId);
+		return await provisionSandbox(ctx, space._id, externalSnapshotId);
 	}
 }
 
@@ -223,12 +184,7 @@ export const ensureSandbox = internalAction({
 				id: args.spaceId,
 			});
 
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: args.spaceId,
-				status: "creating",
-			});
-
-			const { sandbox, sandboxExpiresAt } = await resolveSpaceSandbox(space);
+			const sandbox = await resolveSandbox(ctx, space);
 
 			const { repository } = space.environment;
 			const workdir = getSandboxWorkdir(repository);
@@ -239,7 +195,19 @@ export const ensureSandbox = internalAction({
 				repository.defaultBranch
 			);
 
-			const { agentUrl, editorUrl } = await getSandboxUrls(sandbox);
+			const agentUrl = await assertHealthyAndGetUrl(
+				sandbox,
+				SANDBOX_AGENT_PORT,
+				AGENT_HEALTH_URL,
+				"sandbox-agent"
+			);
+
+			const editorUrl = await assertHealthyAndGetUrl(
+				sandbox,
+				CODE_SERVER_PORT,
+				CODE_SERVER_HEALTH_URL,
+				"code-server"
+			);
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
@@ -247,7 +215,6 @@ export const ensureSandbox = internalAction({
 				sandboxId: sandbox.sandboxId,
 				agentUrl,
 				editorUrl,
-				sandboxExpiresAt,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -255,57 +222,6 @@ export const ensureSandbox = internalAction({
 				status: "error",
 			});
 
-			throw error;
-		}
-	},
-});
-
-export const ensureWarmSandbox = internalAction({
-	args: {
-		warmSandboxId: v.id("warmSandboxes"),
-	},
-	handler: async (ctx, args) => {
-		try {
-			const warmSandbox = await ctx.runQuery(
-				internal.warmSandboxes.internalGet,
-				{
-					id: args.warmSandboxId,
-				}
-			);
-
-			if (
-				warmSandbox.status === "claimed" ||
-				warmSandbox.status === "expired"
-			) {
-				return;
-			}
-
-			await ctx.runMutation(internal.warmSandboxes.internalUpdate, {
-				id: args.warmSandboxId,
-				status: "warming",
-				error: "",
-			});
-
-			const { sandbox, sandboxExpiresAt } =
-				await resolveWarmSandbox(warmSandbox);
-			const { agentUrl, editorUrl } = await getSandboxUrls(sandbox);
-
-			await ctx.runMutation(internal.warmSandboxes.internalUpdate, {
-				id: args.warmSandboxId,
-				status: "ready",
-				sandboxId: sandbox.sandboxId,
-				agentUrl,
-				editorUrl,
-				expiresAt: sandboxExpiresAt,
-				error: "",
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : "Unknown error";
-			await ctx.runMutation(internal.warmSandboxes.internalUpdate, {
-				id: args.warmSandboxId,
-				status: "error",
-				error: message,
-			});
 			throw error;
 		}
 	},

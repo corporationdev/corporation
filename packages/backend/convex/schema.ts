@@ -20,19 +20,6 @@ export const spaceStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const warmSandboxStatusValidator = v.union(
-	v.literal("warming"),
-	v.literal("ready"),
-	v.literal("claimed"),
-	v.literal("expired"),
-	v.literal("error")
-);
-
-export const warmSandboxTriggerReasonValidator = v.union(
-	v.literal("new_space_button"),
-	v.literal("repository_typing")
-);
-
 export default defineSchema(
 	{
 		environments: defineTable({
@@ -84,30 +71,6 @@ export default defineSchema(
 			.index("by_environment", ["environmentId"])
 			.index("by_slug", ["slug"])
 			.index("by_sandboxId", ["sandboxId"]),
-
-		warmSandboxes: defineTable({
-			environmentId: v.id("environments"),
-			snapshotId: v.id("snapshots"),
-			status: warmSandboxStatusValidator,
-			triggerReason: warmSandboxTriggerReasonValidator,
-			sandboxId: v.optional(v.string()),
-			agentUrl: v.optional(v.string()),
-			editorUrl: v.optional(v.string()),
-			claimedBySpaceId: v.optional(v.id("spaces")),
-			expiresAt: v.number(),
-			error: v.optional(v.string()),
-			createdAt: v.number(),
-			updatedAt: v.number(),
-		})
-			.index("by_environment", ["environmentId"])
-			.index("by_environment_and_status", ["environmentId", "status"])
-			.index("by_environment_snapshot_status", [
-				"environmentId",
-				"snapshotId",
-				"status",
-			])
-			.index("by_sandboxId", ["sandboxId"])
-			.index("by_expiresAt", ["expiresAt"]),
 
 		snapshots: defineTable({
 			environmentId: v.id("environments"),
