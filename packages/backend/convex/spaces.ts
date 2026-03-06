@@ -41,8 +41,7 @@ function parseBranchNameOrThrow(branchName: string): string {
 async function applyBranchNameUpdate(
 	ctx: BranchRenameCtx,
 	space: Doc<"spaces">,
-	branchName: string,
-	options?: { updateTimestamp?: boolean }
+	branchName: string
 ): Promise<void> {
 	const newBranchName = parseBranchNameOrThrow(branchName);
 	const oldBranchName = space.branchName;
@@ -50,14 +49,9 @@ async function applyBranchNameUpdate(
 		return;
 	}
 
-	const timestampPatch = options?.updateTimestamp
-		? { updatedAt: Date.now() }
-		: {};
-
 	if (space.sandboxId && space.status === "running") {
 		await ctx.db.patch(space._id, {
 			error: "",
-			...timestampPatch,
 		});
 		await ctx.scheduler.runAfter(0, internal.sandboxActions.renameBranch, {
 			spaceId: space._id,
@@ -70,7 +64,6 @@ async function applyBranchNameUpdate(
 	await ctx.db.patch(space._id, {
 		branchName: newBranchName,
 		error: "",
-		...timestampPatch,
 	});
 }
 
@@ -489,9 +482,7 @@ export const updateBranchName = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		await applyBranchNameUpdate(ctx, space, args.branchName, {
-			updateTimestamp: true,
-		});
+		await applyBranchNameUpdate(ctx, space, args.branchName);
 	},
 });
 

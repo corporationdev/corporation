@@ -1,7 +1,10 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
+import { generateObject } from "ai";
 import { and, asc, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import type { AgentListResponse, SessionEvent } from "sandbox-agent";
+import { z } from "zod";
 import { type SessionTab, sessionEvents, sessions, tabs } from "../db/schema";
 import { createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
@@ -22,6 +25,51 @@ import type { SpaceRuntimeContext } from "./types";
 const DEFAULT_SESSION_TITLE = "New Chat";
 const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
 const log = createLogger("space:session");
+
+async function requestAutoSessionTitle(
+	ctx: SpaceRuntimeContext,
+	sessionId: string,
+	firstMessage: string
+): Promise<void> {
+	const apiKey = env.ANTHROPIC_API_KEY;
+	if (!apiKey) {
+		return;
+	}
+
+	const provider = createAnthropic({ apiKey });
+
+	const prompt = [
+		"Generate a very short title (2-6 words) for a chat session based on the user's first message.",
+		"Rules:",
+		"- Be concise and descriptive.",
+		"- Use title case.",
+		"- Do not use quotes or punctuation at the end.",
+		"- Capture the main intent or topic.",
+		`User message: ${firstMessage}`,
+	].join("\n");
+
+	const { object } = await generateObject({
+		model: provider("claude-haiku-4-5"),
+		schema: z.object({
+			title: z.string(),
+		}),
+		temperature: 0,
+		prompt,
+	});
+
+	const title = object.title.trim();
+	if (!title) {
+		return;
+	}
+
+	ctx.vars.db
+		.update(tabs)
+		.set({ title, updatedAt: Date.now() })
+		.where(eq(tabs.sessionId, sessionId))
+		.run();
+
+	await ctx.broadcastTabsChanged();
+}
 
 async function ensureSession(
 	ctx: SpaceRuntimeContext,
@@ -131,6 +179,24 @@ async function sendMessage(
 	}
 
 	await ensureSession(ctx, sessionId);
+
+	// Auto-generate tab title on first message of this session
+	const tabRow = ctx.vars.db
+		.select({ title: tabs.title })
+		.from(tabs)
+		.where(eq(tabs.sessionId, sessionId))
+		.limit(1)
+		.all();
+	if (tabRow[0]?.title === DEFAULT_SESSION_TITLE) {
+		ctx.waitUntil(
+			requestAutoSessionTitle(ctx, sessionId, content).catch((error) => {
+				log.warn(
+					{ err: error, actorId: ctx.actorId, sessionId },
+					"sendMessage: failed to auto-generate session title"
+				);
+			})
+		);
+	}
 
 	await ensureNoRunningTurn(ctx, sessionId);
 
