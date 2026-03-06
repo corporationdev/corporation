@@ -4,13 +4,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SpaceLayout } from "@/components/space-layout";
 
 type SpaceSearchParams = {
-	tab?: string;
+	session?: string;
 };
 
 export const Route = createFileRoute("/_authenticated/space_/$spaceSlug")({
 	component: SpaceWithIdRoute,
 	validateSearch: (search: Record<string, unknown>): SpaceSearchParams => ({
-		tab: typeof search.tab === "string" ? search.tab : undefined,
+		session: typeof search.session === "string" ? search.session : undefined,
 	}),
 });
 

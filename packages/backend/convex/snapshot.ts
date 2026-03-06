@@ -8,38 +8,38 @@ import { snapshotTypeValidator } from "./schema";
 
 export const getLatest = authedQuery({
 	args: {
-		environmentId: v.id("environments"),
+		repositoryId: v.id("repositories"),
 	},
 	handler: async (ctx, args) => {
-		const environment = await ctx.db.get(args.environmentId);
-		if (!environment || environment.userId !== ctx.userId) {
-			throw new ConvexError("Environment not found");
+		const repository = await ctx.db.get(args.repositoryId);
+		if (!repository || repository.userId !== ctx.userId) {
+			throw new ConvexError("Repository not found");
 		}
 
 		return await ctx.db
 			.query("snapshots")
-			.withIndex("by_environment_and_startedAt", (q) =>
-				q.eq("environmentId", environment._id)
+			.withIndex("by_repository_and_startedAt", (q) =>
+				q.eq("repositoryId", repository._id)
 			)
 			.order("desc")
 			.first();
 	},
 });
 
-export const listByEnvironment = authedQuery({
+export const listByRepository = authedQuery({
 	args: {
-		environmentId: v.id("environments"),
+		repositoryId: v.id("repositories"),
 	},
 	handler: async (ctx, args) => {
-		const environment = await ctx.db.get(args.environmentId);
-		if (!environment || environment.userId !== ctx.userId) {
-			throw new ConvexError("Environment not found");
+		const repository = await ctx.db.get(args.repositoryId);
+		if (!repository || repository.userId !== ctx.userId) {
+			throw new ConvexError("Repository not found");
 		}
 
 		const snapshots = await ctx.db
 			.query("snapshots")
-			.withIndex("by_environment_and_startedAt", (q) =>
-				q.eq("environmentId", args.environmentId)
+			.withIndex("by_repository_and_startedAt", (q) =>
+				q.eq("repositoryId", args.repositoryId)
 			)
 			.order("desc")
 			.collect();
@@ -58,8 +58,8 @@ export const get = authedQuery({
 			throw new ConvexError("Snapshot not found");
 		}
 
-		const environment = await ctx.db.get(snapshot.environmentId);
-		if (!environment || environment.userId !== ctx.userId) {
+		const repository = await ctx.db.get(snapshot.repositoryId);
+		if (!repository || repository.userId !== ctx.userId) {
 			throw new ConvexError("Snapshot not found");
 		}
 
@@ -75,27 +75,27 @@ const MAX_SNAPSHOT_LOG_CHARS = 200_000;
 
 export async function withDerivedSnapshotState(
 	ctx: DbCtx,
-	environment: Doc<"environments">
+	repository: Doc<"repositories">
 ) {
 	const [latestSnapshot, activeSnapshot] = await Promise.all([
 		ctx.db
 			.query("snapshots")
-			.withIndex("by_environment_and_startedAt", (q) =>
-				q.eq("environmentId", environment._id)
+			.withIndex("by_repository_and_startedAt", (q) =>
+				q.eq("repositoryId", repository._id)
 			)
 			.order("desc")
 			.first(),
 		ctx.db
 			.query("snapshots")
-			.withIndex("by_environment_status_startedAt", (q) =>
-				q.eq("environmentId", environment._id).eq("status", "ready")
+			.withIndex("by_repository_status_startedAt", (q) =>
+				q.eq("repositoryId", repository._id).eq("status", "ready")
 			)
 			.order("desc")
 			.first(),
 	]);
 
 	return {
-		...environment,
+		...repository,
 		latestSnapshot,
 		activeSnapshot,
 	};
@@ -103,21 +103,21 @@ export async function withDerivedSnapshotState(
 
 export async function scheduleSnapshot(
 	ctx: MutationCtx,
-	environment: Doc<"environments">,
+	repository: Doc<"repositories">,
 	type: "setup" | "update"
 ): Promise<Id<"snapshots">> {
 	const [latestSnapshot, activeSnapshot] = await Promise.all([
 		ctx.db
 			.query("snapshots")
-			.withIndex("by_environment_and_startedAt", (q) =>
-				q.eq("environmentId", environment._id)
+			.withIndex("by_repository_and_startedAt", (q) =>
+				q.eq("repositoryId", repository._id)
 			)
 			.order("desc")
 			.first(),
 		ctx.db
 			.query("snapshots")
-			.withIndex("by_environment_status_startedAt", (q) =>
-				q.eq("environmentId", environment._id).eq("status", "ready")
+			.withIndex("by_repository_status_startedAt", (q) =>
+				q.eq("repositoryId", repository._id).eq("status", "ready")
 			)
 			.order("desc")
 			.first(),
@@ -136,20 +136,20 @@ export async function scheduleSnapshot(
 
 	const now = Date.now();
 	const snapshotId = await ctx.db.insert("snapshots", {
-		environmentId: environment._id,
+		repositoryId: repository._id,
 		type: buildRequest.type,
 		status: "building",
 		logs: "",
 		startedAt: now,
 	});
 
-	await ctx.db.patch(environment._id, {
+	await ctx.db.patch(repository._id, {
 		updatedAt: now,
 	});
 
 	await ctx.scheduler.runAfter(0, internal.snapshotActions.buildSnapshot, {
 		request: {
-			environmentId: environment._id,
+			repositoryId: repository._id,
 			snapshotId,
 			...buildRequest,
 		},
@@ -163,30 +163,30 @@ export const createSnapshot = authedMutation({
 		request: v.union(
 			v.object({
 				type: v.literal("setup"),
-				environmentId: v.id("environments"),
+				repositoryId: v.id("repositories"),
 			}),
 			v.object({
 				type: v.literal("update"),
-				environmentId: v.id("environments"),
+				repositoryId: v.id("repositories"),
 			})
 		),
 	},
 	handler: async (ctx, args) => {
 		const { request } = args;
 
-		const environment = await ctx.db.get(request.environmentId);
-		if (!environment || environment.userId !== ctx.userId) {
-			throw new ConvexError("Environment not found");
+		const repository = await ctx.db.get(request.repositoryId);
+		if (!repository || repository.userId !== ctx.userId) {
+			throw new ConvexError("Repository not found");
 		}
 
-		await scheduleSnapshot(ctx, environment, request.type);
+		await scheduleSnapshot(ctx, repository, request.type);
 	},
 });
 
 export const startSnapshot = internalMutation({
 	args: {
 		snapshotId: v.id("snapshots"),
-		environmentId: v.id("environments"),
+		repositoryId: v.id("repositories"),
 		type: snapshotTypeValidator,
 	},
 	handler: async (ctx, args) => {
@@ -194,8 +194,8 @@ export const startSnapshot = internalMutation({
 		if (!snapshot) {
 			throw new ConvexError("Snapshot not found");
 		}
-		if (snapshot.environmentId !== args.environmentId) {
-			throw new ConvexError("Snapshot does not belong to environment");
+		if (snapshot.repositoryId !== args.repositoryId) {
+			throw new ConvexError("Snapshot does not belong to repository");
 		}
 		if (snapshot.type !== args.type) {
 			throw new ConvexError("Snapshot type mismatch");
@@ -249,7 +249,7 @@ export const completeSnapshot = internalMutation({
 	args: {
 		snapshotId: v.id("snapshots"),
 		status: v.union(v.literal("ready"), v.literal("error")),
-		environmentId: v.optional(v.id("environments")),
+		repositoryId: v.optional(v.id("repositories")),
 		externalSnapshotId: v.optional(v.string()),
 		snapshotCommitSha: v.optional(v.string()),
 		error: v.optional(v.string()),
@@ -276,14 +276,14 @@ export const completeSnapshot = internalMutation({
 			return;
 		}
 
-		if (!(args.environmentId && args.externalSnapshotId)) {
+		if (!(args.repositoryId && args.externalSnapshotId)) {
 			throw new ConvexError(
-				"environmentId and externalSnapshotId are required when status is ready"
+				"repositoryId and externalSnapshotId are required when status is ready"
 			);
 		}
 
-		if (snapshot.environmentId !== args.environmentId) {
-			throw new ConvexError("Snapshot does not belong to environment");
+		if (snapshot.repositoryId !== args.repositoryId) {
+			throw new ConvexError("Snapshot does not belong to repository");
 		}
 		await ctx.db.patch(args.snapshotId, {
 			status: "ready",

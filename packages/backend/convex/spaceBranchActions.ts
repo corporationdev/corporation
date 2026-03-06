@@ -70,7 +70,7 @@ export const generateAndApplyBranchName = internalAction({
 
 		const newBranchName = await generateBranchName(
 			firstMessage,
-			space.environment.repository.defaultBranch
+			space.repository.defaultBranch
 		);
 		if (newBranchName === space.branchName) {
 			return;

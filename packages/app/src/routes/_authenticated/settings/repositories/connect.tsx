@@ -61,13 +61,11 @@ function ConnectRepositoryPage() {
 				owner: selectedRepo.owner,
 				name: selectedRepo.name,
 				defaultBranch: selectedRepo.defaultBranch,
-				environmentConfig: {
-					setupCommand: value.setupCommand,
-					updateCommand: value.updateCommand,
-					devCommand: value.devCommand,
-					devPort,
-					envByPath,
-				},
+				setupCommand: value.setupCommand,
+				updateCommand: value.updateCommand,
+				devCommand: value.devCommand,
+				devPort,
+				envByPath,
 			});
 		},
 		onError: (error) => {

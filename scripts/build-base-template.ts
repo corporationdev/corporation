@@ -41,7 +41,6 @@ const template = Template()
 	.runCmd(
 		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
 	)
-	.runCmd("curl -fsSL https://code-server.dev/install.sh | sh")
 	// Install corp-agent binary
 	.copy("corp-agent/dist/corp-agent", "/usr/local/bin/corp-agent")
 	.runCmd("chmod +x /usr/local/bin/corp-agent")

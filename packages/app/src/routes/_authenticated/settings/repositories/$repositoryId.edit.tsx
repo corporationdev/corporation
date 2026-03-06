@@ -34,54 +34,33 @@ function EditRepositoryPage() {
 		);
 	}
 
-	if (!repository.defaultEnvironment) {
-		return (
-			<div className="p-6">
-				<p className="text-muted-foreground text-sm">
-					Repository configuration is unavailable.
-				</p>
-			</div>
-		);
-	}
-
-	return (
-		<EditRepositoryForm
-			defaultEnvironment={repository.defaultEnvironment}
-			repository={repository}
-		/>
-	);
+	return <EditRepositoryForm repository={repository} />;
 }
 
 function EditRepositoryForm({
-	defaultEnvironment,
 	repository,
 }: {
-	defaultEnvironment: NonNullable<
-		NonNullable<
-			ReturnType<typeof useQuery<typeof api.repositories.get>>
-		>["defaultEnvironment"]
-	>;
 	repository: NonNullable<
 		ReturnType<typeof useQuery<typeof api.repositories.get>>
 	>;
 }) {
 	const navigate = useNavigate();
-	const updateEnvironment = useMutation(api.environments.update);
+	const updateRepository = useMutation(api.repositories.update);
 
 	const form = useForm({
 		defaultValues: {
-			setupCommand: defaultEnvironment.setupCommand,
-			updateCommand: defaultEnvironment.updateCommand,
-			devCommand: defaultEnvironment.devCommand,
-			devPort: defaultEnvironment.devPort?.toString() ?? "",
-			envFiles: envFilesFromEnvByPath(defaultEnvironment.envByPath),
+			setupCommand: repository.setupCommand,
+			updateCommand: repository.updateCommand,
+			devCommand: repository.devCommand,
+			devPort: repository.devPort?.toString() ?? "",
+			envFiles: envFilesFromEnvByPath(repository.envByPath),
 		},
 		validators: {
 			onSubmit: repositoryConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
-			await updateEnvironment({
-				id: defaultEnvironment._id,
+			await updateRepository({
+				id: repository._id,
 				setupCommand: value.setupCommand,
 				updateCommand: value.updateCommand,
 				devCommand: value.devCommand,

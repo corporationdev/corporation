@@ -1,12 +1,7 @@
-import type { TabType } from "../db/schema";
 import type { SpaceRuntimeContext, SubscriptionHub } from "./types";
 
-export function createTabId(type: TabType, entityId: string): string {
-	return `${type}_${entityId}`;
-}
-
-export function createTabChannel(type: TabType, entityId: string): string {
-	return `tab:${type}:${entityId}`;
+export function createSessionChannel(sessionId: string): string {
+	return `session:${sessionId}`;
 }
 
 export function createSubscriptionHub(): SubscriptionHub {

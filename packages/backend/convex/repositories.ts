@@ -1,11 +1,12 @@
 import { ConvexError, v } from "convex/values";
 
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { internalQuery } from "./_generated/server";
-import { createEnvironmentHelper } from "./environments";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { assertValidDevPort } from "./lib/devPort";
 import { normalizeEnvByPath } from "./lib/envByPath";
-import { withDerivedSnapshotState } from "./snapshot";
+import { scheduleSnapshot, withDerivedSnapshotState } from "./snapshot";
 
 function requireOwnedRepository(
 	userId: string,
@@ -20,26 +21,15 @@ function requireOwnedRepository(
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const repos = await ctx.db
+		const repositories = await ctx.db
 			.query("repositories")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		return Promise.all(
-			repos.map(async (repo) => {
-				const defaultEnv = await ctx.db
-					.query("environments")
-					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
-					.first();
-				const defaultEnvironment = defaultEnv
-					? await withDerivedSnapshotState(ctx, defaultEnv)
-					: null;
-
-				return {
-					...repo,
-					defaultEnvironment,
-				};
-			})
+		return await Promise.all(
+			repositories.map((repository) =>
+				withDerivedSnapshotState(ctx, repository)
+			)
 		);
 	},
 });
@@ -47,30 +37,13 @@ export const list = authedQuery({
 export const get = authedQuery({
 	args: { id: v.id("repositories") },
 	handler: async (ctx, args) => {
-		const repo = await ctx.db.get(args.id);
-		if (!repo) {
+		const repository = await ctx.db.get(args.id);
+		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
-		requireOwnedRepository(ctx.userId, repo);
+		requireOwnedRepository(ctx.userId, repository);
 
-		const environments = await ctx.db
-			.query("environments")
-			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
-			.collect();
-		const environmentsWithSnapshot = await Promise.all(
-			environments.map(async (environment) =>
-				withDerivedSnapshotState(ctx, environment)
-			)
-		);
-		environmentsWithSnapshot.sort((a, b) => a.createdAt - b.createdAt);
-
-		const defaultEnvironment = environmentsWithSnapshot[0] ?? null;
-
-		return {
-			...repo,
-			environments: environmentsWithSnapshot,
-			defaultEnvironment,
-		};
+		return await withDerivedSnapshotState(ctx, repository);
 	},
 });
 
@@ -80,16 +53,13 @@ export const create = authedMutation({
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
-		environmentConfig: v.object({
-			name: v.optional(v.string()),
-			setupCommand: v.string(),
-			updateCommand: v.string(),
-			devCommand: v.string(),
-			devPort: v.number(),
-			envByPath: v.optional(
-				v.record(v.string(), v.record(v.string(), v.string()))
-			),
-		}),
+		setupCommand: v.string(),
+		updateCommand: v.string(),
+		devCommand: v.string(),
+		devPort: v.number(),
+		envByPath: v.optional(
+			v.record(v.string(), v.record(v.string(), v.string()))
+		),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -103,10 +73,9 @@ export const create = authedMutation({
 			throw new ConvexError("Repository already connected");
 		}
 
+		assertValidDevPort(args.devPort);
 		const now = Date.now();
-		const normalizedEnvByPath = normalizeEnvByPath(
-			args.environmentConfig.envByPath
-		);
+		const normalizedEnvByPath = normalizeEnvByPath(args.envByPath);
 
 		const repositoryId = await ctx.db.insert("repositories", {
 			userId: ctx.userId,
@@ -114,19 +83,21 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
+			setupCommand: args.setupCommand,
+			updateCommand: args.updateCommand,
+			devCommand: args.devCommand,
+			devPort: args.devPort,
+			envByPath: normalizedEnvByPath,
 			createdAt: now,
 			updatedAt: now,
 		});
 
-		await createEnvironmentHelper(ctx, {
-			repositoryId,
-			name: args.environmentConfig.name ?? "Default",
-			setupCommand: args.environmentConfig.setupCommand,
-			updateCommand: args.environmentConfig.updateCommand,
-			devCommand: args.environmentConfig.devCommand,
-			devPort: args.environmentConfig.devPort,
-			envByPath: normalizedEnvByPath,
-		});
+		const repository = await ctx.db.get(repositoryId);
+		if (!repository) {
+			throw new ConvexError("Repository not found");
+		}
+
+		await scheduleSnapshot(ctx, repository, "setup");
 
 		return repositoryId;
 	},
@@ -136,22 +107,37 @@ export const update = authedMutation({
 	args: {
 		id: v.id("repositories"),
 		defaultBranch: v.optional(v.string()),
+		setupCommand: v.optional(v.string()),
+		updateCommand: v.optional(v.string()),
+		devCommand: v.optional(v.string()),
+		devPort: v.optional(v.number()),
+		envByPath: v.optional(
+			v.record(v.string(), v.record(v.string(), v.string()))
+		),
 	},
 	handler: async (ctx, args) => {
-		const repo = await ctx.db.get(args.id);
-		if (!repo) {
+		const repository = await ctx.db.get(args.id);
+		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
-		requireOwnedRepository(ctx.userId, repo);
+		requireOwnedRepository(ctx.userId, repository);
 
-		const patch: { defaultBranch?: string; updatedAt: number } = {
-			updatedAt: Date.now(),
-		};
-		if (args.defaultBranch !== undefined) {
-			patch.defaultBranch = args.defaultBranch;
+		if (args.devPort !== undefined) {
+			assertValidDevPort(args.devPort);
 		}
 
-		await ctx.db.patch(args.id, patch);
+		const { id, envByPath, ...fields } = args;
+		const normalizedEnvByPath =
+			envByPath === undefined ? undefined : normalizeEnvByPath(envByPath);
+		const patch = Object.fromEntries(
+			Object.entries({
+				...fields,
+				envByPath: normalizedEnvByPath,
+				updatedAt: Date.now(),
+			}).filter(([, value]) => value !== undefined)
+		);
+
+		await ctx.db.patch(id, patch);
 	},
 });
 
@@ -160,32 +146,65 @@ const del = authedMutation({
 		id: v.id("repositories"),
 	},
 	handler: async (ctx, args) => {
-		const repo = await ctx.db.get(args.id);
-		if (!repo) {
+		const repository = await ctx.db.get(args.id);
+		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
-		requireOwnedRepository(ctx.userId, repo);
+		requireOwnedRepository(ctx.userId, repository);
 
-		const environments = await ctx.db
-			.query("environments")
-			.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
-			.collect();
-
-		for (const env of environments) {
-			const snapshots = await ctx.db
+		const [spaces, snapshots] = await Promise.all([
+			ctx.db
+				.query("spaces")
+				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+				.collect(),
+			ctx.db
 				.query("snapshots")
-				.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
-				.collect();
-			for (const snapshot of snapshots) {
-				await ctx.db.delete(snapshot._id);
+				.withIndex("by_repository", (q) => q.eq("repositoryId", args.id))
+				.collect(),
+		]);
+
+		for (const space of spaces) {
+			if (space.sandboxId) {
+				await ctx.scheduler.runAfter(0, internal.sandboxActions.deleteSandbox, {
+					sandboxId: space.sandboxId,
+				});
 			}
-			await ctx.db.delete(env._id);
+			await ctx.db.delete(space._id);
+		}
+
+		for (const snapshot of snapshots) {
+			await ctx.db.delete(snapshot._id);
 		}
 
 		await ctx.db.delete(args.id);
 	},
 });
 export { del as delete };
+
+export const internalGet = internalQuery({
+	args: { id: v.id("repositories") },
+	handler: async (ctx, args) => {
+		const repository = await ctx.db.get(args.id);
+		if (!repository) {
+			throw new ConvexError("Repository not found");
+		}
+		return repository;
+	},
+});
+
+export const completeSnapshotBuild = internalMutation({
+	args: {
+		id: v.id("repositories"),
+	},
+	handler: async (ctx, args) => {
+		const repository = await ctx.db.get(args.id);
+		if (!repository) {
+			throw new ConvexError("Repository not found");
+		}
+
+		await ctx.db.patch(args.id, { updatedAt: Date.now() });
+	},
+});
 
 export const internalGetByGithubRepoId = internalQuery({
 	args: { githubRepoId: v.number() },

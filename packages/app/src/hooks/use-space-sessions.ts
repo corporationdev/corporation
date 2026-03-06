@@ -1,4 +1,4 @@
-import type { TabRow } from "@corporation/server/space";
+import type { SessionRow } from "@corporation/server/space";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
@@ -11,24 +11,24 @@ function getActorSpaceSlug(actor: SpaceActor): string | undefined {
 	return key[0];
 }
 
-type SpaceTabsResult = {
-	tabs: TabRow[];
+type SpaceSessionsResult = {
+	sessions: SessionRow[];
 	isLoading: boolean;
 };
 
-export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
+export function useSpaceSessions(actor: SpaceActor): SpaceSessionsResult {
 	const spaceSlug = getActorSpaceSlug(actor);
 	const queryClient = useQueryClient();
 	const isConnected = actor.connStatus === "connected" && !!actor.connection;
 
 	const { data, isLoading } = useQuery({
-		queryKey: ["space-tabs", spaceSlug],
+		queryKey: ["space-sessions", spaceSlug],
 		queryFn: () => {
 			const conn = actor.connection;
 			if (!conn) {
 				throw new Error("Actor connection is unavailable");
 			}
-			return Promise.resolve(conn.listTabs()).then((result) =>
+			return Promise.resolve(conn.listSessions()).then((result) =>
 				Promise.resolve(result)
 			);
 		},
@@ -36,16 +36,19 @@ export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
 		retry: (_, error) => {
 			const kind = softResetActorConnectionOnTransientError({
 				error,
-				reasonPrefix: "space-tabs",
+				reasonPrefix: "space-sessions",
 				spaceSlug,
 			});
 			return !!kind;
 		},
 	});
 
-	actor.useEvent("tabs.changed", (event) => {
-		queryClient.setQueryData(["space-tabs", spaceSlug], event as TabRow[]);
+	actor.useEvent("sessions.changed", (event) => {
+		queryClient.setQueryData(
+			["space-sessions", spaceSlug],
+			event as SessionRow[]
+		);
 	});
 
-	return { tabs: data ?? [], isLoading: isLoading && isConnected };
+	return { sessions: data ?? [], isLoading: isLoading && isConnected };
 }

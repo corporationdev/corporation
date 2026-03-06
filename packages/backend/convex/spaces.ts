@@ -16,14 +16,17 @@ async function requireOwnedSpace(
 	space: Doc<"spaces">
 ): Promise<{
 	space: Doc<"spaces">;
-	environment: Doc<"environments">;
+	repository: Doc<"repositories">;
 }> {
-	const environment = await ctx.db.get(space.environmentId);
-	if (!environment || environment.userId !== ctx.userId) {
+	if (!space.repositoryId) {
+		throw new ConvexError("Space not found");
+	}
+	const repository = await ctx.db.get(space.repositoryId);
+	if (!repository || repository.userId !== ctx.userId) {
 		throw new ConvexError("Space not found");
 	}
 
-	return { space, environment };
+	return { space, repository };
 }
 
 type BranchRenameCtx = Pick<MutationCtx, "db" | "scheduler">;
@@ -70,25 +73,18 @@ async function applyBranchNameUpdate(
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const repos = await ctx.db
+		const repositories = await ctx.db
 			.query("repositories")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		const environments = (
-			await asyncMap(repos, (repo) =>
-				ctx.db
-					.query("environments")
-					.withIndex("by_repository", (q) => q.eq("repositoryId", repo._id))
-					.collect()
-			)
-		).flat();
-
 		const spaces = (
-			await asyncMap(environments, (env) =>
+			await asyncMap(repositories, (repository) =>
 				ctx.db
 					.query("spaces")
-					.withIndex("by_environment", (q) => q.eq("environmentId", env._id))
+					.withIndex("by_repository", (q) =>
+						q.eq("repositoryId", repository._id)
+					)
 					.collect()
 			)
 		).flat();
@@ -101,64 +97,40 @@ export const list = authedQuery({
 export const listByRepository = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const [repositories, environments] = await Promise.all([
-			ctx.db
-				.query("repositories")
-				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-				.collect(),
-			ctx.db
-				.query("environments")
-				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-				.collect(),
-		]);
+		const repositories = await ctx.db
+			.query("repositories")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.collect();
 
-		const environmentsByRepository = new Map<
-			Id<"repositories">,
-			Doc<"environments">[]
-		>();
-		for (const environment of environments) {
-			const repoEnvironments =
-				environmentsByRepository.get(environment.repositoryId) ?? [];
-			repoEnvironments.push(environment);
-			environmentsByRepository.set(environment.repositoryId, repoEnvironments);
-		}
-
-		const spacesByEnvironment = new Map<Id<"environments">, Doc<"spaces">[]>();
-		const environmentSpaces = await asyncMap(
-			environments,
-			async (environment) => ({
-				environmentId: environment._id,
+		const spacesByRepository = new Map<Id<"repositories">, Doc<"spaces">[]>();
+		const repositorySpaces = await asyncMap(
+			repositories,
+			async (repository) => ({
+				repositoryId: repository._id,
 				spaces: await ctx.db
 					.query("spaces")
-					.withIndex("by_environment", (q) =>
-						q.eq("environmentId", environment._id)
+					.withIndex("by_repository", (q) =>
+						q.eq("repositoryId", repository._id)
 					)
 					.collect(),
 			})
 		);
-		for (const { environmentId, spaces } of environmentSpaces) {
-			spacesByEnvironment.set(environmentId, spaces);
+		for (const { repositoryId, spaces } of repositorySpaces) {
+			spacesByRepository.set(repositoryId, spaces);
 		}
 
 		const grouped = await asyncMap(repositories, async (repository) => {
-			const repoEnvironments = [
-				...(environmentsByRepository.get(repository._id) ?? []),
-			];
-			repoEnvironments.sort((a, b) => a.createdAt - b.createdAt);
-			const defaultEnvironment = repoEnvironments[0] ?? null;
-
-			const spaces = repoEnvironments
-				.flatMap((environment) => {
-					return spacesByEnvironment.get(environment._id) ?? [];
-				})
-				.filter((space) => !space.archived);
+			const spaces = (spacesByRepository.get(repository._id) ?? []).filter(
+				(space) => !space.archived
+			);
 			spaces.sort((a, b) => b.updatedAt - a.updatedAt);
+			const repositoryWithSnapshots = await withDerivedSnapshotState(
+				ctx,
+				repository
+			);
 
 			return {
-				repository,
-				defaultEnvironment: defaultEnvironment
-					? await withDerivedSnapshotState(ctx, defaultEnvironment)
-					: null,
+				repository: repositoryWithSnapshots,
 				spaces,
 			};
 		});
@@ -182,24 +154,16 @@ export const getBySlug = authedQuery({
 		if (!space) {
 			return null;
 		}
-		const { environment } = await requireOwnedSpace(ctx, space);
-
-		const repository = await ctx.db.get(environment.repositoryId);
-		if (!repository) {
-			throw new ConvexError("Repository not found");
-		}
-		const environmentWithSnapshot = await withDerivedSnapshotState(
+		const { repository } = await requireOwnedSpace(ctx, space);
+		const repositoryWithSnapshot = await withDerivedSnapshotState(
 			ctx,
-			environment
+			repository
 		);
 
 		return {
 			...space,
 			workdir: getSandboxWorkdir(repository),
-			environment: {
-				...environmentWithSnapshot,
-				repository,
-			},
+			repository: repositoryWithSnapshot,
 		};
 	},
 });
@@ -211,24 +175,16 @@ export const get = authedQuery({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		const { environment } = await requireOwnedSpace(ctx, space);
-
-		const repository = await ctx.db.get(environment.repositoryId);
-		if (!repository) {
-			throw new ConvexError("Repository not found");
-		}
-		const environmentWithSnapshot = await withDerivedSnapshotState(
+		const { repository } = await requireOwnedSpace(ctx, space);
+		const repositoryWithSnapshot = await withDerivedSnapshotState(
 			ctx,
-			environment
+			repository
 		);
 
 		return {
 			...space,
 			workdir: getSandboxWorkdir(repository),
-			environment: {
-				...environmentWithSnapshot,
-				repository,
-			},
+			repository: repositoryWithSnapshot,
 		};
 	},
 });
@@ -277,9 +233,7 @@ export const internalUpdate = internalMutation({
 		status: v.optional(spaceStatusValidator),
 		sandboxId: v.optional(v.string()),
 		agentUrl: v.optional(v.string()),
-		editorUrl: v.optional(v.string()),
 		lastSyncedCommitSha: v.optional(v.string()),
-		prUrl: v.optional(v.string()),
 		error: v.optional(v.string()),
 		branchName: v.optional(v.string()),
 		sandboxExpiresAt: v.optional(v.number()),
@@ -320,23 +274,18 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Space not found");
 		}
 
-		const environment = await ctx.db.get(space.environmentId);
-		if (!environment) {
-			throw new ConvexError("Environment not found");
-		}
-
-		const repository = await ctx.db.get(environment.repositoryId);
+		const repository = await ctx.db.get(space.repositoryId);
 		if (!repository) {
 			throw new ConvexError("Repository not found");
 		}
-		const environmentWithSnapshot = await withDerivedSnapshotState(
+		const repositoryWithSnapshot = await withDerivedSnapshotState(
 			ctx,
-			environment
+			repository
 		);
 
 		return {
 			...space,
-			environment: { ...environmentWithSnapshot, repository },
+			repository: repositoryWithSnapshot,
 		};
 	},
 });
@@ -399,7 +348,7 @@ export const stop = authedMutation({
 export const ensure = authedMutation({
 	args: {
 		slug: v.string(),
-		environmentId: v.optional(v.id("environments")),
+		repositoryId: v.optional(v.id("repositories")),
 	},
 	handler: async (ctx, args) => {
 		const slug = args.slug.trim();
@@ -419,19 +368,19 @@ export const ensure = authedMutation({
 			return existing._id;
 		}
 
-		if (!args.environmentId) {
-			throw new ConvexError("environmentId is required when creating a space");
+		if (!args.repositoryId) {
+			throw new ConvexError("repositoryId is required when creating a space");
 		}
 
-		const environment = await ctx.db.get(args.environmentId);
-		if (!environment || environment.userId !== ctx.userId) {
-			throw new ConvexError("Environment not found");
+		const repository = await ctx.db.get(args.repositoryId);
+		if (!repository || repository.userId !== ctx.userId) {
+			throw new ConvexError("Repository not found");
 		}
 
 		const now = Date.now();
 		const spaceId = await ctx.db.insert("spaces", {
 			slug,
-			environmentId: args.environmentId,
+			repositoryId: args.repositoryId,
 			branchName: generateBranchName(),
 			status: "creating",
 			createdAt: now,
@@ -483,56 +432,6 @@ export const updateBranchName = authedMutation({
 		await requireOwnedSpace(ctx, space);
 
 		await applyBranchNameUpdate(ctx, space, args.branchName);
-	},
-});
-
-export const createPullRequest = authedMutation({
-	args: {
-		id: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const space = await ctx.db.get(args.id);
-		if (!space) {
-			throw new ConvexError("Space not found");
-		}
-		await requireOwnedSpace(ctx, space);
-
-		if (space.status !== "running") {
-			throw new ConvexError("Space must be running to create a pull request");
-		}
-
-		if (space.prUrl) {
-			throw new ConvexError("Pull request already exists");
-		}
-
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.pushAndCreatePR, {
-			spaceId: args.id,
-		});
-	},
-});
-
-export const pushCode = authedMutation({
-	args: {
-		id: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const space = await ctx.db.get(args.id);
-		if (!space) {
-			throw new ConvexError("Space not found");
-		}
-		await requireOwnedSpace(ctx, space);
-
-		if (space.status !== "running") {
-			throw new ConvexError("Space must be running to push code");
-		}
-
-		if (!space.prUrl) {
-			throw new ConvexError("No pull request exists yet");
-		}
-
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.pushCode, {
-			spaceId: args.id,
-		});
 	},
 });
 

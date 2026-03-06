@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { sessionEvents, sessions } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
-import { createTabChannel, publishToChannel } from "./subscriptions";
+import { createSessionChannel, publishToChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
 const SESSION_EVENT_NAME = "session.event";
@@ -26,7 +26,7 @@ export function publishSessionStatus(
 ): void {
 	publishToChannel(
 		ctx,
-		createTabChannel("session", sessionId),
+		createSessionChannel(sessionId),
 		SESSION_STATUS_EVENT_NAME,
 		{ sessionId, status }
 	);
@@ -213,7 +213,7 @@ export async function ingestAgentRunnerBatch(
 			for (const event of validEvents) {
 				publishToChannel(
 					ctx,
-					createTabChannel("session", session.id),
+					createSessionChannel(session.id),
 					SESSION_EVENT_NAME,
 					event
 				);

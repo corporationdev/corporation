@@ -22,10 +22,12 @@ export const spaceStatusValidator = v.union(
 
 export default defineSchema(
 	{
-		environments: defineTable({
+		repositories: defineTable({
 			userId: v.string(),
-			repositoryId: v.id("repositories"),
+			githubRepoId: v.number(),
+			owner: v.string(),
 			name: v.string(),
+			defaultBranch: v.string(),
 			setupCommand: v.string(),
 			updateCommand: v.string(),
 			devCommand: v.string(),
@@ -37,43 +39,29 @@ export default defineSchema(
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
-			.index("by_repository", ["repositoryId"]),
-
-		repositories: defineTable({
-			userId: v.string(),
-			githubRepoId: v.number(),
-			owner: v.string(),
-			name: v.string(),
-			defaultBranch: v.string(),
-			createdAt: v.number(),
-			updatedAt: v.number(),
-		})
-			.index("by_user", ["userId"])
 			.index("by_user_and_github_repo", ["userId", "githubRepoId"])
 			.index("by_github_repo", ["githubRepoId"]),
 
 		spaces: defineTable({
 			slug: v.string(),
-			environmentId: v.id("environments"),
+			repositoryId: v.id("repositories"),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),
-			editorUrl: v.optional(v.string()),
 			branchName: v.string(),
 			status: spaceStatusValidator,
 			lastSyncedCommitSha: v.optional(v.string()),
-			prUrl: v.optional(v.string()),
 			error: v.optional(v.string()),
 			archived: v.optional(v.boolean()),
 			sandboxExpiresAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
-			.index("by_environment", ["environmentId"])
+			.index("by_repository", ["repositoryId"])
 			.index("by_slug", ["slug"])
 			.index("by_sandboxId", ["sandboxId"]),
 
 		snapshots: defineTable({
-			environmentId: v.id("environments"),
+			repositoryId: v.id("repositories"),
 			type: snapshotTypeValidator,
 			status: snapshotStatusValidator,
 			logs: v.string(),
@@ -84,10 +72,10 @@ export default defineSchema(
 			startedAt: v.number(),
 			completedAt: v.optional(v.number()),
 		})
-			.index("by_environment", ["environmentId"])
-			.index("by_environment_and_startedAt", ["environmentId", "startedAt"])
-			.index("by_environment_status_startedAt", [
-				"environmentId",
+			.index("by_repository", ["repositoryId"])
+			.index("by_repository_and_startedAt", ["repositoryId", "startedAt"])
+			.index("by_repository_status_startedAt", [
+				"repositoryId",
 				"status",
 				"startedAt",
 			]),

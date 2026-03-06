@@ -1,32 +1,46 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { TabRow } from "@corporation/server/space";
+import type { SessionRow } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { PlusIcon, XIcon } from "lucide-react";
-import { type FC, useEffect, useRef, useState } from "react";
+import type { FunctionReturnType } from "convex/server";
+import {
+	ClipboardIcon,
+	HistoryIcon,
+	LoaderIcon,
+	PlayIcon,
+	PlusIcon,
+	SquareIcon,
+	TimerIcon,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
+import { SessionView } from "@/components/session-view";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
 import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
-import { SpaceSidebar } from "@/components/space-sidebar";
-import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
 import { Button } from "@/components/ui/button";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { useSpaceTabs } from "@/hooks/use-space-tabs";
+import { useErrorToast } from "@/hooks/use-error-toast";
+import { useSpaceSessions } from "@/hooks/use-space-sessions";
+import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import { addActorConnectionSoftResetListener } from "@/lib/actor-errors";
+import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import { type SpaceActor, useActor } from "@/lib/rivetkit";
-import { type TabParam, tabRegistry } from "@/lib/tab-registry";
-import { parseTab, serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
+
+type SpaceRecord = NonNullable<FunctionReturnType<typeof api.spaces.getBySlug>>;
 
 export function SpaceLayout() {
 	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
 	const { spaceSlug } = match.params;
-	const tab = parseTab(match.search.tab);
+	const activeSessionId: string | undefined = match.search.session;
 
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
-	const isSpaceLoading = space === undefined;
 	const isSpaceMissing = space === null;
 	const [connectionResetNonce, setConnectionResetNonce] = useState(0);
 	const lastResetAtRef = useRef(0);
@@ -41,7 +55,7 @@ export function SpaceLayout() {
 			return;
 		}
 		setSpaceCreating(true);
-		ensureSpace({ slug: pending.slug, environmentId: pending.environmentId })
+		ensureSpace({ slug: pending.slug, repositoryId: pending.repositoryId })
 			.catch((error: unknown) => {
 				console.error("Failed to create space", error);
 				toast.error("Failed to create space");
@@ -90,61 +104,43 @@ export function SpaceLayout() {
 	});
 
 	const navigate = useNavigate();
-	const { tabs, isLoading: isTabsLoading } = useSpaceTabs(actor);
+	const { sessions, isLoading: isSessionsLoading } = useSpaceSessions(actor);
 
-	// Persist the active tab so we can restore it when returning to this space
+	// Persist the active session so we can restore it when returning to this space
 	useEffect(() => {
-		if (tab) {
-			localStorage.setItem(`space-tab:${spaceSlug}`, serializeTab(tab));
+		if (activeSessionId) {
+			localStorage.setItem(`space-session:${spaceSlug}`, activeSessionId);
 		}
-	}, [tab, spaceSlug]);
+	}, [activeSessionId, spaceSlug]);
 
-	// Restore the last active tab on initial navigation (not when pressing "+")
-	const hasInitializedTab = useRef(false);
+	// Restore the last active session on initial navigation (not when pressing "+")
+	const hasInitializedSession = useRef(false);
 	const prevSpaceSlug = useRef(spaceSlug);
 	useEffect(() => {
 		if (prevSpaceSlug.current !== spaceSlug) {
 			prevSpaceSlug.current = spaceSlug;
-			hasInitializedTab.current = false;
+			hasInitializedSession.current = false;
 		}
-		if (hasInitializedTab.current || isTabsLoading) {
+		if (hasInitializedSession.current || isSessionsLoading) {
 			return;
 		}
-		hasInitializedTab.current = true;
-		if (tab || tabs.length === 0) {
+		hasInitializedSession.current = true;
+		if (activeSessionId || sessions.length === 0) {
 			return;
 		}
 
-		// Try to restore the last active tab, fall back to the first tab
-		const saved = localStorage.getItem(`space-tab:${spaceSlug}`);
-		const savedParam = parseTab(saved ?? undefined);
-		const targetParam =
-			savedParam &&
-			tabs.some((t) => {
-				const p = tabRegistry[t.type].tabParamFromTab(t);
-				return p?.type === savedParam.type && p.id === savedParam.id;
-			})
-				? savedParam
-				: tabRegistry[tabs[0].type].tabParamFromTab(tabs[0]);
+		// Try to restore the last active session, fall back to the first session
+		const saved = localStorage.getItem(`space-session:${spaceSlug}`);
+		const targetSessionId =
+			saved && sessions.some((s) => s.id === saved) ? saved : sessions[0].id;
 
-		if (!targetParam) {
-			return;
-		}
 		navigate({
 			to: "/space/$spaceSlug",
 			params: { spaceSlug },
-			search: { tab: serializeTab(targetParam) },
+			search: { session: targetSessionId },
 			replace: true,
 		});
-	}, [tab, tabs, isTabsLoading, spaceSlug, navigate]);
-
-	const activeTabType = tab?.type ?? "session";
-	const activeTabConfig = tabRegistry[activeTabType];
-
-	const shouldWaitForSandboxStatus =
-		activeTabConfig.requiresSandbox && isSpaceLoading;
-	const shouldShowSandboxPaused =
-		activeTabConfig.requiresSandbox && !!space && space.status !== "running";
+	}, [activeSessionId, sessions, isSessionsLoading, spaceSlug, navigate]);
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -153,164 +149,226 @@ export function SpaceLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						<SpaceSidebarToggle />
-					</div>
-				</header>
-				<SpaceTabBar
-					activeTab={tab}
-					actor={actor}
-					spaceSlug={spaceSlug}
-					tabs={tabs}
-				/>
-				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-					{isSpaceMissing && !spaceCreating ? (
-						<SpaceNotFoundPanel />
-					) : shouldWaitForSandboxStatus ? (
-						<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
-							Loading sandbox status...
-						</div>
-					) : shouldShowSandboxPaused ? (
-						<SandboxPausedPanel slug={space.slug} status={space.status} />
-					) : (
-						activeTabConfig.render({
-							actor,
-							tab: tab
-								? tabs.find((t) => {
-										const param = tabRegistry[t.type].tabParamFromTab(t);
-										return param?.type === tab.type && param.id === tab.id;
-									})
-								: undefined,
-							routeTabId: tab?.id,
-							spaceSlug,
-						})
-					)}
-				</div>
-			</SidebarInset>
-			<SpaceSidebar actor={actor} space={space} tabs={tabs} />
-		</div>
-	);
-}
-
-const SpaceTabBar: FC<{
-	spaceSlug: string;
-	activeTab: TabParam | undefined;
-	actor: SpaceActor;
-	tabs: TabRow[];
-}> = ({ spaceSlug, activeTab, actor, tabs }) => {
-	const navigate = useNavigate();
-
-	return (
-		<div className="sticky top-0 z-20 flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-background px-2">
-			{tabs.map((tab) => {
-				const tabConfig = tabRegistry[tab.type];
-				const tabParam = tabConfig.tabParamFromTab(tab);
-				if (!tabParam) {
-					return null;
-				}
-
-				const isActive =
-					activeTab?.type === tabParam.type && activeTab?.id === tabParam.id;
-				const title = tab.title || tabConfig.defaultTitle;
-				const tabIndex = tabs.findIndex((candidate) => candidate.id === tab.id);
-
-				return (
-					<div
-						className={cn(
-							"group/tab flex h-7 shrink-0 items-center rounded-md pr-1 transition-colors hover:bg-muted",
-							isActive ? "bg-muted font-medium" : "text-muted-foreground"
-						)}
-						key={tab.id}
-					>
-						<button
-							className="flex h-full min-w-0 items-center rounded-md px-3 text-sm"
+						<SpaceSandboxControls actor={actor} space={space} />
+						<Button
 							onClick={() =>
 								navigate({
 									to: "/space/$spaceSlug",
 									params: { spaceSlug },
-									search: { tab: serializeTab(tabParam) },
+									search: {},
 								})
 							}
-							type="button"
+							size="icon"
+							variant="ghost"
 						>
-							<span className="truncate">{title}</span>
-						</button>
-						<button
-							className="flex size-5 shrink-0 items-center justify-center rounded opacity-70 transition-opacity hover:bg-accent hover:opacity-100 group-hover/tab:opacity-100"
-							disabled={actor.connStatus !== "connected" || !actor.connection}
-							onClick={(event) => {
-								event.preventDefault();
-								event.stopPropagation();
-
-								const close = async () => {
-									if (!actor.connection) {
-										return;
-									}
-
-									await actor.connection.closeTab(tab.id);
-
-									if (!isActive) {
-										return;
-									}
-
-									const remainingTabs = tabs.filter(
-										(candidate) => candidate.id !== tab.id
-									);
-									const nextTab =
-										remainingTabs[tabIndex] ?? remainingTabs[tabIndex - 1];
-									if (!nextTab) {
-										navigate({
-											to: "/space/$spaceSlug",
-											params: { spaceSlug },
-											search: {},
-										});
-										return;
-									}
-
-									const nextTabConfig = tabRegistry[nextTab.type];
-									const nextTabParam = nextTabConfig.tabParamFromTab(nextTab);
-									if (!nextTabParam) {
-										navigate({
-											to: "/space/$spaceSlug",
-											params: { spaceSlug },
-											search: {},
-										});
-										return;
-									}
-
-									navigate({
-										to: "/space/$spaceSlug",
-										params: { spaceSlug },
-										search: { tab: serializeTab(nextTabParam) },
-									});
-								};
-
-								close().catch((error: unknown) => {
-									console.error("Failed to close tab", error);
-								});
-							}}
-							type="button"
-						>
-							<XIcon className="size-3.5" />
-							<span className="sr-only">Close tab</span>
-						</button>
+							<PlusIcon className="size-4" />
+							<span className="sr-only">New session</span>
+						</Button>
+						<SessionHistoryPopover
+							activeSessionId={activeSessionId}
+							sessions={sessions}
+							spaceSlug={spaceSlug}
+						/>
 					</div>
-				);
-			})}
+				</header>
+				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+					{isSpaceMissing && !spaceCreating ? (
+						<SpaceNotFoundPanel />
+					) : (
+						<SessionView
+							actor={actor}
+							key={activeSessionId ?? spaceSlug}
+							sessionId={activeSessionId}
+							spaceSlug={spaceSlug}
+						/>
+					)}
+				</div>
+			</SidebarInset>
+		</div>
+	);
+}
+
+function SpaceSandboxControls({
+	actor,
+	space,
+}: {
+	actor: SpaceActor;
+	space: SpaceRecord | null | undefined;
+}) {
+	const stopMutation = useConvexTanstackMutation(api.spaces.stop);
+	const { mutate: updateSpace } = useConvexTanstackMutation(api.spaces.update);
+	const { startSandbox, isStarted, isStopped, isTransitioning } =
+		useStartSandbox(space?.slug ?? "", space?.status ?? "");
+	const [minutesLeft, setMinutesLeft] = useState<number | null>(() => {
+		if (!space?.sandboxExpiresAt) {
+			return null;
+		}
+		return Math.max(
+			0,
+			Math.ceil((space.sandboxExpiresAt - Date.now()) / 60_000)
+		);
+	});
+
+	const clearError = useCallback(() => {
+		if (!space) {
+			return;
+		}
+		updateSpace({ id: space._id, error: "" });
+	}, [space, updateSpace]);
+	useErrorToast(space?.error, clearError);
+
+	const isBusy = stopMutation.isPending || isTransitioning;
+	const canToggle = !!space && (isStarted || isStopped);
+	const shouldShowExtendButton =
+		isStarted && minutesLeft !== null && minutesLeft <= 2;
+
+	useEffect(() => {
+		if (!space?.sandboxExpiresAt) {
+			setMinutesLeft(null);
+			return;
+		}
+		const expiresAt = space.sandboxExpiresAt;
+
+		const update = () => {
+			setMinutesLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 60_000)));
+		};
+		update();
+
+		const interval = setInterval(update, 60_000);
+		return () => clearInterval(interval);
+	}, [space?.sandboxExpiresAt]);
+
+	const handleToggleSandbox = () => {
+		if (!space) {
+			return;
+		}
+		if (isStopped) {
+			startSandbox();
+			return;
+		}
+		if (isStarted) {
+			stopMutation.mutate({ id: space._id });
+		}
+	};
+
+	const handleCopyId = () => {
+		if (!space) {
+			return;
+		}
+		const value = space.sandboxId ?? space._id;
+		const label = space.sandboxId ? "Sandbox ID" : "Space ID";
+
+		navigator.clipboard
+			.writeText(value)
+			.then(() => {
+				toast.success(`${label} copied`);
+			})
+			.catch(() => {
+				toast.error(`Failed to copy ${label.toLowerCase()}`);
+			});
+	};
+
+	return (
+		<>
 			<Button
-				className="size-7 shrink-0"
-				onClick={() =>
-					navigate({
-						to: "/space/$spaceSlug",
-						params: { spaceSlug },
-						search: {},
-					})
-				}
+				disabled={!canToggle || isBusy}
+				onClick={handleToggleSandbox}
 				size="icon"
 				variant="ghost"
 			>
-				<PlusIcon className="size-4" />
-				<span className="sr-only">New session</span>
+				{isBusy ? (
+					<LoaderIcon className="size-4 animate-spin" />
+				) : isStopped ? (
+					<PlayIcon className="size-4" />
+				) : (
+					<SquareIcon className="size-4" />
+				)}
+				<span className="sr-only">
+					{isStopped ? "Start sandbox" : "Stop sandbox"}
+				</span>
 			</Button>
-		</div>
+			<Button
+				disabled={!space}
+				onClick={handleCopyId}
+				size="icon"
+				variant="ghost"
+			>
+				<ClipboardIcon className="size-4" />
+				<span className="sr-only">Copy sandbox ID</span>
+			</Button>
+			{shouldShowExtendButton && (
+				<Button
+					onClick={() => actor.connection?.resetTimeout()}
+					size="icon"
+					variant="ghost"
+				>
+					<TimerIcon className="size-4" />
+					<span className="sr-only">
+						{minutesLeft === 0
+							? "Sandbox expiring soon, extend timeout"
+							: `${minutesLeft} minutes left, extend sandbox timeout`}
+					</span>
+				</Button>
+			)}
+		</>
 	);
-};
+}
+
+function SessionHistoryPopover({
+	spaceSlug,
+	activeSessionId,
+	sessions,
+}: {
+	spaceSlug: string;
+	activeSessionId: string | undefined;
+	sessions: SessionRow[];
+}) {
+	const navigate = useNavigate();
+
+	return (
+		<Popover>
+			<PopoverTrigger
+				className={cn(
+					"inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+				)}
+			>
+				<HistoryIcon className="size-4" />
+				<span className="sr-only">Session history</span>
+			</PopoverTrigger>
+			<PopoverContent align="end" className="w-64 p-1">
+				{sessions.length === 0 ? (
+					<p className="px-2 py-3 text-center text-muted-foreground text-xs">
+						No sessions yet
+					</p>
+				) : (
+					<div className="flex max-h-72 flex-col overflow-y-auto">
+						{sessions.map((session) => {
+							const isActive = activeSessionId === session.id;
+							return (
+								<button
+									className={cn(
+										"flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent",
+										isActive && "bg-accent font-medium"
+									)}
+									key={session.id}
+									onClick={() =>
+										navigate({
+											to: "/space/$spaceSlug",
+											params: { spaceSlug },
+											search: { session: session.id },
+										})
+									}
+									type="button"
+								>
+									<span className="truncate">
+										{session.title || "New Chat"}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+				)}
+			</PopoverContent>
+		</Popover>
+	);
+}

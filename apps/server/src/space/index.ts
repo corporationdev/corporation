@@ -1,29 +1,24 @@
 import { env } from "@corporation/env/server";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
-import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
 import bundledMigrations from "../db/migrations/migrations";
-import { schema, type TabRow, tabs } from "../db/schema";
+import { type SessionRow, schema } from "../db/schema";
+import { refreshSandboxTimeout } from "./action-registration";
+import { ingestAgentRunnerBatch } from "./agent-runner";
 import {
-	collectDriverActions,
-	refreshSandboxTimeout,
-} from "./action-registration";
-
+	cancelSession,
+	closeSessionFeed,
+	listSessions,
+	openSessionFeed,
+	sendMessage,
+} from "./sessions";
 import { createSubscriptionHub, unsubscribeConnection } from "./subscriptions";
-import { broadcastTabsChanged, listSpaceTabs } from "./tab-list";
 import type { PersistedState, SpaceVars } from "./types";
 
-export type { TabRow, TabType } from "../db/schema";
-
-import { sessionDriver } from "./session-driver";
-import { terminalDriver } from "./terminal-driver";
-
-export const lifecycleDrivers = [sessionDriver, terminalDriver];
-
-const driverActions = collectDriverActions(lifecycleDrivers);
+export type { SessionRow } from "../db/schema";
 
 export const space = actor({
 	createState: (
@@ -79,11 +74,8 @@ export const space = actor({
 		return output;
 	},
 
-	onWake: async (c) => {
+	onWake: (c) => {
 		refreshSandboxTimeout(c);
-		for (const driver of lifecycleDrivers) {
-			await driver.onWake?.(c);
-		}
 	},
 
 	onDisconnect: (c, conn) => {
@@ -102,24 +94,26 @@ export const space = actor({
 	},
 
 	actions: {
-		listTabs: (c): Promise<TabRow[]> => listSpaceTabs(c),
-		closeTab: async (c, tabId: string) => {
-			await c.vars.db
-				.update(tabs)
-				.set({ active: false, updatedAt: Date.now() })
-				.where(eq(tabs.id, tabId));
-			await broadcastTabsChanged(c);
-		},
-		archiveTab: async (c, tabId: string) => {
-			await c.vars.db
-				.update(tabs)
-				.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
-				.where(eq(tabs.id, tabId));
-			await broadcastTabsChanged(c);
-		},
+		listSessions: (c): Promise<SessionRow[]> => listSessions(c),
+		sendMessage: (
+			c,
+			sessionId: string,
+			content: string,
+			agent: string,
+			modelId: string
+		) => sendMessage(c, sessionId, content, agent, modelId),
+		ingestAgentRunnerBatch: (c, payload: unknown) =>
+			ingestAgentRunnerBatch(c, payload),
+		cancelSession: (c, sessionId: string) => cancelSession(c, sessionId),
+		openSessionFeed: (
+			c,
+			sessionId: string,
+			afterEventIndex?: number,
+			limit?: number
+		) => openSessionFeed(c, sessionId, afterEventIndex, limit),
+		closeSessionFeed: (c, sessionId: string) => closeSessionFeed(c, sessionId),
 		resetTimeout: (c) => {
 			c.vars.lastTimeoutRefreshAt = 0;
 		},
-		...driverActions,
 	},
 });

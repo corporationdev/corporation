@@ -1,10 +1,9 @@
 "use node";
 
 import type { Sandbox } from "e2b";
-import { normalizeBranchName, quoteShellArg } from "./git";
+import { quoteShellArg } from "./git";
 
 export const SANDBOX_AGENT_PORT = 5799;
-export const CODE_SERVER_PORT = 8080;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
@@ -15,8 +14,6 @@ const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 export const DEV_SERVER_SESSION_NAME = "devserver";
 export const SANDBOX_AGENT_SESSION_NAME = "sandbox-agent";
-export const CODE_SERVER_SESSION_NAME = "code-server";
-
 const AI_API_KEY_NAMES = [
 	"ANTHROPIC_API_KEY",
 	"OPENAI_API_KEY",
@@ -193,61 +190,6 @@ export async function writeEnvFiles(
 	}
 
 	await sandbox.files.writeFiles(files);
-}
-
-/**
- * Pushes the current branch to the remote. Stages and commits any
- * uncommitted changes first (as the given author). Returns whether
- * there were any commits to push (i.e. the branch diverged from
- * the default branch).
- */
-export async function pushBranch(
-	sandbox: Sandbox,
-	env: SandboxEnv,
-	githubToken: string,
-	branchName: string,
-	author: { name: string; email: string }
-): Promise<boolean> {
-	const { repository } = env;
-	const workdir = getSandboxWorkdir(repository);
-	const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
-	const safeBranchName = quoteShellArg(normalizeBranchName(branchName));
-	const safeRepoUrl = quoteShellArg(repoUrl);
-	const safeAuthorName = quoteShellArg(author.name);
-	const safeAuthorEmail = quoteShellArg(author.email);
-	const safeCompareRange = quoteShellArg(`${repository.defaultBranch}..HEAD`);
-
-	await runRootCommand(sandbox, `git remote set-url origin ${safeRepoUrl}`, {
-		cwd: workdir,
-	});
-
-	await runRootCommand(sandbox, "git add -A", {
-		cwd: workdir,
-	});
-
-	await runRootCommand(
-		sandbox,
-		`git diff --cached --quiet || git -c user.name=${safeAuthorName} -c user.email=${safeAuthorEmail} commit -m 'Update from Corporation'`,
-		{ cwd: workdir }
-	);
-
-	const diffResult = await runRootCommand(
-		sandbox,
-		`git log ${safeCompareRange} --oneline`,
-		{ cwd: workdir }
-	);
-	const hasCommits = diffResult.stdout.trim().length > 0;
-
-	if (!hasCommits) {
-		return false;
-	}
-
-	await runRootCommand(sandbox, `git push origin ${safeBranchName}`, {
-		cwd: workdir,
-		timeoutMs: REPO_SYNC_TIMEOUT_MS,
-	});
-
-	return true;
 }
 
 function sleep(ms: number): Promise<void> {

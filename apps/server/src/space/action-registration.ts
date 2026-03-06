@@ -1,10 +1,5 @@
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
-import type {
-	DriverAction,
-	DriverActionMap,
-	TabDriverLifecycle,
-} from "./driver-types";
 import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:keepalive");
@@ -58,64 +53,4 @@ export function refreshSandboxTimeout(runtime: SpaceRuntimeContext): void {
 			);
 			runtime.vars.lastTimeoutRefreshAt = 0;
 		});
-}
-
-type UnionToIntersection<T> = (
-	T extends unknown
-		? (arg: T) => void
-		: never
-) extends (arg: infer I) => void
-	? I
-	: never;
-
-type ActionWithoutContext<TAction extends DriverAction> = TAction extends (
-	ctx: SpaceRuntimeContext,
-	...args: infer TArgs
-) => infer TResult
-	? (ctx: unknown, ...args: TArgs) => TResult
-	: never;
-
-type ActionMapWithoutContext<TMap> = {
-	[K in keyof TMap]: TMap[K] extends DriverAction
-		? ActionWithoutContext<TMap[K]>
-		: never;
-};
-
-type DriverPublicActions<
-	TDrivers extends readonly TabDriverLifecycle<DriverActionMap>[],
-> = UnionToIntersection<TDrivers[number]["publicActions"]>;
-
-type CollectedDriverActions<
-	TDrivers extends readonly TabDriverLifecycle<DriverActionMap>[],
-> = ActionMapWithoutContext<DriverPublicActions<TDrivers>>;
-
-function assertNoCollision(
-	actions: Record<string, (ctx: unknown, ...args: never[]) => unknown>,
-	actionName: string,
-	source: string
-): void {
-	if (actionName in actions) {
-		throw new Error(`Duplicate action '${actionName}' from ${source}`);
-	}
-}
-
-export function collectDriverActions<
-	const TDrivers extends readonly TabDriverLifecycle<DriverActionMap>[],
->(drivers: TDrivers): CollectedDriverActions<TDrivers> {
-	const actions: Record<string, (ctx: unknown, ...args: never[]) => unknown> =
-		{};
-
-	for (const driver of drivers) {
-		for (const actionName of Object.keys(driver.publicActions)) {
-			const actionHandler = driver.publicActions[
-				actionName as keyof typeof driver.publicActions
-			] as DriverAction;
-
-			assertNoCollision(actions, actionName, `${driver.kind}.publicActions`);
-			actions[actionName] = (ctx, ...args: never[]) =>
-				actionHandler(ctx as SpaceRuntimeContext, ...args);
-		}
-	}
-
-	return actions as CollectedDriverActions<TDrivers>;
 }

@@ -3,31 +3,37 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { generateText, Output } from "ai";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { z } from "zod";
-import { sessionEvents, sessions, tabs } from "../db/schema";
-import {
-	ingestAgentRunnerBatch,
-	publishSessionStatus,
-	startAgentRunner,
-} from "./agent-runner";
-import type { TabDriverLifecycle } from "./driver-types";
+import { type SessionRow, sessionEvents, sessions } from "../db/schema";
+import { publishSessionStatus, startAgentRunner } from "./agent-runner";
 import {
 	buildPromptWithReplay,
 	type SessionPromptPart,
 } from "./session-replay-context";
 import {
-	createTabChannel,
-	createTabId,
+	createSessionChannel,
 	subscribeToChannel,
 	unsubscribeFromChannel,
 } from "./subscriptions";
-import { broadcastTabsChanged } from "./tab-list";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
 
 const log = createLogger("space:session");
+
+export function listSessions(ctx: SpaceRuntimeContext): Promise<SessionRow[]> {
+	return ctx.vars.db
+		.select()
+		.from(sessions)
+		.orderBy(desc(sessions.updatedAt), asc(sessions.createdAt));
+}
+
+export async function broadcastSessionsChanged(
+	ctx: SpaceRuntimeContext
+): Promise<void> {
+	ctx.broadcast("sessions.changed", await listSessions(ctx));
+}
 
 async function requestAutoSessionTitle(
 	ctx: SpaceRuntimeContext,
@@ -64,12 +70,12 @@ async function requestAutoSessionTitle(
 	}
 
 	ctx.vars.db
-		.update(tabs)
+		.update(sessions)
 		.set({ title, updatedAt: Date.now() })
-		.where(eq(tabs.sessionId, sessionId))
+		.where(eq(sessions.id, sessionId))
 		.run();
 
-	await broadcastTabsChanged(ctx);
+	await broadcastSessionsChanged(ctx);
 }
 
 async function ensureSession(
@@ -80,61 +86,47 @@ async function ensureSession(
 	title?: string
 ): Promise<void> {
 	const now = Date.now();
-	const tabId = createTabId("session", sessionId);
 	const nextTitle = title ?? DEFAULT_SESSION_TITLE;
 
-	ctx.vars.db.transaction((tx) => {
-		const existing = tx
-			.select({ id: tabs.id })
-			.from(tabs)
-			.where(eq(tabs.sessionId, sessionId))
-			.limit(1)
-			.all();
+	const existing = ctx.vars.db
+		.select({ id: sessions.id })
+		.from(sessions)
+		.where(eq(sessions.id, sessionId))
+		.limit(1)
+		.all();
 
-		if (existing.length === 0) {
-			tx.insert(tabs)
-				.values({
-					id: tabId,
-					type: "session",
-					title: nextTitle,
-					sessionId,
-					active: true,
-					createdAt: now,
-					updatedAt: now,
-					archivedAt: null,
-				})
-				.run();
-		} else {
-			const tabPatch: {
-				active: boolean;
-				archivedAt: null;
-				updatedAt: number;
-				title?: string;
-			} = {
-				active: true,
-				archivedAt: null,
-				updatedAt: now,
-			};
-			if (title) {
-				tabPatch.title = title;
-			}
-			tx.update(tabs).set(tabPatch).where(eq(tabs.sessionId, sessionId)).run();
-		}
-
-		tx.insert(sessions)
+	if (existing.length === 0) {
+		ctx.vars.db
+			.insert(sessions)
 			.values({
 				id: sessionId,
+				title: nextTitle,
 				agent,
 				agentSessionId: "",
 				lastConnectionId: "",
 				createdAt: now,
+				updatedAt: now,
 				modelId,
 			})
-			.onConflictDoNothing({ target: sessions.id })
 			.run();
-	});
+	} else {
+		const patch: {
+			updatedAt: number;
+			title?: string;
+		} = {
+			updatedAt: now,
+		};
+		if (title) {
+			patch.title = title;
+		}
+		ctx.vars.db
+			.update(sessions)
+			.set(patch)
+			.where(eq(sessions.id, sessionId))
+			.run();
+	}
 
-	await broadcastTabsChanged(ctx);
+	await broadcastSessionsChanged(ctx);
 }
 
 async function requestAutoBranchName(
@@ -164,19 +156,18 @@ async function requestAutoBranchName(
 	}
 }
 
-async function sendMessage(
+export async function sendMessage(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
 	content: string,
 	agent: string,
 	modelId: string
 ): Promise<void> {
-	const existingTabs = await ctx.vars.db
-		.select({ id: tabs.id })
-		.from(tabs)
-		.where(eq(tabs.type, "session"))
+	const existingSessions = await ctx.vars.db
+		.select({ id: sessions.id })
+		.from(sessions)
 		.limit(1);
-	if (existingTabs.length === 0) {
+	if (existingSessions.length === 0) {
 		ctx.waitUntil(
 			requestAutoBranchName(ctx, content).catch((error) => {
 				log.warn(
@@ -189,14 +180,14 @@ async function sendMessage(
 
 	await ensureSession(ctx, sessionId, agent, modelId);
 
-	// Auto-generate tab title on first message of this session
-	const tabRow = ctx.vars.db
-		.select({ title: tabs.title })
-		.from(tabs)
-		.where(eq(tabs.sessionId, sessionId))
+	// Auto-generate session title on first message of this session
+	const sessionRow = ctx.vars.db
+		.select({ title: sessions.title })
+		.from(sessions)
+		.where(eq(sessions.id, sessionId))
 		.limit(1)
 		.all();
-	if (tabRow[0]?.title === DEFAULT_SESSION_TITLE) {
+	if (sessionRow[0]?.title === DEFAULT_SESSION_TITLE) {
 		ctx.waitUntil(
 			requestAutoSessionTitle(ctx, sessionId, content).catch((error) => {
 				log.warn(
@@ -225,7 +216,7 @@ async function sendMessage(
 	});
 }
 
-async function cancelSession(
+export async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
 ): Promise<void> {
@@ -312,7 +303,7 @@ async function getSessionState(
 	};
 }
 
-async function openSessionFeed(
+export async function openSessionFeed(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
 	afterEventIndex = 0,
@@ -330,7 +321,7 @@ async function openSessionFeed(
 
 	subscribeToChannel(
 		ctx.vars.subscriptions,
-		createTabChannel("session", sessionId),
+		createSessionChannel(sessionId),
 		ctx.conn.id
 	);
 
@@ -345,57 +336,17 @@ async function openSessionFeed(
 	return { events, status, agent, modelId, lastEventIndex };
 }
 
-function closeSessionFeed(ctx: SpaceRuntimeContext, sessionId: string): void {
+export function closeSessionFeed(
+	ctx: SpaceRuntimeContext,
+	sessionId: string
+): void {
 	if (!ctx.conn) {
 		throw new Error("Session feed requires an active connection");
 	}
 
 	unsubscribeFromChannel(
 		ctx.vars.subscriptions,
-		createTabChannel("session", sessionId),
+		createSessionChannel(sessionId),
 		ctx.conn.id
 	);
 }
-
-type SessionPublicActions = {
-	sendMessage: (
-		ctx: SpaceRuntimeContext,
-		sessionId: string,
-		content: string,
-		agent: string,
-		modelId: string
-	) => Promise<void>;
-	ingestAgentRunnerBatch: (
-		ctx: SpaceRuntimeContext,
-		payload: unknown
-	) => Promise<void>;
-	cancelSession: (ctx: SpaceRuntimeContext, sessionId: string) => Promise<void>;
-	openSessionFeed: (
-		ctx: SpaceRuntimeContext,
-		sessionId: string,
-		afterEventIndex?: number,
-		limit?: number
-	) => Promise<{
-		events: SessionEvent[];
-		status: string;
-		agent: string | null;
-		modelId: string | null;
-		lastEventIndex: number;
-	}>;
-	closeSessionFeed: (ctx: SpaceRuntimeContext, sessionId: string) => void;
-};
-
-type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
-	publicActions: SessionPublicActions;
-};
-
-export const sessionDriver: SessionDriver = {
-	kind: "session",
-	publicActions: {
-		sendMessage,
-		ingestAgentRunnerBatch,
-		cancelSession,
-		openSessionFeed,
-		closeSessionFeed,
-	},
-};
