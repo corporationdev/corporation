@@ -1,21 +1,12 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
-import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { generateText, Output } from "ai";
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { type SessionRow, sessionEvents, sessions } from "../db/schema";
-import { publishSessionStatus, startAgentRunner } from "./agent-runner";
-import {
-	buildPromptWithReplay,
-	type SessionPromptPart,
-} from "./session-replay-context";
-import {
-	createSessionChannel,
-	subscribeToChannel,
-	unsubscribeFromChannel,
-} from "./subscriptions";
+import { type SessionRow, sessions } from "../db/schema";
+import { startAgentRunner } from "./agent-runner";
+import { appendSessionStatusFrame } from "./session-stream";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
@@ -198,15 +189,7 @@ export async function sendMessage(
 		);
 	}
 
-	let prompt: SessionPromptPart[] = [{ type: "text", text: content }];
-	try {
-		prompt = await buildPromptWithReplay(ctx, sessionId, content);
-	} catch (error) {
-		log.warn(
-			{ err: error, actorId: ctx.actorId, sessionId },
-			"sendMessage: failed to build replay context"
-		);
-	}
+	const prompt = [{ type: "text" as const, text: content }];
 
 	await startAgentRunner(ctx, {
 		sessionId,
@@ -245,7 +228,11 @@ export async function cancelSession(
 			error: null,
 		})
 		.where(eq(sessions.id, sessionId));
-	publishSessionStatus(ctx, sessionId, "idle");
+	appendSessionStatusFrame(ctx, {
+		sessionId,
+		status: "idle",
+		reason: "run_cancelled",
+	});
 
 	if (runId) {
 		fetch(`${ctx.state.agentUrl}/v1/prompt/${runId}`, {
@@ -258,95 +245,4 @@ export async function cancelSession(
 			);
 		});
 	}
-}
-
-async function getSessionState(
-	ctx: SpaceRuntimeContext,
-	sessionId: string,
-	afterEventIndex: number,
-	limit?: number
-): Promise<{
-	events: SessionEvent[];
-	status: string;
-	agent: string | null;
-	modelId: string | null;
-}> {
-	const conditions = [eq(sessionEvents.sessionId, sessionId)];
-	if (afterEventIndex > 0) {
-		conditions.push(gt(sessionEvents.eventIndex, afterEventIndex));
-	}
-
-	const [events, [session]] = await Promise.all([
-		ctx.vars.db
-			.select()
-			.from(sessionEvents)
-			.where(and(...conditions))
-			.orderBy(asc(sessionEvents.eventIndex))
-			.limit(limit ?? 100),
-		ctx.vars.db
-			.select({
-				status: sessions.status,
-				agent: sessions.agent,
-				modelId: sessions.modelId,
-			})
-			.from(sessions)
-			.where(eq(sessions.id, sessionId))
-			.limit(1),
-	]);
-
-	const status = session?.status ?? "idle";
-	return {
-		events,
-		status,
-		agent: session?.agent ?? null,
-		modelId: session?.modelId ?? null,
-	};
-}
-
-export async function openSessionFeed(
-	ctx: SpaceRuntimeContext,
-	sessionId: string,
-	afterEventIndex = 0,
-	limit?: number
-): Promise<{
-	events: SessionEvent[];
-	status: string;
-	agent: string | null;
-	modelId: string | null;
-	lastEventIndex: number;
-}> {
-	if (!ctx.conn) {
-		throw new Error("Session feed requires an active connection");
-	}
-
-	subscribeToChannel(
-		ctx.vars.subscriptions,
-		createSessionChannel(sessionId),
-		ctx.conn.id
-	);
-
-	const { events, status, agent, modelId } = await getSessionState(
-		ctx,
-		sessionId,
-		afterEventIndex,
-		limit
-	);
-	const lastEventIndex =
-		events.at(-1)?.eventIndex ?? Math.max(0, afterEventIndex);
-	return { events, status, agent, modelId, lastEventIndex };
-}
-
-export function closeSessionFeed(
-	ctx: SpaceRuntimeContext,
-	sessionId: string
-): void {
-	if (!ctx.conn) {
-		throw new Error("Session feed requires an active connection");
-	}
-
-	unsubscribeFromChannel(
-		ctx.vars.subscriptions,
-		createSessionChannel(sessionId),
-		ctx.conn.id
-	);
 }

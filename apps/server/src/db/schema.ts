@@ -1,8 +1,20 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+	index,
+	integer,
+	sqliteTable,
+	text,
+	uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const sessionStatusValues = ["idle", "running", "error"] as const;
 export type SessionStatus = (typeof sessionStatusValues)[number];
+export const sessionStreamFrameKindValues = [
+	"event",
+	"status_changed",
+] as const;
+export type SessionStreamFrameKind =
+	(typeof sessionStreamFrameKindValues)[number];
 
 export const sessions = sqliteTable("sessions", {
 	id: text("id").primaryKey(),
@@ -20,28 +32,49 @@ export const sessions = sqliteTable("sessions", {
 	status: text("status", { enum: sessionStatusValues })
 		.notNull()
 		.default("idle"),
+	lastStreamOffset: integer("last_stream_offset").notNull().default(0),
 	callbackToken: text("callback_token"),
 	error: text("error", { mode: "json" }),
 });
 
-export const sessionEvents = sqliteTable("session_events", {
-	id: text("id").primaryKey(),
-	eventIndex: integer("event_index").notNull(),
-	sessionId: text("session_id")
-		.notNull()
-		.references(() => sessions.id, { onDelete: "cascade" }),
-	createdAt: integer("created_at", { mode: "number" }).notNull(),
-	connectionId: text("connection_id").notNull(),
-	sender: text("sender").notNull().$type<"client" | "agent">(),
-	payload: text("payload", { mode: "json" })
-		.notNull()
-		.$type<Record<string, unknown>>(),
-});
+export const sessionStreamFrames = sqliteTable(
+	"session_stream_frames",
+	{
+		id: text("id").primaryKey(),
+		sessionId: text("session_id")
+			.notNull()
+			.references(() => sessions.id, { onDelete: "cascade" }),
+		offset: integer("offset").notNull(),
+		createdAt: integer("created_at", { mode: "number" }).notNull(),
+		kind: text("kind", { enum: sessionStreamFrameKindValues }).notNull(),
+		eventId: text("event_id"),
+		data: text("data", { mode: "json" })
+			.notNull()
+			.$type<Record<string, unknown>>(),
+	},
+	(table) => [
+		uniqueIndex("session_stream_frames_session_offset_idx").on(
+			table.sessionId,
+			table.offset
+		),
+		uniqueIndex("session_stream_frames_session_event_id_unique").on(
+			table.sessionId,
+			table.eventId
+		),
+		index("session_stream_frames_session_kind_offset_idx").on(
+			table.sessionId,
+			table.kind,
+			table.offset
+		),
+	]
+);
 
 export type SessionRow = InferSelectModel<typeof sessions>;
-export type SessionEventRow = InferSelectModel<typeof sessionEvents>;
+export type SessionStreamFrameRow = InferSelectModel<
+	typeof sessionStreamFrames
+>;
 
 export const schema = {
 	sessions,
-	sessionEvents,
+	sessionStreamFrames,
 };

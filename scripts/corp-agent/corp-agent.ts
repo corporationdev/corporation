@@ -78,6 +78,8 @@ const ACP_PROTOCOL_VERSION = 1;
 const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const CALLBACK_TIMEOUT_MS = 10_000;
 const CALLBACK_MAX_ATTEMPTS = 8;
+const EVENT_BATCH_MAX_SIZE = 10;
+const EVENT_BATCH_MAX_DELAY_MS = 5;
 const AUTH_METHOD_ENV_CANDIDATES: Record<string, string[]> = {
 	"anthropic-api-key": ["ANTHROPIC_API_KEY"],
 	"codex-api-key": ["CODEX_API_KEY"],
@@ -201,21 +203,87 @@ async function postJsonWithRetry(
 
 type StdioBridge = {
 	dead: boolean;
+	onEnvelope:
+		| ((
+				envelope: Record<string, unknown>,
+				direction: "inbound" | "outbound"
+		  ) => void)
+		| null;
 	onNotification: ((envelope: Record<string, unknown>) => void) | null;
-	pendingResolvers: Map<string, (envelope: Record<string, unknown>) => void>;
+	pendingResolvers: Map<
+		string,
+		{
+			resolve: (envelope: Record<string, unknown>) => void;
+			reject: (error: Error) => void;
+			timer: ReturnType<typeof setTimeout>;
+		}
+	>;
 	proc: ReturnType<typeof Bun.spawn>;
 };
+
+function processLinesFromStream(
+	stream: ReadableStream<Uint8Array>,
+	onLine: (line: string) => void,
+	onClose?: () => void
+): void {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+
+	const drainBufferedLines = () => {
+		let newlineIdx = buffer.indexOf("\n");
+		while (newlineIdx !== -1) {
+			onLine(buffer.slice(0, newlineIdx));
+			buffer = buffer.slice(newlineIdx + 1);
+			newlineIdx = buffer.indexOf("\n");
+		}
+	};
+
+	(async () => {
+		try {
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) {
+					break;
+				}
+				buffer += decoder.decode(value, { stream: true });
+				drainBufferedLines();
+			}
+		} catch {
+			// stream ended
+		} finally {
+			buffer += decoder.decode();
+			drainBufferedLines();
+			if (buffer.length > 0) {
+				onLine(buffer);
+				buffer = "";
+			}
+			onClose?.();
+		}
+	})();
+}
+
+function rejectPendingRequests(bridge: StdioBridge, error: Error): void {
+	for (const [id, pending] of bridge.pendingResolvers) {
+		bridge.pendingResolvers.delete(id);
+		clearTimeout(pending.timer);
+		pending.reject(error);
+	}
+}
 
 function routeStdoutEnvelope(
 	bridge: StdioBridge,
 	envelope: Record<string, unknown>
 ): void {
+	bridge.onEnvelope?.(envelope, "inbound");
+
 	const envId = envelope.id != null ? String(envelope.id) : null;
 	if (envId && bridge.pendingResolvers.has(envId)) {
-		const resolver = bridge.pendingResolvers.get(envId);
+		const pending = bridge.pendingResolvers.get(envId);
 		bridge.pendingResolvers.delete(envId);
-		if (resolver) {
-			resolver(envelope);
+		if (pending) {
+			clearTimeout(pending.timer);
+			pending.resolve(envelope);
 		}
 		return;
 	}
@@ -238,9 +306,22 @@ function processStdoutLine(bridge: StdioBridge, rawLine: string): void {
 	}
 }
 
+function processStderrLine(agent: string, rawLine: string): void {
+	if (!rawLine.trim()) {
+		return;
+	}
+	log("info", `[${agent} stderr] ${rawLine.trimEnd()}`);
+}
+
 function spawnStdioBridge(
 	agent: string,
-	onNotification: (envelope: Record<string, unknown>) => void
+	onNotification: (envelope: Record<string, unknown>) => void,
+	onEnvelope:
+		| ((
+				envelope: Record<string, unknown>,
+				direction: "inbound" | "outbound"
+		  ) => void)
+		| null = null
 ): StdioBridge {
 	const cmd = agentCommand(agent);
 	log("info", "Spawning agent command (stdio)", { cmd: cmd.join(" ") });
@@ -256,77 +337,75 @@ function spawnStdioBridge(
 		proc,
 		pendingResolvers: new Map(),
 		onNotification,
+		onEnvelope,
 		dead: false,
 	};
 
 	if (proc.stdout) {
-		const reader = proc.stdout.getReader();
-		const decoder = new TextDecoder();
-		let buffer = "";
-
-		(async () => {
-			const drainBufferedLines = () => {
-				let newlineIdx = buffer.indexOf("\n");
-				while (newlineIdx !== -1) {
-					processStdoutLine(bridge, buffer.slice(0, newlineIdx));
-					buffer = buffer.slice(newlineIdx + 1);
-					newlineIdx = buffer.indexOf("\n");
-				}
-			};
-
-			try {
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) {
-						buffer += decoder.decode();
-						drainBufferedLines();
-						if (buffer.trim()) {
-							processStdoutLine(bridge, buffer);
-							buffer = "";
-						}
-						break;
-					}
-					buffer += decoder.decode(value, { stream: true });
-					drainBufferedLines();
-				}
-			} catch {
-				// stream ended
+		processLinesFromStream(
+			proc.stdout,
+			(line) => processStdoutLine(bridge, line),
+			() => {
+				bridge.dead = true;
+				rejectPendingRequests(
+					bridge,
+					new Error(`Agent ${agent} stdout stream closed`)
+				);
 			}
-			bridge.dead = true;
-			log("info", "Agent stdout stream ended");
-		})();
+		);
 	}
 
 	if (proc.stderr) {
-		const reader = proc.stderr.getReader();
-		const decoder = new TextDecoder();
-		(async () => {
-			try {
-				while (true) {
-					const { done, value } = await reader.read();
-					if (done) {
-						break;
-					}
-					const text = decoder.decode(value, { stream: true });
-					for (const line of text.split("\n")) {
-						if (line.trim()) {
-							log("info", `[${agent} stderr] ${line.trimEnd()}`);
-						}
-					}
-				}
-			} catch {
-				// process exited
-			}
-		})();
+		processLinesFromStream(proc.stderr, (line) =>
+			processStderrLine(agent, line)
+		);
 	}
 
 	return bridge;
+}
+
+function teardownBridge(
+	bridge: StdioBridge,
+	context: { agent: string; sessionId: string; reason: string }
+): void {
+	bridge.dead = true;
+	rejectPendingRequests(
+		bridge,
+		new Error(`Agent bridge torn down: ${context.reason}`)
+	);
+
+	try {
+		bridge.proc.stdin.end();
+	} catch {
+		// stdin already closed
+	}
+
+	try {
+		bridge.proc.stdout?.cancel();
+	} catch {
+		// stdout already closed
+	}
+
+	try {
+		bridge.proc.stderr?.cancel();
+	} catch {
+		// stderr already closed
+	}
+
+	try {
+		bridge.proc.kill();
+	} catch {
+		// process may already be gone
+	}
+
+	log("info", "Tore down spawned session bridge", context);
 }
 
 function stdioWrite(
 	bridge: StdioBridge,
 	envelope: Record<string, unknown>
 ): void {
+	bridge.onEnvelope?.(envelope, "outbound");
 	bridge.proc.stdin.write(`${JSON.stringify(envelope)}\n`);
 }
 
@@ -347,13 +426,18 @@ async function stdioRequest(
 	const responsePromise = new Promise<Record<string, unknown>>(
 		(resolve, reject) => {
 			const timer = setTimeout(() => {
+				const pending = bridge.pendingResolvers.get(id);
+				if (!pending) {
+					return;
+				}
 				bridge.pendingResolvers.delete(id);
 				reject(new Error(`ACP request timed out: ${method} (${id})`));
 			}, timeoutMs);
 
-			bridge.pendingResolvers.set(id, (result) => {
-				clearTimeout(timer);
-				resolve(result);
+			bridge.pendingResolvers.set(id, {
+				resolve,
+				reject,
+				timer,
 			});
 		}
 	);
@@ -371,46 +455,375 @@ async function stdioRequest(
 	return (result.result as Record<string, unknown>) ?? {};
 }
 
-function killBridge(bridge: StdioBridge): void {
-	bridge.dead = true;
-	try {
-		bridge.proc.stdin.end();
-	} catch {
-		// ignore
+// ---------------------------------------------------------------------------
+// Persistent session bridges
+// ---------------------------------------------------------------------------
+
+type SessionBridge = {
+	bridge: StdioBridge;
+	agentSessionId: string;
+	agent: string;
+	cwd: string;
+	modelId: string | undefined;
+	activeTurnId: string | null;
+	onEvent:
+		| ((
+				envelope: Record<string, unknown>,
+				direction: "inbound" | "outbound"
+		  ) => void)
+		| null;
+};
+
+const sessionBridges = new Map<string, SessionBridge>();
+// Preserved agentSessionIds from dead bridges, keyed by corporation sessionId.
+// Used to attempt session/load when the agent process restarts.
+const previousAgentSessionIds = new Map<string, string>();
+
+async function performAuth(
+	bridge: StdioBridge,
+	agent: string,
+	initResult: Record<string, unknown>
+): Promise<void> {
+	const authMethods = extractAuthMethods(initResult);
+	if (authMethods.length === 0) {
+		return;
 	}
-	try {
-		bridge.proc.kill();
-	} catch {
-		// ignore
+	const selectedAuth = selectAuthMethod(authMethods);
+	if (selectedAuth) {
+		await stdioRequest(bridge, "authenticate", {
+			methodId: selectedAuth.methodId,
+		});
+		log("info", "ACP authentication succeeded", {
+			agent,
+			methodId: selectedAuth.methodId,
+			envVar: selectedAuth.envVar,
+		});
+	} else {
+		log("info", "ACP auth methods advertised but no env-backed match", {
+			agent,
+			authMethodIds: authMethods.map((method) => method.id),
+		});
 	}
+}
+
+function maybeHandlePermissionRequest(
+	bridge: StdioBridge,
+	envelope: Record<string, unknown>
+): void {
+	if (envelope.method !== "requestPermission" || envelope.id == null) {
+		return;
+	}
+
+	const reqParams = envelope.params as Record<string, unknown> | undefined;
+	const request = reqParams?.request as Record<string, unknown> | undefined;
+	const options = Array.isArray(request?.options) ? request.options : [];
+	const selected = pickPermissionOption(options);
+
+	const response: Record<string, unknown> = {
+		jsonrpc: "2.0",
+		id: envelope.id,
+		result: {
+			outcome: selected
+				? { outcome: "selected", optionId: selected.optionId }
+				: { outcome: "cancelled" },
+		},
+	};
+	stdioWrite(bridge, response);
+}
+
+function isUnsupportedMethodError(error: unknown): boolean {
+	const msg = error instanceof Error ? error.message : String(error);
+	return msg.includes("(-32601)");
+}
+
+async function setModelOrThrow(
+	bridge: StdioBridge,
+	agentSessionId: string,
+	modelId: string
+): Promise<void> {
+	try {
+		await stdioRequest(bridge, "session/set_model", {
+			sessionId: agentSessionId,
+			modelId,
+		});
+	} catch (error) {
+		if (isUnsupportedMethodError(error)) {
+			log("warn", "session/set_model not supported by agent, skipping", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return;
+		}
+		throw error;
+	}
+}
+
+async function bootstrapSessionBridge(
+	bridge: StdioBridge,
+	sessionId: string,
+	agent: string,
+	cwd: string,
+	modelId: string | undefined
+): Promise<string> {
+	await new Promise((r) => setTimeout(r, 250));
+	if (bridge.proc.exitCode !== null) {
+		throw new Error(
+			`Agent ${agent} exited immediately with code ${bridge.proc.exitCode}`
+		);
+	}
+
+	const initResult = await stdioRequest(bridge, "initialize", {
+		protocolVersion: ACP_PROTOCOL_VERSION,
+		clientInfo: { name: "corp-agent", version: "v1" },
+	});
+	await performAuth(bridge, agent, initResult);
+
+	const capabilities = initResult.agentCapabilities as
+		| Record<string, unknown>
+		| undefined;
+	const supportsLoad = capabilities?.loadSession === true;
+	const previousAgentSessionId = previousAgentSessionIds.get(sessionId);
+
+	let agentSessionId: string | null = null;
+
+	if (supportsLoad && previousAgentSessionId) {
+		try {
+			const loadResult = await stdioRequest(bridge, "session/load", {
+				sessionId: previousAgentSessionId,
+				cwd,
+				mcpServers: [],
+			});
+			agentSessionId =
+				(loadResult.sessionId as string) || previousAgentSessionId;
+			log("info", "session/load succeeded", { sessionId, agentSessionId });
+		} catch (error) {
+			log("warn", "session/load failed, falling back to session/new", {
+				sessionId,
+				previousAgentSessionId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+
+	if (!agentSessionId) {
+		const sessionResult = await stdioRequest(bridge, "session/new", {
+			cwd,
+			mcpServers: [],
+		});
+		agentSessionId = sessionResult.sessionId as string;
+		if (!agentSessionId) {
+			throw new Error("session/new did not return a sessionId");
+		}
+	}
+
+	previousAgentSessionIds.delete(sessionId);
+
+	if (modelId) {
+		await setModelOrThrow(bridge, agentSessionId, modelId);
+	}
+
+	return agentSessionId;
+}
+
+async function initBridge(
+	sessionId: string,
+	agent: string,
+	cwd: string,
+	modelId: string | undefined,
+	queueEnvelopeEvent: (
+		envelope: Record<string, unknown>,
+		direction: "inbound" | "outbound"
+	) => void,
+	pendingTurnId: string
+): Promise<SessionBridge> {
+	log("info", "Spawning new agent subprocess", { agent, sessionId });
+
+	const sessionBridge: SessionBridge = {
+		bridge: null as unknown as StdioBridge,
+		agentSessionId: "",
+		agent,
+		cwd,
+		modelId,
+		activeTurnId: pendingTurnId,
+		onEvent: queueEnvelopeEvent,
+	};
+
+	const bridge = spawnStdioBridge(
+		agent,
+		(envelope) => {
+			maybeHandlePermissionRequest(bridge, envelope);
+		},
+		(envelope, direction) => {
+			sessionBridge.onEvent?.(envelope, direction);
+		}
+	);
+	sessionBridge.bridge = bridge;
+	let bootstrapComplete = false;
+	try {
+		sessionBridge.agentSessionId = await bootstrapSessionBridge(
+			bridge,
+			sessionId,
+			agent,
+			cwd,
+			modelId
+		);
+		if (
+			activeTurns.get(pendingTurnId) !== sessionId ||
+			activeSessionTurns.get(sessionId) !== pendingTurnId
+		) {
+			throw new Error(
+				`Turn reservation for ${pendingTurnId} was released before bridge bootstrap completed`
+			);
+		}
+
+		sessionBridges.set(sessionId, sessionBridge);
+		bootstrapComplete = true;
+		return sessionBridge;
+	} finally {
+		if (!bootstrapComplete) {
+			teardownBridge(bridge, {
+				agent,
+				sessionId,
+				reason: "initBridge bootstrap failed before sessionBridges.set",
+			});
+			sessionBridge.bridge = null as unknown as StdioBridge;
+		}
+	}
+}
+
+function getSessionBridge(sessionId: string): SessionBridge | null {
+	const existing = sessionBridges.get(sessionId);
+	if (!existing || existing.bridge.dead) {
+		if (existing) {
+			log("info", "Session bridge dead, discarding", {
+				sessionId,
+				exitCode: existing.bridge.proc.exitCode,
+			});
+			previousAgentSessionIds.set(sessionId, existing.agentSessionId);
+			sessionBridges.delete(sessionId);
+		}
+		return null;
+	}
+	return existing;
 }
 
 // ---------------------------------------------------------------------------
 // Turn execution
 // ---------------------------------------------------------------------------
 
-async function executeTurn(params: PromptRequestBody): Promise<void> {
-	const {
-		turnId,
-		sessionId,
-		agent,
-		modelId,
-		prompt,
-		cwd,
-		callbackUrl,
-		callbackToken,
-	} = params;
+function releaseTurnReservation(turnId: string, sessionId: string): void {
+	if (activeTurns.get(turnId) === sessionId) {
+		activeTurns.delete(turnId);
+	}
+	if (activeSessionTurns.get(sessionId) === turnId) {
+		activeSessionTurns.delete(sessionId);
+	}
+}
 
-	log("info", "executeTurn started", {
+function hasTurnReservation(turnId: string, sessionId: string): boolean {
+	return (
+		activeTurns.get(turnId) === sessionId &&
+		activeSessionTurns.get(sessionId) === turnId
+	);
+}
+
+function ensureTurnReservation(turnId: string, sessionId: string): boolean {
+	if (hasTurnReservation(turnId, sessionId)) {
+		return true;
+	}
+	log("warn", "Skipping executeTurn without matching reservation", {
 		turnId,
 		sessionId,
-		agent,
-		modelId,
-		cwd,
-		callbackUrl,
 	});
+	releaseTurnReservation(turnId, sessionId);
+	return false;
+}
 
-	const connectionId = `corp-agent-${turnId}-${crypto.randomUUID()}`;
+async function maybeSetModel(
+	sessionBridge: SessionBridge,
+	modelId: string | undefined
+): Promise<void> {
+	if (sessionBridge.modelId === modelId) {
+		return;
+	}
+	if (modelId) {
+		await setModelOrThrow(
+			sessionBridge.bridge,
+			sessionBridge.agentSessionId,
+			modelId
+		);
+	}
+	sessionBridge.modelId = modelId;
+}
+
+async function getOrInitSessionBridgeForTurn(params: {
+	turnId: string;
+	sessionId: string;
+	agent: string;
+	cwd: string;
+	modelId: string | undefined;
+	queueEnvelopeEvent: (
+		envelope: Record<string, unknown>,
+		direction: "inbound" | "outbound"
+	) => void;
+}): Promise<SessionBridge> {
+	const { turnId, sessionId, agent, cwd, modelId, queueEnvelopeEvent } = params;
+
+	const sessionBridge = getSessionBridge(sessionId);
+	if (!sessionBridge) {
+		return initBridge(
+			sessionId,
+			agent,
+			cwd,
+			modelId,
+			queueEnvelopeEvent,
+			turnId
+		);
+	}
+
+	if (sessionBridge.agent !== agent) {
+		throw new Error(
+			`Cannot reuse session ${sessionId}: agent changed from "${sessionBridge.agent}" to "${agent}"`
+		);
+	}
+	if (sessionBridge.cwd !== cwd) {
+		throw new Error(
+			`Cannot reuse session ${sessionId}: cwd changed from "${sessionBridge.cwd}" to "${cwd}"`
+		);
+	}
+
+	await maybeSetModel(sessionBridge, modelId);
+
+	log("info", "Reusing existing session bridge", {
+		sessionId,
+		agentSessionId: sessionBridge.agentSessionId,
+	});
+	if (sessionBridge.activeTurnId && sessionBridge.activeTurnId !== turnId) {
+		throw new Error(
+			`Session ${sessionId} is already reserved for turn ${sessionBridge.activeTurnId}`
+		);
+	}
+	sessionBridge.activeTurnId = turnId;
+	sessionBridge.onEvent = queueEnvelopeEvent;
+	return sessionBridge;
+}
+
+function createTurnCallbackDispatcher(params: {
+	turnId: string;
+	sessionId: string;
+	callbackToken: string;
+	callbackUrl: string;
+	connectionId: string;
+}): {
+	queueEnvelopeEvent: (
+		envelope: Record<string, unknown>,
+		direction: "inbound" | "outbound"
+	) => void;
+	finalizeSuccess: () => Promise<void>;
+	finalizeFailure: (error: unknown) => Promise<void>;
+	cleanup: () => void;
+} {
+	const { turnId, sessionId, callbackToken, callbackUrl, connectionId } =
+		params;
 	let eventIndex = 0;
 	let sequence = 0;
 	let callbackChain = Promise.resolve();
@@ -418,6 +831,15 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 	let callbackDeliveryError: unknown = null;
 	let droppedEventCallbacks = 0;
 	let hasLoggedDroppedEvents = false;
+	let pendingEventBatch: SessionEvent[] = [];
+	let pendingEventFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const logEventBatchFlushError = (error: unknown): void => {
+		log("error", "Failed to flush events callback batch", {
+			turnId,
+			error: formatError(error),
+		});
+	};
 
 	const sendCallback = (
 		kind: string,
@@ -471,23 +893,62 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		return callbackChain;
 	};
 
+	const logDroppedEvents = () => {
+		if (hasLoggedDroppedEvents) {
+			return;
+		}
+		hasLoggedDroppedEvents = true;
+		log("warn", "Dropping events callbacks after callback delivery failure", {
+			turnId,
+			droppedEventCallbacks,
+		});
+	};
+
+	const clearPendingEventFlushTimer = () => {
+		if (!pendingEventFlushTimer) {
+			return;
+		}
+		clearTimeout(pendingEventFlushTimer);
+		pendingEventFlushTimer = null;
+	};
+
+	const flushEventBatch = (
+		options: { force?: boolean } = {}
+	): Promise<void> => {
+		clearPendingEventFlushTimer();
+		if (pendingEventBatch.length === 0) {
+			return Promise.resolve();
+		}
+
+		const events = pendingEventBatch;
+		pendingEventBatch = [];
+
+		if (callbackDeliveryBroken && !options.force) {
+			droppedEventCallbacks += events.length;
+			logDroppedEvents();
+			return Promise.resolve();
+		}
+
+		return sendCallback("events", { events }, options);
+	};
+
+	const scheduleEventBatchFlush = (): void => {
+		if (pendingEventFlushTimer || pendingEventBatch.length === 0) {
+			return;
+		}
+		pendingEventFlushTimer = setTimeout(() => {
+			pendingEventFlushTimer = null;
+			flushEventBatch().catch(logEventBatchFlushError);
+		}, EVENT_BATCH_MAX_DELAY_MS);
+	};
+
 	const queueEnvelopeEvent = (
 		envelope: Record<string, unknown>,
 		direction: "inbound" | "outbound"
 	): void => {
 		if (callbackDeliveryBroken) {
 			droppedEventCallbacks += 1;
-			if (!hasLoggedDroppedEvents) {
-				hasLoggedDroppedEvents = true;
-				log(
-					"warn",
-					"Dropping events callbacks after callback delivery failure",
-					{
-						turnId,
-						droppedEventCallbacks,
-					}
-				);
-			}
+			logDroppedEvents();
 			return;
 		}
 
@@ -501,133 +962,16 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			sender: direction === "outbound" ? "client" : "agent",
 			payload: envelope,
 		};
-		sendCallback("events", { events: [event] }).catch((error) => {
-			log("error", "Failed to queue events callback", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-		});
+		pendingEventBatch.push(event);
+		if (pendingEventBatch.length >= EVENT_BATCH_MAX_SIZE) {
+			flushEventBatch().catch(logEventBatchFlushError);
+			return;
+		}
+		scheduleEventBatchFlush();
 	};
 
-	let bridge: StdioBridge | null = null;
-
-	try {
-		log("info", "Spawning agent subprocess", { agent });
-		bridge = spawnStdioBridge(agent, (envelope) => {
-			queueEnvelopeEvent(envelope, "inbound");
-
-			if (envelope.method === "requestPermission" && envelope.id != null) {
-				const reqParams = envelope.params as
-					| Record<string, unknown>
-					| undefined;
-				const request = reqParams?.request as
-					| Record<string, unknown>
-					| undefined;
-				const options = Array.isArray(request?.options) ? request.options : [];
-				const selected = pickPermissionOption(options);
-
-				const response: Record<string, unknown> = {
-					jsonrpc: "2.0",
-					id: envelope.id,
-					result: {
-						outcome: selected
-							? { outcome: "selected", optionId: selected.optionId }
-							: { outcome: "cancelled" },
-					},
-				};
-				if (bridge) {
-					stdioWrite(bridge, response);
-					queueEnvelopeEvent(response, "outbound");
-				}
-			}
-		});
-		activeTurns.set(turnId, bridge);
-
-		await new Promise((r) => setTimeout(r, 250));
-		if (bridge.proc.exitCode !== null) {
-			throw new Error(
-				`Agent ${agent} exited immediately with code ${bridge.proc.exitCode}`
-			);
-		}
-
-		const initEnvelope = {
-			jsonrpc: "2.0" as const,
-			id: `initialize-${crypto.randomUUID()}`,
-			method: "initialize",
-			params: {
-				protocolVersion: ACP_PROTOCOL_VERSION,
-				clientInfo: { name: "corp-agent", version: "v1" },
-			},
-		};
-		queueEnvelopeEvent(initEnvelope, "outbound");
-		const initResult = await stdioRequest(bridge, "initialize", {
-			protocolVersion: ACP_PROTOCOL_VERSION,
-			clientInfo: { name: "corp-agent", version: "v1" },
-		});
-		const authMethods = extractAuthMethods(initResult);
-		if (authMethods.length > 0) {
-			const selectedAuth = selectAuthMethod(authMethods);
-			if (selectedAuth) {
-				const authEnvelope = {
-					jsonrpc: "2.0" as const,
-					id: `authenticate-${crypto.randomUUID()}`,
-					method: "authenticate",
-					params: { methodId: selectedAuth.methodId },
-				};
-				queueEnvelopeEvent(authEnvelope, "outbound");
-				await stdioRequest(bridge, "authenticate", {
-					methodId: selectedAuth.methodId,
-				});
-				log("info", "ACP authentication succeeded", {
-					agent,
-					methodId: selectedAuth.methodId,
-					envVar: selectedAuth.envVar,
-				});
-			} else {
-				log("info", "ACP auth methods advertised but no env-backed match", {
-					agent,
-					authMethodIds: authMethods.map((method) => method.id),
-				});
-			}
-		}
-
-		const sessionResult = await stdioRequest(bridge, "session/new", {
-			cwd,
-			mcpServers: [],
-		});
-		const agentSessionId = sessionResult.sessionId as string;
-		if (!agentSessionId) {
-			throw new Error("session/new did not return a sessionId");
-		}
-
-		if (modelId) {
-			try {
-				await stdioRequest(bridge, "session/set_model", {
-					sessionId: agentSessionId,
-					modelId,
-				});
-			} catch (error) {
-				log("warn", "session/set_model not supported, skipping", {
-					error: error instanceof Error ? error.message : String(error),
-				});
-			}
-		}
-
-		const promptEnvelope: Record<string, unknown> = {
-			jsonrpc: "2.0",
-			method: "session/prompt",
-			params: { sessionId: agentSessionId, prompt },
-		};
-		queueEnvelopeEvent(promptEnvelope, "outbound");
-
-		const promptResult = await stdioRequest(bridge, "session/prompt", {
-			sessionId: agentSessionId,
-			prompt,
-		});
-
-		if ("error" in promptResult) {
-			throw new Error(`Prompt ACP error: ${JSON.stringify(promptResult)}`);
-		}
-
+	const finalizeSuccess = async (): Promise<void> => {
+		await flushEventBatch();
 		if (callbackDeliveryBroken) {
 			throw new Error(
 				`Callback delivery failed before completion: ${
@@ -637,10 +981,12 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 				}`
 			);
 		}
-
 		await sendCallback("completed");
 		await callbackChain.catch(() => undefined);
-	} catch (error) {
+	};
+
+	const finalizeFailure = async (error: unknown): Promise<void> => {
+		await flushEventBatch({ force: true }).catch(logEventBatchFlushError);
 		await sendCallback(
 			"failed",
 			{ error: formatError(error) },
@@ -652,11 +998,90 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			});
 		});
 		await callbackChain.catch(() => undefined);
+	};
+
+	const cleanup = (): void => {
+		clearPendingEventFlushTimer();
+		pendingEventBatch = [];
+	};
+
+	return {
+		queueEnvelopeEvent,
+		finalizeSuccess,
+		finalizeFailure,
+		cleanup,
+	};
+}
+
+async function executeTurn(params: PromptRequestBody): Promise<void> {
+	const {
+		turnId,
+		sessionId,
+		agent,
+		modelId,
+		prompt,
+		cwd,
+		callbackUrl,
+		callbackToken,
+	} = params;
+
+	log("info", "executeTurn started", {
+		turnId,
+		sessionId,
+		agent,
+		modelId,
+		cwd,
+		callbackUrl,
+	});
+	if (!ensureTurnReservation(turnId, sessionId)) {
+		return;
+	}
+
+	const callbacks = createTurnCallbackDispatcher({
+		turnId,
+		sessionId,
+		callbackToken,
+		callbackUrl,
+		connectionId: `corp-agent-${turnId}-${crypto.randomUUID()}`,
+	});
+	let sessionBridge: SessionBridge | null = null;
+
+	try {
+		sessionBridge = await getOrInitSessionBridgeForTurn({
+			turnId,
+			sessionId,
+			agent,
+			cwd,
+			modelId,
+			queueEnvelopeEvent: callbacks.queueEnvelopeEvent,
+		});
+
+		const promptResult = await stdioRequest(
+			sessionBridge.bridge,
+			"session/prompt",
+			{
+				sessionId: sessionBridge.agentSessionId,
+				prompt,
+			}
+		);
+
+		if ("error" in promptResult) {
+			throw new Error(`Prompt ACP error: ${JSON.stringify(promptResult)}`);
+		}
+
+		await callbacks.finalizeSuccess();
+	} catch (error) {
+		await callbacks.finalizeFailure(error);
 		log("error", "Turn failed", { turnId, error: formatError(error) });
 	} finally {
-		if (bridge) {
-			killBridge(bridge);
+		callbacks.cleanup();
+		if (sessionBridge) {
+			if (sessionBridge.activeTurnId === turnId) {
+				sessionBridge.activeTurnId = null;
+			}
+			sessionBridge.onEvent = null;
 		}
+		releaseTurnReservation(turnId, sessionId);
 	}
 }
 
@@ -686,75 +1111,134 @@ function parseArgs(): { host: string; port: number } {
 }
 
 const { host, port } = parseArgs();
-const activeTurns = new Map<string, StdioBridge | null>();
+const activeTurns = new Map<string, string>(); // turnId -> sessionId
+const activeSessionTurns = new Map<string, string>(); // sessionId -> turnId
+
+async function parsePromptBody(
+	req: Request
+): Promise<{ body: PromptRequestBody } | { errorResponse: Response }> {
+	let rawBody: unknown;
+	try {
+		rawBody = await req.json();
+	} catch {
+		return {
+			errorResponse: Response.json(
+				{ error: "Invalid JSON body" },
+				{ status: 400 }
+			),
+		};
+	}
+
+	const result = promptRequestBodySchema.safeParse(rawBody);
+	if (!result.success) {
+		return {
+			errorResponse: Response.json(
+				{ error: `Invalid request: ${result.error.message}` },
+				{ status: 400 }
+			),
+		};
+	}
+	return { body: result.data };
+}
+
+function reserveTurn(body: PromptRequestBody): Response | null {
+	if (activeTurns.has(body.turnId)) {
+		return Response.json(
+			{ error: "Turn already in progress" },
+			{ status: 409 }
+		);
+	}
+	if (activeSessionTurns.has(body.sessionId)) {
+		return Response.json(
+			{ error: "Session already has an active turn" },
+			{ status: 409 }
+		);
+	}
+
+	const existingBridge = getSessionBridge(body.sessionId);
+	if (existingBridge?.activeTurnId) {
+		return Response.json(
+			{ error: "Session already has an active turn" },
+			{ status: 409 }
+		);
+	}
+
+	activeTurns.set(body.turnId, body.sessionId);
+	activeSessionTurns.set(body.sessionId, body.turnId);
+	if (existingBridge) {
+		existingBridge.activeTurnId = body.turnId;
+	}
+
+	return null;
+}
+
+async function handlePromptRequest(req: Request): Promise<Response> {
+	const parsed = await parsePromptBody(req);
+	if ("errorResponse" in parsed) {
+		return parsed.errorResponse;
+	}
+
+	const { body } = parsed;
+	const reservationError = reserveTurn(body);
+	if (reservationError) {
+		return reservationError;
+	}
+
+	executeTurn(body).catch((error) => {
+		log("error", "Unhandled turn error", {
+			turnId: body.turnId,
+			error: error instanceof Error ? error.message : String(error),
+		});
+	});
+
+	return Response.json({ accepted: true }, { status: 202 });
+}
+
+function handleTurnCancel(pathname: string): Response {
+	const turnId = pathname.slice("/v1/prompt/".length);
+	const sessionId = activeTurns.get(turnId);
+	if (sessionId === undefined) {
+		return Response.json({ error: "Turn not found" }, { status: 404 });
+	}
+
+	const sessionBridge = getSessionBridge(sessionId);
+	if (sessionBridge) {
+		// Send ACP session/cancel notification — the agent will finish
+		// the in-flight session/prompt with a "cancelled" stop reason,
+		// preserving the bridge and its history for the next turn.
+		const cancelEnvelope: Record<string, unknown> = {
+			jsonrpc: "2.0",
+			method: "session/cancel",
+			params: { sessionId: sessionBridge.agentSessionId },
+		};
+		stdioWrite(sessionBridge.bridge, cancelEnvelope);
+		log("info", "Sent session/cancel to agent", { turnId, sessionId });
+	}
+
+	return Response.json({ cancelled: true });
+}
+
+function handleRequest(req: Request): Response | Promise<Response> {
+	const url = new URL(req.url);
+	// TODO(auth): Require authentication for corp-agent HTTP routes
+	// (at minimum `/v1/prompt` and `/v1/prompt/:turnId`).
+
+	if (req.method === "GET" && url.pathname === "/v1/health") {
+		return Response.json({ status: "ok" });
+	}
+	if (req.method === "POST" && url.pathname === "/v1/prompt") {
+		return handlePromptRequest(req);
+	}
+	if (req.method === "DELETE" && url.pathname.startsWith("/v1/prompt/")) {
+		return handleTurnCancel(url.pathname);
+	}
+	return Response.json({ error: "Not found" }, { status: 404 });
+}
 
 Bun.serve({
 	hostname: host,
 	port,
-	async fetch(req) {
-		const url = new URL(req.url);
-		// TODO(auth): Require authentication for corp-agent HTTP routes
-		// (at minimum `/v1/prompt` and `/v1/prompt/:turnId`).
-
-		if (req.method === "GET" && url.pathname === "/v1/health") {
-			return Response.json({ status: "ok" });
-		}
-
-		if (req.method === "POST" && url.pathname === "/v1/prompt") {
-			let rawBody: unknown;
-			try {
-				rawBody = await req.json();
-			} catch {
-				return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-			}
-
-			const result = promptRequestBodySchema.safeParse(rawBody);
-			if (!result.success) {
-				return Response.json(
-					{ error: `Invalid request: ${result.error.message}` },
-					{ status: 400 }
-				);
-			}
-			const body = result.data;
-
-			if (activeTurns.has(body.turnId)) {
-				return Response.json(
-					{ error: "Turn already in progress" },
-					{ status: 409 }
-				);
-			}
-
-			activeTurns.set(body.turnId, null);
-			executeTurn(body)
-				.catch((error) => {
-					log("error", "Unhandled turn error", {
-						turnId: body.turnId,
-						error: error instanceof Error ? error.message : String(error),
-					});
-				})
-				.finally(() => {
-					activeTurns.delete(body.turnId);
-				});
-
-			return Response.json({ accepted: true }, { status: 202 });
-		}
-
-		if (req.method === "DELETE" && url.pathname.startsWith("/v1/prompt/")) {
-			const turnId = url.pathname.slice("/v1/prompt/".length);
-			const bridge = activeTurns.get(turnId);
-			if (bridge === undefined) {
-				return Response.json({ error: "Turn not found" }, { status: 404 });
-			}
-			if (bridge) {
-				killBridge(bridge);
-			}
-			activeTurns.delete(turnId);
-			log("info", "Turn cancelled via DELETE", { turnId });
-			return Response.json({ cancelled: true });
-		}
-
-		return Response.json({ error: "Not found" }, { status: 404 });
-	},
+	fetch: handleRequest,
 });
 
 log("info", `Listening on ${host}:${port}`);

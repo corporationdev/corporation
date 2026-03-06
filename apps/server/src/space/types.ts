@@ -9,11 +9,6 @@ export type PersistedState = {
 
 export type SpaceDatabase = ReturnType<typeof drizzle>;
 
-export type SubscriptionHub = {
-	channels: Map<string, Set<string>>;
-	connToChannels: Map<string, Set<string>>;
-};
-
 export type SpaceVars = {
 	db: SpaceDatabase;
 	sandbox: Sandbox;
@@ -21,7 +16,7 @@ export type SpaceVars = {
 	terminalEnsures: Map<string, Promise<void>>;
 	terminalOpenActions: Map<string, Promise<void>>;
 	lastTerminalSnapshotAt: Map<string, number>;
-	subscriptions: SubscriptionHub;
+	sessionStreamWaiters: Map<string, Set<() => void>>;
 	lastTimeoutRefreshAt: number;
 	agentRunnerSequenceBySessionId: Map<string, number>;
 };
