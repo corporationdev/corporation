@@ -62,6 +62,14 @@ async function provisionSandbox(
 }
 
 async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
+	if (space.sandboxId) {
+		try {
+			return await Sandbox.connect(space.sandboxId);
+		} catch {
+			// Fall through to provisioning from snapshot when reconnect fails.
+		}
+	}
+
 	const externalSnapshotId =
 		space.repository.activeSnapshot?.externalSnapshotId;
 
@@ -69,20 +77,7 @@ async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
 		throw new Error("Repository snapshot is not ready yet");
 	}
 
-	if (!space.sandboxId) {
-		return await provisionSandbox(ctx, space._id, externalSnapshotId);
-	}
-
-	try {
-		await ctx.runMutation(internal.spaces.internalUpdate, {
-			id: space._id,
-			status: "creating" as const,
-		});
-
-		return await Sandbox.connect(space.sandboxId);
-	} catch {
-		return await provisionSandbox(ctx, space._id, externalSnapshotId);
-	}
+	return await provisionSandbox(ctx, space._id, externalSnapshotId);
 }
 
 export const archiveSandbox = internalAction({

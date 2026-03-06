@@ -3,25 +3,16 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
 import { ArchiveIcon, BoxIcon } from "lucide-react";
-import { type FC, useEffect, useMemo, useRef } from "react";
+import { type FC, useMemo } from "react";
 
 import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLatestShas } from "@/hooks/use-latest-shas";
-import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const SpaceList: FC = () => {
 	const groupedSpaces = useQuery(api.spaces.listByRepository);
 
-	const repositoriesWithSnapshots =
-		groupedSpaces?.map((g) => g.repository) ?? [];
-	const { data: latestShas } = useLatestShas(
-		repositoriesWithSnapshots,
-		repositoriesWithSnapshots.length > 0
-	);
 	const spaces = useMemo(() => {
 		if (!groupedSpaces) {
 			return [];
@@ -50,15 +41,6 @@ export const SpaceList: FC = () => {
 
 	return (
 		<div className="flex flex-col gap-1">
-			{groupedSpaces.map((group) => (
-				<RepositorySnapshotSync
-					key={group.repository._id}
-					latestSha={
-						latestShas?.[`${group.repository.owner}/${group.repository.name}`]
-					}
-					repository={group.repository}
-				/>
-			))}
 			{spaces.length === 0 ? (
 				<NoSpacesState />
 			) : (
@@ -73,61 +55,6 @@ export const SpaceList: FC = () => {
 			)}
 		</div>
 	);
-};
-
-type RepositorySpaceGroup = FunctionReturnType<
-	typeof api.spaces.listByRepository
->[number];
-
-const RepositorySnapshotSync: FC<{
-	repository: RepositorySpaceGroup["repository"];
-	latestSha: string | undefined;
-}> = ({ repository, latestSha }) => {
-	const snapshotCommitSha = repository.activeSnapshot?.snapshotCommitSha;
-	const snapshotStatus = repository.latestSnapshot?.status;
-	const isOutdated =
-		!!latestSha && (!snapshotCommitSha || latestSha !== snapshotCommitSha);
-
-	const { mutate: createSnapshot } = useConvexTanstackMutation(
-		api.snapshot.createSnapshot
-	);
-
-	const lastTriggeredShaRef = useRef<Map<Id<"repositories">, string>>(
-		new Map()
-	);
-	const repositoryId = repository._id;
-
-	useEffect(() => {
-		if (
-			!(repositoryId && isOutdated && latestSha) ||
-			snapshotStatus === "building" ||
-			lastTriggeredShaRef.current.get(repositoryId) === latestSha
-		) {
-			return;
-		}
-
-		createSnapshot(
-			{
-				request: {
-					type: "update",
-					repositoryId,
-				},
-			},
-			{
-				onSuccess: () => {
-					lastTriggeredShaRef.current.set(repositoryId, latestSha);
-				},
-				onError: () => {
-					// Failed rebuilds must not block retries for this repository + SHA.
-					if (lastTriggeredShaRef.current.get(repositoryId) === latestSha) {
-						lastTriggeredShaRef.current.delete(repositoryId);
-					}
-				},
-			}
-		);
-	}, [repositoryId, isOutdated, latestSha, snapshotStatus, createSnapshot]);
-
-	return null;
 };
 
 const SpaceListSkeleton: FC = () => {
