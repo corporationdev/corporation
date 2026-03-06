@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SessionEvent } from "sandbox-agent";
 import type { TimelineEntry } from "@/components/chat/types";
 import {
 	isTransientActorConnError,
 	softResetActorConnectionOnTransientError,
 } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
+import type { SessionEvent } from "@/types/session-event";
 
 export type SessionState = {
 	entries: TimelineEntry[];

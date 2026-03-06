@@ -30,8 +30,7 @@
     "nanoid": "catalog:",
     "octokit": "catalog:",
     "zod": "catalog:",
-    "rivetkit": "catalog:",
-    "sandbox-agent": "catalog:"
+    "rivetkit": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

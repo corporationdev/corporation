@@ -6,7 +6,6 @@ import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
-import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 import bundledMigrations from "./db/migrations/migrations.js";
 import { type SpaceTab, schema, tabs } from "./db/schema";
 import {
@@ -62,9 +61,6 @@ export const space = actor({
 			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: c.state.agentUrl,
-		});
 		const sandbox = await Sandbox.connect(c.state.sandboxId, {
 			apiKey: env.E2B_API_KEY,
 		});
@@ -72,7 +68,6 @@ export const space = actor({
 		const vars: SpaceVars = {
 			db,
 			sandbox,
-			sandboxClient,
 			terminalHandles: new Map(),
 			terminalEnsures: new Map(),
 			terminalOpenActions: new Map(),

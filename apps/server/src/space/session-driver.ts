@@ -3,7 +3,6 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import { generateObject } from "ai";
 import { and, asc, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
-import type { AgentListResponse, SessionEvent } from "sandbox-agent";
 import { z } from "zod";
 import { type SessionTab, sessionEvents, sessions, tabs } from "../db/schema";
 import { createTabId } from "./channels";
@@ -20,6 +19,7 @@ import {
 	SESSION_STATUS_RUNNING,
 	startTurnRunner,
 } from "./turn-runner";
+import type { AgentListResponse, SessionEvent } from "./turn-runner/types";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
@@ -233,7 +233,13 @@ async function sendMessage(
 async function listAgents(
 	ctx: SpaceRuntimeContext
 ): Promise<AgentListResponse> {
-	return await ctx.vars.sandboxClient.listAgents({ config: true });
+	const response = await fetch(`${ctx.state.agentUrl}/v1/agents`, {
+		signal: AbortSignal.timeout(10_000),
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to list agents: ${response.status}`);
+	}
+	return (await response.json()) as AgentListResponse;
 }
 
 async function cancelSession(
@@ -268,21 +274,8 @@ async function cancelSession(
 		.where(eq(sessions.id, sessionId));
 	publishSessionStatus(ctx, sessionId, SESSION_STATUS_IDLE);
 
-	// TODO: Investigate whether killing is the right approach here or whether
-	// we keep the turn runner alive and just cancel the prompt.
-	const killCmd = pid
-		? `kill ${pid} 2>/dev/null || true`
-		: "pkill -f corp-turn-runner || true";
-	try {
-		await ctx.vars.sandbox.commands.run(killCmd, {
-			timeoutMs: 5000,
-		});
-	} catch (error) {
-		log.warn(
-			{ err: error, actorId: ctx.actorId, sessionId },
-			"cancelSession: failed to kill turn-runner process"
-		);
-	}
+	// TODO: Add a cancel endpoint to corp-agent to gracefully cancel the ACP prompt.
+	// For now, cancelling just clears the session state on the actor side.
 }
 
 async function getSessionState(

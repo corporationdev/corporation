@@ -2,7 +2,6 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { SessionEvent } from "sandbox-agent";
 import { sessionEvents, sessions } from "../../db/schema";
 import { refreshSandboxTimeout } from "../action-registration";
 import { createTabChannel } from "../channels";
@@ -12,11 +11,11 @@ import {
 	parseTurnRunnerCallbackPayload,
 	type TurnRunnerCallbackPayload,
 } from "./schema";
+import type { SessionEvent } from "./types";
 
 const SESSION_EVENT_NAME = "session.event";
 const SESSION_STATUS_EVENT_NAME = "session.status";
 const TRAILING_SLASH_RE = /\/$/;
-const TURN_RUNNER_COMMAND = "corp-turn-runner";
 const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
 const log = createLogger("space:turn-runner");
 
@@ -92,39 +91,38 @@ async function launchTurnRunner(
 		agent: string;
 		modelId: string;
 		promptJson: string;
-		callbackUrl: string;
 		callbackToken: string;
 	}
-): Promise<number | null> {
-	const launchCommand = [
-		"set -euo pipefail",
-		`command -v ${TURN_RUNNER_COMMAND} >/dev/null 2>&1`,
-		`nohup ${TURN_RUNNER_COMMAND} >/tmp/corp-turn-runner.stdout.log 2>&1 &`,
-		"pid=$!",
-		'echo "$pid"',
-		"sleep 0.25",
-		'kill -0 "$pid" >/dev/null 2>&1',
-	].join("\n");
+): Promise<void> {
+	const baseUrl = env.SERVER_PUBLIC_URL;
+	if (!baseUrl) {
+		throw new Error("Missing SERVER_PUBLIC_URL env var");
+	}
+	const actorEndpoint = baseUrl.replace(TRAILING_SLASH_RE, "") + "/rivet";
+	const spaceSlug = ctx.actorId;
 
-	const result = await ctx.vars.sandbox.commands.run(launchCommand, {
-		cwd: ctx.state.workdir,
-		timeoutMs: 15_000,
-		user: "root",
-		envs: {
-			TURN_ID: params.turnId,
-			SESSION_ID: params.sessionId,
-			AGENT: params.agent,
-			MODEL_ID: params.modelId,
-			PROMPT_JSON: params.promptJson,
-			AGENT_URL: ctx.state.agentUrl,
-			CALLBACK_URL: params.callbackUrl,
-			CALLBACK_TOKEN: params.callbackToken,
-			CWD: ctx.state.workdir,
-		},
+	const promptUrl = `${ctx.state.agentUrl}/v1/prompt`;
+	const response = await fetch(promptUrl, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			turnId: params.turnId,
+			sessionId: params.sessionId,
+			agent: params.agent,
+			modelId: params.modelId,
+			prompt: JSON.parse(params.promptJson),
+			cwd: ctx.state.workdir,
+			actorEndpoint,
+			actorKey: [spaceSlug],
+			callbackToken: params.callbackToken,
+		}),
+		signal: AbortSignal.timeout(15_000),
 	});
 
-	const pid = Number.parseInt(result.stdout.trim(), 10);
-	return Number.isNaN(pid) ? null : pid;
+	if (!response.ok) {
+		const text = await response.text().catch(() => "");
+		throw new Error(`corp-agent prompt failed (${response.status}): ${text}`);
+	}
 }
 
 export async function ensureNoRunningTurn(
@@ -161,11 +159,6 @@ export async function startTurnRunner(
 
 	const turnId = nanoid();
 	const callbackToken = crypto.randomUUID();
-	const baseUrl = env.SERVER_PUBLIC_URL;
-	if (!baseUrl) {
-		throw new Error("Missing SERVER_PUBLIC_URL env var");
-	}
-	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
 	const promptJson = JSON.stringify(params.prompt);
 
 	await ctx.vars.db
@@ -182,21 +175,14 @@ export async function startTurnRunner(
 	refreshSandboxTimeout(ctx);
 
 	try {
-		const pid = await launchTurnRunner(ctx, {
+		await launchTurnRunner(ctx, {
 			turnId,
 			sessionId: params.sessionId,
 			agent: params.agent,
 			modelId: params.modelId,
 			promptJson,
-			callbackUrl,
 			callbackToken,
 		});
-		if (pid != null) {
-			await ctx.vars.db
-				.update(sessions)
-				.set({ pid })
-				.where(eq(sessions.id, params.sessionId));
-		}
 	} catch (error) {
 		log.error(
 			{ err: error, actorId: ctx.actorId, sessionId: params.sessionId, turnId },

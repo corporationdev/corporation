@@ -17,7 +17,6 @@ import {
 	getSandboxWorkdir,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
-	SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS,
 	SANDBOX_AGENT_PORT,
 	SANDBOX_AGENT_SESSION_NAME,
 	writeEnvFiles,
@@ -264,7 +263,7 @@ export const buildSnapshot = internalAction({
 						}),
 						bootServer(sandbox, {
 							sessionName: SANDBOX_AGENT_SESSION_NAME,
-							command: `env SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS=${SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS} sandbox-agent server --no-token --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
+							command: `corp-agent --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
 							healthUrl: `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`,
 						}),
 						bootServer(sandbox, {

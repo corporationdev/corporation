@@ -16,13 +16,8 @@ config({
 	quiet: true,
 });
 
-const localRunnerDir = resolve(repoRoot, "scripts/turn-runner");
-const remoteRunnerDir = "/opt/corporation/turn-runner";
-const filesToSync = [
-	"README.md",
-	"corp-turn-runner.mjs",
-	"package.json",
-] as const;
+const localBinaryPath = resolve(repoRoot, "scripts/corp-agent/dist/corp-agent");
+const remoteBinaryPath = "/usr/local/bin/corp-agent";
 
 const argv = process.argv.slice(2);
 
@@ -37,8 +32,8 @@ if (!sandboxId) {
 		[
 			"Missing sandbox id.",
 			"Usage:",
-			"  bun scripts/sync-turn-runner.ts <sandbox-id>",
-			"  bun scripts/sync-turn-runner.ts --sandbox-id <sandbox-id>",
+			"  bun scripts/sync-corp-agent.ts <sandbox-id>",
+			"  bun scripts/sync-corp-agent.ts --sandbox-id <sandbox-id>",
 		].join("\n")
 	);
 	process.exit(1);
@@ -54,34 +49,36 @@ if (!process.env.E2B_API_KEY) {
 	process.exit(1);
 }
 
-console.log(`Syncing turn-runner to sandbox ${sandboxId}...`);
+console.log(`Syncing corp-agent to sandbox ${sandboxId}...`);
 
 try {
 	const sandbox = await Sandbox.connect(sandboxId);
-	await sandbox.files.makeDir(remoteRunnerDir);
+	const binaryData = await readFile(localBinaryPath);
 
-	const writeEntries = await Promise.all(
-		filesToSync.map(async (fileName) => ({
-			path: `${remoteRunnerDir}/${fileName}`,
-			data: await readFile(resolve(localRunnerDir, fileName), "utf8"),
-		}))
+	await sandbox.files.write([
+		{
+			path: remoteBinaryPath,
+			data: binaryData,
+		},
+	]);
+
+	await sandbox.commands.run(`chmod +x ${remoteBinaryPath}`, {
+		timeoutMs: 5000,
+	});
+
+	// Restart the corp-agent tmux session
+	await sandbox.commands.run(
+		"tmux kill-session -t sandbox-agent 2>/dev/null || true",
+		{ timeoutMs: 5000 }
 	);
-	await sandbox.files.write(writeEntries);
+	await sandbox.commands.run(
+		'tmux new-session -d -s sandbox-agent "corp-agent --host 0.0.0.0 --port 5799"',
+		{ timeoutMs: 5000 }
+	);
 
-	const installCmd = [
-		"set -euo pipefail",
-		`cd ${remoteRunnerDir}`,
-		"npm install --omit=dev --no-audit --no-fund",
-		"chmod +x corp-turn-runner.mjs",
-		"ln -sf /opt/corporation/turn-runner/corp-turn-runner.mjs /usr/local/bin/corp-turn-runner",
-		"node --check /opt/corporation/turn-runner/corp-turn-runner.mjs",
-	].join("; ");
-
-	await sandbox.commands.run(installCmd, { timeoutMs: 5 * 60_000 });
-
-	console.log("Turn-runner sync complete.");
+	console.log("Corp-agent sync complete.");
 } catch (error) {
 	const message = error instanceof Error ? error.message : String(error);
-	console.error(`Turn-runner sync failed: ${message}`);
+	console.error(`Corp-agent sync failed: ${message}`);
 	process.exit(1);
 }

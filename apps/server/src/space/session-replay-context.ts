@@ -1,6 +1,6 @@
 import { and, asc, eq, gt } from "drizzle-orm";
-import type { SessionEvent } from "sandbox-agent";
 import { sessionEvents } from "../db/schema";
+import type { SessionEvent } from "./turn-runner/types";
 import type { SpaceRuntimeContext } from "./types";
 
 const REPLAY_PREFIX = "Previous session history is replayed below";

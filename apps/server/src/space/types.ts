@@ -1,6 +1,5 @@
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import type { CommandHandle, Sandbox } from "e2b";
-import type { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
 
 export type PersistedState = {
 	agentUrl: string;
@@ -18,7 +17,6 @@ export type SubscriptionHub = {
 export type SpaceVars = {
 	db: SpaceDatabase;
 	sandbox: Sandbox;
-	sandboxClient: SandboxAgentClient;
 	terminalHandles: Map<string, CommandHandle>;
 	terminalEnsures: Map<string, Promise<void>>;
 	terminalOpenActions: Map<string, Promise<void>>;

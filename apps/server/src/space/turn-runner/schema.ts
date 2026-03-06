@@ -1,5 +1,5 @@
-import type { SessionEvent } from "sandbox-agent";
 import { z } from "zod";
+import type { SessionEvent } from "./types";
 
 const sessionEventSchema: z.ZodType<SessionEvent> = z.object({
 	id: z.string().min(1),

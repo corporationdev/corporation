@@ -1,8 +1,11 @@
 // Build the E2B base template with Node 22, common package managers,
-// sandbox-agent, and preinstalled coding agents.
+// corp-agent, and preinstalled coding agents.
 //
 // Usage:
 //   bun scripts/build-base-template.ts
+//
+// Prerequisites:
+//   bun run build:corp-agent   (compiles scripts/corp-agent/dist/corp-agent)
 //
 // Reads E2B_API_KEY from apps/server/.env automatically.
 
@@ -12,7 +15,6 @@ import { defaultBuildLogger, Template } from "e2b";
 
 config({ path: resolve(import.meta.dirname, "../apps/server/.env") });
 
-const SANDBOX_AGENT_CLI_VERSION = "0.2.1";
 const TEMPLATE_CPU_COUNT = 4;
 const TEMPLATE_MEMORY_MB = 8192;
 
@@ -40,18 +42,12 @@ const template = Template()
 		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
 	)
 	.runCmd("curl -fsSL https://code-server.dev/install.sh | sh")
+	// Install corp-agent binary
+	.copy("corp-agent/dist/corp-agent", "/usr/local/bin/corp-agent")
+	.runCmd("chmod +x /usr/local/bin/corp-agent")
+	// Pre-cache ACP agent packages so npx doesn't download at runtime
 	.runCmd(
-		`curl -fsSL https://releases.rivet.dev/sandbox-agent/${SANDBOX_AGENT_CLI_VERSION}/install.sh | sh`
-	)
-	.runCmd(
-		"set -euo pipefail; sandbox-agent install-agent claude & pid1=$!; sandbox-agent install-agent codex & pid2=$!; sandbox-agent install-agent opencode & pid3=$!; sandbox-agent install-agent amp & pid4=$!; sandbox-agent install-agent pi & pid5=$!; sandbox-agent install-agent cursor & pid6=$!; wait $pid1; wait $pid2; wait $pid3; wait $pid4; wait $pid5; wait $pid6"
-	)
-	.copy("turn-runner/", "/opt/corporation/turn-runner/")
-	.runCmd(
-		"set -euo pipefail; cd /opt/corporation/turn-runner; npm install --omit=dev --no-audit --no-fund"
-	)
-	.runCmd(
-		"set -euo pipefail; chmod +x /opt/corporation/turn-runner/corp-turn-runner.mjs; ln -sf /opt/corporation/turn-runner/corp-turn-runner.mjs /usr/local/bin/corp-turn-runner"
+		"set -euo pipefail; npm install -g @anthropic-ai/claude-code @openai/codex amp-acp pi-acp @blowmage/cursor-agent-acp"
 	);
 
 console.log("Building base template…");

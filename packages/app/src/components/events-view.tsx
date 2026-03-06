@@ -9,9 +9,9 @@ import {
 	WrenchIcon,
 } from "lucide-react";
 import { type FC, useMemo, useState } from "react";
-import type { SessionEvent } from "sandbox-agent";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import type { SessionEvent } from "@/types/session-event";
 
 type EventMeta = {
 	method: string;
