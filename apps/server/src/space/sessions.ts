@@ -3,7 +3,7 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { generateText, Output } from "ai";
-import { and, asc, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { z } from "zod";
 import { type SessionRow, sessionEvents, sessions } from "../db/schema";
 import { publishSessionStatus, startAgentRunner } from "./agent-runner";
@@ -26,7 +26,6 @@ export function listSessions(ctx: SpaceRuntimeContext): Promise<SessionRow[]> {
 	return ctx.vars.db
 		.select()
 		.from(sessions)
-		.where(and(eq(sessions.active, true), isNull(sessions.archivedAt)))
 		.orderBy(desc(sessions.updatedAt), asc(sessions.createdAt));
 }
 
@@ -34,28 +33,6 @@ export async function broadcastSessionsChanged(
 	ctx: SpaceRuntimeContext
 ): Promise<void> {
 	ctx.broadcast("sessions.changed", await listSessions(ctx));
-}
-
-export async function closeSession(
-	ctx: SpaceRuntimeContext,
-	sessionId: string
-): Promise<void> {
-	await ctx.vars.db
-		.update(sessions)
-		.set({ active: false, updatedAt: Date.now() })
-		.where(eq(sessions.id, sessionId));
-	await broadcastSessionsChanged(ctx);
-}
-
-export async function archiveSession(
-	ctx: SpaceRuntimeContext,
-	sessionId: string
-): Promise<void> {
-	await ctx.vars.db
-		.update(sessions)
-		.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
-		.where(eq(sessions.id, sessionId));
-	await broadcastSessionsChanged(ctx);
 }
 
 async function requestAutoSessionTitle(
@@ -124,8 +101,6 @@ async function ensureSession(
 			.values({
 				id: sessionId,
 				title: nextTitle,
-				active: true,
-				archivedAt: null,
 				agent,
 				agentSessionId: "",
 				lastConnectionId: "",
@@ -136,13 +111,9 @@ async function ensureSession(
 			.run();
 	} else {
 		const patch: {
-			active: boolean;
-			archivedAt: null;
 			updatedAt: number;
 			title?: string;
 		} = {
-			active: true,
-			archivedAt: null,
 			updatedAt: now,
 		};
 		if (title) {

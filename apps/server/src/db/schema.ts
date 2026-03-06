@@ -7,8 +7,6 @@ export type SessionStatus = (typeof sessionStatusValues)[number];
 export const sessions = sqliteTable("sessions", {
 	id: text("id").primaryKey(),
 	title: text("title").notNull().default("New Chat"),
-	active: integer("active", { mode: "boolean" }).notNull().default(true),
-	archivedAt: integer("archived_at", { mode: "number" }),
 	agent: text("agent").notNull(),
 	agentSessionId: text("agent_session_id").notNull(),
 	lastConnectionId: text("last_connection_id").notNull(),

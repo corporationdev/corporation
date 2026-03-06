@@ -2,8 +2,8 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { SessionRow } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { PlusIcon, XIcon } from "lucide-react";
-import { type FC, useEffect, useRef, useState } from "react";
+import { HistoryIcon, PlusIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SessionView } from "@/components/session-view";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
@@ -11,10 +11,15 @@ import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
 import { SpaceSidebar } from "@/components/space-sidebar";
 import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
 import { Button } from "@/components/ui/button";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
 import { addActorConnectionSoftResetListener } from "@/lib/actor-errors";
-import { type SpaceActor, useActor } from "@/lib/rivetkit";
+import { useActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
@@ -132,15 +137,28 @@ export function SpaceLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
+						<Button
+							onClick={() =>
+								navigate({
+									to: "/space/$spaceSlug",
+									params: { spaceSlug },
+									search: {},
+								})
+							}
+							size="icon"
+							variant="ghost"
+						>
+							<PlusIcon className="size-4" />
+							<span className="sr-only">New session</span>
+						</Button>
+						<SessionHistoryPopover
+							activeSessionId={activeSessionId}
+							sessions={sessions}
+							spaceSlug={spaceSlug}
+						/>
 						<SpaceSidebarToggle />
 					</div>
 				</header>
-				<SessionTabBar
-					activeSessionId={activeSessionId}
-					actor={actor}
-					sessions={sessions}
-					spaceSlug={spaceSlug}
-				/>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					{isSpaceMissing && !spaceCreating ? (
 						<SpaceNotFoundPanel />
@@ -159,97 +177,61 @@ export function SpaceLayout() {
 	);
 }
 
-const SessionTabBar: FC<{
+function SessionHistoryPopover({
+	spaceSlug,
+	activeSessionId,
+	sessions,
+}: {
 	spaceSlug: string;
 	activeSessionId: string | undefined;
-	actor: SpaceActor;
 	sessions: SessionRow[];
-}> = ({ spaceSlug, activeSessionId, actor, sessions }) => {
+}) {
 	const navigate = useNavigate();
 
 	return (
-		<div className="sticky top-0 z-20 flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-background px-2">
-			{sessions.map((session) => {
-				const isActive = activeSessionId === session.id;
-				const title = session.title || "New Chat";
-				const sessionIndex = sessions.findIndex((s) => s.id === session.id);
-
-				return (
-					<div
-						className={cn(
-							"group/tab flex h-7 shrink-0 items-center rounded-md pr-1 transition-colors hover:bg-muted",
-							isActive ? "bg-muted font-medium" : "text-muted-foreground"
-						)}
-						key={session.id}
-					>
-						<button
-							className="flex h-full min-w-0 items-center rounded-md px-3 text-sm"
-							onClick={() =>
-								navigate({
-									to: "/space/$spaceSlug",
-									params: { spaceSlug },
-									search: { session: session.id },
-								})
-							}
-							type="button"
-						>
-							<span className="truncate">{title}</span>
-						</button>
-						<button
-							className="flex size-5 shrink-0 items-center justify-center rounded opacity-70 transition-opacity hover:bg-accent hover:opacity-100 group-hover/tab:opacity-100"
-							disabled={actor.connStatus !== "connected" || !actor.connection}
-							onClick={(event) => {
-								event.preventDefault();
-								event.stopPropagation();
-
-								const close = async () => {
-									if (!actor.connection) {
-										return;
-									}
-
-									await actor.connection.closeSession(session.id);
-
-									if (!isActive) {
-										return;
-									}
-
-									const remaining = sessions.filter((s) => s.id !== session.id);
-									const next =
-										remaining[sessionIndex] ?? remaining[sessionIndex - 1];
-									navigate({
-										to: "/space/$spaceSlug",
-										params: { spaceSlug },
-										search: next ? { session: next.id } : {},
-									});
-								};
-
-								close().catch((error: unknown) => {
-									console.error("Failed to close session", error);
-								});
-							}}
-							type="button"
-						>
-							<XIcon className="size-3.5" />
-							<span className="sr-only">Close session</span>
-						</button>
-					</div>
-				);
-			})}
-			<Button
-				className="size-7 shrink-0"
-				onClick={() =>
-					navigate({
-						to: "/space/$spaceSlug",
-						params: { spaceSlug },
-						search: {},
-					})
-				}
-				size="icon"
-				variant="ghost"
+		<Popover>
+			<PopoverTrigger
+				className={cn(
+					"inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+				)}
 			>
-				<PlusIcon className="size-4" />
-				<span className="sr-only">New session</span>
-			</Button>
-		</div>
+				<HistoryIcon className="size-4" />
+				<span className="sr-only">Session history</span>
+			</PopoverTrigger>
+			<PopoverContent align="end" className="w-64 p-1">
+				{sessions.length === 0 ? (
+					<p className="px-2 py-3 text-center text-muted-foreground text-xs">
+						No sessions yet
+					</p>
+				) : (
+					<div className="flex max-h-72 flex-col overflow-y-auto">
+						{sessions.map((session) => {
+							const isActive = activeSessionId === session.id;
+							return (
+								<button
+									className={cn(
+										"flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent",
+										isActive && "bg-accent font-medium"
+									)}
+									key={session.id}
+									onClick={() =>
+										navigate({
+											to: "/space/$spaceSlug",
+											params: { spaceSlug },
+											search: { session: session.id },
+										})
+									}
+									type="button"
+								>
+									<span className="truncate">
+										{session.title || "New Chat"}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+				)}
+			</PopoverContent>
+		</Popover>
 	);
-};
+}

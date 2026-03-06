@@ -9,9 +9,7 @@ import { type SessionRow, schema } from "../db/schema";
 import { refreshSandboxTimeout } from "./action-registration";
 import { ingestAgentRunnerBatch } from "./agent-runner";
 import {
-	archiveSession,
 	cancelSession,
-	closeSession,
 	closeSessionFeed,
 	listSessions,
 	openSessionFeed,
@@ -97,8 +95,6 @@ export const space = actor({
 
 	actions: {
 		listSessions: (c): Promise<SessionRow[]> => listSessions(c),
-		closeSession: (c, sessionId: string) => closeSession(c, sessionId),
-		archiveSession: (c, sessionId: string) => archiveSession(c, sessionId),
 		sendMessage: (
 			c,
 			sessionId: string,
