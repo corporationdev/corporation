@@ -4,7 +4,11 @@ import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { type TerminalTab, tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
-import { publishToChannel, subscribeToChannel } from "./subscriptions";
+import {
+	publishToChannel,
+	subscribeToChannel,
+	unsubscribeFromChannel,
+} from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:terminal");
@@ -661,6 +665,25 @@ async function openTerminalAction(
 	}
 }
 
+function closeTerminalAction(
+	ctx: SpaceRuntimeContext,
+	terminalId: string
+): void {
+	if (!ctx.conn) {
+		throw new Error("Terminal subscriptions require an active connection");
+	}
+
+	const connId = ctx.conn.id;
+	unsubscribeFromChannel(
+		ctx.vars.subscriptions,
+		createTabChannel("terminal", terminalId),
+		connId
+	);
+	const key = connectionTerminalKey(connId, terminalId);
+	ctx.vars.terminalOpenActions.delete(key);
+	ctx.vars.lastTerminalSnapshotAt.delete(key);
+}
+
 async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 	// Disconnect the PTY handle first
 	const handle = ctx.vars.terminalHandles.get(DEV_SERVER_TERMINAL_ID);
@@ -780,6 +803,7 @@ type TerminalPublicActions = {
 		cols?: number,
 		rows?: number
 	) => Promise<void>;
+	closeTerminal: (ctx: SpaceRuntimeContext, terminalId: string) => void;
 	input: (
 		ctx: SpaceRuntimeContext,
 		terminalId: string,
@@ -808,6 +832,7 @@ export const terminalDriver: TerminalDriver = {
 	listTabs,
 	publicActions: {
 		openTerminal: openTerminalAction,
+		closeTerminal: closeTerminalAction,
 		input,
 		resize,
 		startDevServer: startDevServerAction,

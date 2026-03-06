@@ -1,13 +1,11 @@
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
-import type { SpaceTab, TabType } from "../db/schema";
-import { createTabChannel } from "./channels";
+import type { SpaceTab } from "../db/schema";
 import type {
 	DriverAction,
 	DriverActionMap,
 	TabDriverLifecycle,
 } from "./driver-types";
-import { subscribeToChannel, unsubscribeFromChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:keepalive");
@@ -110,40 +108,13 @@ type ActionMapWithoutContext<TMap> = {
 		: never;
 };
 
-type KindSubscriptionActions<K extends string> = {
-	[P in `subscribe${Capitalize<K>}`]: (ctx: unknown, entityId: string) => void;
-} & {
-	[P in `unsubscribe${Capitalize<K>}`]: (
-		ctx: unknown,
-		entityId: string
-	) => void;
-};
-
 type DriverPublicActions<
 	TDrivers extends readonly TabDriverLifecycle<DriverActionMap>[],
 > = UnionToIntersection<TDrivers[number]["publicActions"]>;
 
-type DriverSubscriptionActions<
-	TDrivers extends readonly TabDriverLifecycle<DriverActionMap>[],
-> = UnionToIntersection<
-	TDrivers[number] extends infer TDriver
-		? TDriver extends TabDriverLifecycle<DriverActionMap>
-			? KindSubscriptionActions<TDriver["kind"]>
-			: never
-		: never
->;
-
 type CollectedDriverActions<
 	TDrivers extends readonly TabDriverLifecycle<DriverActionMap>[],
-> = ActionMapWithoutContext<DriverPublicActions<TDrivers>> &
-	DriverSubscriptionActions<TDrivers>;
-
-function capitalize(value: string): string {
-	if (!value) {
-		return value;
-	}
-	return `${value[0]?.toUpperCase()}${value.slice(1)}`;
-}
+> = ActionMapWithoutContext<DriverPublicActions<TDrivers>>;
 
 function assertNoCollision(
 	actions: Record<string, (ctx: unknown, ...args: never[]) => unknown>,
@@ -153,40 +124,6 @@ function assertNoCollision(
 	if (actionName in actions) {
 		throw new Error(`Duplicate action '${actionName}' from ${source}`);
 	}
-}
-
-function createSubscribeAction(kind: TabType) {
-	const kindLabel = capitalize(kind);
-	return (ctx: unknown, entityId: string) => {
-		const runtime = ctx as SpaceRuntimeContext;
-		if (!runtime.conn) {
-			throw new Error(
-				`${kindLabel} subscriptions require an active connection`
-			);
-		}
-		subscribeToChannel(
-			runtime.vars.subscriptions,
-			createTabChannel(kind, entityId),
-			runtime.conn.id
-		);
-	};
-}
-
-function createUnsubscribeAction(kind: TabType) {
-	const kindLabel = capitalize(kind);
-	return (ctx: unknown, entityId: string) => {
-		const runtime = ctx as SpaceRuntimeContext;
-		if (!runtime.conn) {
-			throw new Error(
-				`${kindLabel} subscriptions require an active connection`
-			);
-		}
-		unsubscribeFromChannel(
-			runtime.vars.subscriptions,
-			createTabChannel(kind, entityId),
-			runtime.conn.id
-		);
-	};
 }
 
 export function collectDriverActions<
@@ -205,16 +142,6 @@ export function collectDriverActions<
 			actions[actionName] = (ctx, ...args: never[]) =>
 				actionHandler(augmentContext(ctx, drivers), ...args);
 		}
-
-		const kindSuffix = capitalize(driver.kind);
-		const subscribeName = `subscribe${kindSuffix}`;
-		const unsubscribeName = `unsubscribe${kindSuffix}`;
-
-		assertNoCollision(actions, subscribeName, `${driver.kind}.subscriptions`);
-		assertNoCollision(actions, unsubscribeName, `${driver.kind}.subscriptions`);
-
-		actions[subscribeName] = createSubscribeAction(driver.kind);
-		actions[unsubscribeName] = createUnsubscribeAction(driver.kind);
 	}
 
 	return actions as CollectedDriverActions<TDrivers>;

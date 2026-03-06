@@ -28,7 +28,9 @@ export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
 			if (!conn) {
 				throw new Error("Actor connection is unavailable");
 			}
-			return conn.listTabs();
+			return Promise.resolve(conn.listTabs()).then((result) =>
+				Promise.resolve(result)
+			);
 		},
 		enabled: isConnected,
 		retry: (_, error) => {

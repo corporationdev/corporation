@@ -11,18 +11,17 @@ import {
 	publishSessionStatus,
 	startAgentRunner,
 } from "./agent-runner";
-import { createTabId } from "./channels";
+import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import {
 	buildPromptWithReplay,
 	type SessionPromptPart,
 } from "./session-replay-context";
+import { subscribeToChannel, unsubscribeFromChannel } from "./subscriptions";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
-const SESSION_STATUS_IDLE = "idle";
-const SESSION_STATUS_RUNNING = "running";
-const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
+
 const log = createLogger("space:session");
 
 async function requestAutoSessionTitle(
@@ -143,7 +142,7 @@ async function requestAutoBranchName(
 		return;
 	}
 
-	const response = await fetch(`${convexSiteUrl}${AUTO_BRANCH_NAME_ENDPOINT}`, {
+	const response = await fetch(`${convexSiteUrl}/internal/auto-branch-name`, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
@@ -204,12 +203,12 @@ async function sendMessage(
 	}
 
 	// Prevent sending a new message while a turn is already running
-	const existing = await ctx.vars.db
+	const [existingSession] = await ctx.vars.db
 		.select({ status: sessions.status })
 		.from(sessions)
 		.where(eq(sessions.id, sessionId))
 		.limit(1);
-	if (existing[0]?.status === SESSION_STATUS_RUNNING) {
+	if (existingSession?.status === "running") {
 		throw new Error("Session already has a running turn");
 	}
 
@@ -243,21 +242,21 @@ async function cancelSession(
 		.from(sessions)
 		.where(eq(sessions.id, sessionId))
 		.limit(1);
-	if (!sessionRows[0] || sessionRows[0].status !== SESSION_STATUS_RUNNING) {
+	if (!sessionRows[0] || sessionRows[0].status !== "running") {
 		return;
 	}
 	// Clear run state and notify the frontend immediately.
 	await ctx.vars.db
 		.update(sessions)
 		.set({
-			status: SESSION_STATUS_IDLE,
+			status: "idle",
 			runId: null,
 			pid: null,
 			callbackToken: null,
 			error: null,
 		})
 		.where(eq(sessions.id, sessionId));
-	publishSessionStatus(ctx, sessionId, SESSION_STATUS_IDLE);
+	publishSessionStatus(ctx, sessionId, "idle");
 
 	// TODO: Add a cancel endpoint to corp-agent to gracefully cancel the ACP prompt.
 	// For now, cancelling just clears the session state on the actor side.
@@ -266,15 +265,15 @@ async function cancelSession(
 async function getSessionState(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
-	offset: number,
+	afterEventIndex: number,
 	limit?: number
 ): Promise<{ events: SessionEvent[]; status: string }> {
 	const conditions = [eq(sessionEvents.sessionId, sessionId)];
-	if (offset > 0) {
-		conditions.push(gt(sessionEvents.eventIndex, offset));
+	if (afterEventIndex > 0) {
+		conditions.push(gt(sessionEvents.eventIndex, afterEventIndex));
 	}
 
-	const [eventRows, sessionRows] = await Promise.all([
+	const [events, [session]] = await Promise.all([
 		ctx.vars.db
 			.select()
 			.from(sessionEvents)
@@ -288,18 +287,47 @@ async function getSessionState(
 			.limit(1),
 	]);
 
-	const events: SessionEvent[] = eventRows.map((r) => ({
-		id: r.id,
-		eventIndex: r.eventIndex,
-		sessionId: r.sessionId,
-		createdAt: r.createdAt,
-		connectionId: r.connectionId,
-		sender: r.sender as SessionEvent["sender"],
-		payload: r.payload as SessionEvent["payload"],
-	}));
-
-	const status = sessionRows[0]?.status ?? SESSION_STATUS_IDLE;
+	const status = session?.status ?? "idle";
 	return { events, status };
+}
+
+async function openSessionFeed(
+	ctx: SpaceRuntimeContext,
+	sessionId: string,
+	afterEventIndex = 0,
+	limit?: number
+): Promise<{ events: SessionEvent[]; status: string; lastEventIndex: number }> {
+	if (!ctx.conn) {
+		throw new Error("Session feed requires an active connection");
+	}
+
+	subscribeToChannel(
+		ctx.vars.subscriptions,
+		createTabChannel("session", sessionId),
+		ctx.conn.id
+	);
+
+	const { events, status } = await getSessionState(
+		ctx,
+		sessionId,
+		afterEventIndex,
+		limit
+	);
+	const lastEventIndex =
+		events.at(-1)?.eventIndex ?? Math.max(0, afterEventIndex);
+	return { events, status, lastEventIndex };
+}
+
+function closeSessionFeed(ctx: SpaceRuntimeContext, sessionId: string): void {
+	if (!ctx.conn) {
+		throw new Error("Session feed requires an active connection");
+	}
+
+	unsubscribeFromChannel(
+		ctx.vars.subscriptions,
+		createTabChannel("session", sessionId),
+		ctx.conn.id
+	);
 }
 
 async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
@@ -366,12 +394,17 @@ type SessionPublicActions = {
 		payload: unknown
 	) => Promise<void>;
 	cancelSession: (ctx: SpaceRuntimeContext, sessionId: string) => Promise<void>;
-	getSessionState: (
+	openSessionFeed: (
 		ctx: SpaceRuntimeContext,
 		sessionId: string,
-		offset: number,
+		afterEventIndex?: number,
 		limit?: number
-	) => Promise<{ events: SessionEvent[]; status: string }>;
+	) => Promise<{
+		events: SessionEvent[];
+		status: string;
+		lastEventIndex: number;
+	}>;
+	closeSessionFeed: (ctx: SpaceRuntimeContext, sessionId: string) => void;
 };
 
 type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
@@ -385,6 +418,7 @@ export const sessionDriver: SessionDriver = {
 		sendMessage,
 		ingestAgentRunnerBatch,
 		cancelSession,
-		getSessionState,
+		openSessionFeed,
+		closeSessionFeed,
 	},
 };

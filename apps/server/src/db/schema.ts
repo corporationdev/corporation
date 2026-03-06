@@ -57,8 +57,10 @@ export const sessionEvents = sqliteTable("session_events", {
 		.references(() => sessions.id, { onDelete: "cascade" }),
 	createdAt: integer("created_at", { mode: "number" }).notNull(),
 	connectionId: text("connection_id").notNull(),
-	sender: text("sender").notNull(),
-	payload: text("payload", { mode: "json" }).notNull(),
+	sender: text("sender").notNull().$type<"client" | "agent">(),
+	payload: text("payload", { mode: "json" })
+		.notNull()
+		.$type<Record<string, unknown>>(),
 });
 
 export type TabRow = InferSelectModel<typeof tabs>;

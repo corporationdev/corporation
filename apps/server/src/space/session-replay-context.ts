@@ -143,8 +143,8 @@ function toSessionEvent(row: typeof sessionEvents.$inferSelect): SessionEvent {
 		sessionId: row.sessionId,
 		createdAt: row.createdAt,
 		connectionId: row.connectionId,
-		sender: row.sender as SessionEvent["sender"],
-		payload: row.payload as SessionEvent["payload"],
+		sender: row.sender,
+		payload: row.payload,
 	};
 }
 
