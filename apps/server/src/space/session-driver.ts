@@ -6,22 +6,22 @@ import { generateText, Output } from "ai";
 import { and, asc, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { type SessionTab, sessionEvents, sessions, tabs } from "../db/schema";
+import {
+	ingestAgentRunnerBatch,
+	publishSessionStatus,
+	startAgentRunner,
+} from "./agent-runner";
 import { createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import {
 	buildPromptWithReplay,
 	type SessionPromptPart,
 } from "./session-replay-context";
-import {
-	ingestTurnRunnerBatch,
-	publishSessionStatus,
-	SESSION_STATUS_IDLE,
-	SESSION_STATUS_RUNNING,
-	startTurnRunner,
-} from "./turn-runner";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
+const SESSION_STATUS_IDLE = "idle";
+const SESSION_STATUS_RUNNING = "running";
 const AUTO_BRANCH_NAME_ENDPOINT = "/internal/auto-branch-name";
 const log = createLogger("space:session");
 
@@ -223,7 +223,7 @@ async function sendMessage(
 		);
 	}
 
-	await startTurnRunner(ctx, {
+	await startAgentRunner(ctx, {
 		sessionId,
 		prompt,
 		agent,
@@ -361,7 +361,7 @@ type SessionPublicActions = {
 		agent: string,
 		modelId: string
 	) => Promise<void>;
-	ingestTurnRunnerBatch: (
+	ingestAgentRunnerBatch: (
 		ctx: SpaceRuntimeContext,
 		payload: unknown
 	) => Promise<void>;
@@ -383,7 +383,7 @@ export const sessionDriver: SessionDriver = {
 	listTabs,
 	publicActions: {
 		sendMessage,
-		ingestTurnRunnerBatch,
+		ingestAgentRunnerBatch,
 		cancelSession,
 		getSessionState,
 	},
