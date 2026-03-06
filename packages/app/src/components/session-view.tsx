@@ -14,8 +14,6 @@ import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
-import { createTabId } from "@/lib/tab-id";
-import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 const INITIAL_AGENT = "claude";
@@ -63,12 +61,7 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 		navigate({
 			to: "/space/$spaceSlug",
 			params: { spaceSlug },
-			search: {
-				tab: serializeTab({
-					type: "session",
-					id: createTabId("session", sessionId),
-				}),
-			},
+			search: { session: sessionId },
 		});
 	}, [message, agent, modelId, setMessageStore, spaceSlug, navigate]);
 

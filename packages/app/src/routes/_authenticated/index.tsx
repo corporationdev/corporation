@@ -17,8 +17,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import agentModelsData from "@/data/agent-models.json";
-import { createTabId } from "@/lib/tab-id";
-import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 const INITIAL_AGENT = "claude";
@@ -101,12 +99,7 @@ function AuthenticatedIndex() {
 		navigate({
 			to: "/space/$spaceSlug",
 			params: { spaceSlug },
-			search: {
-				tab: serializeTab({
-					type: "session",
-					id: createTabId("session", sessionId),
-				}),
-			},
+			search: { session: sessionId },
 		});
 	}, [
 		input,

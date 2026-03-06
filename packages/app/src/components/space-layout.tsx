@@ -1,32 +1,29 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { TabRow } from "@corporation/server/space";
+import type { SessionRow } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, XIcon } from "lucide-react";
 import { type FC, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { SandboxPausedPanel } from "@/components/sandbox-paused-panel";
+import { SessionView } from "@/components/session-view";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
 import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
 import { SpaceSidebar } from "@/components/space-sidebar";
 import { SpaceSidebarToggle } from "@/components/space-sidebar-toggle";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { useSpaceTabs } from "@/hooks/use-space-tabs";
+import { useSpaceSessions } from "@/hooks/use-space-sessions";
 import { addActorConnectionSoftResetListener } from "@/lib/actor-errors";
 import { type SpaceActor, useActor } from "@/lib/rivetkit";
-import { type TabParam, tabRegistry } from "@/lib/tab-registry";
-import { parseTab, serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 export function SpaceLayout() {
 	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
 	const { spaceSlug } = match.params;
-	const tab = parseTab(match.search.tab);
+	const activeSessionId: string | undefined = match.search.session;
 
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
-	const isSpaceLoading = space === undefined;
 	const isSpaceMissing = space === null;
 	const [connectionResetNonce, setConnectionResetNonce] = useState(0);
 	const lastResetAtRef = useRef(0);
@@ -90,61 +87,43 @@ export function SpaceLayout() {
 	});
 
 	const navigate = useNavigate();
-	const { tabs, isLoading: isTabsLoading } = useSpaceTabs(actor);
+	const { sessions, isLoading: isSessionsLoading } = useSpaceSessions(actor);
 
-	// Persist the active tab so we can restore it when returning to this space
+	// Persist the active session so we can restore it when returning to this space
 	useEffect(() => {
-		if (tab) {
-			localStorage.setItem(`space-tab:${spaceSlug}`, serializeTab(tab));
+		if (activeSessionId) {
+			localStorage.setItem(`space-session:${spaceSlug}`, activeSessionId);
 		}
-	}, [tab, spaceSlug]);
+	}, [activeSessionId, spaceSlug]);
 
-	// Restore the last active tab on initial navigation (not when pressing "+")
-	const hasInitializedTab = useRef(false);
+	// Restore the last active session on initial navigation (not when pressing "+")
+	const hasInitializedSession = useRef(false);
 	const prevSpaceSlug = useRef(spaceSlug);
 	useEffect(() => {
 		if (prevSpaceSlug.current !== spaceSlug) {
 			prevSpaceSlug.current = spaceSlug;
-			hasInitializedTab.current = false;
+			hasInitializedSession.current = false;
 		}
-		if (hasInitializedTab.current || isTabsLoading) {
+		if (hasInitializedSession.current || isSessionsLoading) {
 			return;
 		}
-		hasInitializedTab.current = true;
-		if (tab || tabs.length === 0) {
+		hasInitializedSession.current = true;
+		if (activeSessionId || sessions.length === 0) {
 			return;
 		}
 
-		// Try to restore the last active tab, fall back to the first tab
-		const saved = localStorage.getItem(`space-tab:${spaceSlug}`);
-		const savedParam = parseTab(saved ?? undefined);
-		const targetParam =
-			savedParam &&
-			tabs.some((t) => {
-				const p = tabRegistry[t.type].tabParamFromTab(t);
-				return p?.type === savedParam.type && p.id === savedParam.id;
-			})
-				? savedParam
-				: tabRegistry[tabs[0].type].tabParamFromTab(tabs[0]);
+		// Try to restore the last active session, fall back to the first session
+		const saved = localStorage.getItem(`space-session:${spaceSlug}`);
+		const targetSessionId =
+			saved && sessions.some((s) => s.id === saved) ? saved : sessions[0].id;
 
-		if (!targetParam) {
-			return;
-		}
 		navigate({
 			to: "/space/$spaceSlug",
 			params: { spaceSlug },
-			search: { tab: serializeTab(targetParam) },
+			search: { session: targetSessionId },
 			replace: true,
 		});
-	}, [tab, tabs, isTabsLoading, spaceSlug, navigate]);
-
-	const activeTabType = tab?.type ?? "session";
-	const activeTabConfig = tabRegistry[activeTabType];
-
-	const shouldWaitForSandboxStatus =
-		activeTabConfig.requiresSandbox && isSpaceLoading;
-	const shouldShowSandboxPaused =
-		activeTabConfig.requiresSandbox && !!space && space.status !== "running";
+	}, [activeSessionId, sessions, isSessionsLoading, spaceSlug, navigate]);
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -156,62 +135,44 @@ export function SpaceLayout() {
 						<SpaceSidebarToggle />
 					</div>
 				</header>
-				<SpaceTabBar
-					activeTab={tab}
+				<SessionTabBar
+					activeSessionId={activeSessionId}
 					actor={actor}
+					sessions={sessions}
 					spaceSlug={spaceSlug}
-					tabs={tabs}
 				/>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					{isSpaceMissing && !spaceCreating ? (
 						<SpaceNotFoundPanel />
-					) : shouldWaitForSandboxStatus ? (
-						<div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm">
-							Loading sandbox status...
-						</div>
-					) : shouldShowSandboxPaused ? (
-						<SandboxPausedPanel slug={space.slug} status={space.status} />
 					) : (
-						activeTabConfig.render({
-							actor,
-							tab: tab
-								? tabs.find((t) => {
-										const param = tabRegistry[t.type].tabParamFromTab(t);
-										return param?.type === tab.type && param.id === tab.id;
-									})
-								: undefined,
-							routeTabId: tab?.id,
-							spaceSlug,
-						})
+						<SessionView
+							actor={actor}
+							key={activeSessionId ?? spaceSlug}
+							sessionId={activeSessionId}
+							spaceSlug={spaceSlug}
+						/>
 					)}
 				</div>
 			</SidebarInset>
-			<SpaceSidebar actor={actor} space={space} tabs={tabs} />
+			<SpaceSidebar actor={actor} space={space} />
 		</div>
 	);
 }
 
-const SpaceTabBar: FC<{
+const SessionTabBar: FC<{
 	spaceSlug: string;
-	activeTab: TabParam | undefined;
+	activeSessionId: string | undefined;
 	actor: SpaceActor;
-	tabs: TabRow[];
-}> = ({ spaceSlug, activeTab, actor, tabs }) => {
+	sessions: SessionRow[];
+}> = ({ spaceSlug, activeSessionId, actor, sessions }) => {
 	const navigate = useNavigate();
 
 	return (
 		<div className="sticky top-0 z-20 flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-background px-2">
-			{tabs.map((tab) => {
-				const tabConfig = tabRegistry[tab.type];
-				const tabParam = tabConfig.tabParamFromTab(tab);
-				if (!tabParam) {
-					return null;
-				}
-
-				const isActive =
-					activeTab?.type === tabParam.type && activeTab?.id === tabParam.id;
-				const title = tab.title || tabConfig.defaultTitle;
-				const tabIndex = tabs.findIndex((candidate) => candidate.id === tab.id);
+			{sessions.map((session) => {
+				const isActive = activeSessionId === session.id;
+				const title = session.title || "New Chat";
+				const sessionIndex = sessions.findIndex((s) => s.id === session.id);
 
 				return (
 					<div
@@ -219,7 +180,7 @@ const SpaceTabBar: FC<{
 							"group/tab flex h-7 shrink-0 items-center rounded-md pr-1 transition-colors hover:bg-muted",
 							isActive ? "bg-muted font-medium" : "text-muted-foreground"
 						)}
-						key={tab.id}
+						key={session.id}
 					>
 						<button
 							className="flex h-full min-w-0 items-center rounded-md px-3 text-sm"
@@ -227,7 +188,7 @@ const SpaceTabBar: FC<{
 								navigate({
 									to: "/space/$spaceSlug",
 									params: { spaceSlug },
-									search: { tab: serializeTab(tabParam) },
+									search: { session: session.id },
 								})
 							}
 							type="button"
@@ -246,52 +207,30 @@ const SpaceTabBar: FC<{
 										return;
 									}
 
-									await actor.connection.closeTab(tab.id);
+									await actor.connection.closeSession(session.id);
 
 									if (!isActive) {
 										return;
 									}
 
-									const remainingTabs = tabs.filter(
-										(candidate) => candidate.id !== tab.id
-									);
-									const nextTab =
-										remainingTabs[tabIndex] ?? remainingTabs[tabIndex - 1];
-									if (!nextTab) {
-										navigate({
-											to: "/space/$spaceSlug",
-											params: { spaceSlug },
-											search: {},
-										});
-										return;
-									}
-
-									const nextTabConfig = tabRegistry[nextTab.type];
-									const nextTabParam = nextTabConfig.tabParamFromTab(nextTab);
-									if (!nextTabParam) {
-										navigate({
-											to: "/space/$spaceSlug",
-											params: { spaceSlug },
-											search: {},
-										});
-										return;
-									}
-
+									const remaining = sessions.filter((s) => s.id !== session.id);
+									const next =
+										remaining[sessionIndex] ?? remaining[sessionIndex - 1];
 									navigate({
 										to: "/space/$spaceSlug",
 										params: { spaceSlug },
-										search: { tab: serializeTab(nextTabParam) },
+										search: next ? { session: next.id } : {},
 									});
 								};
 
 								close().catch((error: unknown) => {
-									console.error("Failed to close tab", error);
+									console.error("Failed to close session", error);
 								});
 							}}
 							type="button"
 						>
 							<XIcon className="size-3.5" />
-							<span className="sr-only">Close tab</span>
+							<span className="sr-only">Close session</span>
 						</button>
 					</div>
 				);

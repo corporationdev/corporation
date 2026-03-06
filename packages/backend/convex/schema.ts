@@ -50,7 +50,6 @@ export default defineSchema(
 			branchName: v.string(),
 			status: spaceStatusValidator,
 			lastSyncedCommitSha: v.optional(v.string()),
-			prUrl: v.optional(v.string()),
 			error: v.optional(v.string()),
 			archived: v.optional(v.boolean()),
 			sandboxExpiresAt: v.optional(v.number()),

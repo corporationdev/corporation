@@ -1,20 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { env } from "@corporation/env/web";
-import type { TabRow } from "@corporation/server/space";
-import { useMutation as useTanstackMutation } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import type { FunctionReturnType } from "convex/server";
-import {
-	ClipboardIcon,
-	ExternalLinkIcon,
-	GitPullRequestIcon,
-	LoaderIcon,
-	PlayIcon,
-	SquareIcon,
-	TerminalIcon,
-	UploadIcon,
-} from "lucide-react";
-import { nanoid } from "nanoid";
+import { ClipboardIcon, LoaderIcon, PlayIcon, SquareIcon } from "lucide-react";
 import { type FC, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,8 +22,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import type { SpaceActor } from "@/lib/rivetkit";
-import { createTabId, parseTabEntityIdFromRow } from "@/lib/tab-id";
-import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { useLayoutStore } from "@/stores/layout-store";
 import { SandboxCountdown } from "./sandbox-countdown";
@@ -48,7 +33,6 @@ export type Space = NonNullable<
 type SpaceSidebarProps = {
 	space?: Space | null;
 	actor: SpaceActor;
-	tabs: TabRow[];
 };
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -59,13 +43,13 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 	error: { label: "Error", className: "bg-destructive" },
 };
 
-export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor, tabs }) => {
+export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor }) => {
 	const isOpen = useLayoutStore((s) => s.rightSidebarOpen);
 	const setIsOpen = useLayoutStore((s) => s.setRightSidebarOpen);
 	const isMobile = useIsMobile();
 
 	const content = space ? (
-		<SpaceSidebarContent actor={actor} space={space} tabs={tabs} />
+		<SpaceSidebarContent actor={actor} space={space} />
 	) : null;
 
 	if (isMobile) {
@@ -98,9 +82,7 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor, tabs }) => {
 const SpaceSidebarContent: FC<{
 	space: Space;
 	actor: SpaceActor;
-	tabs: TabRow[];
-}> = ({ space, actor, tabs }) => {
-	const navigate = useNavigate();
+}> = ({ space, actor }) => {
 	const config = statusConfig[space.status] ?? {
 		label: space.status,
 		className: "bg-muted-foreground",
@@ -118,20 +100,6 @@ const SpaceSidebarContent: FC<{
 
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
 		useStartSandbox(space.slug, space.status);
-
-	const handleNewTerminal = () => {
-		const terminalId = nanoid();
-		navigate({
-			to: "/space/$spaceSlug",
-			params: { spaceSlug: space.slug },
-			search: {
-				tab: serializeTab({
-					type: "terminal",
-					id: createTabId("terminal", terminalId),
-				}),
-			},
-		});
-	};
 
 	const handleCopySandboxId = () => {
 		if (!space.sandboxId) {
@@ -193,23 +161,6 @@ const SpaceSidebarContent: FC<{
 					Creating...
 				</Button>
 			)}
-
-			{isStarted && <GitButtons space={space} />}
-			{isStarted && (
-				<DevServerButtons actor={actor} space={space} tabs={tabs} />
-			)}
-			<Button
-				className="w-full justify-start gap-2"
-				disabled={
-					actor.connStatus !== "connected" || space.status !== "running"
-				}
-				onClick={handleNewTerminal}
-				size="sm"
-				variant="outline"
-			>
-				<TerminalIcon className="size-4" />
-				New Terminal
-			</Button>
 			{env.VITE_STAGE_KIND === "dev" && space.sandboxId && (
 				<Button
 					className="w-full justify-start gap-2"
@@ -225,142 +176,5 @@ const SpaceSidebarContent: FC<{
 				<SandboxCountdown actor={actor} expiresAt={space.sandboxExpiresAt} />
 			)}
 		</div>
-	);
-};
-
-const DevServerButtons: FC<{
-	space: Space;
-	actor: SpaceActor;
-	tabs: TabRow[];
-}> = ({ space, actor, tabs }) => {
-	const devServerMutation = useTanstackMutation({
-		mutationFn: async (action: "start" | "kill") => {
-			if (!actor.connection) {
-				throw new Error("Not connected to sandbox");
-			}
-			if (action === "start") {
-				await actor.connection.startDevServer(space.environment.devCommand);
-			} else {
-				await actor.connection.killDevServer();
-			}
-		},
-	});
-
-	const hasDevCommand = !!space.environment.devCommand;
-	const isDevServerRunning = tabs.some(
-		(tab) =>
-			tab.type === "terminal" && parseTabEntityIdFromRow(tab) === "devserver"
-	);
-
-	if (!hasDevCommand) {
-		return null;
-	}
-
-	if (isDevServerRunning) {
-		return (
-			<Button
-				className="w-full justify-start gap-2"
-				disabled={
-					devServerMutation.isPending || actor.connStatus !== "connected"
-				}
-				onClick={() => devServerMutation.mutate("kill")}
-				size="sm"
-				variant="outline"
-			>
-				{devServerMutation.isPending ? (
-					<LoaderIcon className="size-4 animate-spin" />
-				) : (
-					<SquareIcon className="size-4" />
-				)}
-				{devServerMutation.isPending ? "Stopping..." : "Kill Dev Server"}
-			</Button>
-		);
-	}
-
-	return (
-		<Button
-			className="w-full justify-start gap-2"
-			disabled={devServerMutation.isPending || actor.connStatus !== "connected"}
-			onClick={() => devServerMutation.mutate("start")}
-			size="sm"
-			variant="outline"
-		>
-			{devServerMutation.isPending ? (
-				<LoaderIcon className="size-4 animate-spin" />
-			) : (
-				<PlayIcon className="size-4" />
-			)}
-			{devServerMutation.isPending ? "Starting..." : "Start Dev Server"}
-		</Button>
-	);
-};
-
-const GitButtons: FC<{ space: Space }> = ({ space }) => {
-	const createPRMutation = useConvexTanstackMutation(
-		api.spaces.createPullRequest,
-		{
-			onSuccess: () => {
-				toast.success("Creating pull request...");
-			},
-			onError: (error) => {
-				toast.error(`Failed to create PR: ${error.message}`);
-			},
-		}
-	);
-
-	const pushCodeMutation = useConvexTanstackMutation(api.spaces.pushCode, {
-		onSuccess: () => {
-			toast.success("Pushing changes...");
-		},
-		onError: (error) => {
-			toast.error(`Failed to push: ${error.message}`);
-		},
-	});
-
-	if (!space.prUrl) {
-		return (
-			<Button
-				className="w-full justify-start gap-2"
-				disabled={createPRMutation.isPending}
-				onClick={() => createPRMutation.mutate({ id: space._id })}
-				size="sm"
-				variant="outline"
-			>
-				{createPRMutation.isPending ? (
-					<LoaderIcon className="size-4 animate-spin" />
-				) : (
-					<GitPullRequestIcon className="size-4" />
-				)}
-				{createPRMutation.isPending ? "Creating..." : "Create Pull Request"}
-			</Button>
-		);
-	}
-
-	return (
-		<>
-			<Button
-				className="w-full justify-start gap-2"
-				disabled={pushCodeMutation.isPending}
-				onClick={() => pushCodeMutation.mutate({ id: space._id })}
-				size="sm"
-				variant="outline"
-			>
-				{pushCodeMutation.isPending ? (
-					<LoaderIcon className="size-4 animate-spin" />
-				) : (
-					<UploadIcon className="size-4" />
-				)}
-				{pushCodeMutation.isPending ? "Pushing..." : "Push Changes"}
-			</Button>
-			<a
-				className="flex h-9 w-full items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted"
-				href={space.prUrl}
-				rel="noopener noreferrer"
-				target="_blank"
-			>
-				<ExternalLinkIcon className="size-4" />
-				View Pull Request
-			</a>
-		</>
 	);
 };
