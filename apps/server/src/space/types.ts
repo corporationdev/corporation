@@ -24,6 +24,7 @@ export type SpaceVars = {
 	lastTerminalSnapshotAt: Map<string, number>;
 	subscriptions: SubscriptionHub;
 	lastTimeoutRefreshAt: number;
+	turnRunnerSequenceBySessionId: Map<string, number>;
 	pendingSessionEventInserts: SessionEvent[];
 	pendingSessionEventFlush: Promise<void> | null;
 };

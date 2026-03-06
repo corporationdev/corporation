@@ -16,6 +16,7 @@ import type { SessionEvent } from "./types";
 const SESSION_EVENT_NAME = "session.event";
 const SESSION_STATUS_EVENT_NAME = "session.status";
 const TRAILING_SLASH_RE = /\/$/;
+const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
 const PERSIST_BATCH_SIZE = 128;
 const log = createLogger("space:turn-runner");
 
@@ -96,7 +97,10 @@ function ensureSessionEventFlushScheduled(ctx: SpaceRuntimeContext): void {
 
 	const flushPromise = flushPendingSessionEventInserts(ctx)
 		.catch((error) => {
-			log.error({ err: error, actorId: ctx.actorId }, "session-event flush failed");
+			log.error(
+				{ err: error, actorId: ctx.actorId },
+				"session-event flush failed"
+			);
 		})
 		.finally(() => {
 			if (ctx.vars.pendingSessionEventFlush === flushPromise) {
@@ -122,7 +126,9 @@ function enqueueSessionEventInserts(
 	ensureSessionEventFlushScheduled(ctx);
 }
 
-async function flushAllSessionEventInserts(ctx: SpaceRuntimeContext): Promise<void> {
+async function flushAllSessionEventInserts(
+	ctx: SpaceRuntimeContext
+): Promise<void> {
 	while (
 		ctx.vars.pendingSessionEventFlush ||
 		ctx.vars.pendingSessionEventInserts.length > 0
@@ -144,17 +150,12 @@ async function launchTurnRunner(
 		agent: string;
 		modelId: string;
 		promptJson: string;
+		callbackUrl: string;
 		callbackToken: string;
 	}
 ): Promise<void> {
-	const baseUrl = env.SERVER_PUBLIC_URL;
-	if (!baseUrl) {
-		throw new Error("Missing SERVER_PUBLIC_URL env var");
-	}
-	const actorEndpoint = baseUrl.replace(TRAILING_SLASH_RE, "") + "/rivet";
-
 	log.info(
-		{ actorEndpoint, actorKey: ctx.key, agentUrl: ctx.state.agentUrl },
+		{ callbackUrl: params.callbackUrl, agentUrl: ctx.state.agentUrl },
 		"launchTurnRunner: sending prompt to corp-agent"
 	);
 
@@ -169,8 +170,7 @@ async function launchTurnRunner(
 			modelId: params.modelId,
 			prompt: JSON.parse(params.promptJson),
 			cwd: ctx.state.workdir,
-			actorEndpoint,
-			actorKey: ctx.key,
+			callbackUrl: params.callbackUrl,
 			callbackToken: params.callbackToken,
 		}),
 		signal: AbortSignal.timeout(15_000),
@@ -216,6 +216,11 @@ export async function startTurnRunner(
 
 	const turnId = nanoid();
 	const callbackToken = crypto.randomUUID();
+	const baseUrl = env.SERVER_PUBLIC_URL;
+	if (!baseUrl) {
+		throw new Error("Missing SERVER_PUBLIC_URL env var");
+	}
+	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${TURN_RUNNER_ACTION}`;
 	const promptJson = JSON.stringify(params.prompt);
 
 	await ctx.vars.db
@@ -227,6 +232,7 @@ export async function startTurnRunner(
 			error: null,
 		})
 		.where(eq(sessions.id, params.sessionId));
+	ctx.vars.turnRunnerSequenceBySessionId.set(params.sessionId, 0);
 	publishSessionStatus(ctx, params.sessionId, SESSION_STATUS_RUNNING);
 
 	refreshSandboxTimeout(ctx);
@@ -238,6 +244,7 @@ export async function startTurnRunner(
 			agent: params.agent,
 			modelId: params.modelId,
 			promptJson,
+			callbackUrl,
 			callbackToken,
 		});
 	} catch (error) {
@@ -306,10 +313,23 @@ export async function ingestTurnRunnerBatch(
 		throw new Error("Invalid callback token");
 	}
 
+	const lastSequence = ctx.vars.turnRunnerSequenceBySessionId.get(session.id);
+	if (lastSequence !== undefined) {
+		if (parsed.sequence <= lastSequence) {
+			return;
+		}
+		if (parsed.sequence !== lastSequence + 1) {
+			throw new Error(
+				`Out-of-order callback sequence: expected ${lastSequence + 1}, got ${parsed.sequence}`
+			);
+		}
+	}
+
 	if (parsed.kind === "events") {
 		const validEvents = parsed.events.filter(
 			(event) => event.sessionId === session.id
 		);
+		ctx.vars.turnRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		if (validEvents.length === 0) {
 			return;
 		}
@@ -324,6 +344,7 @@ export async function ingestTurnRunnerBatch(
 			.update(sessions)
 			.set({ status: SESSION_STATUS_IDLE, pid: null, error: null })
 			.where(eq(sessions.id, session.id));
+		ctx.vars.turnRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		publishSessionStatus(ctx, session.id, SESSION_STATUS_IDLE);
 		return;
 	}
@@ -334,6 +355,7 @@ export async function ingestTurnRunnerBatch(
 			.update(sessions)
 			.set({ status: SESSION_STATUS_ERROR, pid: null, error: parsed.error })
 			.where(eq(sessions.id, session.id));
+		ctx.vars.turnRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		publishSessionStatus(ctx, session.id, SESSION_STATUS_ERROR);
 		log.error(
 			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },

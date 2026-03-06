@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+/* global Bun */
 
 /**
  * corp-agent — compiled Bun binary that runs inside E2B sandboxes.
@@ -8,18 +9,18 @@
  *      - GET  /v1/health
  *      - GET  /v1/agents
  *      - POST /v1/prompt
- *   2. ACP JSON-RPC bridge: spawns an agent subprocess, communicates
+ *   2. ACP JSON-RPC bridge: spawns an agent subprocess and communicates
  *      via stdin/stdout using newline-delimited JSON (ndjson).
- *   3. Streams session events back to a Rivet actor over a persistent
- *      WebSocket connection using the RivetKit client SDK.
+ *   3. Streams session events back to the actor via ordered HTTP callbacks.
  */
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { createClient } from "rivetkit/client";
+
+declare const Bun: typeof import("bun");
 
 // ---------------------------------------------------------------------------
-// Logging — append to /tmp/corp-agent.log for debugging
+// Logging
 // ---------------------------------------------------------------------------
 
 const LOG_PATH = "/tmp/corp-agent.log";
@@ -44,7 +45,7 @@ function log(level: "info" | "warn" | "error", msg: string, data?: unknown) {
 
 type SessionEventSender = "client" | "agent";
 
-interface SessionEvent {
+type SessionEvent = {
 	connectionId: string;
 	createdAt: number;
 	eventIndex: number;
@@ -52,25 +53,23 @@ interface SessionEvent {
 	payload: Record<string, unknown>;
 	sender: SessionEventSender;
 	sessionId: string;
-}
+};
 
-interface PromptRequestBody {
-	actorEndpoint: string;
-	actorKey: string[];
+type PromptRequestBody = {
 	agent: string;
 	callbackToken: string;
+	callbackUrl: string;
 	cwd: string;
 	modelId?: string;
 	prompt: Array<{ type: string; text: string }>;
 	sessionId: string;
 	turnId: string;
-}
+};
 
 // ---------------------------------------------------------------------------
-// ACP agent process registry — maps agent name → npx package / binary
+// Agent process registry
 // ---------------------------------------------------------------------------
 
-// Maps agent name → npx package for npm-based agents
 const AGENT_NPX_PACKAGES: Record<string, string> = {
 	claude: "@zed-industries/claude-code-acp",
 	codex: "@zed-industries/codex-acp",
@@ -79,7 +78,6 @@ const AGENT_NPX_PACKAGES: Record<string, string> = {
 };
 
 function agentCommand(agent: string): string[] {
-	// Native binary agents
 	if (agent === "opencode") {
 		return ["opencode", "acp"];
 	}
@@ -97,6 +95,11 @@ function agentCommand(agent: string): string[] {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const ACP_PROTOCOL_VERSION = 1;
+const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000;
+const CALLBACK_TIMEOUT_MS = 10_000;
+const CALLBACK_MAX_ATTEMPTS = 8;
 
 function clonePayload(payload: unknown): Record<string, unknown> {
 	try {
@@ -151,25 +154,50 @@ function pickPermissionOption(
 	return allowOnce ?? null;
 }
 
+async function postJsonWithRetry(
+	url: string,
+	body: unknown,
+	timeoutMs: number,
+	maxAttempts: number
+): Promise<void> {
+	let attempt = 0;
+	let delayMs = 250;
+
+	while (true) {
+		attempt += 1;
+		try {
+			const response = await fetch(url, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+				signal: AbortSignal.timeout(timeoutMs),
+			});
+			if (!response.ok) {
+				const text = await response.text().catch(() => "");
+				throw new Error(`Callback failed (${response.status}): ${text}`);
+			}
+			return;
+		} catch (error) {
+			if (attempt >= maxAttempts) {
+				throw error;
+			}
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+			delayMs = Math.min(delayMs * 2, 4000);
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
-// ACP stdio bridge — ndjson over stdin/stdout
+// ACP stdio bridge
 // ---------------------------------------------------------------------------
 
-const ACP_PROTOCOL_VERSION = 1;
-const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000; // 10 minutes
-
-interface StdioBridge {
+type StdioBridge = {
 	dead: boolean;
 	onNotification: ((envelope: Record<string, unknown>) => void) | null;
 	pendingResolvers: Map<string, (envelope: Record<string, unknown>) => void>;
 	proc: ReturnType<typeof Bun.spawn>;
-}
+};
 
-/**
- * Spawn an ACP agent subprocess and set up the stdio bridge.
- * The agent reads JSON-RPC from stdin and writes JSON-RPC to stdout,
- * both as newline-delimited JSON.
- */
 function spawnStdioBridge(
 	agent: string,
 	onNotification: (envelope: Record<string, unknown>) => void
@@ -191,12 +219,12 @@ function spawnStdioBridge(
 		dead: false,
 	};
 
-	// Read stdout line-by-line for JSON-RPC messages
 	if (proc.stdout) {
 		const reader = proc.stdout.getReader();
 		const decoder = new TextDecoder();
 		let buffer = "";
 
+		// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: stdio parser handles framing + request/notification routing.
 		(async () => {
 			try {
 				while (true) {
@@ -206,9 +234,8 @@ function spawnStdioBridge(
 					}
 					buffer += decoder.decode(value, { stream: true });
 
-					// Process complete lines
-					let newlineIdx: number;
-					while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+					let newlineIdx = buffer.indexOf("\n");
+					while (newlineIdx !== -1) {
 						const line = buffer.slice(0, newlineIdx).trim();
 						buffer = buffer.slice(newlineIdx + 1);
 
@@ -220,13 +247,13 @@ function spawnStdioBridge(
 							const envelope = JSON.parse(line) as Record<string, unknown>;
 							const envId = envelope.id != null ? String(envelope.id) : null;
 
-							// If it has an id and we have a pending resolver, it's a response
 							if (envId && bridge.pendingResolvers.has(envId)) {
-								const resolver = bridge.pendingResolvers.get(envId)!;
+								const resolver = bridge.pendingResolvers.get(envId);
 								bridge.pendingResolvers.delete(envId);
-								resolver(envelope);
+								if (resolver) {
+									resolver(envelope);
+								}
 							} else {
-								// It's a notification or unsolicited message
 								bridge.onNotification?.(envelope);
 							}
 						} catch {
@@ -234,17 +261,18 @@ function spawnStdioBridge(
 								line: line.slice(0, 200),
 							});
 						}
+
+						newlineIdx = buffer.indexOf("\n");
 					}
 				}
 			} catch {
-				// Stream ended
+				// stream ended
 			}
 			bridge.dead = true;
 			log("info", "Agent stdout stream ended");
 		})();
 	}
 
-	// Stream stderr to log
 	if (proc.stderr) {
 		const reader = proc.stderr.getReader();
 		const decoder = new TextDecoder();
@@ -263,7 +291,7 @@ function spawnStdioBridge(
 					}
 				}
 			} catch {
-				// Process exited
+				// process exited
 			}
 		})();
 	}
@@ -271,20 +299,13 @@ function spawnStdioBridge(
 	return bridge;
 }
 
-/**
- * Write a JSON-RPC envelope to the agent's stdin.
- */
 function stdioWrite(
 	bridge: StdioBridge,
 	envelope: Record<string, unknown>
 ): void {
-	const line = `${JSON.stringify(envelope)}\n`;
-	bridge.proc.stdin.write(line);
+	bridge.proc.stdin.write(`${JSON.stringify(envelope)}\n`);
 }
 
-/**
- * Send a JSON-RPC request and wait for the response.
- */
 async function stdioRequest(
 	bridge: StdioBridge,
 	method: string,
@@ -331,17 +352,17 @@ function killBridge(bridge: StdioBridge): void {
 	try {
 		bridge.proc.stdin.end();
 	} catch {
-		// Already closed
+		// ignore
 	}
 	try {
 		bridge.proc.kill();
 	} catch {
-		// Already dead
+		// ignore
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Turn execution — runs the full ACP lifecycle for one prompt
+// Turn execution
 // ---------------------------------------------------------------------------
 
 async function executeTurn(params: PromptRequestBody): Promise<void> {
@@ -352,8 +373,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		modelId,
 		prompt,
 		cwd,
-		actorEndpoint,
-		actorKey,
+		callbackUrl,
 		callbackToken,
 	} = params;
 
@@ -363,96 +383,14 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		agent,
 		modelId,
 		cwd,
-		actorEndpoint,
-		actorKey,
+		callbackUrl,
 	});
 
 	const connectionId = `corp-agent-${turnId}-${crypto.randomUUID()}`;
 	let eventIndex = 0;
 	let sequence = 0;
+	let callbackChain = Promise.resolve();
 
-	// Test actor resolution (same PUT /actors the SDK does internally)
-	try {
-		const actorsUrl = `${actorEndpoint}/actors`;
-		const putBody = {
-			name: "space",
-			key: JSON.stringify(actorKey),
-			crash_policy: "sleep",
-		};
-		log("info", "Testing actor resolution (PUT /actors)", {
-			url: actorsUrl,
-			body: putBody,
-		});
-		const resolveResp = await fetch(actorsUrl, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(putBody),
-			signal: AbortSignal.timeout(5000),
-		});
-		const resolveBody = await resolveResp.text();
-		log("info", "Actor resolution result", {
-			status: resolveResp.status,
-			body: resolveBody.slice(0, 500),
-		});
-	} catch (error) {
-		log("error", "Actor resolution test FAILED", {
-			actorEndpoint,
-			error: error instanceof Error ? error.message : String(error),
-		});
-	}
-
-	// Connect to actor via RivetKit client SDK (persistent WebSocket)
-	log("info", "Connecting to actor via RivetKit WebSocket", {
-		actorEndpoint,
-		actorKey,
-	});
-	const client = createClient({
-		endpoint: actorEndpoint,
-		disableMetadataLookup: true,
-		devtools: false,
-	});
-	const actorHandle = (
-		client as Record<string, Record<string, Function>>
-	).space.getOrCreate(actorKey);
-	const actorConn = actorHandle.connect() as Record<string, Function>;
-	log("info", "Actor connect() called (connection is lazy)");
-	let callbackQueue = Promise.resolve();
-
-	// Hook into connection lifecycle events
-	if (typeof actorConn.onOpen === "function") {
-		actorConn.onOpen(() => {
-			log("info", "WS EVENT: connection OPENED", {
-				connStatus: actorConn.connStatus,
-			});
-		});
-	}
-	if (typeof actorConn.onClose === "function") {
-		actorConn.onClose(() => {
-			log("warn", "WS EVENT: connection CLOSED", {
-				connStatus: actorConn.connStatus,
-			});
-		});
-	}
-	if (typeof actorConn.onError === "function") {
-		actorConn.onError((error: unknown) => {
-			log("error", "WS EVENT: connection ERROR", {
-				error: error instanceof Error ? error.message : String(error),
-				errorType: error?.constructor?.name,
-			});
-		});
-	}
-	if (typeof actorConn.onStatusChange === "function") {
-		actorConn.onStatusChange((status: string) => {
-			log("info", "WS EVENT: status changed", { status });
-		});
-	}
-
-	log("info", "Initial connStatus", {
-		connStatus: actorConn.connStatus ?? "unknown",
-	});
-
-	// Helper to send a callback to the actor over WebSocket
-	// Uses a serialized queue (in-flight=1) to avoid bursty callback completions.
 	const sendCallback = (
 		kind: string,
 		extra: Record<string, unknown> = {}
@@ -468,37 +406,24 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			...extra,
 		};
 
-		callbackQueue = callbackQueue
+		callbackChain = callbackChain
 			.catch(() => undefined)
 			.then(async () => {
-				try {
-					log("info", `Sending ${kind} callback (seq=${sequence})`, {
-						turnId,
-						kind,
-						payloadKeys: Object.keys(payload),
-						hasEvents: "events" in extra ? (extra.events as unknown[]).length : 0,
-					});
-					const result = await actorConn.ingestTurnRunnerBatch(payload);
-					log("info", `Sent ${kind} callback OK (seq=${sequence})`, {
-						result: result !== undefined ? JSON.stringify(result) : "void",
-					});
-				} catch (error) {
-					log("error", `Failed to send ${kind} callback`, {
-						error: error instanceof Error ? error.message : String(error),
-						stack: error instanceof Error ? error.stack : undefined,
-						errorType: error?.constructor?.name,
-					});
-				}
+				await postJsonWithRetry(
+					callbackUrl,
+					{ args: [payload] },
+					CALLBACK_TIMEOUT_MS,
+					CALLBACK_MAX_ATTEMPTS
+				);
 			});
 
-		return callbackQueue;
+		return callbackChain;
 	};
 
-	// Queue an envelope as a session event
 	const queueEnvelopeEvent = (
 		envelope: Record<string, unknown>,
 		direction: "inbound" | "outbound"
-	) => {
+	): void => {
 		eventIndex += 1;
 		const event: SessionEvent = {
 			id: crypto.randomUUID(),
@@ -509,19 +434,20 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			sender: direction === "outbound" ? "client" : "agent",
 			payload: clonePayload(envelope),
 		};
-		sendCallback("events", { events: [event] });
+		sendCallback("events", { events: [event] }).catch((error) => {
+			log("error", "Failed to queue events callback", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		});
 	};
 
 	let bridge: StdioBridge | null = null;
 
 	try {
-		// 1. Spawn agent subprocess with stdio bridge
 		log("info", "Spawning agent subprocess", { agent });
 		bridge = spawnStdioBridge(agent, (envelope) => {
-			// Every inbound notification/message from the agent
 			queueEnvelopeEvent(envelope, "inbound");
 
-			// Handle requestPermission from agent
 			if (envelope.method === "requestPermission" && envelope.id != null) {
 				const reqParams = envelope.params as
 					| Record<string, unknown>
@@ -541,22 +467,20 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 							: { outcome: "cancelled" },
 					},
 				};
-				stdioWrite(bridge!, response);
-				queueEnvelopeEvent(response, "outbound");
+				if (bridge) {
+					stdioWrite(bridge, response);
+					queueEnvelopeEvent(response, "outbound");
+				}
 			}
 		});
 
-		// Brief pause to check if process exits immediately
-		await new Promise((r) => setTimeout(r, 500));
+		await new Promise((r) => setTimeout(r, 250));
 		if (bridge.proc.exitCode !== null) {
 			throw new Error(
 				`Agent ${agent} exited immediately with code ${bridge.proc.exitCode}`
 			);
 		}
-		log("info", "Agent subprocess running", { agent });
 
-		// 2. Initialize
-		log("info", "Sending ACP initialize");
 		const initEnvelope = {
 			jsonrpc: "2.0" as const,
 			id: `initialize-${crypto.randomUUID()}`,
@@ -571,10 +495,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			protocolVersion: ACP_PROTOCOL_VERSION,
 			clientInfo: { name: "corp-agent", version: "v1" },
 		});
-		log("info", "ACP initialized OK");
 
-		// 3. Create session
-		log("info", "Creating ACP session");
 		const sessionResult = await stdioRequest(bridge, "session/new", {
 			cwd,
 			mcpServers: [],
@@ -583,11 +504,8 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		if (!agentSessionId) {
 			throw new Error("session/new did not return a sessionId");
 		}
-		log("info", "ACP session created", { agentSessionId });
 
-		// 4. Set model (optional, best-effort — not all agents support this)
 		if (modelId) {
-			log("info", "Setting model", { modelId });
 			try {
 				await stdioRequest(bridge, "unstable/setSessionModel", {
 					sessionId: agentSessionId,
@@ -600,49 +518,31 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			}
 		}
 
-		// 5. Send prompt and wait for response
-		log("info", "Sending prompt to agent");
+		const promptEnvelope: Record<string, unknown> = {
+			jsonrpc: "2.0",
+			method: "session/prompt",
+			params: { sessionId: agentSessionId, prompt },
+		};
+		queueEnvelopeEvent(promptEnvelope, "outbound");
+
 		const promptResult = await stdioRequest(bridge, "session/prompt", {
 			sessionId: agentSessionId,
 			prompt,
 		});
 
-		// Record the outbound prompt envelope for events
-		queueEnvelopeEvent(
-			{
-				jsonrpc: "2.0",
-				method: "session/prompt",
-				params: { sessionId: agentSessionId, prompt },
-			},
-			"outbound"
-		);
-
 		if ("error" in promptResult) {
-			const err = promptResult as Record<string, unknown>;
-			throw new Error(`Prompt ACP error: ${JSON.stringify(err)}`);
+			throw new Error(`Prompt ACP error: ${JSON.stringify(promptResult)}`);
 		}
 
-		// 6. Send completed callback
-		log("info", "Turn completed successfully", { turnId });
 		await sendCallback("completed");
-		await callbackQueue.catch(() => undefined);
+		await callbackChain.catch(() => undefined);
 	} catch (error) {
+		await sendCallback("failed", { error: formatError(error) }).catch(
+			() => undefined
+		);
+		await callbackChain.catch(() => undefined);
 		log("error", "Turn failed", { turnId, error: formatError(error) });
-		await sendCallback("failed", { error: formatError(error) });
-		await callbackQueue.catch(() => undefined);
 	} finally {
-		// Disconnect actor WebSocket
-		try {
-			if (typeof actorConn.dispose === "function") {
-				await actorConn.dispose();
-				log("info", "Actor connection disposed");
-			}
-		} catch (error) {
-			log("warn", "Error disposing actor connection", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
-
 		if (bridge) {
 			killBridge(bridge);
 		}
@@ -650,24 +550,21 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Agent discovery (for /v1/agents)
+// Agent discovery
 // ---------------------------------------------------------------------------
 
 const ALL_AGENT_IDS = [...Object.keys(AGENT_NPX_PACKAGES), "amp", "opencode"];
 
-async function discoverAgents(): Promise<
-	Array<{ id: string; installed: boolean }>
-> {
+function discoverAgents(): Array<{ id: string; installed: boolean }> {
 	const agents: Array<{ id: string; installed: boolean }> = [];
 	for (const id of ALL_AGENT_IDS) {
-		// Check if the command exists by trying `which`
 		let installed = false;
 		try {
 			const bin = id === "amp" ? "amp-acp" : id;
 			const result = Bun.spawnSync(["which", bin]);
 			installed = result.exitCode === 0;
 		} catch {
-			// not installed
+			// ignore
 		}
 		agents.push({ id, installed });
 	}
@@ -700,8 +597,6 @@ function parseArgs(): { host: string; port: number } {
 }
 
 const { host, port } = parseArgs();
-
-// Track active turns to prevent double-prompting
 const activeTurns = new Map<string, boolean>();
 
 Bun.serve({
@@ -710,25 +605,20 @@ Bun.serve({
 	async fetch(req) {
 		const url = new URL(req.url);
 
-		// Health check
 		if (req.method === "GET" && url.pathname === "/v1/health") {
 			return Response.json({ status: "ok" });
 		}
 
-		// List agents
 		if (req.method === "GET" && url.pathname === "/v1/agents") {
-			const agents = await discoverAgents();
+			const agents = discoverAgents();
 			return Response.json({ agents });
 		}
 
-		// Prompt
 		if (req.method === "POST" && url.pathname === "/v1/prompt") {
-			log("info", "Received POST /v1/prompt");
 			let body: PromptRequestBody;
 			try {
 				body = (await req.json()) as PromptRequestBody;
 			} catch {
-				log("error", "Invalid JSON body in /v1/prompt");
 				return Response.json({ error: "Invalid JSON body" }, { status: 400 });
 			}
 
@@ -740,28 +630,13 @@ Bun.serve({
 					{ status: 400 }
 				);
 			}
-
-			if (!(body.actorEndpoint && body.actorKey)) {
-				log("error", "Missing actorEndpoint or actorKey", {
-					actorEndpoint: body.actorEndpoint,
-					actorKey: body.actorKey,
-				});
+			if (!(body.callbackUrl && body.callbackToken)) {
 				return Response.json(
-					{ error: "Missing required fields: actorEndpoint, actorKey" },
+					{ error: "Missing required fields: callbackUrl, callbackToken" },
 					{ status: 400 }
 				);
 			}
 
-			log("info", "Prompt request body received", {
-				turnId: body.turnId,
-				sessionId: body.sessionId,
-				agent: body.agent,
-				actorEndpoint: body.actorEndpoint,
-				actorKey: body.actorKey,
-				callbackToken: body.callbackToken ? "present" : "missing",
-			});
-
-			// Prevent duplicate turns
 			if (activeTurns.has(body.turnId)) {
 				return Response.json(
 					{ error: "Turn already in progress" },
@@ -770,13 +645,6 @@ Bun.serve({
 			}
 
 			activeTurns.set(body.turnId, true);
-
-			// Fire and forget — respond immediately
-			log("info", "Accepted turn", {
-				turnId: body.turnId,
-				agent: body.agent,
-				sessionId: body.sessionId,
-			});
 			executeTurn(body)
 				.catch((error) => {
 					log("error", "Unhandled turn error", {

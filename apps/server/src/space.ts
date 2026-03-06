@@ -74,6 +74,7 @@ export const space = actor({
 			lastTerminalSnapshotAt: new Map(),
 			subscriptions: createSubscriptionHub(),
 			lastTimeoutRefreshAt: 0,
+			turnRunnerSequenceBySessionId: new Map(),
 			pendingSessionEventInserts: [],
 			pendingSessionEventFlush: null,
 		};

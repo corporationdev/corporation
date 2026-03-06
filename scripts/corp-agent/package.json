@@ -2,8 +2,5 @@
   "name": "corp-agent",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "rivetkit": "catalog:"
-  }
+  "type": "module"
 }
