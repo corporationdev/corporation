@@ -4,17 +4,14 @@ const STORAGE_KEY = "layout-state";
 
 type LayoutState = {
 	leftSidebarOpen: boolean;
-	rightSidebarOpen: boolean;
 };
 
 type LayoutStore = LayoutState & {
 	setLeftSidebarOpen: (open: boolean) => void;
-	setRightSidebarOpen: (open: boolean) => void;
 };
 
 const DEFAULTS: LayoutState = {
 	leftSidebarOpen: true,
-	rightSidebarOpen: false,
 };
 
 function readState(): LayoutState {
@@ -40,20 +37,10 @@ function writeState(state: LayoutState) {
 
 const initial = readState();
 
-export const useLayoutStore = create<LayoutStore>((set, get) => ({
+export const useLayoutStore = create<LayoutStore>((set) => ({
 	...initial,
 	setLeftSidebarOpen: (open) => {
 		set({ leftSidebarOpen: open });
-		writeState({
-			leftSidebarOpen: open,
-			rightSidebarOpen: get().rightSidebarOpen,
-		});
-	},
-	setRightSidebarOpen: (open) => {
-		set({ rightSidebarOpen: open });
-		writeState({
-			leftSidebarOpen: get().leftSidebarOpen,
-			rightSidebarOpen: open,
-		});
+		writeState({ leftSidebarOpen: open });
 	},
 }));

@@ -55,10 +55,7 @@ function RepositoryCard({
 		_id: Id<"repositories">;
 		owner: string;
 		name: string;
-		defaultEnvironment: {
-			_id: Id<"repositories">;
-			latestSnapshot: { status: "building" | "ready" | "error" } | null;
-		} | null;
+		latestSnapshot: { status: "building" | "ready" | "error" } | null;
 	};
 }) {
 	const navigate = useNavigate();
@@ -88,9 +85,7 @@ function RepositoryCard({
 						</CardTitle>
 					</Link>
 					<SnapshotStatusIndicator
-						status={
-							repository.defaultEnvironment?.latestSnapshot?.status ?? null
-						}
+						status={repository.latestSnapshot?.status ?? null}
 					/>
 				</div>
 				<CardAction>
@@ -128,7 +123,7 @@ function RepositoriesPage() {
 				<div>
 					<h1 className="font-semibold text-lg">Repositories</h1>
 					<p className="mt-1 text-muted-foreground text-sm">
-						Manage your repositories and their environment configuration.
+						Manage your repositories and their configuration.
 					</p>
 				</div>
 				<Link to="/settings/repositories/connect">

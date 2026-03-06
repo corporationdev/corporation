@@ -51,23 +51,7 @@ function RepositoryDetailPage() {
 		);
 	}
 
-	if (!repository.defaultEnvironment) {
-		return (
-			<div className="p-6">
-				<BackLink />
-				<p className="mt-4 text-muted-foreground text-sm">
-					No environment configured for this repository.
-				</p>
-			</div>
-		);
-	}
-
-	return (
-		<RepositoryDetail
-			defaultEnvironment={repository.defaultEnvironment}
-			repository={repository}
-		/>
-	);
+	return <RepositoryDetail repository={repository} />;
 }
 
 function BackLink() {
@@ -85,15 +69,8 @@ function BackLink() {
 type Repository = NonNullable<
 	ReturnType<typeof useQuery<typeof api.repositories.get>>
 >;
-type Environment = NonNullable<Repository["defaultEnvironment"]>;
 
-function RepositoryDetail({
-	repository,
-	defaultEnvironment,
-}: {
-	repository: Repository;
-	defaultEnvironment: Environment;
-}) {
+function RepositoryDetail({ repository }: { repository: Repository }) {
 	const navigate = useNavigate();
 
 	const { mutate: createSnapshot, isPending: isSnapshotting } =
@@ -114,8 +91,8 @@ function RepositoryDetail({
 			},
 		});
 
-	const isBuilding = defaultEnvironment.latestSnapshot?.status === "building";
-	const isError = defaultEnvironment.latestSnapshot?.status === "error";
+	const isBuilding = repository.latestSnapshot?.status === "building";
+	const isError = repository.latestSnapshot?.status === "error";
 
 	return (
 		<div className="flex flex-col gap-6 p-6">
@@ -125,9 +102,7 @@ function RepositoryDetail({
 					<h1 className="mt-2 font-semibold text-lg">
 						{repository.owner}/{repository.name}
 					</h1>
-					<StatusIndicator
-						status={defaultEnvironment.latestSnapshot?.status ?? null}
-					/>
+					<StatusIndicator status={repository.latestSnapshot?.status ?? null} />
 				</div>
 				<div className="flex items-center gap-1">
 					<Tooltip>
@@ -137,7 +112,7 @@ function RepositoryDetail({
 								createSnapshot({
 									request: {
 										type: "update",
-										repositoryId: defaultEnvironment._id,
+										repositoryId: repository._id,
 									},
 								})
 							}
@@ -159,7 +134,7 @@ function RepositoryDetail({
 								createSnapshot({
 									request: {
 										type: "setup",
-										repositoryId: defaultEnvironment._id,
+										repositoryId: repository._id,
 									},
 								})
 							}
@@ -193,14 +168,14 @@ function RepositoryDetail({
 				</div>
 			</div>
 
-			{isError && <LatestSnapshotError repositoryId={defaultEnvironment._id} />}
+			{isError && <LatestSnapshotError repositoryId={repository._id} />}
 
 			<LatestSnapshotLogs
 				isBuilding={isBuilding}
-				repositoryId={defaultEnvironment._id}
+				repositoryId={repository._id}
 			/>
 
-			<SnapshotHistory repositoryId={defaultEnvironment._id} />
+			<SnapshotHistory repositoryId={repository._id} />
 		</div>
 	);
 }

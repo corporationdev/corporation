@@ -90,10 +90,10 @@ async function provisionSandbox(
 
 async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
 	const externalSnapshotId =
-		space.environment.activeSnapshot?.externalSnapshotId;
+		space.repository.activeSnapshot?.externalSnapshotId;
 
 	if (!externalSnapshotId) {
-		throw new Error("Environment snapshot is not ready yet");
+		throw new Error("Repository snapshot is not ready yet");
 	}
 
 	if (!space.sandboxId) {
@@ -181,7 +181,7 @@ export const ensureSandbox = internalAction({
 
 			const sandbox = await resolveSandbox(ctx, space);
 
-			const { repository } = space.environment;
+			const repository = space.repository;
 			const workdir = getSandboxWorkdir(repository);
 			await ensureBranchCheckedOut(
 				sandbox,
@@ -236,7 +236,7 @@ export const renameBranch = internalAction({
 			}
 
 			const sandbox = await Sandbox.connect(space.sandboxId);
-			const { repository } = space.environment;
+			const repository = space.repository;
 			const workdir = getSandboxWorkdir(repository);
 			const safeOldBranchName = quoteShellArg(args.oldBranchName);
 			const normalizedNewBranchName = normalizeBranchName(args.newBranchName);

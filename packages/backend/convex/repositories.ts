@@ -27,10 +27,9 @@ export const list = authedQuery({
 			.collect();
 
 		return await Promise.all(
-			repositories.map(async (repository) => ({
-				...repository,
-				defaultEnvironment: await withDerivedSnapshotState(ctx, repository),
-			}))
+			repositories.map((repository) =>
+				withDerivedSnapshotState(ctx, repository)
+			)
 		);
 	},
 });
@@ -44,13 +43,7 @@ export const get = authedQuery({
 		}
 		requireOwnedRepository(ctx.userId, repository);
 
-		const defaultEnvironment = await withDerivedSnapshotState(ctx, repository);
-
-		return {
-			...repository,
-			environments: [defaultEnvironment],
-			defaultEnvironment,
-		};
+		return await withDerivedSnapshotState(ctx, repository);
 	},
 });
 
@@ -60,16 +53,13 @@ export const create = authedMutation({
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
-		environmentConfig: v.object({
-			name: v.optional(v.string()),
-			setupCommand: v.string(),
-			updateCommand: v.string(),
-			devCommand: v.string(),
-			devPort: v.number(),
-			envByPath: v.optional(
-				v.record(v.string(), v.record(v.string(), v.string()))
-			),
-		}),
+		setupCommand: v.string(),
+		updateCommand: v.string(),
+		devCommand: v.string(),
+		devPort: v.number(),
+		envByPath: v.optional(
+			v.record(v.string(), v.record(v.string(), v.string()))
+		),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -83,11 +73,9 @@ export const create = authedMutation({
 			throw new ConvexError("Repository already connected");
 		}
 
-		assertValidDevPort(args.environmentConfig.devPort);
+		assertValidDevPort(args.devPort);
 		const now = Date.now();
-		const normalizedEnvByPath = normalizeEnvByPath(
-			args.environmentConfig.envByPath
-		);
+		const normalizedEnvByPath = normalizeEnvByPath(args.envByPath);
 
 		const repositoryId = await ctx.db.insert("repositories", {
 			userId: ctx.userId,
@@ -95,10 +83,10 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
-			setupCommand: args.environmentConfig.setupCommand,
-			updateCommand: args.environmentConfig.updateCommand,
-			devCommand: args.environmentConfig.devCommand,
-			devPort: args.environmentConfig.devPort,
+			setupCommand: args.setupCommand,
+			updateCommand: args.updateCommand,
+			devCommand: args.devCommand,
+			devPort: args.devPort,
 			envByPath: normalizedEnvByPath,
 			createdAt: now,
 			updatedAt: now,

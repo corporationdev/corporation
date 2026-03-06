@@ -58,7 +58,7 @@ function AuthenticatedIndex() {
 			}
 
 			const firstReadyRepository =
-				repositories.find((repository) => repository.defaultEnvironment) ??
+				repositories.find((repository) => repository.activeSnapshot) ??
 				repositories[0];
 			return firstReadyRepository?._id ?? null;
 		});
@@ -75,7 +75,6 @@ function AuthenticatedIndex() {
 		);
 	}, [repositories, selectedRepositoryId]);
 
-	const defaultEnvironment = selectedRepository?.defaultEnvironment ?? null;
 	const centerMessage =
 		repositories === undefined
 			? "Loading repositories..."
@@ -85,14 +84,14 @@ function AuthenticatedIndex() {
 
 	const handleSend = useCallback(() => {
 		const text = input.trim();
-		if (!(text && defaultEnvironment)) {
+		if (!(text && selectedRepository)) {
 			return;
 		}
 
 		const spaceSlug = nanoid();
 		const sessionId = nanoid();
 
-		setSpace({ slug: spaceSlug, repositoryId: defaultEnvironment._id });
+		setSpace({ slug: spaceSlug, repositoryId: selectedRepository._id });
 		setMessage({ text, agent, modelId });
 		setInput("");
 
@@ -103,7 +102,7 @@ function AuthenticatedIndex() {
 		});
 	}, [
 		input,
-		defaultEnvironment,
+		selectedRepository,
 		agent,
 		modelId,
 		setSpace,
@@ -126,7 +125,7 @@ function AuthenticatedIndex() {
 						</p>
 					</div>
 					<ChatInput
-						disabled={!defaultEnvironment}
+						disabled={!selectedRepository}
 						footer={
 							<div className="flex items-center gap-2">
 								<RepositorySelector

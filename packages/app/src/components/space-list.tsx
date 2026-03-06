@@ -16,13 +16,11 @@ import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 export const SpaceList: FC = () => {
 	const groupedSpaces = useQuery(api.spaces.listByRepository);
 
-	const repositoriesWithDefaultEnvironment =
-		groupedSpaces
-			?.filter((g) => g.defaultEnvironment)
-			.map((g) => g.repository) ?? [];
+	const repositoriesWithSnapshots =
+		groupedSpaces?.map((g) => g.repository) ?? [];
 	const { data: latestShas } = useLatestShas(
-		repositoriesWithDefaultEnvironment,
-		repositoriesWithDefaultEnvironment.length > 0
+		repositoriesWithSnapshots,
+		repositoriesWithSnapshots.length > 0
 	);
 	const spaces = useMemo(() => {
 		if (!groupedSpaces) {
@@ -54,11 +52,11 @@ export const SpaceList: FC = () => {
 		<div className="flex flex-col gap-1">
 			{groupedSpaces.map((group) => (
 				<RepositorySnapshotSync
-					defaultEnvironment={group.defaultEnvironment}
 					key={group.repository._id}
 					latestSha={
 						latestShas?.[`${group.repository.owner}/${group.repository.name}`]
 					}
+					repository={group.repository}
 				/>
 			))}
 			{spaces.length === 0 ? (
@@ -82,12 +80,11 @@ type RepositorySpaceGroup = FunctionReturnType<
 >[number];
 
 const RepositorySnapshotSync: FC<{
-	defaultEnvironment: RepositorySpaceGroup["defaultEnvironment"];
+	repository: RepositorySpaceGroup["repository"];
 	latestSha: string | undefined;
-}> = ({ defaultEnvironment, latestSha }) => {
-	const snapshotCommitSha =
-		defaultEnvironment?.activeSnapshot?.snapshotCommitSha;
-	const snapshotStatus = defaultEnvironment?.latestSnapshot?.status;
+}> = ({ repository, latestSha }) => {
+	const snapshotCommitSha = repository.activeSnapshot?.snapshotCommitSha;
+	const snapshotStatus = repository.latestSnapshot?.status;
 	const isOutdated =
 		!!latestSha && (!snapshotCommitSha || latestSha !== snapshotCommitSha);
 
@@ -98,7 +95,7 @@ const RepositorySnapshotSync: FC<{
 	const lastTriggeredShaRef = useRef<Map<Id<"repositories">, string>>(
 		new Map()
 	);
-	const repositoryId = defaultEnvironment?._id;
+	const repositoryId = repository._id;
 
 	useEffect(() => {
 		if (

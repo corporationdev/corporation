@@ -124,10 +124,13 @@ export const listByRepository = authedQuery({
 				(space) => !space.archived
 			);
 			spaces.sort((a, b) => b.updatedAt - a.updatedAt);
+			const repositoryWithSnapshots = await withDerivedSnapshotState(
+				ctx,
+				repository
+			);
 
 			return {
-				repository,
-				defaultEnvironment: await withDerivedSnapshotState(ctx, repository),
+				repository: repositoryWithSnapshots,
 				spaces,
 			};
 		});
@@ -160,10 +163,7 @@ export const getBySlug = authedQuery({
 		return {
 			...space,
 			workdir: getSandboxWorkdir(repository),
-			environment: {
-				...repositoryWithSnapshot,
-				repository,
-			},
+			repository: repositoryWithSnapshot,
 		};
 	},
 });
@@ -184,10 +184,7 @@ export const get = authedQuery({
 		return {
 			...space,
 			workdir: getSandboxWorkdir(repository),
-			environment: {
-				...repositoryWithSnapshot,
-				repository,
-			},
+			repository: repositoryWithSnapshot,
 		};
 	},
 });
@@ -288,7 +285,7 @@ export const internalGet = internalQuery({
 
 		return {
 			...space,
-			environment: { ...repositoryWithSnapshot, repository },
+			repository: repositoryWithSnapshot,
 		};
 	},
 });
