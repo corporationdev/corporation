@@ -9,6 +9,7 @@ import {
 	subscribeToChannel,
 	unsubscribeFromChannel,
 } from "./subscriptions";
+import { broadcastTabsChanged } from "./tab-list";
 import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:terminal");
@@ -472,7 +473,7 @@ async function ensureTerminalOnce(
 		}
 	}
 
-	await ctx.broadcastTabsChanged();
+	await broadcastTabsChanged(ctx);
 }
 
 async function input(
@@ -687,7 +688,7 @@ async function killDevServerAction(ctx: SpaceRuntimeContext): Promise<void> {
 		.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
 		.where(eq(tabs.id, tabId));
 
-	await ctx.broadcastTabsChanged();
+	await broadcastTabsChanged(ctx);
 }
 
 async function onWake(ctx: SpaceRuntimeContext): Promise<void> {

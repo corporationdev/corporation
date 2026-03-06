@@ -82,3 +82,11 @@ export async function listSpaceTabs(
 
 	return [...sessionTabs, ...terminalTabs];
 }
+
+export async function broadcastTabsChanged(
+	ctx: SpaceRuntimeContext
+): Promise<void> {
+	const allTabs = await listSpaceTabs(ctx);
+	allTabs.sort((left, right) => left.createdAt - right.createdAt);
+	ctx.broadcast("tabs.changed", allTabs);
+}

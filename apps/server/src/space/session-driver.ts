@@ -18,6 +18,7 @@ import {
 	type SessionPromptPart,
 } from "./session-replay-context";
 import { subscribeToChannel, unsubscribeFromChannel } from "./subscriptions";
+import { broadcastTabsChanged } from "./tab-list";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
@@ -64,7 +65,7 @@ async function requestAutoSessionTitle(
 		.where(eq(tabs.sessionId, sessionId))
 		.run();
 
-	await ctx.broadcastTabsChanged();
+	await broadcastTabsChanged(ctx);
 }
 
 async function ensureSession(
@@ -129,7 +130,7 @@ async function ensureSession(
 			.run();
 	});
 
-	await ctx.broadcastTabsChanged();
+	await broadcastTabsChanged(ctx);
 }
 
 async function requestAutoBranchName(

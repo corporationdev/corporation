@@ -5,7 +5,6 @@ import type {
 	DriverActionMap,
 	TabDriverLifecycle,
 } from "./driver-types";
-import { listSpaceTabs } from "./tab-list";
 import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:keepalive");
@@ -61,17 +60,6 @@ export function refreshSandboxTimeout(runtime: SpaceRuntimeContext): void {
 		});
 }
 
-export function augmentContext(ctx: unknown): SpaceRuntimeContext {
-	const runtime = ctx as SpaceRuntimeContext;
-	runtime.broadcastTabsChanged = async () => {
-		const allTabs = await listSpaceTabs(runtime);
-		allTabs.sort((left, right) => left.createdAt - right.createdAt);
-		runtime.broadcast("tabs.changed", allTabs);
-	};
-	refreshSandboxTimeout(runtime);
-	return runtime;
-}
-
 type UnionToIntersection<T> = (
 	T extends unknown
 		? (arg: T) => void
@@ -125,7 +113,7 @@ export function collectDriverActions<
 
 			assertNoCollision(actions, actionName, `${driver.kind}.publicActions`);
 			actions[actionName] = (ctx, ...args: never[]) =>
-				actionHandler(augmentContext(ctx), ...args);
+				actionHandler(ctx as SpaceRuntimeContext, ...args);
 		}
 	}
 
