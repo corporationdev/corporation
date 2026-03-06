@@ -7,7 +7,6 @@
  * Responsibilities:
  *   1. HTTP server on a configurable port (default 5799)
  *      - GET  /v1/health
- *      - GET  /v1/agents
  *      - POST /v1/prompt
  *   2. ACP JSON-RPC bridge: spawns an agent subprocess and communicates
  *      via stdin/stdout using newline-delimited JSON (ndjson).
@@ -16,6 +15,12 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import {
+	type PromptRequestBody,
+	promptRequestBodySchema,
+	type SessionEvent,
+	turnRunnerCallbackPayloadSchema,
+} from "@corporation/shared/session-protocol";
 
 declare const Bun: typeof import("bun");
 
@@ -38,33 +43,6 @@ function log(level: "info" | "warn" | "error", msg: string, data?: unknown) {
 		console.error(`[corp-agent] ${msg}`, data ?? "");
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type SessionEventSender = "client" | "agent";
-
-type SessionEvent = {
-	connectionId: string;
-	createdAt: number;
-	eventIndex: number;
-	id: string;
-	payload: Record<string, unknown>;
-	sender: SessionEventSender;
-	sessionId: string;
-};
-
-type PromptRequestBody = {
-	agent: string;
-	callbackToken: string;
-	callbackUrl: string;
-	cwd: string;
-	modelId?: string;
-	prompt: Array<{ type: string; text: string }>;
-	sessionId: string;
-	turnId: string;
-};
 
 // ---------------------------------------------------------------------------
 // Agent process registry
@@ -396,7 +374,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		extra: Record<string, unknown> = {}
 	): Promise<void> => {
 		sequence += 1;
-		const payload = {
+		const payload = turnRunnerCallbackPayloadSchema.parse({
 			turnId,
 			sessionId,
 			token: callbackToken,
@@ -404,7 +382,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			kind,
 			timestamp: Date.now(),
 			...extra,
-		};
+		});
 
 		callbackChain = callbackChain
 			.catch(() => undefined)
@@ -550,28 +528,6 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Agent discovery
-// ---------------------------------------------------------------------------
-
-const ALL_AGENT_IDS = [...Object.keys(AGENT_NPX_PACKAGES), "amp", "opencode"];
-
-function discoverAgents(): Array<{ id: string; installed: boolean }> {
-	const agents: Array<{ id: string; installed: boolean }> = [];
-	for (const id of ALL_AGENT_IDS) {
-		let installed = false;
-		try {
-			const bin = id === "amp" ? "amp-acp" : id;
-			const result = Bun.spawnSync(["which", bin]);
-			installed = result.exitCode === 0;
-		} catch {
-			// ignore
-		}
-		agents.push({ id, installed });
-	}
-	return agents;
-}
-
-// ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
 
@@ -609,33 +565,22 @@ Bun.serve({
 			return Response.json({ status: "ok" });
 		}
 
-		if (req.method === "GET" && url.pathname === "/v1/agents") {
-			const agents = discoverAgents();
-			return Response.json({ agents });
-		}
-
 		if (req.method === "POST" && url.pathname === "/v1/prompt") {
-			let body: PromptRequestBody;
+			let rawBody: unknown;
 			try {
-				body = (await req.json()) as PromptRequestBody;
+				rawBody = await req.json();
 			} catch {
 				return Response.json({ error: "Invalid JSON body" }, { status: 400 });
 			}
 
-			if (!(body.turnId && body.sessionId && body.agent && body.prompt)) {
+			const result = promptRequestBodySchema.safeParse(rawBody);
+			if (!result.success) {
 				return Response.json(
-					{
-						error: "Missing required fields: turnId, sessionId, agent, prompt",
-					},
+					{ error: `Invalid request: ${result.error.message}` },
 					{ status: 400 }
 				);
 			}
-			if (!(body.callbackUrl && body.callbackToken)) {
-				return Response.json(
-					{ error: "Missing required fields: callbackUrl, callbackToken" },
-					{ status: 400 }
-				);
-			}
+			const body: PromptRequestBody = result.data;
 
 			if (activeTurns.has(body.turnId)) {
 				return Response.json(

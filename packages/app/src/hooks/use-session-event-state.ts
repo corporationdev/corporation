@@ -1,3 +1,4 @@
+import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/components/chat/types";
 import {
@@ -5,7 +6,6 @@ import {
 	softResetActorConnectionOnTransientError,
 } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
-import type { SessionEvent } from "@/types/session-event";
 
 export type SessionState = {
 	entries: TimelineEntry[];

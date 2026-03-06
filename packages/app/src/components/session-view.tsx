@@ -13,10 +13,7 @@ import { EventsView } from "@/components/events-view";
 import { Button } from "@/components/ui/button";
 import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
-import {
-	isTransientActorConnError,
-	softResetActorConnectionOnTransientError,
-} from "@/lib/actor-errors";
+import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
@@ -44,101 +41,15 @@ export const SessionView: FC<{
 		);
 	}
 
-	return <NewSessionView actor={actor} key={spaceSlug} spaceSlug={spaceSlug} />;
+	return <NewSessionView key={spaceSlug} spaceSlug={spaceSlug} />;
 };
 
-type ConfigSelectOption = { value: string; name: string };
-type ConfigOption = {
-	category?: string;
-	type?: string;
-	currentValue?: string;
-	options?:
-		| ConfigSelectOption[]
-		| Array<{ group: string; options: ConfigSelectOption[] }>;
-};
-
-function flattenSelectOptions(
-	options:
-		| ConfigSelectOption[]
-		| Array<{ group: string; options: ConfigSelectOption[] }>
-): ConfigSelectOption[] {
-	if (options.length === 0) {
-		return [];
-	}
-	if ("value" in options[0]) {
-		return options as ConfigSelectOption[];
-	}
-	return (options as Array<{ options: ConfigSelectOption[] }>).flatMap(
-		(g) => g.options
-	);
-}
-
-function useAgentModels(actor: SpaceActor) {
-	const [agentModels, setAgentModels] = useState<
-		Record<string, { id: string; name?: string }[]> | undefined
-	>();
-	const [defaultModels, setDefaultModels] = useState<
-		Record<string, string> | undefined
-	>();
-
-	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
-			return;
-		}
-		const conn = actor.connection;
-		(async () => {
-			const result = await conn.listAgents();
-			const models: Record<string, { id: string; name?: string }[]> = {};
-			const defaults: Record<string, string> = {};
-			for (const agent of (
-				result as {
-					agents: Array<{ id: string; configOptions?: unknown[] | null }>;
-				}
-			).agents) {
-				const options = (agent.configOptions ?? []) as ConfigOption[];
-				for (const opt of options) {
-					if (
-						opt.category === "model" &&
-						opt.type === "select" &&
-						opt.options
-					) {
-						models[agent.id] = flattenSelectOptions(opt.options).map((o) => ({
-							id: o.value,
-							name: o.name,
-						}));
-					}
-					if (
-						opt.category === "model" &&
-						opt.type === "select" &&
-						opt.currentValue
-					) {
-						defaults[agent.id] = opt.currentValue;
-					}
-				}
-			}
-			setAgentModels(models);
-			setDefaultModels(defaults);
-		})().catch((error: unknown) => {
-			if (isTransientActorConnError(error)) {
-				return;
-			}
-			console.warn("Failed to load agent models", error);
-		});
-	}, [actor.connStatus, actor.connection]);
-
-	return { agentModels, defaultModels };
-}
-
-const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
-	spaceSlug,
-	actor,
-}) => {
+const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 	const navigate = useNavigate();
 	const setMessageStore = usePendingMessageStore((s) => s.setMessage);
 	const [message, setMessage] = useState("");
 	const [agent, setAgent] = useState(INITIAL_AGENT);
 	const [modelId, setModelId] = useState(INITIAL_MODEL);
-	const { agentModels, defaultModels } = useAgentModels(actor);
 
 	const handleSend = useCallback(() => {
 		const text = message.trim();
@@ -173,8 +84,6 @@ const NewSessionView: FC<{ spaceSlug: string; actor: SpaceActor }> = ({
 				footer={
 					<AgentModelPicker
 						agent={agent}
-						agentModels={agentModels}
-						defaultModels={defaultModels}
 						modelId={modelId}
 						onAgentChange={setAgent}
 						onModelIdChange={setModelId}
@@ -207,7 +116,6 @@ export const ConnectedSessionView: FC<{
 	const ensureSpace = useMutation(api.spaces.ensure);
 	const touchSpace = useMutation(api.spaces.touch);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
-	const { agentModels, defaultModels } = useAgentModels(actor);
 	const sessionState = useSessionEventState({ sessionId, actor });
 	const addOptimisticUserMessage = sessionState.addOptimisticUserMessage;
 	const removeOptimisticUserMessage = sessionState.removeOptimisticUserMessage;
@@ -424,8 +332,6 @@ export const ConnectedSessionView: FC<{
 						<AgentModelPicker
 							agent={agent}
 							agentLocked
-							agentModels={agentModels}
-							defaultModels={defaultModels}
 							modelId={modelId}
 							modelLocked
 							onAgentChange={setAgentOverride}

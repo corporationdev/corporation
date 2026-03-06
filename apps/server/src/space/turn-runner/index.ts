@@ -1,5 +1,11 @@
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
+import {
+	promptRequestBodySchema,
+	type SessionEvent,
+	type TurnRunnerCallbackPayload,
+	turnRunnerCallbackPayloadSchema,
+} from "@corporation/shared/session-protocol";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { sessionEvents, sessions } from "../../db/schema";
@@ -7,17 +13,11 @@ import { refreshSandboxTimeout } from "../action-registration";
 import { createTabChannel } from "../channels";
 import { publishToChannel } from "../subscriptions";
 import type { SpaceRuntimeContext } from "../types";
-import {
-	parseTurnRunnerCallbackPayload,
-	type TurnRunnerCallbackPayload,
-} from "./schema";
-import type { SessionEvent } from "./types";
 
 const SESSION_EVENT_NAME = "session.event";
 const SESSION_STATUS_EVENT_NAME = "session.status";
 const TRAILING_SLASH_RE = /\/$/;
 const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
-const PERSIST_BATCH_SIZE = 128;
 const log = createLogger("space:turn-runner");
 
 type TextPromptPart = { type: "text"; text: string };
@@ -78,70 +78,6 @@ async function persistSessionEvents(
 		.onConflictDoNothing({ target: sessionEvents.id });
 }
 
-async function flushPendingSessionEventInserts(
-	ctx: SpaceRuntimeContext
-): Promise<void> {
-	while (ctx.vars.pendingSessionEventInserts.length > 0) {
-		const batch = ctx.vars.pendingSessionEventInserts.splice(
-			0,
-			PERSIST_BATCH_SIZE
-		);
-		await persistSessionEvents(ctx, batch);
-	}
-}
-
-function ensureSessionEventFlushScheduled(ctx: SpaceRuntimeContext): void {
-	if (ctx.vars.pendingSessionEventFlush) {
-		return;
-	}
-
-	const flushPromise = flushPendingSessionEventInserts(ctx)
-		.catch((error) => {
-			log.error(
-				{ err: error, actorId: ctx.actorId },
-				"session-event flush failed"
-			);
-		})
-		.finally(() => {
-			if (ctx.vars.pendingSessionEventFlush === flushPromise) {
-				ctx.vars.pendingSessionEventFlush = null;
-			}
-			if (ctx.vars.pendingSessionEventInserts.length > 0) {
-				ensureSessionEventFlushScheduled(ctx);
-			}
-		});
-
-	ctx.vars.pendingSessionEventFlush = flushPromise;
-	ctx.waitUntil(flushPromise);
-}
-
-function enqueueSessionEventInserts(
-	ctx: SpaceRuntimeContext,
-	events: SessionEvent[]
-): void {
-	if (events.length === 0) {
-		return;
-	}
-	ctx.vars.pendingSessionEventInserts.push(...events);
-	ensureSessionEventFlushScheduled(ctx);
-}
-
-async function flushAllSessionEventInserts(
-	ctx: SpaceRuntimeContext
-): Promise<void> {
-	while (
-		ctx.vars.pendingSessionEventFlush ||
-		ctx.vars.pendingSessionEventInserts.length > 0
-	) {
-		ensureSessionEventFlushScheduled(ctx);
-		const inFlight = ctx.vars.pendingSessionEventFlush;
-		if (!inFlight) {
-			break;
-		}
-		await inFlight;
-	}
-}
-
 async function launchTurnRunner(
 	ctx: SpaceRuntimeContext,
 	params: {
@@ -163,16 +99,18 @@ async function launchTurnRunner(
 	const response = await fetch(promptUrl, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({
-			turnId: params.turnId,
-			sessionId: params.sessionId,
-			agent: params.agent,
-			modelId: params.modelId,
-			prompt: JSON.parse(params.promptJson),
-			cwd: ctx.state.workdir,
-			callbackUrl: params.callbackUrl,
-			callbackToken: params.callbackToken,
-		}),
+		body: JSON.stringify(
+			promptRequestBodySchema.parse({
+				turnId: params.turnId,
+				sessionId: params.sessionId,
+				agent: params.agent,
+				modelId: params.modelId,
+				prompt: JSON.parse(params.promptJson),
+				cwd: ctx.state.workdir,
+				callbackUrl: params.callbackUrl,
+				callbackToken: params.callbackToken,
+			})
+		),
 		signal: AbortSignal.timeout(15_000),
 	});
 
@@ -281,16 +219,15 @@ export async function ingestTurnRunnerBatch(
 		"ingestTurnRunnerBatch called"
 	);
 
-	let parsed: TurnRunnerCallbackPayload;
-	try {
-		parsed = parseTurnRunnerCallbackPayload(payload);
-	} catch (error) {
+	const result = turnRunnerCallbackPayloadSchema.safeParse(payload);
+	if (!result.success) {
 		log.error(
-			{ err: error, actorId: ctx.actorId, payload },
+			{ err: result.error.message, actorId: ctx.actorId, payload },
 			"failed to parse callback payload"
 		);
-		throw error;
+		throw new Error(`Invalid callback payload: ${result.error.message}`);
 	}
+	const parsed: TurnRunnerCallbackPayload = result.data;
 
 	const rows = await ctx.vars.db
 		.select({
@@ -334,12 +271,11 @@ export async function ingestTurnRunnerBatch(
 			return;
 		}
 		publishSessionEvents(ctx, session.id, validEvents);
-		enqueueSessionEventInserts(ctx, validEvents);
+		await persistSessionEvents(ctx, validEvents);
 		return;
 	}
 
 	if (parsed.kind === "completed") {
-		await flushAllSessionEventInserts(ctx);
 		await ctx.vars.db
 			.update(sessions)
 			.set({ status: SESSION_STATUS_IDLE, pid: null, error: null })
@@ -350,7 +286,6 @@ export async function ingestTurnRunnerBatch(
 	}
 
 	if (parsed.kind === "failed") {
-		await flushAllSessionEventInserts(ctx);
 		await ctx.vars.db
 			.update(sessions)
 			.set({ status: SESSION_STATUS_ERROR, pid: null, error: parsed.error })

@@ -1,6 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
+import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { generateObject } from "ai";
 import { and, asc, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -19,7 +20,6 @@ import {
 	SESSION_STATUS_RUNNING,
 	startTurnRunner,
 } from "./turn-runner";
-import type { AgentListResponse, SessionEvent } from "./turn-runner/types";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
@@ -230,18 +230,6 @@ async function sendMessage(
 	});
 }
 
-async function listAgents(
-	ctx: SpaceRuntimeContext
-): Promise<AgentListResponse> {
-	const response = await fetch(`${ctx.state.agentUrl}/v1/agents`, {
-		signal: AbortSignal.timeout(10_000),
-	});
-	if (!response.ok) {
-		throw new Error(`Failed to list agents: ${response.status}`);
-	}
-	return (await response.json()) as AgentListResponse;
-}
-
 async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
@@ -383,7 +371,6 @@ type SessionPublicActions = {
 		offset: number,
 		limit?: number
 	) => Promise<{ events: SessionEvent[]; status: string }>;
-	listAgents: (ctx: SpaceRuntimeContext) => Promise<AgentListResponse>;
 };
 
 type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
@@ -398,6 +385,5 @@ export const sessionDriver: SessionDriver = {
 		ingestTurnRunnerBatch,
 		cancelSession,
 		getSessionState,
-		listAgents,
 	},
 };

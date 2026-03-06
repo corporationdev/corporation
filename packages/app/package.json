@@ -11,6 +11,7 @@
     "@convex-dev/better-auth": "catalog:",
     "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
+    "@corporation/shared": "workspace:*",
     "@radix-ui/react-slot": "catalog:",
     "@rivetkit/react": "catalog:",
     "@streamdown/code": "catalog:",

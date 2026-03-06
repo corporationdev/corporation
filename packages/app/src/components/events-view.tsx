@@ -1,3 +1,4 @@
+import type { SessionEvent } from "@corporation/shared/session-protocol";
 import {
 	BotIcon,
 	ChevronDownIcon,
@@ -11,7 +12,6 @@ import {
 import { type FC, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { SessionEvent } from "@/types/session-event";
 
 type EventMeta = {
 	method: string;
