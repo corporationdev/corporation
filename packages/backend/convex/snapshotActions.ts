@@ -10,8 +10,6 @@ import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
 	bootServer,
-	CODE_SERVER_PORT,
-	CODE_SERVER_SESSION_NAME,
 	DEV_SERVER_SESSION_NAME,
 	getAiEnvs,
 	getSandboxWorkdir,
@@ -265,11 +263,6 @@ export const buildSnapshot = internalAction({
 							sessionName: SANDBOX_AGENT_SESSION_NAME,
 							command: `corp-agent --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
 							healthUrl: `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`,
-						}),
-						bootServer(sandbox, {
-							sessionName: CODE_SERVER_SESSION_NAME,
-							command: `code-server --bind-addr 0.0.0.0:${CODE_SERVER_PORT} --auth none ${workdir}`,
-							healthUrl: `http://localhost:${CODE_SERVER_PORT}`,
 						}),
 					]);
 				}

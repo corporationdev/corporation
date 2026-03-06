@@ -10,7 +10,6 @@ import { internalAction } from "./_generated/server";
 import { normalizeBranchName, quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
-	CODE_SERVER_PORT,
 	getAiEnvs,
 	getSandboxWorkdir,
 	pushBranch,
@@ -25,7 +24,6 @@ type ActionCtx = GenericActionCtx<DataModel>;
 const SANDBOX_TIMEOUT_MS = 900_000;
 
 const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
-const CODE_SERVER_HEALTH_URL = `http://localhost:${CODE_SERVER_PORT}`;
 
 async function assertHealthyAndGetUrl(
 	sandbox: Sandbox,
@@ -202,19 +200,11 @@ export const ensureSandbox = internalAction({
 				"sandbox-agent"
 			);
 
-			const editorUrl = await assertHealthyAndGetUrl(
-				sandbox,
-				CODE_SERVER_PORT,
-				CODE_SERVER_HEALTH_URL,
-				"code-server"
-			);
-
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "running",
 				sandboxId: sandbox.sandboxId,
 				agentUrl,
-				editorUrl,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {

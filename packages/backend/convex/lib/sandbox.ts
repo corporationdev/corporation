@@ -4,7 +4,6 @@ import type { Sandbox } from "e2b";
 import { normalizeBranchName, quoteShellArg } from "./git";
 
 export const SANDBOX_AGENT_PORT = 5799;
-export const CODE_SERVER_PORT = 8080;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
@@ -15,8 +14,6 @@ const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 export const DEV_SERVER_SESSION_NAME = "devserver";
 export const SANDBOX_AGENT_SESSION_NAME = "sandbox-agent";
-export const CODE_SERVER_SESSION_NAME = "code-server";
-
 const AI_API_KEY_NAMES = [
 	"ANTHROPIC_API_KEY",
 	"OPENAI_API_KEY",
