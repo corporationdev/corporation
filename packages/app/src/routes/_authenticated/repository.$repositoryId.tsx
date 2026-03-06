@@ -2,9 +2,9 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { nanoid } from "nanoid";
-import { type FC, useCallback, useRef, useState } from "react";
+import { type FC, useCallback, useState } from "react";
 import { AgentModelPicker } from "@/components/agent-model-picker";
 import { ChatInput } from "@/components/chat/chat-input";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
@@ -48,31 +48,9 @@ const NewSpaceView: FC<{
 	const [input, setInput] = useState("");
 	const [agent, setAgent] = useState(INITIAL_AGENT);
 	const [modelId, setModelId] = useState(INITIAL_MODEL);
-	const didRequestWarmRef = useRef(false);
 
 	const repository = useQuery(api.repositories.get, { id: repositoryId });
 	const defaultEnvironment = repository?.defaultEnvironment;
-	const requestWarmSandbox = useMutation(api.warmSandboxes.request);
-
-	const handleMessageChange = useCallback(
-		(value: string) => {
-			setInput(value);
-			if (
-				didRequestWarmRef.current ||
-				!defaultEnvironment ||
-				value.trim().length === 0
-			) {
-				return;
-			}
-
-			didRequestWarmRef.current = true;
-			requestWarmSandbox({
-				environmentId: defaultEnvironment._id,
-				reason: "repository_typing",
-			}).catch(() => undefined);
-		},
-		[defaultEnvironment, requestWarmSandbox]
-	);
 
 	const handleSend = useCallback(() => {
 		const text = input.trim();
@@ -123,7 +101,7 @@ const NewSpaceView: FC<{
 					/>
 				}
 				message={input}
-				onMessageChange={handleMessageChange}
+				onMessageChange={setInput}
 				onSendMessage={handleSend}
 				placeholder="Send a message..."
 			/>

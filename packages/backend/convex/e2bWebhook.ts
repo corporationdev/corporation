@@ -89,28 +89,13 @@ export const handleWebhook = internalAction({
 			sandboxId: parsed.data.sandbox_id,
 		});
 
-		if (space) {
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: space._id,
-				status: nextStatus,
-			});
-
-			return { status: "ok" as const };
-		}
-
-		const warmSandbox = await ctx.runQuery(
-			internal.warmSandboxes.getBySandboxId,
-			{
-				sandboxId: parsed.data.sandbox_id,
-			}
-		);
-		if (!warmSandbox) {
+		if (!space) {
 			return { status: "ignored" as const };
 		}
 
-		await ctx.runMutation(internal.warmSandboxes.applyLifecycleStatus, {
-			id: warmSandbox._id,
-			lifecycleStatus: nextStatus,
+		await ctx.runMutation(internal.spaces.internalUpdate, {
+			id: space._id,
+			status: nextStatus,
 		});
 
 		return { status: "ok" as const };

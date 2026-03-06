@@ -114,7 +114,6 @@ const RepositorySpaceSection: FC<{
 					</span>
 				</div>
 				<NewSpaceButton
-					defaultEnvironmentId={defaultEnvironment?._id}
 					repositoryId={repository._id}
 					repositoryName={repository.name}
 				/>
@@ -140,29 +139,20 @@ const RepositorySpaceSection: FC<{
 };
 
 const NewSpaceButton: FC<{
-	defaultEnvironmentId?: Id<"environments">;
 	repositoryId: Id<"repositories">;
 	repositoryName: string;
-}> = ({ defaultEnvironmentId, repositoryId, repositoryName }) => {
+}> = ({ repositoryId, repositoryName }) => {
 	const navigate = useNavigate();
-	const requestWarmSandbox = useMutation(api.warmSandboxes.request);
 
 	return (
 		<Button
 			className="size-6 rounded-sm p-0 hover:bg-muted"
-			onClick={() => {
-				if (defaultEnvironmentId) {
-					requestWarmSandbox({
-						environmentId: defaultEnvironmentId,
-						reason: "new_space_button",
-					}).catch(() => undefined);
-				}
-
+			onClick={() =>
 				navigate({
 					to: "/repository/$repositoryId",
 					params: { repositoryId },
-				});
-			}}
+				})
+			}
 			size="icon"
 			variant="outline"
 		>
