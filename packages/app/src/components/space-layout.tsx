@@ -89,7 +89,54 @@ export function SpaceLayout() {
 		enabled: sandboxReady,
 	});
 
-	const tabs = useSpaceTabs(actor);
+	const navigate = useNavigate();
+	const { tabs, isLoading: isTabsLoading } = useSpaceTabs(actor);
+
+	// Persist the active tab so we can restore it when returning to this space
+	useEffect(() => {
+		if (tab) {
+			localStorage.setItem(`space-tab:${spaceSlug}`, serializeTab(tab));
+		}
+	}, [tab, spaceSlug]);
+
+	// Restore the last active tab on initial navigation (not when pressing "+")
+	const hasInitializedTab = useRef(false);
+	const prevSpaceSlug = useRef(spaceSlug);
+	useEffect(() => {
+		if (prevSpaceSlug.current !== spaceSlug) {
+			prevSpaceSlug.current = spaceSlug;
+			hasInitializedTab.current = false;
+		}
+		if (hasInitializedTab.current || isTabsLoading) {
+			return;
+		}
+		hasInitializedTab.current = true;
+		if (tab || tabs.length === 0) {
+			return;
+		}
+
+		// Try to restore the last active tab, fall back to the first tab
+		const saved = localStorage.getItem(`space-tab:${spaceSlug}`);
+		const savedParam = parseTab(saved ?? undefined);
+		const targetParam =
+			savedParam &&
+			tabs.some((t) => {
+				const p = tabRegistry[t.type].tabParamFromSpaceTab(t);
+				return p?.type === savedParam.type && p.id === savedParam.id;
+			})
+				? savedParam
+				: tabRegistry[tabs[0].type].tabParamFromSpaceTab(tabs[0]);
+
+		if (!targetParam) {
+			return;
+		}
+		navigate({
+			to: "/space/$spaceSlug",
+			params: { spaceSlug },
+			search: { tab: serializeTab(targetParam) },
+			replace: true,
+		});
+	}, [tab, tabs, isTabsLoading, spaceSlug, navigate]);
 
 	const activeTabType = tab?.type ?? "session";
 	const activeTabConfig = tabRegistry[activeTabType];

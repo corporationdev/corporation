@@ -71,12 +71,7 @@ async function getAllTabs(
 		await Promise.all(drivers.map((driver) => driver.listTabs(ctx)))
 	).flat();
 
-	allTabs.sort((left, right) => {
-		if (left.updatedAt !== right.updatedAt) {
-			return right.updatedAt - left.updatedAt;
-		}
-		return left.createdAt - right.createdAt;
-	});
+	allTabs.sort((left, right) => left.createdAt - right.createdAt);
 
 	return allTabs;
 }

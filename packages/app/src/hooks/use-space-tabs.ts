@@ -1,5 +1,5 @@
 import type { SpaceTab } from "@corporation/server/space";
-import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 
@@ -11,59 +11,39 @@ function getActorSpaceSlug(actor: SpaceActor): string | undefined {
 	return key[0];
 }
 
-function handleListTabsError(
-	spaceSlug: string | undefined,
-	error: unknown
-): void {
-	const kind = softResetActorConnectionOnTransientError({
-		error,
-		reasonPrefix: "space-tabs",
-		spaceSlug,
-	});
-	if (kind) {
-		return;
-	}
-	console.error("Failed to fetch tabs", error);
-}
+type SpaceTabsResult = {
+	tabs: SpaceTab[];
+	isLoading: boolean;
+};
 
-export function useSpaceTabs(actor: SpaceActor): SpaceTab[] {
-	const [tabs, setTabs] = useState<SpaceTab[]>([]);
-	const hasFetchedForCurrentConnection = useRef(false);
+export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
 	const spaceSlug = getActorSpaceSlug(actor);
+	const queryClient = useQueryClient();
+	const isConnected = actor.connStatus === "connected" && !!actor.connection;
 
-	useEffect(() => {
-		if (actor.connStatus !== "connected" || !actor.connection) {
-			hasFetchedForCurrentConnection.current = false;
-			return;
-		}
-
-		if (hasFetchedForCurrentConnection.current) {
-			return;
-		}
-		hasFetchedForCurrentConnection.current = true;
-
-		const conn = actor.connection;
-		let cancelled = false;
-
-		const fetchTabs = async () => {
-			try {
-				const result = await conn.listTabs();
-				if (!cancelled) {
-					setTabs(result);
-				}
-			} catch (error: unknown) {
-				handleListTabsError(spaceSlug, error);
+	const { data, isLoading } = useQuery({
+		queryKey: ["space-tabs", spaceSlug],
+		queryFn: async () => {
+			const conn = actor.connection;
+			if (!conn) {
+				throw new Error("Actor connection is unavailable");
 			}
-		};
-		fetchTabs();
-		return () => {
-			cancelled = true;
-		};
-	}, [actor.connStatus, actor.connection, spaceSlug]);
+			return conn.listTabs();
+		},
+		enabled: isConnected,
+		retry: (_, error) => {
+			const kind = softResetActorConnectionOnTransientError({
+				error,
+				reasonPrefix: "space-tabs",
+				spaceSlug,
+			});
+			return !kind;
+		},
+	});
 
 	actor.useEvent("tabs.changed", (event) => {
-		setTabs(event as SpaceTab[]);
+		queryClient.setQueryData(["space-tabs", spaceSlug], event as SpaceTab[]);
 	});
 
-	return tabs;
+	return { tabs: data ?? [], isLoading: isLoading && isConnected };
 }
