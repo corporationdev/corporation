@@ -9,7 +9,6 @@ import {
 	CodeXmlIcon,
 	ExternalLinkIcon,
 	GitPullRequestIcon,
-	GlobeIcon,
 	LoaderIcon,
 	PlayIcon,
 	SquareIcon,
@@ -17,10 +16,9 @@ import {
 	UploadIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { type FC, useCallback, useState } from "react";
+import { type FC, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
 	Sheet,
 	SheetContent,
@@ -36,7 +34,6 @@ import {
 import { useErrorToast } from "@/hooks/use-error-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
-import { apiClient } from "@/lib/api-client";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { serializeTab } from "@/lib/tab-routing";
@@ -109,8 +106,6 @@ const SpaceSidebarContent: FC<{
 		className: "bg-muted-foreground",
 	};
 
-	const [previewPort, setPreviewPort] = useState("3001");
-
 	const updateMutation = useConvexTanstackMutation(api.spaces.update);
 	const { mutate } = updateMutation;
 	const clearError = useCallback(
@@ -120,21 +115,6 @@ const SpaceSidebarContent: FC<{
 	useErrorToast(space.error, clearError);
 
 	const stopMutation = useConvexTanstackMutation(api.spaces.stop);
-
-	const previewMutation = useTanstackMutation({
-		mutationFn: async (port: number) => {
-			if (!space.sandboxId) {
-				throw new Error("Space has no sandbox");
-			}
-			const res = await apiClient.sandbox.preview.$get({
-				query: { sandboxId: space.sandboxId, port: String(port) },
-			});
-			const data = await res.json();
-			if ("url" in data) {
-				window.open(data.url, "_blank");
-			}
-		},
-	});
 
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
 		useStartSandbox(space.slug, space.status);
@@ -146,14 +126,6 @@ const SpaceSidebarContent: FC<{
 			params: { spaceSlug: space.slug },
 			search: { tab: serializeTab({ type: "terminal", id: terminalId }) },
 		});
-	};
-
-	const handleOpenPreview = () => {
-		const port = Number.parseInt(previewPort, 10);
-		if (Number.isNaN(port) || port < 1 || port > 65_535 || !space.sandboxId) {
-			return;
-		}
-		previewMutation.mutate(port);
 	};
 
 	const handleCopySandboxId = () => {
@@ -254,33 +226,6 @@ const SpaceSidebarContent: FC<{
 					<ClipboardIcon className="size-4" />
 					Copy Sandbox ID
 				</Button>
-			)}
-			{space.sandboxId && space.status === "running" && (
-				<div className="flex gap-2">
-					<Input
-						className="w-20"
-						max={65_535}
-						min={1}
-						onChange={(e) => setPreviewPort(e.target.value)}
-						placeholder="Port"
-						type="number"
-						value={previewPort}
-					/>
-					<Button
-						className="flex-1 gap-2"
-						disabled={previewMutation.isPending}
-						onClick={handleOpenPreview}
-						size="sm"
-						variant="outline"
-					>
-						{previewMutation.isPending ? (
-							<LoaderIcon className="size-4 animate-spin" />
-						) : (
-							<GlobeIcon className="size-4" />
-						)}
-						{previewMutation.isPending ? "Loading..." : "Open Preview"}
-					</Button>
-				</div>
 			)}
 			{isStarted && (
 				<SandboxCountdown actor={actor} expiresAt={space.sandboxExpiresAt} />

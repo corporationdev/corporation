@@ -1,6 +1,5 @@
 import type { SpaceTab } from "@corporation/server/space";
 import type { ReactNode } from "react";
-import { PreviewView } from "@/components/preview-view";
 import { SessionView } from "@/components/session-view";
 import { TerminalView } from "@/components/terminal-view";
 import type { SpaceActor } from "@/lib/rivetkit";
@@ -29,7 +28,6 @@ type BaseTabConfig<TType extends string> = {
 type TabConfigMap = {
 	session: BaseTabConfig<"session">;
 	terminal: BaseTabConfig<"terminal">;
-	preview: BaseTabConfig<"preview">;
 };
 
 export const tabRegistry: TabConfigMap = {
@@ -73,22 +71,6 @@ export const tabRegistry: TabConfigMap = {
 				return undefined;
 			}
 			return { type: "terminal", id: tab.terminalId };
-		},
-	},
-	preview: {
-		requiresSandbox: true,
-		defaultTitle: "Preview",
-		render: ({ tab }) => {
-			if (tab?.type !== "preview") {
-				return null;
-			}
-			return <PreviewView key={tab.previewId} url={tab.url} />;
-		},
-		tabParamFromSpaceTab: (tab) => {
-			if (tab.type !== "preview") {
-				return undefined;
-			}
-			return { type: "preview", id: tab.previewId };
 		},
 	},
 };

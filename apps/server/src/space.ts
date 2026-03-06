@@ -19,13 +19,7 @@ import {
 } from "./space/subscriptions";
 import type { PersistedState, SpaceVars } from "./space/types";
 
-export type {
-	PreviewTab,
-	SessionTab,
-	SpaceTab,
-	TabType,
-	TerminalTab,
-} from "./db/schema";
+export type { SessionTab, SpaceTab, TabType, TerminalTab } from "./db/schema";
 
 const driverActions = collectDriverActions(lifecycleDrivers);
 const log = createLogger("space:lifecycle");
