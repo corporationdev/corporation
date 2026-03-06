@@ -16,9 +16,12 @@ export function useAutoStartSandbox(
 		if (hasAutoStarted.current === spaceSlug) {
 			return;
 		}
-		hasAutoStarted.current = spaceSlug;
-		ensureSpace({ slug: spaceSlug }).catch(() => {
-			// Silently ignore — ensureSpace is idempotent
-		});
+		ensureSpace({ slug: spaceSlug })
+			.then(() => {
+				hasAutoStarted.current = spaceSlug;
+			})
+			.catch(() => {
+				// Silently ignore — ensureSpace is idempotent
+			});
 	}, [status, spaceSlug, ensureSpace]);
 }

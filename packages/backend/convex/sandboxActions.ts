@@ -59,7 +59,12 @@ async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
 	if (space.sandboxId) {
 		try {
 			return await Sandbox.connect(space.sandboxId);
-		} catch {
+		} catch (error) {
+			console.warn("Failed to connect existing sandbox; provisioning new sandbox", {
+				spaceId: space._id,
+				sandboxId: space.sandboxId,
+				error,
+			});
 			// Fall through to provisioning from snapshot when reconnect fails.
 		}
 	}
