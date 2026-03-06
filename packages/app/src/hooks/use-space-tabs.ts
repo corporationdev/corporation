@@ -1,4 +1,4 @@
-import type { SpaceTab } from "@corporation/server/space";
+import type { TabRow } from "@corporation/server/space";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
@@ -12,7 +12,7 @@ function getActorSpaceSlug(actor: SpaceActor): string | undefined {
 }
 
 type SpaceTabsResult = {
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 	isLoading: boolean;
 };
 
@@ -44,7 +44,7 @@ export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
 	});
 
 	actor.useEvent("tabs.changed", (event) => {
-		queryClient.setQueryData(["space-tabs", spaceSlug], event as SpaceTab[]);
+		queryClient.setQueryData(["space-tabs", spaceSlug], event as TabRow[]);
 	});
 
 	return { tabs: data ?? [], isLoading: isLoading && isConnected };

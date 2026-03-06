@@ -14,6 +14,7 @@ import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
+import { createTabId } from "@/lib/tab-id";
 import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
@@ -63,7 +64,10 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 			to: "/space/$spaceSlug",
 			params: { spaceSlug },
 			search: {
-				tab: serializeTab({ type: "session", id: sessionId }),
+				tab: serializeTab({
+					type: "session",
+					id: createTabId("session", sessionId),
+				}),
 			},
 		});
 	}, [message, agent, modelId, setMessageStore, spaceSlug, navigate]);

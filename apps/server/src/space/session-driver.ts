@@ -239,6 +239,7 @@ async function cancelSession(
 		.select({
 			id: sessions.id,
 			status: sessions.status,
+			runId: sessions.runId,
 		})
 		.from(sessions)
 		.where(eq(sessions.id, sessionId))
@@ -246,6 +247,8 @@ async function cancelSession(
 	if (!sessionRows[0] || sessionRows[0].status !== "running") {
 		return;
 	}
+	const { runId } = sessionRows[0];
+
 	// Clear run state and notify the frontend immediately.
 	await ctx.vars.db
 		.update(sessions)
@@ -259,8 +262,17 @@ async function cancelSession(
 		.where(eq(sessions.id, sessionId));
 	publishSessionStatus(ctx, sessionId, "idle");
 
-	// TODO: Add a cancel endpoint to corp-agent to gracefully cancel the ACP prompt.
-	// For now, cancelling just clears the session state on the actor side.
+	if (runId) {
+		fetch(`${ctx.state.agentUrl}/v1/prompt/${runId}`, {
+			method: "DELETE",
+			signal: AbortSignal.timeout(5000),
+		}).catch((error) => {
+			log.warn(
+				{ sessionId, runId, err: error },
+				"cancel-session.agent-cancel-failed"
+			);
+		});
+	}
 }
 
 async function getSessionState(

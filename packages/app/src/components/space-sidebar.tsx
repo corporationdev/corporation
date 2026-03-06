@@ -1,6 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { env } from "@corporation/env/web";
-import type { SpaceTab } from "@corporation/server/space";
+import type { TabRow } from "@corporation/server/space";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { FunctionReturnType } from "convex/server";
@@ -36,6 +36,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import type { SpaceActor } from "@/lib/rivetkit";
+import { createTabId, parseTabEntityIdFromRow } from "@/lib/tab-id";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { useLayoutStore } from "@/stores/layout-store";
@@ -48,7 +49,7 @@ export type Space = NonNullable<
 type SpaceSidebarProps = {
 	space?: Space | null;
 	actor: SpaceActor;
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 };
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -98,7 +99,7 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor, tabs }) => {
 const SpaceSidebarContent: FC<{
 	space: Space;
 	actor: SpaceActor;
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 }> = ({ space, actor, tabs }) => {
 	const navigate = useNavigate();
 	const config = statusConfig[space.status] ?? {
@@ -124,7 +125,12 @@ const SpaceSidebarContent: FC<{
 		navigate({
 			to: "/space/$spaceSlug",
 			params: { spaceSlug: space.slug },
-			search: { tab: serializeTab({ type: "terminal", id: terminalId }) },
+			search: {
+				tab: serializeTab({
+					type: "terminal",
+					id: createTabId("terminal", terminalId),
+				}),
+			},
 		});
 	};
 
@@ -237,7 +243,7 @@ const SpaceSidebarContent: FC<{
 const DevServerButtons: FC<{
 	space: Space;
 	actor: SpaceActor;
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 }> = ({ space, actor, tabs }) => {
 	const devServerMutation = useTanstackMutation({
 		mutationFn: async (action: "start" | "kill") => {
@@ -254,7 +260,8 @@ const DevServerButtons: FC<{
 
 	const hasDevCommand = !!space.environment.devCommand;
 	const isDevServerRunning = tabs.some(
-		(tab) => tab.type === "terminal" && tab.terminalId === "devserver"
+		(tab) =>
+			tab.type === "terminal" && parseTabEntityIdFromRow(tab) === "devserver"
 	);
 
 	if (!hasDevCommand) {

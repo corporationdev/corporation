@@ -68,23 +68,6 @@ export type TerminalRow = InferSelectModel<typeof terminals>;
 export type SessionRow = InferSelectModel<typeof sessions>;
 export type SessionEventRow = InferSelectModel<typeof sessionEvents>;
 
-type SharedTabFields = Pick<
-	TabRow,
-	"id" | "title" | "active" | "createdAt" | "updatedAt" | "archivedAt"
->;
-
-export type SessionTab = SharedTabFields & {
-	type: "session";
-	sessionId: string;
-};
-
-export type TerminalTab = SharedTabFields & {
-	type: "terminal";
-	terminalId: TerminalRow["id"];
-};
-
-export type SpaceTab = SessionTab | TerminalTab;
-
 export const schema = {
 	tabs,
 	terminals,

@@ -1,5 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { SpaceTab } from "@corporation/server/space";
+import type { TabRow } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { PlusIcon, XIcon } from "lucide-react";
@@ -121,11 +121,11 @@ export function SpaceLayout() {
 		const targetParam =
 			savedParam &&
 			tabs.some((t) => {
-				const p = tabRegistry[t.type].tabParamFromSpaceTab(t);
+				const p = tabRegistry[t.type].tabParamFromTab(t);
 				return p?.type === savedParam.type && p.id === savedParam.id;
 			})
 				? savedParam
-				: tabRegistry[tabs[0].type].tabParamFromSpaceTab(tabs[0]);
+				: tabRegistry[tabs[0].type].tabParamFromTab(tabs[0]);
 
 		if (!targetParam) {
 			return;
@@ -176,11 +176,11 @@ export function SpaceLayout() {
 							actor,
 							tab: tab
 								? tabs.find((t) => {
-										const param = tabRegistry[t.type].tabParamFromSpaceTab(t);
+										const param = tabRegistry[t.type].tabParamFromTab(t);
 										return param?.type === tab.type && param.id === tab.id;
 									})
 								: undefined,
-							routeParamId: tab?.id,
+							routeTabId: tab?.id,
 							spaceSlug,
 						})
 					)}
@@ -195,7 +195,7 @@ const SpaceTabBar: FC<{
 	spaceSlug: string;
 	activeTab: TabParam | undefined;
 	actor: SpaceActor;
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 }> = ({ spaceSlug, activeTab, actor, tabs }) => {
 	const navigate = useNavigate();
 
@@ -203,7 +203,7 @@ const SpaceTabBar: FC<{
 		<div className="sticky top-0 z-20 flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-background px-2">
 			{tabs.map((tab) => {
 				const tabConfig = tabRegistry[tab.type];
-				const tabParam = tabConfig.tabParamFromSpaceTab(tab);
+				const tabParam = tabConfig.tabParamFromTab(tab);
 				if (!tabParam) {
 					return null;
 				}
@@ -267,8 +267,7 @@ const SpaceTabBar: FC<{
 									}
 
 									const nextTabConfig = tabRegistry[nextTab.type];
-									const nextTabParam =
-										nextTabConfig.tabParamFromSpaceTab(nextTab);
+									const nextTabParam = nextTabConfig.tabParamFromTab(nextTab);
 									if (!nextTabParam) {
 										navigate({
 											to: "/space/$spaceSlug",

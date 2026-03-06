@@ -79,18 +79,6 @@ const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const CALLBACK_TIMEOUT_MS = 10_000;
 const CALLBACK_MAX_ATTEMPTS = 8;
 
-function clonePayload(payload: unknown): Record<string, unknown> {
-	try {
-		const cloned = JSON.parse(JSON.stringify(payload));
-		if (cloned && typeof cloned === "object") {
-			return cloned;
-		}
-		return { value: cloned };
-	} catch {
-		return { value: String(payload) };
-	}
-}
-
 function formatError(error: unknown): {
 	name: string;
 	message: string;
@@ -410,7 +398,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			createdAt: Date.now(),
 			connectionId,
 			sender: direction === "outbound" ? "client" : "agent",
-			payload: clonePayload(envelope),
+			payload: envelope,
 		};
 		sendCallback("events", { events: [event] }).catch((error) => {
 			log("error", "Failed to queue events callback", {
@@ -451,6 +439,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 				}
 			}
 		});
+		activeTurns.set(turnId, bridge);
 
 		await new Promise((r) => setTimeout(r, 250));
 		if (bridge.proc.exitCode !== null) {
@@ -485,12 +474,12 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 
 		if (modelId) {
 			try {
-				await stdioRequest(bridge, "unstable/setSessionModel", {
+				await stdioRequest(bridge, "session/set_model", {
 					sessionId: agentSessionId,
 					modelId,
 				});
 			} catch (error) {
-				log("warn", "setSessionModel not supported, skipping", {
+				log("warn", "session/set_model not supported, skipping", {
 					error: error instanceof Error ? error.message : String(error),
 				});
 			}
@@ -553,7 +542,7 @@ function parseArgs(): { host: string; port: number } {
 }
 
 const { host, port } = parseArgs();
-const activeTurns = new Map<string, boolean>();
+const activeTurns = new Map<string, StdioBridge | null>();
 
 Bun.serve({
 	hostname: host,
@@ -580,7 +569,7 @@ Bun.serve({
 					{ status: 400 }
 				);
 			}
-			const body: PromptRequestBody = result.data;
+			const body = result.data;
 
 			if (activeTurns.has(body.turnId)) {
 				return Response.json(
@@ -589,7 +578,7 @@ Bun.serve({
 				);
 			}
 
-			activeTurns.set(body.turnId, true);
+			activeTurns.set(body.turnId, null);
 			executeTurn(body)
 				.catch((error) => {
 					log("error", "Unhandled turn error", {
@@ -602,6 +591,20 @@ Bun.serve({
 				});
 
 			return Response.json({ accepted: true }, { status: 202 });
+		}
+
+		if (req.method === "DELETE" && url.pathname.startsWith("/v1/prompt/")) {
+			const turnId = url.pathname.slice("/v1/prompt/".length);
+			const bridge = activeTurns.get(turnId);
+			if (bridge === undefined) {
+				return Response.json({ error: "Turn not found" }, { status: 404 });
+			}
+			if (bridge) {
+				killBridge(bridge);
+			}
+			activeTurns.delete(turnId);
+			log("info", "Turn cancelled via DELETE", { turnId });
+			return Response.json({ cancelled: true });
 		}
 
 		return Response.json({ error: "Not found" }, { status: 404 });

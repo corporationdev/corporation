@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
 import bundledMigrations from "./db/migrations/migrations.js";
-import { type SpaceTab, schema, tabs } from "./db/schema";
+import { schema, type TabRow, tabs } from "./db/schema";
 import {
 	collectDriverActions,
 	refreshSandboxTimeout,
@@ -19,7 +19,7 @@ import {
 import { broadcastTabsChanged, listSpaceTabs } from "./space/tab-list";
 import type { PersistedState, SpaceVars } from "./space/types";
 
-export type { SessionTab, SpaceTab, TabType, TerminalTab } from "./db/schema";
+export type { TabRow, TabType } from "./db/schema";
 
 const driverActions = collectDriverActions(lifecycleDrivers);
 
@@ -100,17 +100,7 @@ export const space = actor({
 	},
 
 	actions: {
-		listTabs: async (c): Promise<SpaceTab[]> => {
-			const allTabs = await listSpaceTabs(c);
-			allTabs.sort((left, right) => {
-				if (left.updatedAt !== right.updatedAt) {
-					return right.updatedAt - left.updatedAt;
-				}
-				return left.createdAt - right.createdAt;
-			});
-
-			return allTabs;
-		},
+		listTabs: (c): Promise<TabRow[]> => listSpaceTabs(c),
 		closeTab: async (c, tabId: string) => {
 			await c.vars.db
 				.update(tabs)
