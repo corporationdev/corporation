@@ -37,7 +37,7 @@ export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
 				reasonPrefix: "space-tabs",
 				spaceSlug,
 			});
-			return !kind;
+			return !!kind;
 		},
 	});
 
