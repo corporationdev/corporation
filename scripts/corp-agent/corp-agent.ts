@@ -203,6 +203,12 @@ async function postJsonWithRetry(
 
 type StdioBridge = {
 	dead: boolean;
+	onEnvelope:
+		| ((
+				envelope: Record<string, unknown>,
+				direction: "inbound" | "outbound"
+		  ) => void)
+		| null;
 	onNotification: ((envelope: Record<string, unknown>) => void) | null;
 	pendingResolvers: Map<string, (envelope: Record<string, unknown>) => void>;
 	proc: ReturnType<typeof Bun.spawn>;
@@ -212,6 +218,8 @@ function routeStdoutEnvelope(
 	bridge: StdioBridge,
 	envelope: Record<string, unknown>
 ): void {
+	bridge.onEnvelope?.(envelope, "inbound");
+
 	const envId = envelope.id != null ? String(envelope.id) : null;
 	if (envId && bridge.pendingResolvers.has(envId)) {
 		const resolver = bridge.pendingResolvers.get(envId);
@@ -242,7 +250,13 @@ function processStdoutLine(bridge: StdioBridge, rawLine: string): void {
 
 function spawnStdioBridge(
 	agent: string,
-	onNotification: (envelope: Record<string, unknown>) => void
+	onNotification: (envelope: Record<string, unknown>) => void,
+	onEnvelope:
+		| ((
+				envelope: Record<string, unknown>,
+				direction: "inbound" | "outbound"
+		  ) => void)
+		| null = null
 ): StdioBridge {
 	const cmd = agentCommand(agent);
 	log("info", "Spawning agent command (stdio)", { cmd: cmd.join(" ") });
@@ -258,6 +272,7 @@ function spawnStdioBridge(
 		proc,
 		pendingResolvers: new Map(),
 		onNotification,
+		onEnvelope,
 		dead: false,
 	};
 
@@ -324,10 +339,45 @@ function spawnStdioBridge(
 	return bridge;
 }
 
+function teardownBridge(
+	bridge: StdioBridge,
+	context: { agent: string; sessionId: string; reason: string }
+): void {
+	bridge.dead = true;
+	bridge.pendingResolvers.clear();
+
+	try {
+		bridge.proc.stdin.end();
+	} catch {
+		// stdin already closed
+	}
+
+	try {
+		bridge.proc.stdout?.cancel();
+	} catch {
+		// stdout already closed
+	}
+
+	try {
+		bridge.proc.stderr?.cancel();
+	} catch {
+		// stderr already closed
+	}
+
+	try {
+		bridge.proc.kill();
+	} catch {
+		// process may already be gone
+	}
+
+	log("info", "Tore down spawned session bridge", context);
+}
+
 function stdioWrite(
 	bridge: StdioBridge,
 	envelope: Record<string, unknown>
 ): void {
+	bridge.onEnvelope?.(envelope, "outbound");
 	bridge.proc.stdin.write(`${JSON.stringify(envelope)}\n`);
 }
 
@@ -380,6 +430,8 @@ type SessionBridge = {
 	bridge: StdioBridge;
 	agentSessionId: string;
 	agent: string;
+	cwd: string;
+	modelId: string | undefined;
 	activeTurnId: string | null;
 	onEvent:
 		| ((
@@ -397,11 +449,7 @@ const previousAgentSessionIds = new Map<string, string>();
 async function performAuth(
 	bridge: StdioBridge,
 	agent: string,
-	initResult: Record<string, unknown>,
-	queueEnvelopeEvent: (
-		envelope: Record<string, unknown>,
-		direction: "inbound" | "outbound"
-	) => void
+	initResult: Record<string, unknown>
 ): Promise<void> {
 	const authMethods = extractAuthMethods(initResult);
 	if (authMethods.length === 0) {
@@ -409,13 +457,6 @@ async function performAuth(
 	}
 	const selectedAuth = selectAuthMethod(authMethods);
 	if (selectedAuth) {
-		const authEnvelope = {
-			jsonrpc: "2.0" as const,
-			id: `authenticate-${crypto.randomUUID()}`,
-			method: "authenticate",
-			params: { methodId: selectedAuth.methodId },
-		};
-		queueEnvelopeEvent(authEnvelope, "outbound");
 		await stdioRequest(bridge, "authenticate", {
 			methodId: selectedAuth.methodId,
 		});
@@ -432,50 +473,64 @@ async function performAuth(
 	}
 }
 
-async function initBridge(
+function maybeHandlePermissionRequest(
+	bridge: StdioBridge,
+	envelope: Record<string, unknown>
+): void {
+	if (envelope.method !== "requestPermission" || envelope.id == null) {
+		return;
+	}
+
+	const reqParams = envelope.params as Record<string, unknown> | undefined;
+	const request = reqParams?.request as Record<string, unknown> | undefined;
+	const options = Array.isArray(request?.options) ? request.options : [];
+	const selected = pickPermissionOption(options);
+
+	const response: Record<string, unknown> = {
+		jsonrpc: "2.0",
+		id: envelope.id,
+		result: {
+			outcome: selected
+				? { outcome: "selected", optionId: selected.optionId }
+				: { outcome: "cancelled" },
+		},
+	};
+	stdioWrite(bridge, response);
+}
+
+function isUnsupportedMethodError(error: unknown): boolean {
+	const msg = error instanceof Error ? error.message : String(error);
+	return msg.includes("(-32601)");
+}
+
+async function setModelOrThrow(
+	bridge: StdioBridge,
+	agentSessionId: string,
+	modelId: string
+): Promise<void> {
+	try {
+		await stdioRequest(bridge, "session/set_model", {
+			sessionId: agentSessionId,
+			modelId,
+		});
+	} catch (error) {
+		if (isUnsupportedMethodError(error)) {
+			log("warn", "session/set_model not supported by agent, skipping", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return;
+		}
+		throw error;
+	}
+}
+
+async function bootstrapSessionBridge(
+	bridge: StdioBridge,
 	sessionId: string,
 	agent: string,
 	cwd: string,
-	modelId: string | undefined,
-	queueEnvelopeEvent: (
-		envelope: Record<string, unknown>,
-		direction: "inbound" | "outbound"
-	) => void
-): Promise<SessionBridge> {
-	log("info", "Spawning new agent subprocess", { agent, sessionId });
-
-	const sessionBridge: SessionBridge = {
-		bridge: null as unknown as StdioBridge,
-		agentSessionId: "",
-		agent,
-		activeTurnId: null,
-		onEvent: queueEnvelopeEvent,
-	};
-
-	const bridge = spawnStdioBridge(agent, (envelope) => {
-		sessionBridge.onEvent?.(envelope, "inbound");
-
-		if (envelope.method === "requestPermission" && envelope.id != null) {
-			const reqParams = envelope.params as Record<string, unknown> | undefined;
-			const request = reqParams?.request as Record<string, unknown> | undefined;
-			const options = Array.isArray(request?.options) ? request.options : [];
-			const selected = pickPermissionOption(options);
-
-			const response: Record<string, unknown> = {
-				jsonrpc: "2.0",
-				id: envelope.id,
-				result: {
-					outcome: selected
-						? { outcome: "selected", optionId: selected.optionId }
-						: { outcome: "cancelled" },
-				},
-			};
-			stdioWrite(bridge, response);
-			sessionBridge.onEvent?.(response, "outbound");
-		}
-	});
-	sessionBridge.bridge = bridge;
-
+	modelId: string | undefined
+): Promise<string> {
 	await new Promise((r) => setTimeout(r, 250));
 	if (bridge.proc.exitCode !== null) {
 		throw new Error(
@@ -483,21 +538,11 @@ async function initBridge(
 		);
 	}
 
-	const initEnvelope = {
-		jsonrpc: "2.0" as const,
-		id: `initialize-${crypto.randomUUID()}`,
-		method: "initialize",
-		params: {
-			protocolVersion: ACP_PROTOCOL_VERSION,
-			clientInfo: { name: "corp-agent", version: "v1" },
-		},
-	};
-	queueEnvelopeEvent(initEnvelope, "outbound");
 	const initResult = await stdioRequest(bridge, "initialize", {
 		protocolVersion: ACP_PROTOCOL_VERSION,
 		clientInfo: { name: "corp-agent", version: "v1" },
 	});
-	await performAuth(bridge, agent, initResult, queueEnvelopeEvent);
+	await performAuth(bridge, agent, initResult);
 
 	const capabilities = initResult.agentCapabilities as
 		| Record<string, unknown>
@@ -538,23 +583,69 @@ async function initBridge(
 	}
 
 	previousAgentSessionIds.delete(sessionId);
-	sessionBridge.agentSessionId = agentSessionId;
 
 	if (modelId) {
-		try {
-			await stdioRequest(bridge, "session/set_model", {
-				sessionId: agentSessionId,
-				modelId,
-			});
-		} catch (error) {
-			log("warn", "session/set_model not supported, skipping", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
+		await setModelOrThrow(bridge, agentSessionId, modelId);
 	}
 
-	sessionBridges.set(sessionId, sessionBridge);
-	return sessionBridge;
+	return agentSessionId;
+}
+
+async function initBridge(
+	sessionId: string,
+	agent: string,
+	cwd: string,
+	modelId: string | undefined,
+	queueEnvelopeEvent: (
+		envelope: Record<string, unknown>,
+		direction: "inbound" | "outbound"
+	) => void
+): Promise<SessionBridge> {
+	log("info", "Spawning new agent subprocess", { agent, sessionId });
+
+	const sessionBridge: SessionBridge = {
+		bridge: null as unknown as StdioBridge,
+		agentSessionId: "",
+		agent,
+		cwd,
+		modelId,
+		activeTurnId: null,
+		onEvent: queueEnvelopeEvent,
+	};
+
+	const bridge = spawnStdioBridge(
+		agent,
+		(envelope) => {
+			maybeHandlePermissionRequest(bridge, envelope);
+		},
+		(envelope, direction) => {
+			sessionBridge.onEvent?.(envelope, direction);
+		}
+	);
+	sessionBridge.bridge = bridge;
+	let bootstrapComplete = false;
+	try {
+		sessionBridge.agentSessionId = await bootstrapSessionBridge(
+			bridge,
+			sessionId,
+			agent,
+			cwd,
+			modelId
+		);
+
+		sessionBridges.set(sessionId, sessionBridge);
+		bootstrapComplete = true;
+		return sessionBridge;
+	} finally {
+		if (!bootstrapComplete) {
+			teardownBridge(bridge, {
+				agent,
+				sessionId,
+				reason: "initBridge bootstrap failed before sessionBridges.set",
+			});
+			sessionBridge.bridge = null as unknown as StdioBridge;
+		}
+	}
 }
 
 function getSessionBridge(sessionId: string): SessionBridge | null {
@@ -754,6 +845,27 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		sessionBridge = getSessionBridge(sessionId);
 
 		if (sessionBridge) {
+			if (sessionBridge.agent !== agent) {
+				throw new Error(
+					`Cannot reuse session ${sessionId}: agent changed from "${sessionBridge.agent}" to "${agent}"`
+				);
+			}
+			if (sessionBridge.cwd !== cwd) {
+				throw new Error(
+					`Cannot reuse session ${sessionId}: cwd changed from "${sessionBridge.cwd}" to "${cwd}"`
+				);
+			}
+			if (sessionBridge.modelId !== modelId) {
+				const newModelId = modelId;
+				if (newModelId) {
+					await setModelOrThrow(
+						sessionBridge.bridge,
+						sessionBridge.agentSessionId,
+						newModelId
+					);
+				}
+				sessionBridge.modelId = modelId;
+			}
 			log("info", "Reusing existing session bridge", {
 				sessionId,
 				agentSessionId: sessionBridge.agentSessionId,
@@ -771,13 +883,6 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 
 		sessionBridge.activeTurnId = turnId;
 		activeTurns.set(turnId, sessionId);
-
-		const promptEnvelope: Record<string, unknown> = {
-			jsonrpc: "2.0",
-			method: "session/prompt",
-			params: { sessionId: sessionBridge.agentSessionId, prompt },
-		};
-		queueEnvelopeEvent(promptEnvelope, "outbound");
 
 		const promptResult = await stdioRequest(
 			sessionBridge.bridge,

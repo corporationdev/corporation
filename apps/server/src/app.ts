@@ -15,7 +15,6 @@ const apiApp = new Hono<{ Bindings: Env }>()
 				"Stream-Next-Offset",
 				"Stream-Up-To-Date",
 				"Stream-Closed",
-				"Stream-Cursor",
 			],
 		})
 	)
