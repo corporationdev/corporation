@@ -416,6 +416,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 	).space.getOrCreate(actorKey);
 	const actorConn = actorHandle.connect() as Record<string, Function>;
 	log("info", "Actor connect() called (connection is lazy)");
+	let callbackQueue = Promise.resolve();
 
 	// Hook into connection lifecycle events
 	if (typeof actorConn.onOpen === "function") {
@@ -451,10 +452,11 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 	});
 
 	// Helper to send a callback to the actor over WebSocket
-	const sendCallback = async (
+	// Uses a serialized queue (in-flight=1) to avoid bursty callback completions.
+	const sendCallback = (
 		kind: string,
 		extra: Record<string, unknown> = {}
-	) => {
+	): Promise<void> => {
 		sequence += 1;
 		const payload = {
 			turnId,
@@ -465,24 +467,31 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 			timestamp: Date.now(),
 			...extra,
 		};
-		try {
-			log("info", `Sending ${kind} callback (seq=${sequence})`, {
-				turnId,
-				kind,
-				payloadKeys: Object.keys(payload),
-				hasEvents: "events" in extra ? (extra.events as unknown[]).length : 0,
+
+		callbackQueue = callbackQueue
+			.catch(() => undefined)
+			.then(async () => {
+				try {
+					log("info", `Sending ${kind} callback (seq=${sequence})`, {
+						turnId,
+						kind,
+						payloadKeys: Object.keys(payload),
+						hasEvents: "events" in extra ? (extra.events as unknown[]).length : 0,
+					});
+					const result = await actorConn.ingestTurnRunnerBatch(payload);
+					log("info", `Sent ${kind} callback OK (seq=${sequence})`, {
+						result: result !== undefined ? JSON.stringify(result) : "void",
+					});
+				} catch (error) {
+					log("error", `Failed to send ${kind} callback`, {
+						error: error instanceof Error ? error.message : String(error),
+						stack: error instanceof Error ? error.stack : undefined,
+						errorType: error?.constructor?.name,
+					});
+				}
 			});
-			const result = await actorConn.ingestTurnRunnerBatch(payload);
-			log("info", `Sent ${kind} callback OK (seq=${sequence})`, {
-				result: result !== undefined ? JSON.stringify(result) : "void",
-			});
-		} catch (error) {
-			log("error", `Failed to send ${kind} callback`, {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				errorType: error?.constructor?.name,
-			});
-		}
+
+		return callbackQueue;
 	};
 
 	// Queue an envelope as a session event
@@ -616,9 +625,11 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		// 6. Send completed callback
 		log("info", "Turn completed successfully", { turnId });
 		await sendCallback("completed");
+		await callbackQueue.catch(() => undefined);
 	} catch (error) {
 		log("error", "Turn failed", { turnId, error: formatError(error) });
 		await sendCallback("failed", { error: formatError(error) });
+		await callbackQueue.catch(() => undefined);
 	} finally {
 		// Disconnect actor WebSocket
 		try {

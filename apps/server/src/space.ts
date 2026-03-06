@@ -74,6 +74,8 @@ export const space = actor({
 			lastTerminalSnapshotAt: new Map(),
 			subscriptions: createSubscriptionHub(),
 			lastTimeoutRefreshAt: 0,
+			pendingSessionEventInserts: [],
+			pendingSessionEventFlush: null,
 		};
 
 		log.info(

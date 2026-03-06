@@ -1,5 +1,6 @@
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import type { CommandHandle, Sandbox } from "e2b";
+import type { SessionEvent } from "./turn-runner/types";
 
 export type PersistedState = {
 	agentUrl: string;
@@ -23,6 +24,8 @@ export type SpaceVars = {
 	lastTerminalSnapshotAt: Map<string, number>;
 	subscriptions: SubscriptionHub;
 	lastTimeoutRefreshAt: number;
+	pendingSessionEventInserts: SessionEvent[];
+	pendingSessionEventFlush: Promise<void> | null;
 };
 
 export type ConnectionSender = {

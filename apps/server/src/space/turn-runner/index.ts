@@ -16,7 +16,7 @@ import type { SessionEvent } from "./types";
 const SESSION_EVENT_NAME = "session.event";
 const SESSION_STATUS_EVENT_NAME = "session.status";
 const TRAILING_SLASH_RE = /\/$/;
-const TURN_RUNNER_ACTION = "ingestTurnRunnerBatch";
+const PERSIST_BATCH_SIZE = 128;
 const log = createLogger("space:turn-runner");
 
 type TextPromptPart = { type: "text"; text: string };
@@ -38,20 +38,33 @@ export function publishSessionStatus(
 	);
 }
 
-async function insertSessionEvents(
+function publishSessionEvents(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
 	events: SessionEvent[]
+): void {
+	for (const event of events) {
+		publishToChannel(
+			ctx,
+			createTabChannel("session", sessionId),
+			SESSION_EVENT_NAME,
+			event
+		);
+	}
+}
+
+async function persistSessionEvents(
+	ctx: SpaceRuntimeContext,
+	events: SessionEvent[]
 ): Promise<void> {
-	const validEvents = events.filter((event) => event.sessionId === sessionId);
-	if (validEvents.length === 0) {
+	if (events.length === 0) {
 		return;
 	}
 
-	const insertedRows = await ctx.vars.db
+	await ctx.vars.db
 		.insert(sessionEvents)
 		.values(
-			validEvents.map((event) => ({
+			events.map((event) => ({
 				id: event.id,
 				eventIndex: event.eventIndex,
 				sessionId: event.sessionId,
@@ -61,25 +74,65 @@ async function insertSessionEvents(
 				payload: event.payload as Record<string, unknown>,
 			}))
 		)
-		.onConflictDoNothing({ target: sessionEvents.id })
-		.returning({ id: sessionEvents.id });
+		.onConflictDoNothing({ target: sessionEvents.id });
+}
 
-	if (insertedRows.length === 0) {
+async function flushPendingSessionEventInserts(
+	ctx: SpaceRuntimeContext
+): Promise<void> {
+	while (ctx.vars.pendingSessionEventInserts.length > 0) {
+		const batch = ctx.vars.pendingSessionEventInserts.splice(
+			0,
+			PERSIST_BATCH_SIZE
+		);
+		await persistSessionEvents(ctx, batch);
+	}
+}
+
+function ensureSessionEventFlushScheduled(ctx: SpaceRuntimeContext): void {
+	if (ctx.vars.pendingSessionEventFlush) {
 		return;
 	}
 
-	const insertedIds = new Set(insertedRows.map((row) => row.id));
+	const flushPromise = flushPendingSessionEventInserts(ctx)
+		.catch((error) => {
+			log.error({ err: error, actorId: ctx.actorId }, "session-event flush failed");
+		})
+		.finally(() => {
+			if (ctx.vars.pendingSessionEventFlush === flushPromise) {
+				ctx.vars.pendingSessionEventFlush = null;
+			}
+			if (ctx.vars.pendingSessionEventInserts.length > 0) {
+				ensureSessionEventFlushScheduled(ctx);
+			}
+		});
 
-	for (const event of validEvents) {
-		if (!insertedIds.has(event.id)) {
-			continue;
+	ctx.vars.pendingSessionEventFlush = flushPromise;
+	ctx.waitUntil(flushPromise);
+}
+
+function enqueueSessionEventInserts(
+	ctx: SpaceRuntimeContext,
+	events: SessionEvent[]
+): void {
+	if (events.length === 0) {
+		return;
+	}
+	ctx.vars.pendingSessionEventInserts.push(...events);
+	ensureSessionEventFlushScheduled(ctx);
+}
+
+async function flushAllSessionEventInserts(ctx: SpaceRuntimeContext): Promise<void> {
+	while (
+		ctx.vars.pendingSessionEventFlush ||
+		ctx.vars.pendingSessionEventInserts.length > 0
+	) {
+		ensureSessionEventFlushScheduled(ctx);
+		const inFlight = ctx.vars.pendingSessionEventFlush;
+		if (!inFlight) {
+			break;
 		}
-		publishToChannel(
-			ctx,
-			createTabChannel("session", sessionId),
-			SESSION_EVENT_NAME,
-			event
-		);
+		await inFlight;
 	}
 }
 
@@ -254,11 +307,19 @@ export async function ingestTurnRunnerBatch(
 	}
 
 	if (parsed.kind === "events") {
-		await insertSessionEvents(ctx, session.id, parsed.events);
+		const validEvents = parsed.events.filter(
+			(event) => event.sessionId === session.id
+		);
+		if (validEvents.length === 0) {
+			return;
+		}
+		publishSessionEvents(ctx, session.id, validEvents);
+		enqueueSessionEventInserts(ctx, validEvents);
 		return;
 	}
 
 	if (parsed.kind === "completed") {
+		await flushAllSessionEventInserts(ctx);
 		await ctx.vars.db
 			.update(sessions)
 			.set({ status: SESSION_STATUS_IDLE, pid: null, error: null })
@@ -268,6 +329,7 @@ export async function ingestTurnRunnerBatch(
 	}
 
 	if (parsed.kind === "failed") {
+		await flushAllSessionEventInserts(ctx);
 		await ctx.vars.db
 			.update(sessions)
 			.set({ status: SESSION_STATUS_ERROR, pid: null, error: parsed.error })

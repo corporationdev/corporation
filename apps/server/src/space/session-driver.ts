@@ -250,7 +250,6 @@ async function cancelSession(
 		.select({
 			id: sessions.id,
 			status: sessions.status,
-			pid: sessions.pid,
 		})
 		.from(sessions)
 		.where(eq(sessions.id, sessionId))
@@ -258,9 +257,6 @@ async function cancelSession(
 	if (!sessionRows[0] || sessionRows[0].status !== SESSION_STATUS_RUNNING) {
 		return;
 	}
-
-	const { pid } = sessionRows[0];
-
 	// Clear run state and notify the frontend immediately.
 	await ctx.vars.db
 		.update(sessions)
