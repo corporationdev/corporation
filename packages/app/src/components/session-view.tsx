@@ -331,9 +331,7 @@ export const ConnectedSessionView: FC<{
 					footer={
 						<AgentModelPicker
 							agent={agent}
-							agentLocked
 							modelId={modelId}
-							modelLocked
 							onAgentChange={setAgentOverride}
 							onModelIdChange={setModelIdOverride}
 						/>

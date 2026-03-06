@@ -5,9 +5,6 @@ import type { SpaceRuntimeContext } from "./types";
 
 const REPLAY_PREFIX = "Previous session history is replayed below";
 const REPLAY_PAGE_SIZE = 200;
-const MAX_REPLAY_EVENTS = 2000;
-const MAX_REPLAY_TURNS = 24;
-const MAX_REPLAY_CHARS = 12_000;
 
 export type SessionPromptPart = { type: "text"; text: string };
 
@@ -108,32 +105,15 @@ function buildReplayHistory(events: SessionEvent[]): string | null {
 	}
 	flushAssistant();
 
-	let replayTurns = turns.slice(-MAX_REPLAY_TURNS);
-	while (replayTurns.length > 1) {
-		const formatted = replayTurns
-			.map((turn) =>
-				turn.role === "user"
-					? `User:\n${turn.text}`
-					: `Assistant:\n${turn.text}`
-			)
-			.join("\n\n");
-		if (formatted.length <= MAX_REPLAY_CHARS) {
-			return formatted;
-		}
-		replayTurns = replayTurns.slice(1);
-	}
-
-	if (replayTurns.length === 0) {
+	if (turns.length === 0) {
 		return null;
 	}
 
-	const lastTurn = replayTurns[0];
-	if (!lastTurn) {
-		return null;
-	}
-	const prefix = lastTurn.role === "user" ? "User:\n" : "Assistant:\n";
-	const budget = Math.max(200, MAX_REPLAY_CHARS - prefix.length);
-	return `${prefix}${lastTurn.text.slice(-budget)}`;
+	return turns
+		.map((turn) =>
+			turn.role === "user" ? `User:\n${turn.text}` : `Assistant:\n${turn.text}`
+		)
+		.join("\n\n");
 }
 
 function toSessionEvent(row: typeof sessionEvents.$inferSelect): SessionEvent {
@@ -157,22 +137,18 @@ export async function buildPromptWithReplay(
 	const events: SessionEvent[] = [];
 	let lastEventIndex: number | undefined;
 
-	while (events.length < MAX_REPLAY_EVENTS) {
+	for (;;) {
 		const conditions = [eq(sessionEvents.sessionId, sessionId)];
 		if (lastEventIndex !== undefined) {
 			conditions.push(gt(sessionEvents.eventIndex, lastEventIndex));
 		}
 
-		const pageLimit = Math.min(
-			REPLAY_PAGE_SIZE,
-			MAX_REPLAY_EVENTS - events.length
-		);
 		const rows = await ctx.vars.db
 			.select()
 			.from(sessionEvents)
 			.where(and(...conditions))
 			.orderBy(asc(sessionEvents.eventIndex))
-			.limit(pageLimit);
+			.limit(REPLAY_PAGE_SIZE);
 
 		if (rows.length === 0) {
 			break;
@@ -182,7 +158,7 @@ export async function buildPromptWithReplay(
 		events.push(...pageEvents);
 
 		const lastRow = rows.at(-1);
-		if (!lastRow || rows.length < pageLimit) {
+		if (!lastRow || rows.length < REPLAY_PAGE_SIZE) {
 			break;
 		}
 		lastEventIndex = lastRow.eventIndex;
