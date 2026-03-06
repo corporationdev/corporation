@@ -5,7 +5,6 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { generateName, isGeneratedName } from "./lib/branchName";
 import { getSandboxWorkdir } from "./lib/sandbox";
 import { spaceStatusValidator } from "./schema";
 import { withDerivedSnapshotState } from "./snapshot";
@@ -268,7 +267,7 @@ export const requestAutoRename = internalMutation({
 		}
 
 		const firstMessage = args.firstMessage.trim();
-		if (!(firstMessage && isGeneratedName(space.name))) {
+		if (!(firstMessage && space.name === "New Space")) {
 			return;
 		}
 
@@ -320,7 +319,7 @@ export const ensure = authedMutation({
 		const spaceId = await ctx.db.insert("spaces", {
 			slug,
 			repositoryId: args.repositoryId,
-			name: generateName(),
+			name: "New Space",
 			status: "creating",
 			createdAt: now,
 			updatedAt: now,

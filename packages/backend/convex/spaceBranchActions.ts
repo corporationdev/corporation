@@ -8,7 +8,6 @@ import { z } from "zod";
 import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { isGeneratedName } from "./lib/branchName";
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
@@ -55,7 +54,7 @@ export const generateAndApplyName = internalAction({
 			return;
 		}
 
-		if (!isGeneratedName(space.name)) {
+		if (space.name !== "New Space") {
 			return;
 		}
 
