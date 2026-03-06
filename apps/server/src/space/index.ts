@@ -5,21 +5,18 @@ import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
-import bundledMigrations from "./db/migrations/migrations.js";
-import { schema, type TabRow, tabs } from "./db/schema";
+import bundledMigrations from "../db/migrations/migrations";
+import { schema, type TabRow, tabs } from "../db/schema";
 import {
 	collectDriverActions,
 	refreshSandboxTimeout,
-} from "./space/action-registration";
+} from "./action-registration";
 
-import {
-	createSubscriptionHub,
-	unsubscribeConnection,
-} from "./space/subscriptions";
-import { broadcastTabsChanged, listSpaceTabs } from "./space/tab-list";
-import type { PersistedState, SpaceVars } from "./space/types";
+import { createSubscriptionHub, unsubscribeConnection } from "./subscriptions";
+import { broadcastTabsChanged, listSpaceTabs } from "./tab-list";
+import type { PersistedState, SpaceVars } from "./types";
 
-export type { TabRow, TabType } from "./db/schema";
+export type { TabRow, TabType } from "../db/schema";
 
 import { sessionDriver } from "./session-driver";
 import { terminalDriver } from "./terminal-driver";
