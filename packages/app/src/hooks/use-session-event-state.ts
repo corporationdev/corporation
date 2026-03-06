@@ -1,5 +1,5 @@
+import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SessionEvent } from "sandbox-agent";
 import type { TimelineEntry } from "@/components/chat/types";
 import {
 	isTransientActorConnError,
@@ -11,6 +11,8 @@ export type SessionState = {
 	entries: TimelineEntry[];
 	rawEvents: SessionEvent[];
 	status: string;
+	agent: string | null;
+	modelId: string | null;
 	setStatus: (status: string) => void;
 	addOptimisticUserMessage: (message: {
 		clientId: string;
@@ -23,33 +25,33 @@ export type SessionState = {
 const TRANSCRIPT_PAGE_SIZE = 200;
 const OPTIMISTIC_MATCH_TIME_TOLERANCE_MS = 5000;
 
-type SessionStateConnection = {
-	getSessionState: (
-		sessionId: string,
-		offset: number,
-		limit: number
-	) =>
-		| Promise<{ events: SessionEvent[]; status: string }>
-		| Promise<Promise<{ events: SessionEvent[]; status: string }>>;
-};
+type SpaceActorConnection = NonNullable<SpaceActor["connection"]>;
 
 async function loadSessionState(
-	conn: SessionStateConnection,
+	conn: SpaceActorConnection,
 	sessionId: string,
 	isCancelled: () => boolean
-): Promise<{ events: SessionEvent[]; status: string }> {
+): Promise<{
+	events: SessionEvent[];
+	status: string;
+	agent: string | null;
+	modelId: string | null;
+	lastEventIndex: number;
+}> {
 	const events: SessionEvent[] = [];
-	let offset = 0;
+	let lastEventIndex = 0;
 	let status = "idle";
+	let agent: string | null = null;
+	let modelId: string | null = null;
 
 	while (true) {
 		if (isCancelled()) {
 			break;
 		}
 
-		const resultPromise = await conn.getSessionState(
+		const resultPromise = await conn.openSessionFeed(
 			sessionId,
-			offset,
+			lastEventIndex,
 			TRANSCRIPT_PAGE_SIZE
 		);
 		const result = await resultPromise;
@@ -59,19 +61,21 @@ async function loadSessionState(
 
 		// Update status from the latest response
 		status = result.status;
+		agent = result.agent;
+		modelId = result.modelId;
 
 		if (result.events.length === 0) {
 			break;
 		}
 
 		events.push(...result.events);
-		offset += result.events.length;
+		lastEventIndex = result.lastEventIndex;
 		if (result.events.length < TRANSCRIPT_PAGE_SIZE) {
 			break;
 		}
 	}
 
-	return { events, status };
+	return { events, status, agent, modelId, lastEventIndex };
 }
 
 function sortSessionEvents(events: SessionEvent[]): void {
@@ -388,11 +392,14 @@ export function useSessionEventState({
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const caughtUpRef = useRef(false);
 	const bufferRef = useRef<SessionEvent[]>([]);
+	const bufferedStatusRef = useRef<string | null>(null);
 	const [events, setEvents] = useState<SessionEvent[]>([]);
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		OptimisticUserMessage[]
 	>([]);
 	const [sessionStatus, setSessionStatus] = useState<string>("idle");
+	const [sessionAgent, setSessionAgent] = useState<string | null>(null);
+	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
 
 	const addEvents = useCallback((newEvents: SessionEvent[]) => {
 		const unseen: SessionEvent[] = [];
@@ -417,6 +424,8 @@ export function useSessionEventState({
 		setEvents([]);
 		setOptimisticMessages([]);
 		setSessionStatus("idle");
+		setSessionAgent(null);
+		setSessionModelId(null);
 	}, [sessionId]);
 
 	const addOptimisticUserMessage = useCallback(
@@ -458,21 +467,25 @@ export function useSessionEventState({
 		let isCancelled = false;
 		caughtUpRef.current = false;
 		bufferRef.current = [];
+		bufferedStatusRef.current = null;
 
 		const conn = actor.connection;
 		(async () => {
-			await conn.subscribeSession(sessionId);
-			const { events: loaded, status } = await loadSessionState(
-				conn,
-				sessionId,
-				() => isCancelled
-			);
+			const {
+				events: loaded,
+				status,
+				agent,
+				modelId,
+			} = await loadSessionState(conn, sessionId, () => isCancelled);
 			if (isCancelled) {
 				return;
 			}
 			sortSessionEvents(loaded);
 			addEvents(loaded);
-			setSessionStatus(status);
+			setSessionStatus(bufferedStatusRef.current ?? status);
+			setSessionAgent(agent);
+			setSessionModelId(modelId);
+			bufferedStatusRef.current = null;
 			addEvents(bufferRef.current);
 			bufferRef.current = [];
 			caughtUpRef.current = true;
@@ -494,7 +507,7 @@ export function useSessionEventState({
 
 		return () => {
 			isCancelled = true;
-			conn.unsubscribeSession(sessionId).catch((error: unknown) => {
+			conn.closeSessionFeed(sessionId).catch((error: unknown) => {
 				if (isTransientActorConnError(error)) {
 					return;
 				}
@@ -505,6 +518,9 @@ export function useSessionEventState({
 
 	actor.useEvent("session.event", (event) => {
 		const typed = event as SessionEvent;
+		if (typed.sessionId !== sessionId) {
+			return;
+		}
 		if (!caughtUpRef.current) {
 			bufferRef.current.push(typed);
 			return;
@@ -516,6 +532,10 @@ export function useSessionEventState({
 		"session.status",
 		(event: { sessionId: string; status: string }) => {
 			if (event.sessionId === sessionId) {
+				if (!caughtUpRef.current) {
+					bufferedStatusRef.current = event.status;
+					return;
+				}
 				setSessionStatus(event.status);
 			}
 		}
@@ -556,6 +576,8 @@ export function useSessionEventState({
 		entries,
 		rawEvents: events,
 		status: sessionStatus,
+		agent: sessionAgent,
+		modelId: sessionModelId,
 		setStatus: setSessionStatus,
 		addOptimisticUserMessage,
 		removeOptimisticUserMessage,

@@ -1,3 +1,4 @@
+import type { SessionEvent } from "@corporation/shared/session-protocol";
 import {
 	BotIcon,
 	ChevronDownIcon,
@@ -9,7 +10,6 @@ import {
 	WrenchIcon,
 } from "lucide-react";
 import { type FC, useMemo, useState } from "react";
-import type { SessionEvent } from "sandbox-agent";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 

@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const tabTypeValues = ["session", "terminal", "preview"] as const;
+export const tabTypeValues = ["session", "terminal"] as const;
 export type TabType = (typeof tabTypeValues)[number];
 
 export const tabs = sqliteTable("tabs", {
@@ -24,18 +24,6 @@ export const terminals = sqliteTable("terminals", {
 	ptyPid: integer("pty_pid"),
 	cols: integer("cols").notNull(),
 	rows: integer("rows").notNull(),
-	createdAt: integer("created_at", { mode: "number" }).notNull(),
-	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
-});
-
-export const previews = sqliteTable("previews", {
-	id: text("id").primaryKey(),
-	tabId: text("tab_id")
-		.notNull()
-		.unique()
-		.references(() => tabs.id, { onDelete: "cascade" }),
-	url: text("url").notNull(),
-	port: integer("port").notNull(),
 	createdAt: integer("created_at", { mode: "number" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
@@ -69,48 +57,20 @@ export const sessionEvents = sqliteTable("session_events", {
 		.references(() => sessions.id, { onDelete: "cascade" }),
 	createdAt: integer("created_at", { mode: "number" }).notNull(),
 	connectionId: text("connection_id").notNull(),
-	sender: text("sender").notNull(),
-	payload: text("payload", { mode: "json" }).notNull(),
+	sender: text("sender").notNull().$type<"client" | "agent">(),
+	payload: text("payload", { mode: "json" })
+		.notNull()
+		.$type<Record<string, unknown>>(),
 });
 
 export type TabRow = InferSelectModel<typeof tabs>;
 export type TerminalRow = InferSelectModel<typeof terminals>;
-export type PreviewRow = InferSelectModel<typeof previews>;
 export type SessionRow = InferSelectModel<typeof sessions>;
 export type SessionEventRow = InferSelectModel<typeof sessionEvents>;
-
-type SharedTabFields = Pick<
-	TabRow,
-	"id" | "title" | "active" | "createdAt" | "updatedAt" | "archivedAt"
->;
-
-export type SessionTab = SharedTabFields & {
-	type: "session";
-	sessionId: string;
-	agent: string | null;
-	modelId: string | null;
-};
-
-export type TerminalTab = SharedTabFields & {
-	type: "terminal";
-	terminalId: TerminalRow["id"];
-	cols: TerminalRow["cols"];
-	rows: TerminalRow["rows"];
-};
-
-export type PreviewTab = SharedTabFields & {
-	type: "preview";
-	previewId: string;
-	url: string;
-	port: number;
-};
-
-export type SpaceTab = SessionTab | TerminalTab | PreviewTab;
 
 export const schema = {
 	tabs,
 	terminals,
-	previews,
 	sessions,
 	sessionEvents,
 };

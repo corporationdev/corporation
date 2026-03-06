@@ -237,7 +237,7 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 			previous &&
 			(previous.conn !== conn || previous.terminalId !== terminalId)
 		) {
-			previous.conn.unsubscribeTerminal(previous.terminalId).catch((error) => {
+			previous.conn.closeTerminal(previous.terminalId).catch((error) => {
 				handleActionError(error, previous.terminalId, "unsubscribe");
 			});
 			activeSubscriptionRef.current = null;
@@ -305,11 +305,9 @@ export function TerminalView({ actor, terminalId }: TerminalViewProps) {
 				return;
 			}
 
-			active.conn
-				.unsubscribeTerminal(active.terminalId)
-				.catch((error: unknown) => {
-					handleActionError(error, active.terminalId, "unsubscribe");
-				});
+			active.conn.closeTerminal(active.terminalId).catch((error: unknown) => {
+				handleActionError(error, active.terminalId, "unsubscribe");
+			});
 		};
 	}, [handleActionError]);
 

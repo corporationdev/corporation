@@ -1,6 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { env } from "@corporation/env/web";
-import type { SpaceTab } from "@corporation/server/space";
+import type { TabRow } from "@corporation/server/space";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { FunctionReturnType } from "convex/server";
@@ -9,7 +9,6 @@ import {
 	CodeXmlIcon,
 	ExternalLinkIcon,
 	GitPullRequestIcon,
-	GlobeIcon,
 	LoaderIcon,
 	PlayIcon,
 	SquareIcon,
@@ -17,10 +16,9 @@ import {
 	UploadIcon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { type FC, useCallback, useState } from "react";
+import { type FC, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
 	Sheet,
 	SheetContent,
@@ -36,9 +34,9 @@ import {
 import { useErrorToast } from "@/hooks/use-error-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useStartSandbox } from "@/hooks/use-start-sandbox";
-import { apiClient } from "@/lib/api-client";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import type { SpaceActor } from "@/lib/rivetkit";
+import { createTabId, parseTabEntityIdFromRow } from "@/lib/tab-id";
 import { serializeTab } from "@/lib/tab-routing";
 import { cn } from "@/lib/utils";
 import { useLayoutStore } from "@/stores/layout-store";
@@ -51,7 +49,7 @@ export type Space = NonNullable<
 type SpaceSidebarProps = {
 	space?: Space | null;
 	actor: SpaceActor;
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 };
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -101,15 +99,13 @@ export const SpaceSidebar: FC<SpaceSidebarProps> = ({ space, actor, tabs }) => {
 const SpaceSidebarContent: FC<{
 	space: Space;
 	actor: SpaceActor;
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 }> = ({ space, actor, tabs }) => {
 	const navigate = useNavigate();
 	const config = statusConfig[space.status] ?? {
 		label: space.status,
 		className: "bg-muted-foreground",
 	};
-
-	const [previewPort, setPreviewPort] = useState("3001");
 
 	const updateMutation = useConvexTanstackMutation(api.spaces.update);
 	const { mutate } = updateMutation;
@@ -121,21 +117,6 @@ const SpaceSidebarContent: FC<{
 
 	const stopMutation = useConvexTanstackMutation(api.spaces.stop);
 
-	const previewMutation = useTanstackMutation({
-		mutationFn: async (port: number) => {
-			if (!space.sandboxId) {
-				throw new Error("Space has no sandbox");
-			}
-			const res = await apiClient.sandbox.preview.$get({
-				query: { sandboxId: space.sandboxId, port: String(port) },
-			});
-			const data = await res.json();
-			if ("url" in data) {
-				window.open(data.url, "_blank");
-			}
-		},
-	});
-
 	const { startSandbox, isStopped, isStarted, isTransitioning } =
 		useStartSandbox(space.slug, space.status);
 
@@ -144,16 +125,13 @@ const SpaceSidebarContent: FC<{
 		navigate({
 			to: "/space/$spaceSlug",
 			params: { spaceSlug: space.slug },
-			search: { tab: serializeTab({ type: "terminal", id: terminalId }) },
+			search: {
+				tab: serializeTab({
+					type: "terminal",
+					id: createTabId("terminal", terminalId),
+				}),
+			},
 		});
-	};
-
-	const handleOpenPreview = () => {
-		const port = Number.parseInt(previewPort, 10);
-		if (Number.isNaN(port) || port < 1 || port > 65_535 || !space.sandboxId) {
-			return;
-		}
-		previewMutation.mutate(port);
 	};
 
 	const handleCopySandboxId = () => {
@@ -255,33 +233,6 @@ const SpaceSidebarContent: FC<{
 					Copy Sandbox ID
 				</Button>
 			)}
-			{space.sandboxId && space.status === "running" && (
-				<div className="flex gap-2">
-					<Input
-						className="w-20"
-						max={65_535}
-						min={1}
-						onChange={(e) => setPreviewPort(e.target.value)}
-						placeholder="Port"
-						type="number"
-						value={previewPort}
-					/>
-					<Button
-						className="flex-1 gap-2"
-						disabled={previewMutation.isPending}
-						onClick={handleOpenPreview}
-						size="sm"
-						variant="outline"
-					>
-						{previewMutation.isPending ? (
-							<LoaderIcon className="size-4 animate-spin" />
-						) : (
-							<GlobeIcon className="size-4" />
-						)}
-						{previewMutation.isPending ? "Loading..." : "Open Preview"}
-					</Button>
-				</div>
-			)}
 			{isStarted && (
 				<SandboxCountdown actor={actor} expiresAt={space.sandboxExpiresAt} />
 			)}
@@ -292,7 +243,7 @@ const SpaceSidebarContent: FC<{
 const DevServerButtons: FC<{
 	space: Space;
 	actor: SpaceActor;
-	tabs: SpaceTab[];
+	tabs: TabRow[];
 }> = ({ space, actor, tabs }) => {
 	const devServerMutation = useTanstackMutation({
 		mutationFn: async (action: "start" | "kill") => {
@@ -309,7 +260,8 @@ const DevServerButtons: FC<{
 
 	const hasDevCommand = !!space.environment.devCommand;
 	const isDevServerRunning = tabs.some(
-		(tab) => tab.type === "terminal" && tab.terminalId === "devserver"
+		(tab) =>
+			tab.type === "terminal" && parseTabEntityIdFromRow(tab) === "devserver"
 	);
 
 	if (!hasDevCommand) {

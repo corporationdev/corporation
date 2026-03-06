@@ -1,14 +1,14 @@
-import type { SpaceTab } from "@corporation/server/space";
+import type { TabRow } from "@corporation/server/space";
 import type { ReactNode } from "react";
-import { PreviewView } from "@/components/preview-view";
 import { SessionView } from "@/components/session-view";
 import { TerminalView } from "@/components/terminal-view";
 import type { SpaceActor } from "@/lib/rivetkit";
+import { parseTabEntityId, parseTabEntityIdFromRow } from "@/lib/tab-id";
 
 type TabRenderContext = {
 	actor: SpaceActor;
-	tab: SpaceTab | undefined;
-	routeParamId: string | undefined;
+	tab: TabRow | undefined;
+	routeTabId: string | undefined;
 	spaceSlug: string;
 };
 
@@ -21,46 +21,54 @@ type BaseTabConfig<TType extends string> = {
 	requiresSandbox: boolean;
 	defaultTitle: string;
 	render: (context: TabRenderContext) => ReactNode;
-	tabParamFromSpaceTab: (
-		tab: SpaceTab
-	) => { type: TType; id: string } | undefined;
+	tabParamFromTab: (tab: TabRow) => { type: TType; id: string } | undefined;
 };
 
 type TabConfigMap = {
 	session: BaseTabConfig<"session">;
 	terminal: BaseTabConfig<"terminal">;
-	preview: BaseTabConfig<"preview">;
 };
 
 export const tabRegistry: TabConfigMap = {
 	session: {
 		requiresSandbox: false,
 		defaultTitle: "New Chat",
-		render: ({ actor, tab, routeParamId, spaceSlug }) => {
-			const sessionTab = tab?.type === "session" ? tab : undefined;
+		render: ({ actor, tab, routeTabId, spaceSlug }) => {
+			const sessionId =
+				tab?.type === "session"
+					? parseTabEntityIdFromRow(tab)
+					: routeTabId
+						? parseTabEntityId(routeTabId, "session")
+						: undefined;
+			if (routeTabId && !sessionId) {
+				return null;
+			}
 			return (
 				<SessionView
 					actor={actor}
-					key={routeParamId}
-					sessionId={routeParamId}
-					sessionTab={sessionTab}
+					key={sessionId ?? routeTabId}
+					sessionId={sessionId}
 					spaceSlug={spaceSlug}
 				/>
 			);
 		},
-		tabParamFromSpaceTab: (tab) => {
+		tabParamFromTab: (tab) => {
 			if (tab.type !== "session") {
 				return undefined;
 			}
-			return { type: "session", id: tab.sessionId };
+			return { type: "session", id: tab.id };
 		},
 	},
 	terminal: {
 		requiresSandbox: true,
 		defaultTitle: "Terminal",
-		render: ({ actor, tab, routeParamId }) => {
+		render: ({ actor, tab, routeTabId }) => {
 			const terminalId =
-				tab?.type === "terminal" ? tab.terminalId : routeParamId;
+				tab?.type === "terminal"
+					? parseTabEntityIdFromRow(tab)
+					: routeTabId
+						? parseTabEntityId(routeTabId, "terminal")
+						: undefined;
 			if (!terminalId) {
 				return null;
 			}
@@ -68,27 +76,11 @@ export const tabRegistry: TabConfigMap = {
 				<TerminalView actor={actor} key={terminalId} terminalId={terminalId} />
 			);
 		},
-		tabParamFromSpaceTab: (tab) => {
+		tabParamFromTab: (tab) => {
 			if (tab.type !== "terminal") {
 				return undefined;
 			}
-			return { type: "terminal", id: tab.terminalId };
-		},
-	},
-	preview: {
-		requiresSandbox: true,
-		defaultTitle: "Preview",
-		render: ({ tab }) => {
-			if (tab?.type !== "preview") {
-				return null;
-			}
-			return <PreviewView key={tab.previewId} url={tab.url} />;
-		},
-		tabParamFromSpaceTab: (tab) => {
-			if (tab.type !== "preview") {
-				return undefined;
-			}
-			return { type: "preview", id: tab.previewId };
+			return { type: "terminal", id: tab.id };
 		},
 	},
 };

@@ -5,7 +5,6 @@ import { normalizeBranchName, quoteShellArg } from "./git";
 
 export const SANDBOX_AGENT_PORT = 5799;
 export const CODE_SERVER_PORT = 8080;
-export const SANDBOX_AGENT_ACP_REQUEST_TIMEOUT_MS = 60 * 60_000;
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 

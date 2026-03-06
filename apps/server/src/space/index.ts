@@ -1,35 +1,29 @@
 import { env } from "@corporation/env/server";
-import { createLogger } from "@corporation/logger";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
-import { SandboxAgent as SandboxAgentClient } from "sandbox-agent";
-import bundledMigrations from "./db/migrations/migrations.js";
-import { type SpaceTab, schema, tabs } from "./db/schema";
+import bundledMigrations from "../db/migrations/migrations";
+import { schema, type TabRow, tabs } from "../db/schema";
 import {
-	augmentContext,
 	collectDriverActions,
-} from "./space/action-registration";
-import { lifecycleDrivers } from "./space/driver-registry";
-import {
-	createSubscriptionHub,
-	unsubscribeConnection,
-} from "./space/subscriptions";
-import type { PersistedState, SpaceVars } from "./space/types";
+	refreshSandboxTimeout,
+} from "./action-registration";
 
-export type {
-	PreviewTab,
-	SessionTab,
-	SpaceTab,
-	TabType,
-	TerminalTab,
-} from "./db/schema";
+import { createSubscriptionHub, unsubscribeConnection } from "./subscriptions";
+import { broadcastTabsChanged, listSpaceTabs } from "./tab-list";
+import type { PersistedState, SpaceVars } from "./types";
+
+export type { TabRow, TabType } from "../db/schema";
+
+import { sessionDriver } from "./session-driver";
+import { terminalDriver } from "./terminal-driver";
+
+export const lifecycleDrivers = [sessionDriver, terminalDriver];
 
 const driverActions = collectDriverActions(lifecycleDrivers);
-const log = createLogger("space:lifecycle");
 
 export const space = actor({
 	createState: (
@@ -53,7 +47,6 @@ export const space = actor({
 	},
 
 	createVars: async (c, driverCtx: DriverContext): Promise<SpaceVars> => {
-		const startedAt = Date.now();
 		const db = drizzle(driverCtx.state.storage, { schema });
 
 		await migrate(db, bundledMigrations);
@@ -62,9 +55,6 @@ export const space = actor({
 			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const sandboxClient = await SandboxAgentClient.connect({
-			baseUrl: c.state.agentUrl,
-		});
 		const sandbox = await Sandbox.connect(c.state.sandboxId, {
 			apiKey: env.E2B_API_KEY,
 		});
@@ -72,50 +62,27 @@ export const space = actor({
 		const vars: SpaceVars = {
 			db,
 			sandbox,
-			sandboxClient,
 			terminalHandles: new Map(),
 			terminalEnsures: new Map(),
 			terminalOpenActions: new Map(),
 			lastTerminalSnapshotAt: new Map(),
 			subscriptions: createSubscriptionHub(),
 			lastTimeoutRefreshAt: 0,
+			agentRunnerSequenceBySessionId: new Map(),
 		};
 
-		log.info(
-			{
-				actorKey: c.key.join("/"),
-				durationMs: Date.now() - startedAt,
-			},
-			"space.create-vars.ok"
-		);
 		return vars;
 	},
 
-	onWake: async (c) => {
-		const startedAt = Date.now();
-		const runtime = augmentContext(c, lifecycleDrivers);
-		try {
-			for (const driver of lifecycleDrivers) {
-				await driver.onWake?.(runtime);
-			}
+	onBeforeActionResponse: (c, _name, _args, output) => {
+		refreshSandboxTimeout(c);
+		return output;
+	},
 
-			log.info(
-				{
-					actorId: runtime.actorId,
-					durationMs: Date.now() - startedAt,
-				},
-				"space.on-wake.ok"
-			);
-		} catch (error) {
-			log.error(
-				{
-					actorId: runtime.actorId,
-					durationMs: Date.now() - startedAt,
-					err: error,
-				},
-				"space.on-wake.failed"
-			);
-			throw error;
+	onWake: async (c) => {
+		refreshSandboxTimeout(c);
+		for (const driver of lifecycleDrivers) {
+			await driver.onWake?.(c);
 		}
 	},
 
@@ -135,42 +102,23 @@ export const space = actor({
 	},
 
 	actions: {
-		listTabs: async (c): Promise<SpaceTab[]> => {
-			const ctx = augmentContext(c, lifecycleDrivers);
-			const allTabs = (
-				await Promise.all(
-					lifecycleDrivers.map((driver) => driver.listTabs(ctx))
-				)
-			).flat();
-
-			allTabs.sort((left, right) => {
-				if (left.updatedAt !== right.updatedAt) {
-					return right.updatedAt - left.updatedAt;
-				}
-				return left.createdAt - right.createdAt;
-			});
-
-			return allTabs;
-		},
+		listTabs: (c): Promise<TabRow[]> => listSpaceTabs(c),
 		closeTab: async (c, tabId: string) => {
-			const ctx = augmentContext(c, lifecycleDrivers);
-			await ctx.vars.db
+			await c.vars.db
 				.update(tabs)
 				.set({ active: false, updatedAt: Date.now() })
 				.where(eq(tabs.id, tabId));
-			await ctx.broadcastTabsChanged();
+			await broadcastTabsChanged(c);
 		},
 		archiveTab: async (c, tabId: string) => {
-			const ctx = augmentContext(c, lifecycleDrivers);
-			await ctx.vars.db
+			await c.vars.db
 				.update(tabs)
 				.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
 				.where(eq(tabs.id, tabId));
-			await ctx.broadcastTabsChanged();
+			await broadcastTabsChanged(c);
 		},
 		resetTimeout: (c) => {
 			c.vars.lastTimeoutRefreshAt = 0;
-			augmentContext(c, lifecycleDrivers);
 		},
 		...driverActions,
 	},

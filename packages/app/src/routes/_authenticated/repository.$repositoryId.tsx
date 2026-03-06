@@ -10,6 +10,7 @@ import { ChatInput } from "@/components/chat/chat-input";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import agentModelsData from "@/data/agent-models.json";
+import { createTabId } from "@/lib/tab-id";
 import { serializeTab } from "@/lib/tab-routing";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
@@ -69,7 +70,10 @@ const NewSpaceView: FC<{
 			to: "/space/$spaceSlug",
 			params: { spaceSlug },
 			search: {
-				tab: serializeTab({ type: "session", id: sessionId }),
+				tab: serializeTab({
+					type: "session",
+					id: createTabId("session", sessionId),
+				}),
 			},
 		});
 	}, [

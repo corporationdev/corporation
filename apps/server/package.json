@@ -7,7 +7,7 @@
     ".": "./src/index.ts",
     "./app": "./src/app.ts",
     "./registry": "./src/registry.ts",
-    "./space": "./src/space.ts"
+    "./space": "./src/space/index.ts"
   },
   "scripts": {
     "check-types": "tsc -b",
@@ -19,6 +19,7 @@
     "@corporation/backend": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
+    "@corporation/shared": "workspace:*",
     "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@nangohq/node": "catalog:",
@@ -30,8 +31,7 @@
     "nanoid": "catalog:",
     "octokit": "catalog:",
     "zod": "catalog:",
-    "rivetkit": "catalog:",
-    "sandbox-agent": "catalog:"
+    "rivetkit": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

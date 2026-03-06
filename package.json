@@ -4,7 +4,8 @@
   "workspaces": {
     "packages": [
       "apps/*",
-      "packages/*"
+      "packages/*",
+      "scripts/corp-agent"
     ],
     "catalog": {
       "@base-ui/react": "^1.0.0",
@@ -55,8 +56,6 @@
       "react-resizable-panels": "^4.6.4",
       "remark-gfm": "^4.0.1",
       "rivetkit": "^2.0.42",
-      "@sandbox-agent/persist-rivet": "^0.2.0",
-      "sandbox-agent": "^0.2.1",
       "shadcn": "^3.6.2",
       "sonner": "^2.0.5",
       "@streamdown/code": "^1.0.3",
@@ -92,7 +91,9 @@
     "fix:force": "ultracite fix --unsafe",
     "db:generate": "turbo db:generate",
     "setup": "bun scripts/setup.ts",
-    "sync:turn-runner": "bun scripts/sync-turn-runner.ts",
+    "build:corp-agent": "bun build --compile --target=bun-linux-x64 scripts/corp-agent/corp-agent.ts --outfile scripts/corp-agent/dist/corp-agent",
+    "sync:corp-agent": "bun scripts/sync-corp-agent.ts",
+    "logs:corp-agent": "bun scripts/corp-agent-logs.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:models": "bun scripts/generate-agent-models.ts"
   },
