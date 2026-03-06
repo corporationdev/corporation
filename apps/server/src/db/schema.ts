@@ -76,15 +76,11 @@ type SharedTabFields = Pick<
 export type SessionTab = SharedTabFields & {
 	type: "session";
 	sessionId: string;
-	agent: string | null;
-	modelId: string | null;
 };
 
 export type TerminalTab = SharedTabFields & {
 	type: "terminal";
 	terminalId: TerminalRow["id"];
-	cols: TerminalRow["cols"];
-	rows: TerminalRow["rows"];
 };
 
 export type SpaceTab = SessionTab | TerminalTab;

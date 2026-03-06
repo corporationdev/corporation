@@ -17,6 +17,7 @@ import {
 	createSubscriptionHub,
 	unsubscribeConnection,
 } from "./space/subscriptions";
+import { listSpaceTabs } from "./space/tab-list";
 import type { PersistedState, SpaceVars } from "./space/types";
 
 export type { SessionTab, SpaceTab, TabType, TerminalTab } from "./db/schema";
@@ -83,7 +84,7 @@ export const space = actor({
 
 	onWake: async (c) => {
 		const startedAt = Date.now();
-		const runtime = augmentContext(c, lifecycleDrivers);
+		const runtime = augmentContext(c);
 		try {
 			for (const driver of lifecycleDrivers) {
 				await driver.onWake?.(runtime);
@@ -126,13 +127,8 @@ export const space = actor({
 
 	actions: {
 		listTabs: async (c): Promise<SpaceTab[]> => {
-			const ctx = augmentContext(c, lifecycleDrivers);
-			const allTabs = (
-				await Promise.all(
-					lifecycleDrivers.map((driver) => driver.listTabs(ctx))
-				)
-			).flat();
-
+			const ctx = augmentContext(c);
+			const allTabs = await listSpaceTabs(ctx);
 			allTabs.sort((left, right) => {
 				if (left.updatedAt !== right.updatedAt) {
 					return right.updatedAt - left.updatedAt;
@@ -143,7 +139,7 @@ export const space = actor({
 			return allTabs;
 		},
 		closeTab: async (c, tabId: string) => {
-			const ctx = augmentContext(c, lifecycleDrivers);
+			const ctx = augmentContext(c);
 			await ctx.vars.db
 				.update(tabs)
 				.set({ active: false, updatedAt: Date.now() })
@@ -151,7 +147,7 @@ export const space = actor({
 			await ctx.broadcastTabsChanged();
 		},
 		archiveTab: async (c, tabId: string) => {
-			const ctx = augmentContext(c, lifecycleDrivers);
+			const ctx = augmentContext(c);
 			await ctx.vars.db
 				.update(tabs)
 				.set({ active: false, archivedAt: Date.now(), updatedAt: Date.now() })
@@ -160,7 +156,7 @@ export const space = actor({
 		},
 		resetTimeout: (c) => {
 			c.vars.lastTimeoutRefreshAt = 0;
-			augmentContext(c, lifecycleDrivers);
+			augmentContext(c);
 		},
 		...driverActions,
 	},

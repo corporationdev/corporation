@@ -1,5 +1,4 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { SessionTab } from "@corporation/server/space";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { ListIcon } from "lucide-react";
@@ -26,16 +25,14 @@ const INITIAL_MODEL =
 export const SessionView: FC<{
 	actor: SpaceActor;
 	sessionId?: string;
-	sessionTab?: SessionTab;
 	spaceSlug: string;
-}> = ({ actor, sessionId, sessionTab, spaceSlug }) => {
+}> = ({ actor, sessionId, spaceSlug }) => {
 	if (sessionId) {
 		return (
 			<ConnectedSessionView
 				actor={actor}
 				key={sessionId}
 				sessionId={sessionId}
-				sessionTab={sessionTab}
 				spaceSlug={spaceSlug}
 			/>
 		);
@@ -100,16 +97,13 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 
 export const ConnectedSessionView: FC<{
 	sessionId: string;
-	sessionTab?: SessionTab;
 	spaceSlug: string;
 	actor: SpaceActor;
-}> = ({ sessionId, sessionTab, spaceSlug, actor }) => {
+}> = ({ sessionId, spaceSlug, actor }) => {
 	const [message, setMessage] = useState("");
 	const [showEvents, setShowEvents] = useState(false);
 	const [agentOverride, setAgentOverride] = useState<string | null>(null);
 	const [modelIdOverride, setModelIdOverride] = useState<string | null>(null);
-	const agent = agentOverride ?? sessionTab?.agent ?? INITIAL_AGENT;
-	const modelId = modelIdOverride ?? sessionTab?.modelId ?? INITIAL_MODEL;
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumeMessage = usePendingMessageStore((s) => s.consumeMessage);
@@ -117,6 +111,8 @@ export const ConnectedSessionView: FC<{
 	const touchSpace = useMutation(api.spaces.touch);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const sessionState = useSessionEventState({ sessionId, actor });
+	const agent = agentOverride ?? sessionState.agent ?? INITIAL_AGENT;
+	const modelId = modelIdOverride ?? sessionState.modelId ?? INITIAL_MODEL;
 	const addOptimisticUserMessage = sessionState.addOptimisticUserMessage;
 	const removeOptimisticUserMessage = sessionState.removeOptimisticUserMessage;
 	const setSessionStatus = sessionState.setStatus;

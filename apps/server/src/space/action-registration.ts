@@ -1,11 +1,11 @@
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
-import type { SpaceTab } from "../db/schema";
 import type {
 	DriverAction,
 	DriverActionMap,
 	TabDriverLifecycle,
 } from "./driver-types";
+import { listSpaceTabs } from "./tab-list";
 import type { SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:keepalive");
@@ -61,26 +61,11 @@ export function refreshSandboxTimeout(runtime: SpaceRuntimeContext): void {
 		});
 }
 
-async function getAllTabs(
-	drivers: readonly TabDriverLifecycle<DriverActionMap>[],
-	ctx: SpaceRuntimeContext
-): Promise<SpaceTab[]> {
-	const allTabs = (
-		await Promise.all(drivers.map((driver) => driver.listTabs(ctx)))
-	).flat();
-
-	allTabs.sort((left, right) => left.createdAt - right.createdAt);
-
-	return allTabs;
-}
-
-export function augmentContext(
-	ctx: unknown,
-	drivers: readonly TabDriverLifecycle<DriverActionMap>[]
-): SpaceRuntimeContext {
+export function augmentContext(ctx: unknown): SpaceRuntimeContext {
 	const runtime = ctx as SpaceRuntimeContext;
 	runtime.broadcastTabsChanged = async () => {
-		const allTabs = await getAllTabs(drivers, runtime);
+		const allTabs = await listSpaceTabs(runtime);
+		allTabs.sort((left, right) => left.createdAt - right.createdAt);
 		runtime.broadcast("tabs.changed", allTabs);
 	};
 	refreshSandboxTimeout(runtime);
@@ -140,7 +125,7 @@ export function collectDriverActions<
 
 			assertNoCollision(actions, actionName, `${driver.kind}.publicActions`);
 			actions[actionName] = (ctx, ...args: never[]) =>
-				actionHandler(augmentContext(ctx, drivers), ...args);
+				actionHandler(augmentContext(ctx), ...args);
 		}
 	}
 

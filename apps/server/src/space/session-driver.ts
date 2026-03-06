@@ -3,9 +3,9 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import type { SessionEvent } from "@corporation/shared/session-protocol";
 import { generateText, Output } from "ai";
-import { and, asc, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { z } from "zod";
-import { type SessionTab, sessionEvents, sessions, tabs } from "../db/schema";
+import { sessionEvents, sessions, tabs } from "../db/schema";
 import {
 	ingestAgentRunnerBatch,
 	publishSessionStatus,
@@ -267,7 +267,12 @@ async function getSessionState(
 	sessionId: string,
 	afterEventIndex: number,
 	limit?: number
-): Promise<{ events: SessionEvent[]; status: string }> {
+): Promise<{
+	events: SessionEvent[];
+	status: string;
+	agent: string | null;
+	modelId: string | null;
+}> {
 	const conditions = [eq(sessionEvents.sessionId, sessionId)];
 	if (afterEventIndex > 0) {
 		conditions.push(gt(sessionEvents.eventIndex, afterEventIndex));
@@ -281,14 +286,23 @@ async function getSessionState(
 			.orderBy(asc(sessionEvents.eventIndex))
 			.limit(limit ?? 100),
 		ctx.vars.db
-			.select({ status: sessions.status })
+			.select({
+				status: sessions.status,
+				agent: sessions.agent,
+				modelId: sessions.modelId,
+			})
 			.from(sessions)
 			.where(eq(sessions.id, sessionId))
 			.limit(1),
 	]);
 
 	const status = session?.status ?? "idle";
-	return { events, status };
+	return {
+		events,
+		status,
+		agent: session?.agent ?? null,
+		modelId: session?.modelId ?? null,
+	};
 }
 
 async function openSessionFeed(
@@ -296,7 +310,13 @@ async function openSessionFeed(
 	sessionId: string,
 	afterEventIndex = 0,
 	limit?: number
-): Promise<{ events: SessionEvent[]; status: string; lastEventIndex: number }> {
+): Promise<{
+	events: SessionEvent[];
+	status: string;
+	agent: string | null;
+	modelId: string | null;
+	lastEventIndex: number;
+}> {
 	if (!ctx.conn) {
 		throw new Error("Session feed requires an active connection");
 	}
@@ -307,7 +327,7 @@ async function openSessionFeed(
 		ctx.conn.id
 	);
 
-	const { events, status } = await getSessionState(
+	const { events, status, agent, modelId } = await getSessionState(
 		ctx,
 		sessionId,
 		afterEventIndex,
@@ -315,7 +335,7 @@ async function openSessionFeed(
 	);
 	const lastEventIndex =
 		events.at(-1)?.eventIndex ?? Math.max(0, afterEventIndex);
-	return { events, status, lastEventIndex };
+	return { events, status, agent, modelId, lastEventIndex };
 }
 
 function closeSessionFeed(ctx: SpaceRuntimeContext, sessionId: string): void {
@@ -328,57 +348,6 @@ function closeSessionFeed(ctx: SpaceRuntimeContext, sessionId: string): void {
 		createTabChannel("session", sessionId),
 		ctx.conn.id
 	);
-}
-
-async function listTabs(ctx: SpaceRuntimeContext): Promise<SessionTab[]> {
-	const [rows, sessionRows] = await Promise.all([
-		ctx.vars.db
-			.select({
-				tabId: tabs.id,
-				title: tabs.title,
-				active: tabs.active,
-				sessionId: tabs.sessionId,
-				createdAt: tabs.createdAt,
-				updatedAt: tabs.updatedAt,
-				archivedAt: tabs.archivedAt,
-			})
-			.from(tabs)
-			.where(
-				and(
-					eq(tabs.type, "session"),
-					eq(tabs.active, true),
-					isNull(tabs.archivedAt),
-					isNotNull(tabs.sessionId)
-				)
-			)
-			.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt)),
-		ctx.vars.db
-			.select({
-				id: sessions.id,
-				agent: sessions.agent,
-				modelId: sessions.modelId,
-			})
-			.from(sessions),
-	]);
-
-	const sessionsByKey = new Map(sessionRows.map((s) => [s.id, s]));
-
-	return rows.map((row) => {
-		const sessionId = row.sessionId as string;
-		const record = sessionsByKey.get(sessionId);
-		return {
-			id: row.tabId,
-			type: "session" as const,
-			title: row.title,
-			active: row.active,
-			createdAt: row.createdAt,
-			updatedAt: row.updatedAt,
-			archivedAt: row.archivedAt,
-			sessionId,
-			agent: record?.agent ?? null,
-			modelId: record?.modelId ?? null,
-		};
-	});
 }
 
 type SessionPublicActions = {
@@ -402,6 +371,8 @@ type SessionPublicActions = {
 	) => Promise<{
 		events: SessionEvent[];
 		status: string;
+		agent: string | null;
+		modelId: string | null;
 		lastEventIndex: number;
 	}>;
 	closeSessionFeed: (ctx: SpaceRuntimeContext, sessionId: string) => void;
@@ -413,7 +384,6 @@ type SessionDriver = TabDriverLifecycle<SessionPublicActions> & {
 
 export const sessionDriver: SessionDriver = {
 	kind: "session",
-	listTabs,
 	publicActions: {
 		sendMessage,
 		ingestAgentRunnerBatch,

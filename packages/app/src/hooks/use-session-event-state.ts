@@ -11,6 +11,8 @@ export type SessionState = {
 	entries: TimelineEntry[];
 	rawEvents: SessionEvent[];
 	status: string;
+	agent: string | null;
+	modelId: string | null;
 	setStatus: (status: string) => void;
 	addOptimisticUserMessage: (message: {
 		clientId: string;
@@ -29,10 +31,18 @@ async function loadSessionState(
 	conn: SpaceActorConnection,
 	sessionId: string,
 	isCancelled: () => boolean
-): Promise<{ events: SessionEvent[]; status: string; lastEventIndex: number }> {
+): Promise<{
+	events: SessionEvent[];
+	status: string;
+	agent: string | null;
+	modelId: string | null;
+	lastEventIndex: number;
+}> {
 	const events: SessionEvent[] = [];
 	let lastEventIndex = 0;
 	let status = "idle";
+	let agent: string | null = null;
+	let modelId: string | null = null;
 
 	while (true) {
 		if (isCancelled()) {
@@ -51,6 +61,8 @@ async function loadSessionState(
 
 		// Update status from the latest response
 		status = result.status;
+		agent = result.agent;
+		modelId = result.modelId;
 
 		if (result.events.length === 0) {
 			break;
@@ -63,7 +75,7 @@ async function loadSessionState(
 		}
 	}
 
-	return { events, status, lastEventIndex };
+	return { events, status, agent, modelId, lastEventIndex };
 }
 
 function sortSessionEvents(events: SessionEvent[]): void {
@@ -386,6 +398,8 @@ export function useSessionEventState({
 		OptimisticUserMessage[]
 	>([]);
 	const [sessionStatus, setSessionStatus] = useState<string>("idle");
+	const [sessionAgent, setSessionAgent] = useState<string | null>(null);
+	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
 
 	const addEvents = useCallback((newEvents: SessionEvent[]) => {
 		const unseen: SessionEvent[] = [];
@@ -410,6 +424,8 @@ export function useSessionEventState({
 		setEvents([]);
 		setOptimisticMessages([]);
 		setSessionStatus("idle");
+		setSessionAgent(null);
+		setSessionModelId(null);
 	}, [sessionId]);
 
 	const addOptimisticUserMessage = useCallback(
@@ -455,17 +471,20 @@ export function useSessionEventState({
 
 		const conn = actor.connection;
 		(async () => {
-			const { events: loaded, status } = await loadSessionState(
-				conn,
-				sessionId,
-				() => isCancelled
-			);
+			const {
+				events: loaded,
+				status,
+				agent,
+				modelId,
+			} = await loadSessionState(conn, sessionId, () => isCancelled);
 			if (isCancelled) {
 				return;
 			}
 			sortSessionEvents(loaded);
 			addEvents(loaded);
 			setSessionStatus(bufferedStatusRef.current ?? status);
+			setSessionAgent(agent);
+			setSessionModelId(modelId);
 			bufferedStatusRef.current = null;
 			addEvents(bufferRef.current);
 			bufferRef.current = [];
@@ -557,6 +576,8 @@ export function useSessionEventState({
 		entries,
 		rawEvents: events,
 		status: sessionStatus,
+		agent: sessionAgent,
+		modelId: sessionModelId,
 		setStatus: setSessionStatus,
 		addOptimisticUserMessage,
 		removeOptimisticUserMessage,

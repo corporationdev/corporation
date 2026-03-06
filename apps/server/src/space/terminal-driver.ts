@@ -1,7 +1,7 @@
 import { createLogger } from "@corporation/logger";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
-import { type TerminalTab, tabs, terminals } from "../db/schema";
+import { tabs, terminals } from "../db/schema";
 import { createTabChannel, createTabId } from "./channels";
 import type { TabDriverLifecycle } from "./driver-types";
 import {
@@ -535,48 +535,6 @@ async function resize(
 	}
 }
 
-async function listTabs(ctx: SpaceRuntimeContext): Promise<TerminalTab[]> {
-	const rows = await ctx.vars.db
-		.select({
-			tabId: tabs.id,
-			type: tabs.type,
-			title: tabs.title,
-			active: tabs.active,
-			createdAt: tabs.createdAt,
-			updatedAt: tabs.updatedAt,
-			archivedAt: tabs.archivedAt,
-			terminalId: terminals.id,
-			terminalCols: terminals.cols,
-			terminalRows: terminals.rows,
-		})
-		.from(tabs)
-		.innerJoin(terminals, eq(tabs.id, terminals.tabId))
-		.where(
-			and(
-				eq(tabs.type, "terminal"),
-				eq(tabs.active, true),
-				isNull(tabs.archivedAt)
-			)
-		)
-		.orderBy(desc(tabs.updatedAt), asc(tabs.createdAt));
-
-	return rows.map((row) => {
-		const tab: TerminalTab = {
-			id: row.tabId,
-			type: "terminal",
-			title: row.title,
-			active: row.active,
-			createdAt: row.createdAt,
-			updatedAt: row.updatedAt,
-			archivedAt: row.archivedAt,
-			terminalId: row.terminalId,
-			cols: row.terminalCols,
-			rows: row.terminalRows,
-		};
-		return tab;
-	});
-}
-
 async function startDevServerAction(
 	ctx: SpaceRuntimeContext,
 	devCommand: string
@@ -616,7 +574,7 @@ async function openTerminalAction(
 	terminalId: string,
 	cols?: number,
 	rows?: number
-): Promise<void> {
+): Promise<{ cols: number; rows: number }> {
 	if (!ctx.conn) {
 		throw new Error("Terminal subscriptions require an active connection");
 	}
@@ -626,7 +584,15 @@ async function openTerminalAction(
 	const existingOpenAction = ctx.vars.terminalOpenActions.get(openActionKey);
 	if (existingOpenAction) {
 		await existingOpenAction;
-		return;
+		const [terminal] = await ctx.vars.db
+			.select({ cols: terminals.cols, rows: terminals.rows })
+			.from(terminals)
+			.where(eq(terminals.id, terminalId))
+			.limit(1);
+		return {
+			cols: terminal?.cols ?? DEFAULT_TERMINAL_COLS,
+			rows: terminal?.rows ?? DEFAULT_TERMINAL_ROWS,
+		};
 	}
 
 	const openAction = (async () => {
@@ -639,20 +605,16 @@ async function openTerminalAction(
 		const hadHandle = ctx.vars.terminalHandles.has(terminalId);
 		await ensureTerminal(ctx, terminalId, cols, rows);
 
-		if (!hadHandle) {
-			return;
+		if (hadHandle) {
+			const now = Date.now();
+			const snapshotKey = connectionTerminalKey(connId, terminalId);
+			const lastSnapshotAt =
+				ctx.vars.lastTerminalSnapshotAt.get(snapshotKey) ?? 0;
+			if (now - lastSnapshotAt >= SNAPSHOT_DEBOUNCE_MS) {
+				await sendTerminalSnapshotToConnection(ctx, terminalId);
+				ctx.vars.lastTerminalSnapshotAt.set(snapshotKey, now);
+			}
 		}
-
-		const now = Date.now();
-		const snapshotKey = connectionTerminalKey(connId, terminalId);
-		const lastSnapshotAt =
-			ctx.vars.lastTerminalSnapshotAt.get(snapshotKey) ?? 0;
-		if (now - lastSnapshotAt < SNAPSHOT_DEBOUNCE_MS) {
-			return;
-		}
-
-		await sendTerminalSnapshotToConnection(ctx, terminalId);
-		ctx.vars.lastTerminalSnapshotAt.set(snapshotKey, now);
 	})();
 
 	ctx.vars.terminalOpenActions.set(openActionKey, openAction);
@@ -663,6 +625,16 @@ async function openTerminalAction(
 			ctx.vars.terminalOpenActions.delete(openActionKey);
 		}
 	}
+
+	const [terminal] = await ctx.vars.db
+		.select({ cols: terminals.cols, rows: terminals.rows })
+		.from(terminals)
+		.where(eq(terminals.id, terminalId))
+		.limit(1);
+	return {
+		cols: terminal?.cols ?? DEFAULT_TERMINAL_COLS,
+		rows: terminal?.rows ?? DEFAULT_TERMINAL_ROWS,
+	};
 }
 
 function closeTerminalAction(
@@ -802,7 +774,7 @@ type TerminalPublicActions = {
 		terminalId: string,
 		cols?: number,
 		rows?: number
-	) => Promise<void>;
+	) => Promise<{ cols: number; rows: number }>;
 	closeTerminal: (ctx: SpaceRuntimeContext, terminalId: string) => void;
 	input: (
 		ctx: SpaceRuntimeContext,
@@ -829,7 +801,6 @@ type TerminalDriver = TabDriverLifecycle<TerminalPublicActions> & {
 export const terminalDriver: TerminalDriver = {
 	kind: "terminal",
 	onWake,
-	listTabs,
 	publicActions: {
 		openTerminal: openTerminalAction,
 		closeTerminal: closeTerminalAction,

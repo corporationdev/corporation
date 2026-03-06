@@ -34,14 +34,12 @@ export const tabRegistry: TabConfigMap = {
 	session: {
 		requiresSandbox: false,
 		defaultTitle: "New Chat",
-		render: ({ actor, tab, routeParamId, spaceSlug }) => {
-			const sessionTab = tab?.type === "session" ? tab : undefined;
+		render: ({ actor, routeParamId, spaceSlug }) => {
 			return (
 				<SessionView
 					actor={actor}
 					key={routeParamId}
 					sessionId={routeParamId}
-					sessionTab={sessionTab}
 					spaceSlug={spaceSlug}
 				/>
 			);
