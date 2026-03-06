@@ -47,12 +47,10 @@ export default defineSchema(
 			repositoryId: v.id("repositories"),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),
-			branchName: v.string(),
+			name: v.string(),
 			status: spaceStatusValidator,
-			lastSyncedCommitSha: v.optional(v.string()),
 			error: v.optional(v.string()),
 			archived: v.optional(v.boolean()),
-			sandboxExpiresAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
@@ -68,7 +66,6 @@ export default defineSchema(
 			logsTruncated: v.optional(v.boolean()),
 			error: v.optional(v.string()),
 			externalSnapshotId: v.optional(v.string()),
-			snapshotCommitSha: v.optional(v.string()),
 			startedAt: v.number(),
 			completedAt: v.optional(v.number()),
 		})

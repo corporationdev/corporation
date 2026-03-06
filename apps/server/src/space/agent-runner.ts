@@ -7,7 +7,6 @@ import {
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { sessions } from "../db/schema";
-import { refreshSandboxTimeout } from "./action-registration";
 import {
 	appendSessionEventFrames,
 	appendSessionStatusFrame,
@@ -112,8 +111,6 @@ export async function startAgentRunner(
 		status: "running",
 		reason: "run_started",
 	});
-
-	refreshSandboxTimeout(ctx);
 
 	try {
 		await launchAgentRunner(ctx, {

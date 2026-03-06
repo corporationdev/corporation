@@ -251,7 +251,6 @@ export const completeSnapshot = internalMutation({
 		status: v.union(v.literal("ready"), v.literal("error")),
 		repositoryId: v.optional(v.id("repositories")),
 		externalSnapshotId: v.optional(v.string()),
-		snapshotCommitSha: v.optional(v.string()),
 		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -289,7 +288,6 @@ export const completeSnapshot = internalMutation({
 			status: "ready",
 			completedAt: Date.now(),
 			externalSnapshotId: args.externalSnapshotId,
-			snapshotCommitSha: args.snapshotCommitSha,
 		});
 	},
 });

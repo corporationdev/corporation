@@ -127,14 +127,14 @@ const NOUNS = [
 const ADJECTIVE_SET = new Set(ADJECTIVES);
 const NOUN_SET = new Set(NOUNS);
 
-export function generateBranchName(): string {
+export function generateName(): string {
 	const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
 	const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
 	return `${adjective}-${noun}`;
 }
 
-export function isGeneratedBranchName(branchName: string): boolean {
-	const [adjective, noun, ...rest] = branchName.split("-");
+export function isGeneratedName(name: string): boolean {
+	const [adjective, noun, ...rest] = name.split("-");
 	if (!(adjective && noun) || rest.length > 0) {
 		return false;
 	}

@@ -6,7 +6,6 @@ import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
 import bundledMigrations from "../db/migrations/migrations";
 import { type SessionRow, schema } from "../db/schema";
-import { refreshSandboxTimeout } from "./action-registration";
 import { ingestAgentRunnerBatch } from "./agent-runner";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
@@ -56,20 +55,14 @@ export const space = actor({
 			terminalOpenActions: new Map(),
 			lastTerminalSnapshotAt: new Map(),
 			sessionStreamWaiters: new Map(),
-			lastTimeoutRefreshAt: 0,
 			agentRunnerSequenceBySessionId: new Map(),
 		};
 
 		return vars;
 	},
 
-	onBeforeActionResponse: (c, _name, _args, output) => {
-		refreshSandboxTimeout(c);
+	onBeforeActionResponse: (_c, _name, _args, output) => {
 		return output;
-	},
-
-	onWake: (c) => {
-		refreshSandboxTimeout(c);
 	},
 
 	onDisconnect: (c, conn) => {
@@ -108,8 +101,5 @@ export const space = actor({
 			live?: boolean,
 			timeoutMs?: number
 		) => readSessionStream(c, sessionId, afterOffset, limit, live, timeoutMs),
-		resetTimeout: (c) => {
-			c.vars.lastTimeoutRefreshAt = 0;
-		},
 	},
 });

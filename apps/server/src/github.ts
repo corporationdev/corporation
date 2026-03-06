@@ -79,129 +79,42 @@ const listGitHubReposRoute = createRoute({
 });
 
 // ---------------------------------------------------------------------------
-// GET /latest-shas - Batch fetch latest default branch SHAs
-// ---------------------------------------------------------------------------
-
-const repoParamSchema = z.array(
-	z.object({
-		owner: z.string(),
-		name: z.string(),
-		defaultBranch: z.string(),
-	})
-);
-
-const latestShasRoute = createRoute({
-	method: "get",
-	path: "/latest-shas",
-	middleware: [authMiddleware, githubMiddleware],
-	request: {
-		query: z.object({
-			repos: z.string().openapi({
-				description: "JSON array of {owner, name, defaultBranch} objects",
-			}),
-		}),
-	},
-	responses: {
-		200: {
-			content: {
-				"application/json": {
-					schema: z.object({
-						shas: z.record(z.string(), z.string()),
-					}),
-				},
-			},
-			description: "Map of owner/name to latest commit SHA",
-		},
-		400: {
-			content: {
-				"application/json": {
-					schema: z.object({ error: z.string() }),
-				},
-			},
-			description: "Invalid request",
-		},
-		500: {
-			content: {
-				"application/json": {
-					schema: z.object({ error: z.string() }),
-				},
-			},
-			description: "Failed to fetch SHAs",
-		},
-	},
-});
-
-// ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
 
 export const githubApp = $(
-	new OpenAPIHono<GitHubEnv>()
-		.openapi(listGitHubReposRoute, async (c) => {
-			const octokit = c.get("octokit");
+	new OpenAPIHono<GitHubEnv>().openapi(listGitHubReposRoute, async (c) => {
+		const octokit = c.get("octokit");
 
-			try {
-				const repos = await octokit.paginate(
-					octokit.rest.repos.listForAuthenticatedUser,
-					{
-						per_page: 100,
-						visibility: "all",
-						affiliation: "owner,collaborator,organization_member",
-						sort: "updated",
-						direction: "desc",
-					}
-				);
-
-				return c.json(
-					{
-						repositories: repos.map((repo) => ({
-							id: repo.id,
-							name: repo.name,
-							fullName: repo.full_name,
-							owner: repo.owner.login,
-							defaultBranch: repo.default_branch,
-							private: repo.private,
-							url: repo.html_url,
-						})),
-					},
-					200
-				);
-			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : "Unknown error";
-				return c.json({ error: message }, 500);
-			}
-		})
-		.openapi(latestShasRoute, async (c) => {
-			const octokit = c.get("octokit");
-			const { repos: reposJson } = c.req.valid("query");
-
-			const parsed = repoParamSchema.safeParse(JSON.parse(reposJson));
-			if (!parsed.success) {
-				return c.json({ error: "Invalid repos parameter" }, 400);
-			}
-
-			const results = await Promise.allSettled(
-				parsed.data.map(async (repo) => {
-					const { data } = await octokit.rest.repos.getBranch({
-						owner: repo.owner,
-						repo: repo.name,
-						branch: repo.defaultBranch,
-					});
-					return {
-						key: `${repo.owner}/${repo.name}`,
-						sha: data.commit.sha,
-					};
-				})
+		try {
+			const repos = await octokit.paginate(
+				octokit.rest.repos.listForAuthenticatedUser,
+				{
+					per_page: 100,
+					visibility: "all",
+					affiliation: "owner,collaborator,organization_member",
+					sort: "updated",
+					direction: "desc",
+				}
 			);
 
-			const shas: Record<string, string> = {};
-			for (const result of results) {
-				if (result.status === "fulfilled") {
-					shas[result.value.key] = result.value.sha;
-				}
-			}
-
-			return c.json({ shas }, 200);
-		})
+			return c.json(
+				{
+					repositories: repos.map((repo) => ({
+						id: repo.id,
+						name: repo.name,
+						fullName: repo.full_name,
+						owner: repo.owner.login,
+						defaultBranch: repo.default_branch,
+						private: repo.private,
+						url: repo.html_url,
+					})),
+				},
+				200
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			return c.json({ error: message }, 500);
+		}
+	})
 );

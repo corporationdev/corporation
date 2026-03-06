@@ -17,7 +17,6 @@ export type SpaceVars = {
 	terminalOpenActions: Map<string, Promise<void>>;
 	lastTerminalSnapshotAt: Map<string, number>;
 	sessionStreamWaiters: Map<string, Set<() => void>>;
-	lastTimeoutRefreshAt: number;
 	agentRunnerSequenceBySessionId: Map<string, number>;
 };
 

@@ -29,11 +29,6 @@ type SnapshotReporter = {
 	close: () => Promise<void>;
 };
 
-type SnapshotResult = {
-	externalSnapshotId: string;
-	snapshotCommitSha?: string;
-};
-
 function formatSnapshotError(error: unknown): string {
 	const message =
 		error instanceof Error
@@ -97,7 +92,7 @@ async function runTrackedSnapshot(
 		snapshotId: Id<"snapshots">;
 		type: "setup" | "update";
 		repositoryId: Id<"repositories">;
-		execute: (reporter: SnapshotReporter) => Promise<SnapshotResult>;
+		execute: (reporter: SnapshotReporter) => Promise<string>;
 	}
 ): Promise<void> {
 	const snapshotId = await ctx.runMutation(internal.snapshot.startSnapshot, {
@@ -109,7 +104,7 @@ async function runTrackedSnapshot(
 	const reporter = createSnapshotReporter(ctx, snapshotId);
 
 	try {
-		const result = await args.execute(reporter);
+		const externalSnapshotId = await args.execute(reporter);
 
 		try {
 			await reporter.close();
@@ -126,7 +121,7 @@ async function runTrackedSnapshot(
 			snapshotId,
 			repositoryId: args.repositoryId,
 			status: "ready",
-			...result,
+			externalSnapshotId,
 		});
 	} catch (error) {
 		try {
@@ -243,11 +238,6 @@ export const buildSnapshot = internalAction({
 					onStderr: appendLog,
 				});
 
-				const shaResult = await runRootCommand(sandbox, "git rev-parse HEAD", {
-					cwd: workdir,
-				});
-				const snapshotCommitSha = shaResult.stdout.trim();
-
 				// Setup-only: boot all servers
 				if (request.type === "setup") {
 					await Promise.all([
@@ -272,10 +262,7 @@ export const buildSnapshot = internalAction({
 					const snapshot = await sandbox.createSnapshot();
 					reporter.appendLog(`Snapshot created: ${snapshot.snapshotId}\n`);
 
-					return {
-						externalSnapshotId: snapshot.snapshotId,
-						snapshotCommitSha,
-					};
+					return snapshot.snapshotId;
 				} finally {
 					try {
 						await sandbox.kill();

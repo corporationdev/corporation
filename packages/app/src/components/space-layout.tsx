@@ -2,17 +2,8 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { SessionRow } from "@corporation/server/space";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
-import {
-	ClipboardIcon,
-	HistoryIcon,
-	LoaderIcon,
-	PlayIcon,
-	PlusIcon,
-	SquareIcon,
-	TimerIcon,
-} from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { HistoryIcon, PlusIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SessionView } from "@/components/session-view";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
@@ -24,16 +15,12 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { useErrorToast } from "@/hooks/use-error-toast";
+import { useAutoStartSandbox } from "@/hooks/use-auto-start-sandbox";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
-import { useStartSandbox } from "@/hooks/use-start-sandbox";
 import { addActorConnectionSoftResetListener } from "@/lib/actor-errors";
-import { useConvexTanstackMutation } from "@/lib/convex-mutation";
-import { type SpaceActor, useActor } from "@/lib/rivetkit";
+import { useActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
-
-type SpaceRecord = NonNullable<FunctionReturnType<typeof api.spaces.getBySlug>>;
 
 export function SpaceLayout() {
 	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
@@ -64,6 +51,8 @@ export function SpaceLayout() {
 				setSpaceCreating(false);
 			});
 	}, [consumeSpace, ensureSpace]);
+
+	useAutoStartSandbox(spaceSlug, space?.status);
 
 	const sandboxReady = !!space?.sandboxId && !!space?.agentUrl;
 
@@ -149,7 +138,6 @@ export function SpaceLayout() {
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						<SpaceSandboxControls actor={actor} space={space} />
 						<Button
 							onClick={() =>
 								navigate({
@@ -185,132 +173,6 @@ export function SpaceLayout() {
 				</div>
 			</SidebarInset>
 		</div>
-	);
-}
-
-function SpaceSandboxControls({
-	actor,
-	space,
-}: {
-	actor: SpaceActor;
-	space: SpaceRecord | null | undefined;
-}) {
-	const stopMutation = useConvexTanstackMutation(api.spaces.stop);
-	const { mutate: updateSpace } = useConvexTanstackMutation(api.spaces.update);
-	const { startSandbox, isStarted, isStopped, isTransitioning } =
-		useStartSandbox(space?.slug ?? "", space?.status ?? "");
-	const [minutesLeft, setMinutesLeft] = useState<number | null>(() => {
-		if (!space?.sandboxExpiresAt) {
-			return null;
-		}
-		return Math.max(
-			0,
-			Math.ceil((space.sandboxExpiresAt - Date.now()) / 60_000)
-		);
-	});
-
-	const clearError = useCallback(() => {
-		if (!space) {
-			return;
-		}
-		updateSpace({ id: space._id, error: "" });
-	}, [space, updateSpace]);
-	useErrorToast(space?.error, clearError);
-
-	const isBusy = stopMutation.isPending || isTransitioning;
-	const canToggle = !!space && (isStarted || isStopped);
-	const shouldShowExtendButton =
-		isStarted && minutesLeft !== null && minutesLeft <= 2;
-
-	useEffect(() => {
-		if (!space?.sandboxExpiresAt) {
-			setMinutesLeft(null);
-			return;
-		}
-		const expiresAt = space.sandboxExpiresAt;
-
-		const update = () => {
-			setMinutesLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 60_000)));
-		};
-		update();
-
-		const interval = setInterval(update, 60_000);
-		return () => clearInterval(interval);
-	}, [space?.sandboxExpiresAt]);
-
-	const handleToggleSandbox = () => {
-		if (!space) {
-			return;
-		}
-		if (isStopped) {
-			startSandbox();
-			return;
-		}
-		if (isStarted) {
-			stopMutation.mutate({ id: space._id });
-		}
-	};
-
-	const handleCopyId = () => {
-		if (!space) {
-			return;
-		}
-		const value = space.sandboxId ?? space._id;
-		const label = space.sandboxId ? "Sandbox ID" : "Space ID";
-
-		navigator.clipboard
-			.writeText(value)
-			.then(() => {
-				toast.success(`${label} copied`);
-			})
-			.catch(() => {
-				toast.error(`Failed to copy ${label.toLowerCase()}`);
-			});
-	};
-
-	return (
-		<>
-			<Button
-				disabled={!canToggle || isBusy}
-				onClick={handleToggleSandbox}
-				size="icon"
-				variant="ghost"
-			>
-				{isBusy ? (
-					<LoaderIcon className="size-4 animate-spin" />
-				) : isStopped ? (
-					<PlayIcon className="size-4" />
-				) : (
-					<SquareIcon className="size-4" />
-				)}
-				<span className="sr-only">
-					{isStopped ? "Start sandbox" : "Stop sandbox"}
-				</span>
-			</Button>
-			<Button
-				disabled={!space}
-				onClick={handleCopyId}
-				size="icon"
-				variant="ghost"
-			>
-				<ClipboardIcon className="size-4" />
-				<span className="sr-only">Copy sandbox ID</span>
-			</Button>
-			{shouldShowExtendButton && (
-				<Button
-					onClick={() => actor.connection?.resetTimeout()}
-					size="icon"
-					variant="ghost"
-				>
-					<TimerIcon className="size-4" />
-					<span className="sr-only">
-						{minutesLeft === 0
-							? "Sandbox expiring soon, extend timeout"
-							: `${minutesLeft} minutes left, extend sandbox timeout`}
-					</span>
-				</Button>
-			)}
-		</>
 	);
 }
 

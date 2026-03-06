@@ -1,15 +1,12 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { ListIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AgentModelPicker } from "@/components/agent-model-picker";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
-import { EventsView } from "@/components/events-view";
-import { Button } from "@/components/ui/button";
 import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
 import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
@@ -98,7 +95,6 @@ export const ConnectedSessionView: FC<{
 	actor: SpaceActor;
 }> = ({ sessionId, spaceSlug, actor }) => {
 	const [message, setMessage] = useState("");
-	const [showEvents, setShowEvents] = useState(false);
 	const [agentOverride, setAgentOverride] = useState<string | null>(null);
 	const [modelIdOverride, setModelIdOverride] = useState<string | null>(null);
 
@@ -288,12 +284,7 @@ export const ConnectedSessionView: FC<{
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-background">
-			{showEvents ? (
-				<EventsView
-					events={sessionState.rawEvents}
-					onBack={() => setShowEvents(false)}
-				/>
-			) : sessionState.entries.length === 0 ? (
+			{sessionState.entries.length === 0 ? (
 				<div className="flex flex-1 flex-col items-center justify-center px-4">
 					<h1 className="font-semibold text-2xl">Ready to Chat</h1>
 					<p className="mt-1 text-muted-foreground">
@@ -302,15 +293,6 @@ export const ConnectedSessionView: FC<{
 				</div>
 			) : (
 				<div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-					<Button
-						className="absolute top-2 right-2 z-10"
-						onClick={() => setShowEvents(true)}
-						size="icon"
-						title="Switch to events view"
-						variant="ghost"
-					>
-						<ListIcon className="size-4" />
-					</Button>
 					<ChatMessages
 						entries={sessionState.entries}
 						isThinking={isRunning}
@@ -318,25 +300,23 @@ export const ConnectedSessionView: FC<{
 					/>
 				</div>
 			)}
-			{!showEvents && (
-				<ChatInput
-					disabled={actor.connStatus !== "connected" || !actor.connection}
-					footer={
-						<AgentModelPicker
-							agent={agent}
-							modelId={modelId}
-							onAgentChange={setAgentOverride}
-							onModelIdChange={setModelIdOverride}
-						/>
-					}
-					isRunning={isRunning}
-					message={message}
-					onMessageChange={setMessage}
-					onSendMessage={handleSend}
-					onStop={handleStop}
-					placeholder="Send a message..."
-				/>
-			)}
+			<ChatInput
+				disabled={actor.connStatus !== "connected" || !actor.connection}
+				footer={
+					<AgentModelPicker
+						agent={agent}
+						modelId={modelId}
+						onAgentChange={setAgentOverride}
+						onModelIdChange={setModelIdOverride}
+					/>
+				}
+				isRunning={isRunning}
+				message={message}
+				onMessageChange={setMessage}
+				onSendMessage={handleSend}
+				onStop={handleStop}
+				placeholder="Send a message..."
+			/>
 		</div>
 	);
 };

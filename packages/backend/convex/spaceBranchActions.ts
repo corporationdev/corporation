@@ -8,46 +8,42 @@ import { z } from "zod";
 import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { isGeneratedBranchName } from "./lib/branchName";
-import { sanitizeBranchName } from "./lib/git";
+import { isGeneratedName } from "./lib/branchName";
 
 type ActionCtx = GenericActionCtx<DataModel>;
 
-async function generateBranchName(
-	firstMessage: string,
-	defaultBranch: string
-): Promise<string> {
+async function generateSpaceName(firstMessage: string): Promise<string> {
 	const prompt = [
-		"Generate a concise git branch name for the user's first request.",
+		"Generate a concise name for a workspace based on the user's first request.",
 		"Rules:",
 		"- Lowercase letters, numbers, and hyphens only.",
 		"- Use 2 to 5 words separated by hyphens.",
-		"- Do not add prefixes like feat/, fix/, chore/, or task/.",
-		`- Do not return ${defaultBranch}, main, or master.`,
-		"- Return only the branch name.",
+		"- Return only the name.",
 		`User request: ${firstMessage}`,
 	].join("\n");
 
 	const { object } = await generateObject({
 		model: anthropic("claude-haiku-4-5"),
 		schema: z.object({
-			branchName: z.string(),
+			name: z.string(),
 		}),
 		temperature: 0,
 		prompt,
 	});
 
-	const candidate = sanitizeBranchName(object.branchName);
-	if (candidate === defaultBranch) {
-		return sanitizeBranchName(`${candidate}-changes`);
-	}
-	return candidate;
+	return object.name
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "")
+		.slice(0, 80);
 }
 
-export const generateAndApplyBranchName = internalAction({
+export const generateAndApplyName = internalAction({
 	args: {
 		spaceId: v.id("spaces"),
-		oldBranchName: v.string(),
+		oldName: v.string(),
 		firstMessage: v.string(),
 	},
 	handler: async (ctx: ActionCtx, args) => {
@@ -55,11 +51,11 @@ export const generateAndApplyBranchName = internalAction({
 			id: args.spaceId,
 		});
 
-		if (space.branchName !== args.oldBranchName) {
+		if (space.name !== args.oldName) {
 			return;
 		}
 
-		if (!isGeneratedBranchName(space.branchName)) {
+		if (!isGeneratedName(space.name)) {
 			return;
 		}
 
@@ -68,18 +64,15 @@ export const generateAndApplyBranchName = internalAction({
 			return;
 		}
 
-		const newBranchName = await generateBranchName(
-			firstMessage,
-			space.repository.defaultBranch
-		);
-		if (newBranchName === space.branchName) {
+		const newName = await generateSpaceName(firstMessage);
+		if (newName === space.name) {
 			return;
 		}
 
-		await ctx.runMutation(internal.spaces.internalUpdateBranchName, {
+		await ctx.runMutation(internal.spaces.internalUpdateName, {
 			id: args.spaceId,
-			expectedBranchName: args.oldBranchName,
-			branchName: newBranchName,
+			expectedName: args.oldName,
+			name: newName,
 		});
 	},
 });

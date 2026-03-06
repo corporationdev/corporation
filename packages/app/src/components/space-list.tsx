@@ -3,25 +3,16 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
 import { ArchiveIcon, BoxIcon } from "lucide-react";
-import { type FC, useEffect, useMemo, useRef } from "react";
+import { type FC, useMemo } from "react";
 
 import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useLatestShas } from "@/hooks/use-latest-shas";
-import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const SpaceList: FC = () => {
 	const groupedSpaces = useQuery(api.spaces.listByRepository);
 
-	const repositoriesWithSnapshots =
-		groupedSpaces?.map((g) => g.repository) ?? [];
-	const { data: latestShas } = useLatestShas(
-		repositoriesWithSnapshots,
-		repositoriesWithSnapshots.length > 0
-	);
 	const spaces = useMemo(() => {
 		if (!groupedSpaces) {
 			return [];
@@ -50,84 +41,20 @@ export const SpaceList: FC = () => {
 
 	return (
 		<div className="flex flex-col gap-1">
-			{groupedSpaces.map((group) => (
-				<RepositorySnapshotSync
-					key={group.repository._id}
-					latestSha={
-						latestShas?.[`${group.repository.owner}/${group.repository.name}`]
-					}
-					repository={group.repository}
-				/>
-			))}
 			{spaces.length === 0 ? (
 				<NoSpacesState />
 			) : (
 				spaces.map(({ space }) => (
 					<SpaceListItem
-						branchName={space.branchName}
 						id={space._id}
 						key={space._id}
+						name={space.name}
 						slug={space.slug}
 					/>
 				))
 			)}
 		</div>
 	);
-};
-
-type RepositorySpaceGroup = FunctionReturnType<
-	typeof api.spaces.listByRepository
->[number];
-
-const RepositorySnapshotSync: FC<{
-	repository: RepositorySpaceGroup["repository"];
-	latestSha: string | undefined;
-}> = ({ repository, latestSha }) => {
-	const snapshotCommitSha = repository.activeSnapshot?.snapshotCommitSha;
-	const snapshotStatus = repository.latestSnapshot?.status;
-	const isOutdated =
-		!!latestSha && (!snapshotCommitSha || latestSha !== snapshotCommitSha);
-
-	const { mutate: createSnapshot } = useConvexTanstackMutation(
-		api.snapshot.createSnapshot
-	);
-
-	const lastTriggeredShaRef = useRef<Map<Id<"repositories">, string>>(
-		new Map()
-	);
-	const repositoryId = repository._id;
-
-	useEffect(() => {
-		if (
-			!(repositoryId && isOutdated && latestSha) ||
-			snapshotStatus === "building" ||
-			lastTriggeredShaRef.current.get(repositoryId) === latestSha
-		) {
-			return;
-		}
-
-		createSnapshot(
-			{
-				request: {
-					type: "update",
-					repositoryId,
-				},
-			},
-			{
-				onSuccess: () => {
-					lastTriggeredShaRef.current.set(repositoryId, latestSha);
-				},
-				onError: () => {
-					// Failed rebuilds must not block retries for this repository + SHA.
-					if (lastTriggeredShaRef.current.get(repositoryId) === latestSha) {
-						lastTriggeredShaRef.current.delete(repositoryId);
-					}
-				},
-			}
-		);
-	}, [repositoryId, isOutdated, latestSha, snapshotStatus, createSnapshot]);
-
-	return null;
 };
 
 const SpaceListSkeleton: FC = () => {
@@ -188,8 +115,8 @@ const NoSpacesState: FC = () => {
 const SpaceListItem: FC<{
 	id: Id<"spaces">;
 	slug: string;
-	branchName: string;
-}> = ({ id, slug, branchName }) => {
+	name: string;
+}> = ({ id, slug, name }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
 		from: "/_authenticated/space_/$spaceSlug",
@@ -208,12 +135,7 @@ const SpaceListItem: FC<{
 	});
 
 	return (
-		<SpaceContextMenu
-			branchName={branchName}
-			isActive={isActive}
-			slug={slug}
-			spaceId={id}
-		>
+		<SpaceContextMenu isActive={isActive} name={name} slug={slug} spaceId={id}>
 			<button
 				className="flex h-full min-w-0 flex-1 items-center gap-2 truncate px-3 text-start text-sm"
 				onClick={() =>
@@ -225,7 +147,7 @@ const SpaceListItem: FC<{
 				type="button"
 			>
 				<BoxIcon className="size-3.5 shrink-0" />
-				<span className="truncate">{branchName}</span>
+				<span className="truncate">{name}</span>
 			</button>
 			<button
 				className="mr-1 flex size-6 shrink-0 items-center justify-center rounded opacity-0 transition-opacity hover:bg-accent group-hover/item:opacity-100"
