@@ -23,7 +23,7 @@ export function useSpaceTabs(actor: SpaceActor): SpaceTabsResult {
 
 	const { data, isLoading } = useQuery({
 		queryKey: ["space-tabs", spaceSlug],
-		queryFn: async () => {
+		queryFn: () => {
 			const conn = actor.connection;
 			if (!conn) {
 				throw new Error("Actor connection is unavailable");
