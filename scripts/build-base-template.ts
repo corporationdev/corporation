@@ -46,9 +46,16 @@ const template = Template()
 	.copy("corp-agent/dist/corp-agent", "/usr/local/bin/corp-agent")
 	.runCmd("chmod +x /usr/local/bin/corp-agent")
 	// Pre-cache ACP agent npm packages so npx doesn't download at runtime
-	// Note: amp and opencode are native binaries installed separately
 	.runCmd(
 		"set -euo pipefail; npm install -g @zed-industries/claude-code-acp @zed-industries/codex-acp pi-acp @blowmage/cursor-agent-acp"
+	)
+	// Install opencode native binary
+	.runCmd(
+		'set -euo pipefail; curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v1.2.20/opencode-linux-x64.tar.gz" -o /tmp/opencode.tar.gz; tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin opencode; chmod +x /usr/local/bin/opencode; rm -f /tmp/opencode.tar.gz; opencode --version'
+	)
+	// Install amp-acp native binary
+	.runCmd(
+		'set -euo pipefail; curl -fsSL "https://github.com/tao12345666333/amp-acp/releases/download/v0.7.0/amp-acp-linux-x86_64.tar.gz" -o /tmp/amp-acp.tar.gz; tar -xzf /tmp/amp-acp.tar.gz -C /usr/local/bin amp-acp; chmod +x /usr/local/bin/amp-acp; rm -f /tmp/amp-acp.tar.gz'
 	);
 
 console.log("Building base template…");

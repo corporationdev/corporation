@@ -23,7 +23,7 @@ export type PromptPart = z.infer<typeof promptPartSchema>;
 export const promptRequestBodySchema = z.object({
 	agent: z.string().min(1),
 	callbackToken: z.string().min(1),
-	callbackUrl: z.string().min(1),
+	callbackUrl: z.url(),
 	cwd: z.string().min(1),
 	modelId: z.string().optional(),
 	prompt: z.array(promptPartSchema),

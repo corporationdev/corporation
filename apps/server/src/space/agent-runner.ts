@@ -78,15 +78,6 @@ export async function startAgentRunner(
 		modelId: string;
 	}
 ): Promise<void> {
-	const persistedSession = await ctx.vars.db
-		.select({ id: sessions.id })
-		.from(sessions)
-		.where(eq(sessions.id, params.sessionId))
-		.limit(1);
-	if (persistedSession.length === 0) {
-		throw new Error("Session record not found");
-	}
-
 	const turnId = nanoid();
 	const callbackToken = crypto.randomUUID();
 	const baseUrl = env.SERVER_PUBLIC_URL;
@@ -94,15 +85,39 @@ export async function startAgentRunner(
 		throw new Error("Missing SERVER_PUBLIC_URL env var");
 	}
 	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${AGENT_RUNNER_ACTION}`;
-	await ctx.vars.db
-		.update(sessions)
-		.set({
-			runId: turnId,
-			status: "running",
-			callbackToken,
-			error: null,
-		})
-		.where(eq(sessions.id, params.sessionId));
+
+	const didStart = ctx.vars.db.transaction((tx) => {
+		const existingSession = tx
+			.select({ id: sessions.id, status: sessions.status })
+			.from(sessions)
+			.where(eq(sessions.id, params.sessionId))
+			.limit(1)
+			.all()[0];
+
+		if (!existingSession) {
+			throw new Error("Session record not found");
+		}
+
+		if (existingSession.status === "running") {
+			return false;
+		}
+
+		tx.update(sessions)
+			.set({
+				runId: turnId,
+				status: "running",
+				callbackToken,
+				error: null,
+			})
+			.where(eq(sessions.id, params.sessionId))
+			.run();
+		return true;
+	});
+
+	if (!didStart) {
+		throw new Error("Session already has a running turn");
+	}
+
 	ctx.vars.agentRunnerSequenceBySessionId.set(params.sessionId, 0);
 	publishSessionStatus(ctx, params.sessionId, "running");
 
@@ -194,22 +209,21 @@ export async function ingestAgentRunnerBatch(
 		const validEvents = parsed.events.filter(
 			(event) => event.sessionId === session.id
 		);
+		if (validEvents.length > 0) {
+			for (const event of validEvents) {
+				publishToChannel(
+					ctx,
+					createTabChannel("session", session.id),
+					SESSION_EVENT_NAME,
+					event
+				);
+			}
+			await ctx.vars.db
+				.insert(sessionEvents)
+				.values(validEvents)
+				.onConflictDoNothing({ target: sessionEvents.id });
+		}
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
-		if (validEvents.length === 0) {
-			return;
-		}
-		for (const event of validEvents) {
-			publishToChannel(
-				ctx,
-				createTabChannel("session", session.id),
-				SESSION_EVENT_NAME,
-				event
-			);
-		}
-		await ctx.vars.db
-			.insert(sessionEvents)
-			.values(validEvents)
-			.onConflictDoNothing({ target: sessionEvents.id });
 		return;
 	}
 

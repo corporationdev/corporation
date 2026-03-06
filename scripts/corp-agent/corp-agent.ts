@@ -164,6 +164,38 @@ type StdioBridge = {
 	proc: ReturnType<typeof Bun.spawn>;
 };
 
+function routeStdoutEnvelope(
+	bridge: StdioBridge,
+	envelope: Record<string, unknown>
+): void {
+	const envId = envelope.id != null ? String(envelope.id) : null;
+	if (envId && bridge.pendingResolvers.has(envId)) {
+		const resolver = bridge.pendingResolvers.get(envId);
+		bridge.pendingResolvers.delete(envId);
+		if (resolver) {
+			resolver(envelope);
+		}
+		return;
+	}
+	bridge.onNotification?.(envelope);
+}
+
+function processStdoutLine(bridge: StdioBridge, rawLine: string): void {
+	const line = rawLine.trim();
+	if (!line) {
+		return;
+	}
+
+	try {
+		const envelope = JSON.parse(line) as Record<string, unknown>;
+		routeStdoutEnvelope(bridge, envelope);
+	} catch {
+		log("warn", "Failed to parse agent stdout line", {
+			line: line.slice(0, 200),
+		});
+	}
+}
+
 function spawnStdioBridge(
 	agent: string,
 	onNotification: (envelope: Record<string, unknown>) => void
@@ -190,46 +222,30 @@ function spawnStdioBridge(
 		const decoder = new TextDecoder();
 		let buffer = "";
 
-		// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: stdio parser handles framing + request/notification routing.
 		(async () => {
+			const drainBufferedLines = () => {
+				let newlineIdx = buffer.indexOf("\n");
+				while (newlineIdx !== -1) {
+					processStdoutLine(bridge, buffer.slice(0, newlineIdx));
+					buffer = buffer.slice(newlineIdx + 1);
+					newlineIdx = buffer.indexOf("\n");
+				}
+			};
+
 			try {
 				while (true) {
 					const { done, value } = await reader.read();
 					if (done) {
+						buffer += decoder.decode();
+						drainBufferedLines();
+						if (buffer.trim()) {
+							processStdoutLine(bridge, buffer);
+							buffer = "";
+						}
 						break;
 					}
 					buffer += decoder.decode(value, { stream: true });
-
-					let newlineIdx = buffer.indexOf("\n");
-					while (newlineIdx !== -1) {
-						const line = buffer.slice(0, newlineIdx).trim();
-						buffer = buffer.slice(newlineIdx + 1);
-
-						if (!line) {
-							continue;
-						}
-
-						try {
-							const envelope = JSON.parse(line) as Record<string, unknown>;
-							const envId = envelope.id != null ? String(envelope.id) : null;
-
-							if (envId && bridge.pendingResolvers.has(envId)) {
-								const resolver = bridge.pendingResolvers.get(envId);
-								bridge.pendingResolvers.delete(envId);
-								if (resolver) {
-									resolver(envelope);
-								}
-							} else {
-								bridge.onNotification?.(envelope);
-							}
-						} catch {
-							log("warn", "Failed to parse agent stdout line", {
-								line: line.slice(0, 200),
-							});
-						}
-
-						newlineIdx = buffer.indexOf("\n");
-					}
+					drainBufferedLines();
 				}
 			} catch {
 				// stream ended
@@ -609,6 +625,8 @@ Bun.serve({
 	port,
 	async fetch(req) {
 		const url = new URL(req.url);
+		// TODO(auth): Require authentication for corp-agent HTTP routes
+		// (at minimum `/v1/prompt` and `/v1/prompt/:turnId`).
 
 		if (req.method === "GET" && url.pathname === "/v1/health") {
 			return Response.json({ status: "ok" });

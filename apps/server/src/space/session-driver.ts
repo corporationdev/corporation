@@ -207,16 +207,6 @@ async function sendMessage(
 		);
 	}
 
-	// Prevent sending a new message while a turn is already running
-	const [existingSession] = await ctx.vars.db
-		.select({ status: sessions.status })
-		.from(sessions)
-		.where(eq(sessions.id, sessionId))
-		.limit(1);
-	if (existingSession?.status === "running") {
-		throw new Error("Session already has a running turn");
-	}
-
 	let prompt: SessionPromptPart[] = [{ type: "text", text: content }];
 	try {
 		prompt = await buildPromptWithReplay(ctx, sessionId, content);
