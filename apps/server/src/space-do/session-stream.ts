@@ -1,11 +1,11 @@
 import type {
+	SessionEvent,
 	SessionStatus,
 	SessionStreamFrame,
 	SessionStreamFrameData,
 	SessionStreamState,
 } from "@corporation/contracts/client-do";
 import { sessionStreamFrameDataSchema } from "@corporation/contracts/client-do";
-import type { SessionEvent } from "@corporation/contracts/sandbox-do";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { sessionStreamFrames, sessions } from "./db/schema";

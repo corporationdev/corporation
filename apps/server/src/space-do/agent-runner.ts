@@ -6,6 +6,7 @@ import { hc } from "hono/client";
 import { nanoid } from "nanoid";
 import type { SandboxRuntimeApp } from "sandbox-runtime/client";
 import { sessions } from "./db/schema";
+import { normalizeSessionEvent } from "./session-event-normalizer";
 import {
 	appendSessionEventFrames,
 	appendSessionStatusFrame,
@@ -218,7 +219,11 @@ export async function ingestAgentRunnerBatch(
 			(event) => event.sessionId === session.id
 		);
 		if (validEvents.length > 0) {
-			appendSessionEventFrames(ctx, session.id, validEvents);
+			appendSessionEventFrames(
+				ctx,
+				session.id,
+				validEvents.map(normalizeSessionEvent)
+			);
 		}
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		return;

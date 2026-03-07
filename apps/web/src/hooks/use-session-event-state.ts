@@ -1,15 +1,8 @@
-import type {
-	SessionEvent,
-	SessionStreamFrame,
-} from "@corporation/contracts/client-do";
-import { env } from "@corporation/env/web";
-import type { JsonBatch, StreamResponse } from "@durable-streams/client";
-import { stream } from "@durable-streams/client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { SessionEvent } from "@corporation/contracts/client-do";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TimelineEntry } from "@/components/chat/types";
-import { apiClient, getAuthHeaders } from "@/lib/api-client";
 import type { SpaceActor } from "@/lib/rivetkit";
-import { toAbsoluteUrl } from "@/lib/url";
+import { useSessionStreamState } from "./use-session-stream-state";
 
 export type SessionState = {
 	entries: TimelineEntry[];
@@ -27,116 +20,6 @@ export type SessionState = {
 };
 
 const OPTIMISTIC_MATCH_TIME_TOLERANCE_MS = 5000;
-
-function asObject(value: unknown): Record<string, unknown> | null {
-	return value !== null && typeof value === "object"
-		? (value as Record<string, unknown>)
-		: null;
-}
-
-function asString(value: unknown): string | null {
-	return typeof value === "string" ? value : null;
-}
-
-function getSessionPromptParts(
-	payload: SessionEvent["payload"]
-): Array<{ type: string; text?: string }> | null {
-	const payloadObject = asObject(payload);
-	if (!payloadObject || asString(payloadObject.method) !== "session/prompt") {
-		return null;
-	}
-
-	const params = asObject(payloadObject.params);
-	const prompt = params?.prompt;
-	if (!Array.isArray(prompt)) {
-		return null;
-	}
-
-	return prompt.filter(
-		(part): part is { type: string; text?: string } =>
-			part !== null &&
-			typeof part === "object" &&
-			typeof (part as { type?: unknown }).type === "string" &&
-			((part as { text?: unknown }).text === undefined ||
-				typeof (part as { text?: unknown }).text === "string")
-	);
-}
-
-function getSessionUpdate(
-	payload: SessionEvent["payload"]
-): Record<string, unknown> | null {
-	const payloadObject = asObject(payload);
-	if (!payloadObject || asString(payloadObject.method) !== "session/update") {
-		return null;
-	}
-	const params = asObject(payloadObject.params);
-	const update = asObject(params?.update);
-	if (!(update && asString(update.sessionUpdate))) {
-		return null;
-	}
-	return update;
-}
-
-function buildSessionStreamBaseUrl(
-	spaceSlug: string,
-	sessionId: string
-): string {
-	const encodedSpaceSlug = encodeURIComponent(spaceSlug);
-	const encodedSessionId = encodeURIComponent(sessionId);
-	return toAbsoluteUrl(
-		`${env.VITE_SERVER_URL}/spaces/${encodedSpaceSlug}/sessions/${encodedSessionId}`
-	);
-}
-
-async function fetchSessionStreamState(
-	spaceSlug: string,
-	sessionId: string,
-	signal: AbortSignal
-) {
-	const response = await apiClient.spaces[":spaceSlug"].sessions[
-		":sessionId"
-	].state.$get(
-		{
-			param: {
-				spaceSlug,
-				sessionId,
-			},
-		},
-		{
-			init: { signal },
-		}
-	);
-	if (!response.ok) {
-		throw new Error(`Failed to fetch session state (${response.status})`);
-	}
-	return response.json();
-}
-
-function readStreamBatch(
-	batch: JsonBatch<SessionStreamFrame>,
-	sessionId: string
-): {
-	events: SessionEvent[];
-	status: string | null;
-} {
-	const events: SessionEvent[] = [];
-	let status: string | null = null;
-
-	for (const frame of batch.items) {
-		if (frame.kind === "event") {
-			if (frame.event.sessionId === sessionId) {
-				events.push(frame.event);
-			}
-			continue;
-		}
-
-		if (frame.kind === "status_changed") {
-			status = frame.status;
-		}
-	}
-
-	return { events, status };
-}
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: event processing requires handling many event types
 function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
@@ -176,192 +59,157 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 	for (const event of events) {
 		const time = new Date(event.createdAt).toISOString();
 
-		if (event.sender === "client") {
-			const promptArray = getSessionPromptParts(event.payload);
-			if (!promptArray) {
-				continue;
+		switch (event.kind) {
+			case "user_prompt": {
+				if (!event.text) {
+					continue;
+				}
+				flushAssistant(time);
+				flushThought(time);
+				const replayPrefix = "Previous session history is replayed below";
+				const text = event.text
+					.split("\n\n")
+					.map((part) => part.trim())
+					.filter(
+						(partText) =>
+							partText.length > 0 && !partText.startsWith(replayPrefix)
+					)
+					.join("\n\n")
+					.trim();
+				if (!text) {
+					continue;
+				}
+				entries.push({
+					id: event.id,
+					kind: "message",
+					time,
+					role: "user",
+					text,
+				});
+				break;
 			}
-			flushAssistant(time);
-			flushThought(time);
-			const replayPrefix = "Previous session history is replayed below";
-			const text = promptArray
-				.filter(
-					(part) => part?.type === "text" && typeof part.text === "string"
-				)
-				.map((part) => part.text?.trim() ?? "")
-				.filter(
-					(partText) =>
-						partText.length > 0 && !partText.startsWith(replayPrefix)
-				)
-				.join("\n\n")
-				.trim();
-			if (!text) {
-				continue;
-			}
-			entries.push({
-				id: event.id,
-				kind: "message",
-				time,
-				role: "user",
-				text,
-			});
-			continue;
-		}
-
-		if (event.sender === "agent") {
-			const update = getSessionUpdate(event.payload);
-			if (!update) {
-				continue;
-			}
-
-			switch (update.sessionUpdate) {
-				case "agent_message_chunk": {
-					const content = asObject(update.content);
-					const contentType = asString(content?.type);
-					const contentText = asString(content?.text);
-					if (contentType === "text" && contentText) {
-						if (!assistantAccumId) {
-							assistantAccumId = `assistant-${event.id}`;
-							assistantAccumText = "";
-							entries.push({
-								id: assistantAccumId,
-								kind: "message",
-								time,
-								role: "assistant",
-								text: "",
-							});
-						}
-						assistantAccumText += contentText;
-						const entry = entries.find((e) => e.id === assistantAccumId);
-						if (entry) {
-							entry.text = assistantAccumText;
-							entry.time = time;
-						}
-					}
+			case "agent_message_chunk": {
+				if (!event.text) {
 					break;
 				}
-				case "agent_thought_chunk": {
-					const content = asObject(update.content);
-					const contentType = asString(content?.type);
-					const contentText = asString(content?.text);
-					if (contentType === "text" && contentText) {
-						if (!thoughtAccumId) {
-							thoughtAccumId = `thought-${event.id}`;
-							thoughtAccumText = "";
-							entries.push({
-								id: thoughtAccumId,
-								kind: "reasoning",
-								time,
-								reasoning: {
-									text: "",
-									visibility: "public",
-								},
-							});
-						}
-						thoughtAccumText += contentText;
-						const entry = entries.find((e) => e.id === thoughtAccumId);
-						if (entry?.reasoning) {
-							entry.reasoning.text = thoughtAccumText;
-							entry.time = time;
-						}
-					}
-					break;
-				}
-				case "tool_call": {
-					flushAssistant(time);
-					flushThought(time);
-					const toolCallId = asString(update.toolCallId) ?? event.id;
-					const existing = toolEntryMap.get(toolCallId);
-					if (existing) {
-						const status = asString(update.status);
-						if (status) {
-							existing.toolStatus = status;
-						}
-						if (update.rawInput != null) {
-							existing.toolInput = JSON.stringify(update.rawInput, null, 2);
-						}
-						if (update.rawOutput != null) {
-							existing.toolOutput = JSON.stringify(update.rawOutput, null, 2);
-						}
-						const title = asString(update.title);
-						if (title) {
-							existing.toolName = title;
-						}
-						existing.time = time;
-					} else {
-						const title = asString(update.title);
-						const status = asString(update.status);
-						const entry: TimelineEntry = {
-							id: `tool-${toolCallId}`,
-							kind: "tool",
-							time,
-							toolName: title ?? "tool",
-							toolInput:
-								update.rawInput != null
-									? JSON.stringify(update.rawInput, null, 2)
-									: undefined,
-							toolOutput:
-								update.rawOutput != null
-									? JSON.stringify(update.rawOutput, null, 2)
-									: undefined,
-							toolStatus: status ?? "in_progress",
-						};
-						toolEntryMap.set(toolCallId, entry);
-						entries.push(entry);
-					}
-					break;
-				}
-				case "tool_call_update": {
-					const toolCallId = asString(update.toolCallId);
-					if (!toolCallId) {
-						break;
-					}
-					const existing = toolEntryMap.get(toolCallId);
-					if (existing) {
-						const status = asString(update.status);
-						if (status) {
-							existing.toolStatus = status;
-						}
-						if (update.rawOutput != null) {
-							existing.toolOutput = JSON.stringify(update.rawOutput, null, 2);
-						}
-						const title = asString(update.title);
-						if (title) {
-							existing.toolName = title;
-						}
-						existing.time = time;
-					}
-					break;
-				}
-				case "plan": {
-					const planEntries = Array.isArray(update.entries)
-						? update.entries.filter(
-								(entry): entry is { content: string; status: string } =>
-									entry !== null &&
-									typeof entry === "object" &&
-									typeof (entry as { content?: unknown }).content ===
-										"string" &&
-									typeof (entry as { status?: unknown }).status === "string"
-							)
-						: [];
-					const detail = planEntries
-						.map((e) => `[${e.status}] ${e.content}`)
-						.join("\n");
+				if (!assistantAccumId) {
+					assistantAccumId = `assistant-${event.id}`;
+					assistantAccumText = "";
 					entries.push({
-						id: event.id,
-						kind: "meta",
+						id: assistantAccumId,
+						kind: "message",
 						time,
-						meta: {
-							title: "Plan",
-							detail,
-							severity: "info",
+						role: "assistant",
+						text: "",
+					});
+				}
+				assistantAccumText += event.text;
+				const entry = entries.find((e) => e.id === assistantAccumId);
+				if (entry) {
+					entry.text = assistantAccumText;
+					entry.time = time;
+				}
+				break;
+			}
+			case "agent_thought_chunk": {
+				if (!event.text) {
+					break;
+				}
+				if (!thoughtAccumId) {
+					thoughtAccumId = `thought-${event.id}`;
+					thoughtAccumText = "";
+					entries.push({
+						id: thoughtAccumId,
+						kind: "reasoning",
+						time,
+						reasoning: {
+							text: "",
+							visibility: "public",
 						},
 					});
-					break;
 				}
-				default:
-					break;
+				thoughtAccumText += event.text;
+				const entry = entries.find((e) => e.id === thoughtAccumId);
+				if (entry?.reasoning) {
+					entry.reasoning.text = thoughtAccumText;
+					entry.time = time;
+				}
+				break;
 			}
+			case "tool_call": {
+				flushAssistant(time);
+				flushThought(time);
+				const existing = toolEntryMap.get(event.toolCallId);
+				if (existing) {
+					if (event.status) {
+						existing.toolStatus = event.status;
+					}
+					if (event.rawInput != null) {
+						existing.toolInput = JSON.stringify(event.rawInput, null, 2);
+					}
+					if (event.rawOutput != null) {
+						existing.toolOutput = JSON.stringify(event.rawOutput, null, 2);
+					}
+					existing.toolName = event.title;
+					existing.time = time;
+				} else {
+					const entry: TimelineEntry = {
+						id: `tool-${event.toolCallId}`,
+						kind: "tool",
+						time,
+						toolName: event.title,
+						toolInput:
+							event.rawInput != null
+								? JSON.stringify(event.rawInput, null, 2)
+								: undefined,
+						toolOutput:
+							event.rawOutput != null
+								? JSON.stringify(event.rawOutput, null, 2)
+								: undefined,
+						toolStatus: event.status ?? "in_progress",
+					};
+					toolEntryMap.set(event.toolCallId, entry);
+					entries.push(entry);
+				}
+				break;
+			}
+			case "tool_call_update": {
+				const existing = toolEntryMap.get(event.toolCallId);
+				if (existing) {
+					if (event.status) {
+						existing.toolStatus = event.status;
+					}
+					if (event.rawInput != null) {
+						existing.toolInput = JSON.stringify(event.rawInput, null, 2);
+					}
+					if (event.rawOutput != null) {
+						existing.toolOutput = JSON.stringify(event.rawOutput, null, 2);
+					}
+					if (event.title) {
+						existing.toolName = event.title;
+					}
+					existing.time = time;
+				}
+				break;
+			}
+			case "plan": {
+				const detail = event.update.entries
+					.map((entry) => `[${entry.status}] ${entry.content}`)
+					.join("\n");
+				entries.push({
+					id: event.id,
+					kind: "meta",
+					time,
+					meta: {
+						title: "Plan",
+						detail,
+						severity: "info",
+					},
+				});
+				break;
+			}
+			default:
+				break;
 		}
 	}
 
@@ -450,38 +298,26 @@ export function useSessionEventState({
 	spaceSlug: string;
 	actor: SpaceActor;
 }): SessionState {
-	const seenEventIdsRef = useRef<Set<string>>(new Set());
-	const [events, setEvents] = useState<SessionEvent[]>([]);
+	const {
+		rawEvents,
+		status: sessionStatus,
+		agent: sessionAgent,
+		modelId: sessionModelId,
+		setStatus: setSessionStatus,
+	} = useSessionStreamState({
+		sessionId,
+		spaceSlug,
+		actor,
+	});
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		OptimisticUserMessage[]
 	>([]);
-	const [sessionStatus, setSessionStatus] = useState<string>("idle");
-	const [sessionAgent, setSessionAgent] = useState<string | null>(null);
-	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
-
-	const addEvents = useCallback((newEvents: SessionEvent[]) => {
-		const unseen: SessionEvent[] = [];
-		for (const event of newEvents) {
-			if (!seenEventIdsRef.current.has(event.id)) {
-				seenEventIdsRef.current.add(event.id);
-				unseen.push(event);
-			}
-		}
-		if (unseen.length > 0) {
-			setEvents((prev) => [...prev, ...unseen]);
-		}
-	}, []);
 
 	useEffect(() => {
 		if (!sessionId) {
 			return;
 		}
-		seenEventIdsRef.current = new Set();
-		setEvents([]);
 		setOptimisticMessages([]);
-		setSessionStatus("idle");
-		setSessionAgent(null);
-		setSessionModelId(null);
 	}, [sessionId]);
 
 	const addOptimisticUserMessage = useCallback(
@@ -515,77 +351,7 @@ export function useSessionEventState({
 		);
 	}, []);
 
-	useEffect(() => {
-		if (!sessionId || actor.connStatus !== "connected" || !actor.connection) {
-			return;
-		}
-
-		const abortController = new AbortController();
-		let isCancelled = false;
-		let unsubscribe: (() => void) | null = null;
-		let streamResponse: StreamResponse<SessionStreamFrame> | null = null;
-
-		(async () => {
-			const state = await fetchSessionStreamState(
-				spaceSlug,
-				sessionId,
-				abortController.signal
-			);
-			if (isCancelled) {
-				return;
-			}
-
-			setSessionStatus(state.status);
-			setSessionAgent(state.agent);
-			setSessionModelId(state.modelId);
-
-			const streamUrl = `${buildSessionStreamBaseUrl(spaceSlug, sessionId)}/stream`;
-			streamResponse = await stream<SessionStreamFrame>({
-				url: streamUrl,
-				offset: "-1",
-				live: "sse",
-				json: true,
-				headers: {
-					Authorization: async () => (await getAuthHeaders()).Authorization,
-				},
-				signal: abortController.signal,
-			});
-			if (isCancelled) {
-				streamResponse.cancel();
-				return;
-			}
-
-			unsubscribe = streamResponse.subscribeJson(
-				(batch: JsonBatch<SessionStreamFrame>) => {
-					if (isCancelled) {
-						return;
-					}
-
-					const updates = readStreamBatch(batch, sessionId);
-					if (updates.events.length > 0) {
-						addEvents(updates.events);
-					}
-					if (updates.status) {
-						setSessionStatus(updates.status);
-					}
-				}
-			);
-		})().catch((error: unknown) => {
-			if (isCancelled) {
-				return;
-			}
-			console.error("Failed to initialize session stream", error);
-		});
-
-		return () => {
-			isCancelled = true;
-			abortController.abort("session-stream-cleanup");
-			unsubscribe?.();
-			streamResponse?.cancel("session-stream-cleanup");
-		};
-	}, [actor.connStatus, actor.connection, addEvents, sessionId, spaceSlug]);
-
-	const realEntries = useMemo(() => eventsToEntries(events), [events]);
+	const realEntries = useMemo(() => eventsToEntries(rawEvents), [rawEvents]);
 	const unmatchedOptimisticMessages = useMemo(
 		() => reconcileOptimisticMessages(realEntries, optimisticMessages),
 		[realEntries, optimisticMessages]
@@ -618,7 +384,7 @@ export function useSessionEventState({
 
 	return {
 		entries,
-		rawEvents: events,
+		rawEvents,
 		status: sessionStatus,
 		agent: sessionAgent,
 		modelId: sessionModelId,
