@@ -8,6 +8,7 @@
         "@biomejs/biome": "2.4.4",
         "@corporation/config": "workspace:*",
         "@types/bun": "^1.3.9",
+        "@types/node": "catalog:",
         "dotenv": "catalog:",
         "e2b": "catalog:",
         "turbo": "catalog:",
@@ -155,7 +156,6 @@
       },
       "devDependencies": {
         "@corporation/config": "workspace:*",
-        "@types/node": "catalog:",
         "typescript": "catalog:",
       },
     },

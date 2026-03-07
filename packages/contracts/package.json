@@ -13,7 +13,6 @@
   },
   "devDependencies": {
     "@corporation/config": "workspace:*",
-    "@types/node": "catalog:",
     "typescript": "catalog:"
   },
   "scripts": {
