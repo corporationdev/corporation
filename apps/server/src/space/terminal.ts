@@ -183,56 +183,38 @@ async function recreateHandle(
 	return handle;
 }
 
-export async function openTerminal(
-	ctx: SpaceRuntimeContext,
-	cols?: number,
-	rows?: number
+export async function getTerminalSnapshot(
+	ctx: SpaceRuntimeContext
 ): Promise<void> {
-	// Ensure tmux session exists (persists across open/close cycles)
-	await ensureTmuxSession(ctx.vars.sandbox, ctx.state.workdir ?? undefined);
+	await ensureTerminal(ctx);
 
-	// Create a fresh PTY attached to the tmux session
-	await ensureTerminal(ctx, cols, rows);
-
-	// Send snapshot of current terminal content to the connecting client
-	if (ctx.conn) {
-		const connection = ctx.conns.get(ctx.conn.id);
-		if (connection) {
-			try {
-				const result = await runRootCommand(
-					ctx.vars.sandbox,
-					`tmux capture-pane -p -e -t ${quoteShellArg(TERMINAL_ID)} -S -`
-				);
-				if (result.stdout) {
-					// Trim trailing empty lines so the cursor doesn't start at the bottom
-					const trimmed = result.stdout.replace(/\n\s*$/g, "\n");
-					const payload: TerminalOutputPayload = {
-						terminalId: TERMINAL_ID,
-						snapshot: true,
-						data: toBytes(trimmed),
-					};
-					connection.send("terminal.output", payload);
-				}
-			} catch (error) {
-				if (!(error instanceof CommandExitError)) {
-					throw error;
-				}
-			}
-		}
+	if (!ctx.conn) {
+		return;
 	}
-}
-
-export async function closeTerminal(ctx: SpaceRuntimeContext): Promise<void> {
-	const handle = ctx.vars.terminalHandles.get(TERMINAL_ID);
-	if (!handle) {
+	const connection = ctx.conns.get(ctx.conn.id);
+	if (!connection) {
 		return;
 	}
 
-	ctx.vars.terminalHandles.delete(TERMINAL_ID);
 	try {
-		await handle.disconnect();
-	} catch {
-		// Best-effort disconnect
+		const result = await runRootCommand(
+			ctx.vars.sandbox,
+			`tmux capture-pane -p -e -t ${quoteShellArg(TERMINAL_ID)} -S -`
+		);
+		if (result.stdout) {
+			// Trim trailing empty lines so the cursor doesn't start at the bottom
+			const trimmed = result.stdout.replace(/\n\s*$/g, "\n");
+			const payload: TerminalOutputPayload = {
+				terminalId: TERMINAL_ID,
+				snapshot: true,
+				data: toBytes(trimmed),
+			};
+			connection.send("terminal.output", payload);
+		}
+	} catch (error) {
+		if (!(error instanceof CommandExitError)) {
+			throw error;
+		}
 	}
 }
 

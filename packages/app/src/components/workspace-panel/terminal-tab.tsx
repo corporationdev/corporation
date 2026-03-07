@@ -126,7 +126,10 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 			}
 			const bytes = Array.from(new TextEncoder().encode(data));
 			conn.input(bytes).catch((e) => {
-				console.error("Failed to input terminal action", { error: e, spaceSlug });
+				console.error("Failed to input terminal action", {
+					error: e,
+					spaceSlug,
+				});
 			});
 		});
 
@@ -148,7 +151,7 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 		};
 	}, [actor.connection, queueResize, spaceSlug]);
 
-	// Open terminal on connect
+	// Fetch snapshot and mark ready on connect
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			terminalReadyRef.current = false;
@@ -162,51 +165,30 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 
 		const initialize = async () => {
 			terminalReadyRef.current = false;
-			const terminal = terminalRef.current;
-			const dims =
-				terminal && terminal.cols > 0 && terminal.rows > 0
-					? { cols: terminal.cols, rows: terminal.rows }
-					: null;
 
-			await conn.openTerminal(dims?.cols, dims?.rows);
+			await conn.getTerminalSnapshot();
 
 			openedOnConnRef.current = conn;
 			terminalReadyRef.current = true;
 
-			const latestDims = pendingResizeRef.current ?? dims;
-			if (latestDims) {
-				queueResize(conn, latestDims.cols, latestDims.rows);
+			const terminal = terminalRef.current;
+			const dims =
+				pendingResizeRef.current ??
+				(terminal && terminal.cols > 0 && terminal.rows > 0
+					? { cols: terminal.cols, rows: terminal.rows }
+					: null);
+			if (dims) {
+				queueResize(conn, dims.cols, dims.rows);
 			}
 		};
 
 		initialize().catch((e) => {
-			console.error("Failed to initialize terminal action", {
+			console.error("Failed to initialize terminal", {
 				error: e,
 				spaceSlug,
 			});
 		});
 	}, [actor.connStatus, actor.connection, queueResize, spaceSlug]);
-
-	// Cleanup on unmount
-	useEffect(() => {
-		return () => {
-			terminalReadyRef.current = false;
-			if (resizeFrameRef.current !== null) {
-				cancelAnimationFrame(resizeFrameRef.current);
-				resizeFrameRef.current = null;
-			}
-			const conn = openedOnConnRef.current;
-			openedOnConnRef.current = null;
-			if (conn) {
-				conn.closeTerminal().catch((e: unknown) => {
-					console.error("Failed to close terminal action", {
-						error: e,
-						spaceSlug,
-					});
-				});
-			}
-		};
-	}, [spaceSlug]);
 
 	// Receive terminal output
 	actor.useEvent("terminal.output", (payload: unknown) => {

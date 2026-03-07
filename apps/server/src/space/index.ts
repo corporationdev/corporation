@@ -10,11 +10,10 @@ import { ingestAgentRunnerBatch } from "./agent-runner";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
-	closeTerminal,
-	openTerminal,
+	getTerminalSnapshot,
 	input as terminalInput,
 	resize as terminalResize,
-} from "./terminal-driver";
+} from "./terminal";
 import type { PersistedState, SpaceVars } from "./types";
 
 export type { SessionRow } from "../db/schema";
@@ -90,9 +89,7 @@ export const space = actor({
 			live?: boolean,
 			timeoutMs?: number
 		) => readSessionStream(c, sessionId, afterOffset, limit, live, timeoutMs),
-		openTerminal: (c, cols?: number, rows?: number) =>
-			openTerminal(c, cols, rows),
-		closeTerminal: (c) => closeTerminal(c),
+		getTerminalSnapshot: (c) => getTerminalSnapshot(c),
 		input: (c, data: number[]) => terminalInput(c, data),
 		resize: (c, cols: number, rows: number) => terminalResize(c, cols, rows),
 	},
