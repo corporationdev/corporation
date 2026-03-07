@@ -72,6 +72,38 @@ const sandbox = await Sandbox.connect(sandboxId);
 
 let syncing = false;
 let pendingSync = false;
+let logTailTimer: ReturnType<typeof setInterval> | null = null;
+let logOffset = 0;
+
+function startTailing() {
+	logOffset = 0;
+	logTailTimer = setInterval(async () => {
+		try {
+			const result = await sandbox.commands.run(
+				"wc -c < /tmp/sandbox-runtime.log 2>/dev/null || echo 0",
+				{ timeoutMs: 3000 }
+			);
+			const size = Number.parseInt(result.stdout.trim(), 10);
+			if (size > logOffset) {
+				const chunk = await sandbox.commands.run(
+					`tail -c +${logOffset + 1} /tmp/sandbox-runtime.log`,
+					{ timeoutMs: 3000 }
+				);
+				process.stdout.write(chunk.stdout);
+				logOffset = size;
+			}
+		} catch {
+			// sandbox might be busy
+		}
+	}, 1000);
+}
+
+function stopTailing() {
+	if (logTailTimer) {
+		clearInterval(logTailTimer);
+		logTailTimer = null;
+	}
+}
 
 async function buildAndSync() {
 	if (syncing) {
@@ -79,6 +111,7 @@ async function buildAndSync() {
 		return;
 	}
 	syncing = true;
+	stopTailing();
 
 	try {
 		const start = Date.now();
@@ -111,7 +144,10 @@ async function buildAndSync() {
 			timeoutMs: 60_000,
 		});
 
-		// Restart
+		// Truncate log and restart
+		await sandbox.commands.run(": > /tmp/sandbox-runtime.log", {
+			timeoutMs: 3000,
+		});
 		await sandbox.commands.run(
 			`tmux new-session -d -s sandbox-agent "bun ${remoteBundlePath} --host 0.0.0.0 --port 5799"`,
 			{ timeoutMs: 5000 }
@@ -119,6 +155,10 @@ async function buildAndSync() {
 
 		const elapsed = Date.now() - start;
 		console.log(`[synced] ${elapsed}ms`);
+
+		if (!noWatch) {
+			startTailing();
+		}
 	} catch (error) {
 		const msg = error instanceof Error ? error.message : String(error);
 		console.error(`[sync failed] ${msg}`);
