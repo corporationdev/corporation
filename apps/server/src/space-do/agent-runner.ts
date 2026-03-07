@@ -1,11 +1,10 @@
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
-import {
-	promptRequestBodySchema,
-	turnRunnerCallbackPayloadSchema,
-} from "@corporation/shared/session-protocol";
 import { eq } from "drizzle-orm";
+import { hc } from "hono/client";
 import { nanoid } from "nanoid";
+import type { SandboxRuntimeApp } from "sandbox-runtime/client";
+import { turnRunnerCallbackPayloadSchema } from "sandbox-runtime/schemas";
 import { sessions } from "./db/schema";
 import {
 	appendSessionEventFrames,
@@ -31,12 +30,10 @@ async function launchAgentRunner(
 		callbackToken: string;
 	}
 ): Promise<void> {
-	const promptUrl = `${ctx.state.agentUrl}/v1/prompt`;
-	const response = await fetch(promptUrl, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(
-			promptRequestBodySchema.parse({
+	const client = hc<SandboxRuntimeApp>(ctx.state.agentUrl);
+	const response = await client.v1.prompt.$post(
+		{
+			json: {
 				turnId: params.turnId,
 				sessionId: params.sessionId,
 				agent: params.agent,
@@ -45,10 +42,10 @@ async function launchAgentRunner(
 				cwd: ctx.state.workdir,
 				callbackUrl: params.callbackUrl,
 				callbackToken: params.callbackToken,
-			})
-		),
-		signal: AbortSignal.timeout(15_000),
-	});
+			},
+		},
+		{ init: { signal: AbortSignal.timeout(15_000) } }
+	);
 
 	if (!response.ok) {
 		const text = await response.text().catch(() => "");

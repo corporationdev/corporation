@@ -1,11 +1,11 @@
+import { and, asc, eq, gt } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import type {
 	SessionEvent,
 	SessionStatus,
 	SessionStreamFrame,
 	SessionStreamState,
-} from "@corporation/shared/session-protocol";
-import { and, asc, eq, gt } from "drizzle-orm";
-import { nanoid } from "nanoid";
+} from "sandbox-runtime/schemas";
 import { sessionStreamFrames, sessions } from "./db/schema";
 import type { SpaceRuntimeContext } from "./types";
 

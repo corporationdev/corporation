@@ -3,12 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./schemas": "./src/schemas.ts"
+  },
   "scripts": {
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@corporation/shared": "workspace:*",
+    "@hono/zod-validator": "^0.7.6",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "hono": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@ import type {
 	SessionEvent,
 	SessionStreamFrame,
 	SessionStreamState,
-} from "@corporation/shared/session-protocol";
+} from "@corporation/server/session-protocol";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

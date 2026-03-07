@@ -3,6 +3,8 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import { generateText, Output } from "ai";
 import { asc, desc, eq } from "drizzle-orm";
+import { hc } from "hono/client";
+import type { SandboxRuntimeApp } from "sandbox-runtime/client";
 import { z } from "zod";
 import { startAgentRunner } from "./agent-runner";
 import { type SessionRow, sessions } from "./db/schema";
@@ -193,14 +195,17 @@ export async function cancelSession(
 	});
 
 	if (runId) {
-		fetch(`${ctx.state.agentUrl}/v1/prompt/${runId}`, {
-			method: "DELETE",
-			signal: AbortSignal.timeout(5000),
-		}).catch((error) => {
-			log.warn(
-				{ sessionId, runId, err: error },
-				"cancel-session.agent-cancel-failed"
-			);
-		});
+		const client = hc<SandboxRuntimeApp>(ctx.state.agentUrl);
+		client.v1.prompt[":turnId"]
+			.$delete(
+				{ param: { turnId: runId } },
+				{ init: { signal: AbortSignal.timeout(5000) } }
+			)
+			.catch((error) => {
+				log.warn(
+					{ sessionId, runId, err: error },
+					"cancel-session.agent-cancel-failed"
+				);
+			});
 	}
 }
