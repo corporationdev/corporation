@@ -22,8 +22,6 @@ import {
 	turnRunnerCallbackPayloadSchema,
 } from "@corporation/shared/session-protocol";
 
-declare const Bun: typeof import("bun");
-
 // ---------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------
@@ -611,7 +609,7 @@ async function bootstrapSessionBridge(
 		protocolVersion: ACP_PROTOCOL_VERSION,
 		clientInfo: { name: "sandbox-runtime", version: "v1" },
 	});
-	log("info", "ACP initialize result", {
+	log("info", "ACP initialize result ", {
 		sessionId,
 		agent,
 		initResult: JSON.stringify(initResult),
@@ -634,8 +632,8 @@ async function bootstrapSessionBridge(
 				mcpServers: [
 					{
 						name: "desktop",
-						command: "/usr/local/bin/sandbox-runtime",
-						args: ["mcp", "desktop"],
+						command: "bun",
+						args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
 						env: [],
 					},
 				],

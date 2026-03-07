@@ -92,8 +92,7 @@
     "fix:force": "ultracite fix --unsafe",
     "db:generate": "turbo db:generate",
     "setup": "bun scripts/setup.ts",
-    "build:sandbox-runtime": "bun build --compile --target=bun-linux-x64 packages/sandbox-runtime/sandbox-runtime.ts --outfile packages/sandbox-runtime/dist/sandbox-runtime",
-    "sync:sandbox-runtime": "bun scripts/sync-sandbox-runtime.ts",
+    "dev:sandbox-runtime": "bun scripts/dev-sandbox-runtime.ts",
     "logs:sandbox-runtime": "bun scripts/sandbox-runtime-logs.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:models": "bun scripts/generate-agent-models.ts"

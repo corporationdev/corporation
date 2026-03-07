@@ -4,9 +4,6 @@
 // Usage:
 //   bun scripts/build-base-template.ts
 //
-// Prerequisites:
-//   bun run build:sandbox-runtime   (compiles packages/sandbox-runtime/dist/sandbox-runtime)
-//
 // Reads E2B_API_KEY from apps/server/.env automatically.
 
 import { resolve } from "node:path";
@@ -24,6 +21,16 @@ if (!apiKey) {
 		"Missing E2B_API_KEY — make sure apps/server/.env contains it"
 	);
 }
+
+// Build sandbox-runtime JS bundle
+console.log("Building sandbox-runtime…");
+const build = Bun.spawnSync(["bun", "run", "build:sandbox-runtime"]);
+if (build.exitCode !== 0) {
+	throw new Error(
+		`sandbox-runtime build failed: ${build.stderr.toString().trim()}`
+	);
+}
+console.log("sandbox-runtime built.");
 
 const template = Template()
 	.fromTemplate("desktop")
@@ -54,12 +61,11 @@ const template = Template()
 	.runCmd(
 		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
 	)
-	// Install sandbox-runtime binary (agent configs are written at runtime by sandbox-runtime itself)
+	// Install sandbox-runtime JS bundle
 	.copy(
-		"packages/sandbox-runtime/dist/sandbox-runtime",
-		"/usr/local/bin/sandbox-runtime"
+		"packages/sandbox-runtime/dist/sandbox-runtime.js",
+		"/usr/local/bin/sandbox-runtime.js"
 	)
-	.runCmd("chmod +x /usr/local/bin/sandbox-runtime")
 	// Pre-cache ACP agent npm packages so npx doesn't download at runtime
 	.runCmd(
 		"set -euo pipefail; npm install -g @zed-industries/claude-code-acp @zed-industries/codex-acp pi-acp @blowmage/cursor-agent-acp"
