@@ -1,40 +1,39 @@
 import type { SessionEvent } from "@corporation/contracts/client-do";
-import type { TimelineEntry } from "@/components/chat/types";
+import type {
+	MessageTimelineEntry,
+	ReasoningTimelineEntry,
+	TimelineEntry,
+	ToolTimelineEntry,
+} from "@/components/chat/types";
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: event translation is intentionally centralized here
 export function sessionEventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 	const entries: TimelineEntry[] = [];
 
-	let assistantAccumId: string | null = null;
+	let assistantEntry: MessageTimelineEntry | null = null;
 	let assistantAccumText = "";
-	let thoughtAccumId: string | null = null;
+	let thoughtEntry: ReasoningTimelineEntry | null = null;
 	let thoughtAccumText = "";
 
 	const flushAssistant = (time: string) => {
-		if (assistantAccumId) {
-			const existing = entries.find((e) => e.id === assistantAccumId);
-			if (existing) {
-				existing.text = assistantAccumText;
-				existing.time = time;
-			}
+		if (assistantEntry) {
+			assistantEntry.text = assistantAccumText;
+			assistantEntry.time = time;
 		}
-		assistantAccumId = null;
+		assistantEntry = null;
 		assistantAccumText = "";
 	};
 
 	const flushThought = (time: string) => {
-		if (thoughtAccumId) {
-			const existing = entries.find((e) => e.id === thoughtAccumId);
-			if (existing?.reasoning) {
-				existing.reasoning.text = thoughtAccumText;
-				existing.time = time;
-			}
+		if (thoughtEntry) {
+			thoughtEntry.reasoning.text = thoughtAccumText;
+			thoughtEntry.time = time;
 		}
-		thoughtAccumId = null;
+		thoughtEntry = null;
 		thoughtAccumText = "";
 	};
 
-	const toolEntryMap = new Map<string, TimelineEntry>();
+	const toolEntryMap = new Map<string, ToolTimelineEntry>();
 
 	for (const event of events) {
 		const time = new Date(event.createdAt).toISOString();
@@ -72,22 +71,21 @@ export function sessionEventsToEntries(events: SessionEvent[]): TimelineEntry[] 
 				if (!event.text) {
 					break;
 				}
-				if (!assistantAccumId) {
-					assistantAccumId = `assistant-${event.id}`;
+				if (!assistantEntry) {
 					assistantAccumText = "";
-					entries.push({
-						id: assistantAccumId,
+					assistantEntry = {
+						id: `assistant-${event.id}`,
 						kind: "message",
 						time,
 						role: "assistant",
 						text: "",
-					});
+					};
+					entries.push(assistantEntry);
 				}
 				assistantAccumText += event.text;
-				const entry = entries.find((e) => e.id === assistantAccumId);
-				if (entry) {
-					entry.text = assistantAccumText;
-					entry.time = time;
+				if (assistantEntry) {
+					assistantEntry.text = assistantAccumText;
+					assistantEntry.time = time;
 				}
 				break;
 			}
@@ -95,25 +93,22 @@ export function sessionEventsToEntries(events: SessionEvent[]): TimelineEntry[] 
 				if (!event.text) {
 					break;
 				}
-				if (!thoughtAccumId) {
-					thoughtAccumId = `thought-${event.id}`;
+				if (!thoughtEntry) {
 					thoughtAccumText = "";
-					entries.push({
-						id: thoughtAccumId,
+					thoughtEntry = {
+						id: `thought-${event.id}`,
 						kind: "reasoning",
 						time,
 						reasoning: {
 							text: "",
 							visibility: "public",
 						},
-					});
+					};
+					entries.push(thoughtEntry);
 				}
 				thoughtAccumText += event.text;
-				const entry = entries.find((e) => e.id === thoughtAccumId);
-				if (entry?.reasoning) {
-					entry.reasoning.text = thoughtAccumText;
-					entry.time = time;
-				}
+				thoughtEntry.reasoning.text = thoughtAccumText;
+				thoughtEntry.time = time;
 				break;
 			}
 			case "tool_call": {

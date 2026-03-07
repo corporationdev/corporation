@@ -84,6 +84,20 @@ export function selectAuthMethod(
 	return null;
 }
 
+async function waitForRetry(delayMs: number): Promise<number> {
+	await new Promise((resolve) => setTimeout(resolve, delayMs));
+	return Math.min(delayMs * 2, 4000);
+}
+
+function isRetryableTransportError(error: unknown): boolean {
+	if (error instanceof TypeError) {
+		return true;
+	}
+
+	const errorName = error instanceof Error ? error.name : "";
+	return errorName === "FetchError" || errorName === "NetworkError";
+}
+
 export async function postJsonWithRetry(
 	url: string,
 	body: unknown,
@@ -104,15 +118,27 @@ export async function postJsonWithRetry(
 			});
 			if (!response.ok) {
 				const text = await response.text().catch(() => "");
-				throw new Error(`Callback failed (${response.status}): ${text}`);
+				const error = new Error(
+					`Callback failed (${response.status}): ${text}`
+				);
+				if (response.status < 500) {
+					throw error;
+				}
+				if (attempt >= maxAttempts) {
+					throw error;
+				}
+				delayMs = await waitForRetry(delayMs);
+				continue;
 			}
 			return;
 		} catch (error) {
+			if (!isRetryableTransportError(error)) {
+				throw error;
+			}
 			if (attempt >= maxAttempts) {
 				throw error;
 			}
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
-			delayMs = Math.min(delayMs * 2, 4000);
+			delayMs = await waitForRetry(delayMs);
 		}
 	}
 }

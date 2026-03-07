@@ -9,22 +9,41 @@ import {
 } from "lucide-react";
 import { type RefObject, useState } from "react";
 import { Streamdown } from "streamdown";
-import type { TimelineEntry } from "@/components/chat/types";
+import type {
+	MessageTimelineEntry,
+	MetaTimelineEntry,
+	ReasoningTimelineEntry,
+	TimelineEntry,
+	ToolTimelineEntry,
+} from "@/components/chat/types";
 import { cn } from "@/lib/utils";
+
+type ToolGroupEntry =
+	| ToolTimelineEntry
+	| ReasoningTimelineEntry
+	| MetaTimelineEntry;
+type GroupedEntries =
+	| {
+			type: "message";
+			entries: [MessageTimelineEntry];
+	  }
+	| {
+			type: "tool-group";
+			entries: ToolGroupEntry[];
+	  };
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: tool rendering requires checking multiple entry kinds and states
 function ToolItem({
 	entry,
 	isLast,
 }: {
-	entry: TimelineEntry;
+	entry: ToolGroupEntry;
 	isLast: boolean;
 }) {
 	const [expanded, setExpanded] = useState(false);
 
 	const isTool = entry.kind === "tool";
 	const isReasoning = entry.kind === "reasoning";
-	const isMeta = entry.kind === "meta";
 
 	const isFailed = isTool && entry.toolStatus === "failed";
 	const isInProgress = isTool && entry.toolStatus === "in_progress";
@@ -34,18 +53,18 @@ function ToolItem({
 
 	if (isTool) {
 		const statusLabel =
-			entry.toolStatus && entry.toolStatus !== "completed"
+			entry.toolStatus !== "completed"
 				? ` (${entry.toolStatus.replace("_", " ")})`
 				: "";
 		label = `${entry.toolName ?? "tool"}${statusLabel}`;
 		icon = <WrenchIcon className="size-3 shrink-0" />;
 	} else if (isReasoning) {
-		label = `Reasoning${entry.reasoning?.visibility ? ` (${entry.reasoning.visibility})` : ""}`;
+		label = `Reasoning${entry.reasoning.visibility ? ` (${entry.reasoning.visibility})` : ""}`;
 		icon = <BrainIcon className="size-3 shrink-0" />;
-	} else if (isMeta) {
-		label = entry.meta?.title ?? "Status";
+	} else {
+		label = entry.meta.title;
 		icon =
-			entry.meta?.severity === "error" ? (
+			entry.meta.severity === "error" ? (
 				<AlertTriangleIcon className="size-3 shrink-0" />
 			) : (
 				<InfoIcon className="size-3 shrink-0" />
@@ -55,8 +74,8 @@ function ToolItem({
 	const hasContent = isTool
 		? Boolean(entry.toolInput || entry.toolOutput)
 		: isReasoning
-			? Boolean(entry.reasoning?.text?.trim())
-			: Boolean(entry.meta?.detail?.trim());
+			? Boolean(entry.reasoning.text.trim())
+			: Boolean(entry.meta.detail?.trim());
 
 	return (
 		<div className="flex gap-2">
@@ -114,12 +133,12 @@ function ToolItem({
 								</pre>
 							</div>
 						)}
-						{isReasoning && entry.reasoning?.text && (
+						{isReasoning && entry.reasoning.text && (
 							<pre className="overflow-x-auto rounded bg-muted p-2 text-muted-foreground text-xs">
 								{entry.reasoning.text}
 							</pre>
 						)}
-						{isMeta && entry.meta?.detail && (
+						{entry.kind === "meta" && entry.meta.detail && (
 							<pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
 								{entry.meta.detail}
 							</pre>
@@ -131,7 +150,7 @@ function ToolItem({
 	);
 }
 
-function ToolGroup({ entries }: { entries: TimelineEntry[] }) {
+function ToolGroup({ entries }: { entries: ToolGroupEntry[] }) {
 	const [expanded, setExpanded] = useState(false);
 
 	if (entries.length === 1) {
@@ -198,12 +217,9 @@ export function ChatMessages({
 	isThinking?: boolean;
 	messagesEndRef: RefObject<HTMLDivElement | null>;
 }) {
-	const groupedEntries: Array<{
-		type: "message" | "tool-group";
-		entries: TimelineEntry[];
-	}> = [];
+	const groupedEntries: GroupedEntries[] = [];
 
-	let currentToolGroup: TimelineEntry[] = [];
+	let currentToolGroup: ToolGroupEntry[] = [];
 
 	const flushToolGroup = () => {
 		if (currentToolGroup.length > 0) {
