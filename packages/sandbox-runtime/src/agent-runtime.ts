@@ -20,7 +20,6 @@ import type {
 	SessionEvent,
 } from "./schemas";
 import {
-	legacyRequestPermissionEnvelopeSchema,
 	sessionCancelEnvelopeSchema,
 	sessionRequestPermissionEnvelopeSchema,
 	sessionRequestPermissionResponseEnvelopeSchema,
@@ -58,18 +57,17 @@ function maybeHandlePermissionRequest(
 		return;
 	}
 
+	if (envelope.method !== CLIENT_METHODS.session_request_permission) {
+		return;
+	}
+
 	const requestResult =
-		envelope.method === CLIENT_METHODS.session_request_permission
-			? sessionRequestPermissionEnvelopeSchema.safeParse(envelope)
-			: legacyRequestPermissionEnvelopeSchema.safeParse(envelope);
+		sessionRequestPermissionEnvelopeSchema.safeParse(envelope);
 	if (!requestResult.success) {
 		return;
 	}
 
-	const options =
-		"request" in requestResult.data.params
-			? requestResult.data.params.request.options
-			: requestResult.data.params.options;
+	const options = requestResult.data.params.options;
 	const selected = pickPermissionOption(options);
 
 	const response = sessionRequestPermissionResponseEnvelopeSchema.parse({

@@ -19,7 +19,6 @@ import {
 	zPromptResponse,
 	zRequestPermissionRequest,
 	zRequestPermissionResponse,
-	zSessionNotification,
 	zSetSessionModelRequest,
 	zSetSessionModelResponse,
 	zSetSessionModeRequest,
@@ -32,23 +31,14 @@ const jsonRpcEnvelopeBaseSchema = z.object({
 	jsonrpc: jsonRpcVersionSchema,
 });
 
-export const acpAgentRequestEnvelopeSchema =
+const acpAgentRequestEnvelopeSchema =
 	jsonRpcEnvelopeBaseSchema.and(zAgentRequest);
-export type AcpAgentRequestEnvelope = z.infer<
-	typeof acpAgentRequestEnvelopeSchema
->;
 
-export const acpAgentResponseEnvelopeSchema =
+const acpAgentResponseEnvelopeSchema =
 	jsonRpcEnvelopeBaseSchema.and(zAgentResponse);
-export type AcpAgentResponseEnvelope = z.infer<
-	typeof acpAgentResponseEnvelopeSchema
->;
 
-export const acpAgentNotificationEnvelopeSchema =
+const acpAgentNotificationEnvelopeSchema =
 	jsonRpcEnvelopeBaseSchema.and(zAgentNotification);
-export type AcpAgentNotificationEnvelope = z.infer<
-	typeof acpAgentNotificationEnvelopeSchema
->;
 
 export const acpClientRequestEnvelopeSchema =
 	jsonRpcEnvelopeBaseSchema.and(zClientRequest);
@@ -56,17 +46,11 @@ export type AcpClientRequestEnvelope = z.infer<
 	typeof acpClientRequestEnvelopeSchema
 >;
 
-export const acpClientResponseEnvelopeSchema =
+const acpClientResponseEnvelopeSchema =
 	jsonRpcEnvelopeBaseSchema.and(zClientResponse);
-export type AcpClientResponseEnvelope = z.infer<
-	typeof acpClientResponseEnvelopeSchema
->;
 
-export const acpClientNotificationEnvelopeSchema =
+const acpClientNotificationEnvelopeSchema =
 	jsonRpcEnvelopeBaseSchema.and(zClientNotification);
-export type AcpClientNotificationEnvelope = z.infer<
-	typeof acpClientNotificationEnvelopeSchema
->;
 
 export const sessionCancelEnvelopeSchema =
 	acpClientNotificationEnvelopeSchema.and(
@@ -79,18 +63,6 @@ export type SessionCancelEnvelope = z.infer<typeof sessionCancelEnvelopeSchema>;
 
 const jsonRpcIdSchema = z.union([z.string(), z.number(), z.null()]);
 
-export const legacyRequestPermissionEnvelopeSchema = z.object({
-	jsonrpc: jsonRpcVersionSchema,
-	id: jsonRpcIdSchema,
-	method: z.literal("requestPermission"),
-	params: z.object({
-		request: zRequestPermissionRequest,
-	}),
-});
-export type LegacyRequestPermissionEnvelope = z.infer<
-	typeof legacyRequestPermissionEnvelopeSchema
->;
-
 export const acpEnvelopeSchema = z.union([
 	acpAgentRequestEnvelopeSchema,
 	acpAgentResponseEnvelopeSchema,
@@ -98,7 +70,6 @@ export const acpEnvelopeSchema = z.union([
 	acpClientRequestEnvelopeSchema,
 	acpClientResponseEnvelopeSchema,
 	acpClientNotificationEnvelopeSchema,
-	legacyRequestPermissionEnvelopeSchema,
 ]);
 export type AcpEnvelope = z.infer<typeof acpEnvelopeSchema>;
 
@@ -112,25 +83,7 @@ const acpAgentEnvelopeSchema = z.union([
 	acpAgentRequestEnvelopeSchema,
 	acpAgentResponseEnvelopeSchema,
 	acpAgentNotificationEnvelopeSchema,
-	legacyRequestPermissionEnvelopeSchema,
 ]);
-
-export const sessionPromptEnvelopeSchema = acpClientRequestEnvelopeSchema.and(
-	z.object({
-		method: z.literal(AGENT_METHODS.session_prompt),
-		params: zPromptRequest,
-	})
-);
-export type SessionPromptEnvelope = z.infer<typeof sessionPromptEnvelopeSchema>;
-
-export const sessionUpdateEnvelopeSchema =
-	acpAgentNotificationEnvelopeSchema.and(
-		z.object({
-			method: z.literal(CLIENT_METHODS.session_update),
-			params: zSessionNotification,
-		})
-	);
-export type SessionUpdateEnvelope = z.infer<typeof sessionUpdateEnvelopeSchema>;
 
 export const sessionRequestPermissionEnvelopeSchema =
 	acpAgentRequestEnvelopeSchema.and(
@@ -303,14 +256,13 @@ export const promptRequestBodySchema = z.object({
 });
 export type PromptRequestBody = z.infer<typeof promptRequestBodySchema>;
 
-export const turnRunnerErrorSchema = z.object({
+const turnRunnerErrorSchema = z.object({
 	name: z.string().min(1),
 	message: z.string().min(1),
 	stack: z.string().nullable().optional(),
 });
-export type TurnRunnerError = z.infer<typeof turnRunnerErrorSchema>;
 
-export const turnRunnerCallbackBaseSchema = z.object({
+const turnRunnerCallbackBaseSchema = z.object({
 	turnId: z.string().min(1),
 	sessionId: z.string().min(1),
 	token: z.string().min(1),
@@ -318,31 +270,19 @@ export const turnRunnerCallbackBaseSchema = z.object({
 	timestamp: z.number(),
 });
 
-export const turnRunnerEventsCallbackSchema =
-	turnRunnerCallbackBaseSchema.extend({
-		kind: z.literal("events"),
-		events: z.array(sessionEventSchema),
-	});
-export type TurnRunnerEventsCallback = z.infer<
-	typeof turnRunnerEventsCallbackSchema
->;
+const turnRunnerEventsCallbackSchema = turnRunnerCallbackBaseSchema.extend({
+	kind: z.literal("events"),
+	events: z.array(sessionEventSchema),
+});
 
-export const turnRunnerCompletedCallbackSchema =
-	turnRunnerCallbackBaseSchema.extend({
-		kind: z.literal("completed"),
-	});
-export type TurnRunnerCompletedCallback = z.infer<
-	typeof turnRunnerCompletedCallbackSchema
->;
+const turnRunnerCompletedCallbackSchema = turnRunnerCallbackBaseSchema.extend({
+	kind: z.literal("completed"),
+});
 
-export const turnRunnerFailedCallbackSchema =
-	turnRunnerCallbackBaseSchema.extend({
-		kind: z.literal("failed"),
-		error: turnRunnerErrorSchema,
-	});
-export type TurnRunnerFailedCallback = z.infer<
-	typeof turnRunnerFailedCallbackSchema
->;
+const turnRunnerFailedCallbackSchema = turnRunnerCallbackBaseSchema.extend({
+	kind: z.literal("failed"),
+	error: turnRunnerErrorSchema,
+});
 
 export const turnRunnerCallbackPayloadSchema = z.discriminatedUnion("kind", [
 	turnRunnerEventsCallbackSchema,
