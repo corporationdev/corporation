@@ -2,7 +2,7 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { SessionRow } from "@corporation/server/space";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
-import { HistoryIcon, PlusIcon } from "lucide-react";
+import { CopyIcon, HistoryIcon, PlusIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SessionView } from "@/components/session-view";
@@ -33,6 +33,7 @@ type AgentPanelProps = {
 		| {
 				status: string;
 				error?: string;
+				sandboxId?: string;
 		  }
 		| null
 		| undefined;
@@ -73,6 +74,20 @@ export function AgentPanel({
 
 	const navigate = useNavigate();
 	const { sessions, isLoading: isSessionsLoading } = useSpaceSessions(actor);
+	const sandboxId = space?.sandboxId;
+
+	const handleCopySandboxId = async () => {
+		if (!sandboxId) {
+			toast.error("Sandbox ID not available");
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(sandboxId);
+			toast.success("Copied sandbox ID");
+		} catch {
+			toast.error("Failed to copy sandbox ID");
+		}
+	};
 
 	// Persist the active session so we can restore it when returning to this space
 	useEffect(() => {
@@ -130,6 +145,15 @@ export function AgentPanel({
 						>
 							<PlusIcon className="size-4" />
 							<span className="sr-only">New session</span>
+						</Button>
+						<Button
+							disabled={!sandboxId}
+							onClick={handleCopySandboxId}
+							size="icon"
+							variant="ghost"
+						>
+							<CopyIcon className="size-4" />
+							<span className="sr-only">Copy sandbox ID</span>
 						</Button>
 						<SessionHistoryPopover
 							activeSessionId={activeSessionId}

@@ -2,6 +2,7 @@ import { GitBranchIcon, MonitorIcon, TerminalIcon } from "lucide-react";
 import { useState } from "react";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
+import { DesktopTab } from "./desktop-tab";
 import { TerminalTab } from "./terminal-tab";
 
 const tabs = [
@@ -49,11 +50,7 @@ export function WorkspacePanel({ actor, spaceSlug }: WorkspacePanelProps) {
 						Git panel coming soon
 					</div>
 				)}
-				{activeTab === "desktop" && (
-					<div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-						Desktop panel coming soon
-					</div>
-				)}
+				{activeTab === "desktop" && <DesktopTab actor={actor} />}
 			</div>
 		</div>
 	);
