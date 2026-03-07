@@ -19,6 +19,7 @@
     "@tanstack/react-form": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "@uidotdev/usehooks": "catalog:",
     "@xterm/addon-fit": "catalog:",
     "@xterm/addon-web-links": "catalog:",
     "@xterm/xterm": "catalog:",

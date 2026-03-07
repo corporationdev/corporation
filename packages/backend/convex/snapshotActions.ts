@@ -10,7 +10,6 @@ import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
 	bootServer,
-	DEV_SERVER_SESSION_NAME,
 	getAiEnvs,
 	getSandboxWorkdir,
 	REPO_SYNC_TIMEOUT_MS,
@@ -241,13 +240,13 @@ export const buildSnapshot = internalAction({
 				// Setup-only: boot all servers
 				if (request.type === "setup") {
 					await Promise.all([
-						bootServer(sandbox, {
-							sessionName: DEV_SERVER_SESSION_NAME,
-							command: repository.devCommand,
-							healthUrl: `http://localhost:${repository.devPort}/`,
-							workdir,
-							appendLog,
-						}),
+						// bootServer(sandbox, {
+						// 	sessionName: DEV_SERVER_SESSION_NAME,
+						// 	command: repository.devCommand,
+						// 	healthUrl: `http://localhost:${repository.devPort}/`,
+						// 	workdir,
+						// 	appendLog,
+						// }),
 						bootServer(sandbox, {
 							sessionName: SANDBOX_AGENT_SESSION_NAME,
 							command: `corp-agent --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,

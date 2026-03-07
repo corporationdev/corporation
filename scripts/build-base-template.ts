@@ -26,8 +26,12 @@ if (!apiKey) {
 }
 
 const template = Template()
-	.fromNodeImage("22")
+	.fromTemplate("desktop")
 	.setUser("root")
+	// Install Node.js 22 (desktop template doesn't include it)
+	.runCmd(
+		"curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs"
+	)
 	.aptInstall(["ca-certificates", "git", "zip", "unzip", "zsh", "curl", "tmux"])
 	// TODO: move cloudflared to dynamic installation once we add that capability
 	.runCmd(

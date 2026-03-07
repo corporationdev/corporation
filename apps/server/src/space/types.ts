@@ -1,5 +1,6 @@
+import type { Sandbox } from "@e2b/desktop";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
-import type { CommandHandle, Sandbox } from "e2b";
+import type { CommandHandle } from "e2b";
 
 export type PersistedState = {
 	agentUrl: string;

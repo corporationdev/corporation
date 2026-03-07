@@ -1,12 +1,13 @@
 import { env } from "@corporation/env/server";
+import { Sandbox } from "@e2b/desktop";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
-import { Sandbox } from "e2b";
 import { actor } from "rivetkit";
 import bundledMigrations from "../db/migrations/migrations";
 import { type SessionRow, schema } from "../db/schema";
 import { ingestAgentRunnerBatch } from "./agent-runner";
+import { getDesktopStreamUrl } from "./desktop";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
@@ -92,5 +93,6 @@ export const space = actor({
 		getTerminalSnapshot: (c) => getTerminalSnapshot(c),
 		input: (c, data: number[]) => terminalInput(c, data),
 		resize: (c, cols: number, rows: number) => terminalResize(c, cols, rows),
+		getDesktopStreamUrl: (c) => getDesktopStreamUrl(c),
 	},
 });

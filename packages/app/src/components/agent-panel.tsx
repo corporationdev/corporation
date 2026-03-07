@@ -1,8 +1,9 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { SessionRow } from "@corporation/server/space";
 import { useNavigate } from "@tanstack/react-router";
+import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation } from "convex/react";
-import { HistoryIcon, PlusIcon } from "lucide-react";
+import { CopyIcon, HistoryIcon, PlusIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SessionView } from "@/components/session-view";
@@ -33,6 +34,7 @@ type AgentPanelProps = {
 		| {
 				status: string;
 				error?: string;
+				sandboxId?: string;
 		  }
 		| null
 		| undefined;
@@ -73,13 +75,32 @@ export function AgentPanel({
 
 	const navigate = useNavigate();
 	const { sessions, isLoading: isSessionsLoading } = useSpaceSessions(actor);
+	const sandboxId = space?.sandboxId;
+	const sessionStorageKey = `space-session:${spaceSlug}`;
+	const [savedSessionId, setSavedSessionId] = useLocalStorage<string | null>(
+		sessionStorageKey,
+		null
+	);
+
+	const handleCopySandboxId = async () => {
+		if (!sandboxId) {
+			toast.error("Sandbox ID not available");
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(sandboxId);
+			toast.success("Copied sandbox ID");
+		} catch {
+			toast.error("Failed to copy sandbox ID");
+		}
+	};
 
 	// Persist the active session so we can restore it when returning to this space
 	useEffect(() => {
 		if (activeSessionId) {
-			localStorage.setItem(`space-session:${spaceSlug}`, activeSessionId);
+			setSavedSessionId(activeSessionId);
 		}
-	}, [activeSessionId, spaceSlug]);
+	}, [activeSessionId, setSavedSessionId]);
 
 	// Restore the last active session on initial navigation (not when pressing "+")
 	const hasInitializedSession = useRef(false);
@@ -98,9 +119,10 @@ export function AgentPanel({
 		}
 
 		// Try to restore the last active session, fall back to the first session
-		const saved = localStorage.getItem(`space-session:${spaceSlug}`);
 		const targetSessionId =
-			saved && sessions.some((s) => s.id === saved) ? saved : sessions[0].id;
+			savedSessionId && sessions.some((s) => s.id === savedSessionId)
+				? savedSessionId
+				: sessions[0].id;
 
 		navigate({
 			to: "/space/$spaceSlug",
@@ -108,7 +130,14 @@ export function AgentPanel({
 			search: { session: targetSessionId },
 			replace: true,
 		});
-	}, [activeSessionId, sessions, isSessionsLoading, spaceSlug, navigate]);
+	}, [
+		activeSessionId,
+		savedSessionId,
+		sessions,
+		isSessionsLoading,
+		spaceSlug,
+		navigate,
+	]);
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -130,6 +159,15 @@ export function AgentPanel({
 						>
 							<PlusIcon className="size-4" />
 							<span className="sr-only">New session</span>
+						</Button>
+						<Button
+							disabled={!sandboxId}
+							onClick={handleCopySandboxId}
+							size="icon"
+							variant="ghost"
+						>
+							<CopyIcon className="size-4" />
+							<span className="sr-only">Copy sandbox ID</span>
 						</Button>
 						<SessionHistoryPopover
 							activeSessionId={activeSessionId}

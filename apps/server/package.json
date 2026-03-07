@@ -20,6 +20,7 @@
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
     "@corporation/shared": "workspace:*",
+    "@e2b/desktop": "catalog:",
     "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@nangohq/node": "catalog:",
