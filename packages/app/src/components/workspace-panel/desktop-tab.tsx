@@ -9,7 +9,11 @@ export function DesktopTab({ actor }: DesktopTabProps) {
 	const { data: streamUrl, error } = useQuery({
 		queryKey: ["desktop-stream", actor.connStatus],
 		queryFn: async () => {
-			const url = await actor.connection!.getDesktopStreamUrl();
+			const connection = actor.connection;
+			if (!connection) {
+				throw new Error("Desktop connection unavailable");
+			}
+			const url = await connection.getDesktopStreamUrl();
 			return url;
 		},
 		enabled: actor.connStatus === "connected" && !!actor.connection,

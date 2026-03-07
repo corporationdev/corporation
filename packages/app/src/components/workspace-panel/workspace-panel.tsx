@@ -1,5 +1,5 @@
+import { useLocalStorage } from "@uidotdev/usehooks";
 import { GitBranchIcon, MonitorIcon, TerminalIcon } from "lucide-react";
-import { useState } from "react";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { DesktopTab } from "./desktop-tab";
@@ -19,7 +19,10 @@ type WorkspacePanelProps = {
 };
 
 export function WorkspacePanel({ actor, spaceSlug }: WorkspacePanelProps) {
-	const [activeTab, setActiveTab] = useState<TabId>("terminal");
+	const [activeTab, setActiveTab] = useLocalStorage<TabId>(
+		`space-workspace-tab:${spaceSlug}`,
+		"terminal"
+	);
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
