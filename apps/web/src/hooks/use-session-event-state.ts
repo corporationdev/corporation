@@ -1,14 +1,13 @@
 import type {
 	SessionEvent,
 	SessionStreamFrame,
-	SessionStreamState,
 } from "@corporation/contracts/client-do";
 import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/components/chat/types";
-import { getAuthHeaders } from "@/lib/api-client";
+import { apiClient, getAuthHeaders } from "@/lib/api-client";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { toAbsoluteUrl } from "@/lib/url";
 
@@ -93,17 +92,24 @@ async function fetchSessionStreamState(
 	spaceSlug: string,
 	sessionId: string,
 	signal: AbortSignal
-): Promise<SessionStreamState> {
-	const baseUrl = buildSessionStreamBaseUrl(spaceSlug, sessionId);
-	const authHeaders = await getAuthHeaders();
-	const response = await fetch(`${baseUrl}/state`, {
-		headers: authHeaders,
-		signal,
-	});
+) {
+	const response = await apiClient.spaces[":spaceSlug"].sessions[
+		":sessionId"
+	].state.$get(
+		{
+			param: {
+				spaceSlug,
+				sessionId,
+			},
+		},
+		{
+			init: { signal },
+		}
+	);
 	if (!response.ok) {
 		throw new Error(`Failed to fetch session state (${response.status})`);
 	}
-	return response.json() as Promise<SessionStreamState>;
+	return response.json();
 }
 
 function readStreamBatch(
@@ -130,18 +136,6 @@ function readStreamBatch(
 	}
 
 	return { events, status };
-}
-
-function sortSessionEvents(events: SessionEvent[]): void {
-	events.sort((left, right) => {
-		if (left.createdAt !== right.createdAt) {
-			return left.createdAt - right.createdAt;
-		}
-		if (left.eventIndex !== right.eventIndex) {
-			return left.eventIndex - right.eventIndex;
-		}
-		return left.id.localeCompare(right.id);
-	});
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: event processing requires handling many event types
@@ -569,7 +563,6 @@ export function useSessionEventState({
 
 					const updates = readStreamBatch(batch, sessionId);
 					if (updates.events.length > 0) {
-						sortSessionEvents(updates.events);
 						addEvents(updates.events);
 					}
 					if (updates.status) {
