@@ -58,7 +58,7 @@ const setupPath = resolve(srcDir, "setup.sh");
 const remoteBundlePath = "/usr/local/bin/sandbox-runtime.js";
 const remoteSetupPath = "/usr/local/bin/sandbox-runtime-setup.sh";
 
-const entrypoint = resolve(srcDir, "sandbox-runtime.ts");
+const entrypoint = resolve(srcDir, "src/index.ts");
 const buildCmd = [
 	"bun",
 	"build",

@@ -3,9 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
   "dependencies": {
     "@corporation/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@corporation/config": "workspace:*",
+    "bun-types": "latest",
+    "typescript": "catalog:"
   }
 }
