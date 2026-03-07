@@ -1,7 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ChevronDownIcon, FolderIcon } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -37,7 +37,11 @@ function AuthenticatedIndex() {
 	const [agent, setAgent] = useState(INITIAL_AGENT);
 	const [modelId, setModelId] = useState(INITIAL_MODEL);
 	const [selectedRepositoryId, setSelectedRepositoryId] =
-		useState<Id<"repositories"> | null>(null);
+		useState<Id<"repositories"> | null>(() => {
+			const saved = localStorage.getItem("corporation:recent-repo");
+			return saved ? (saved as Id<"repositories">) : null;
+		});
+	const warmSandbox = useMutation(api.warmSandbox.request);
 
 	useEffect(() => {
 		if (!repositories) {
@@ -63,6 +67,17 @@ function AuthenticatedIndex() {
 			return firstReadyRepository?._id ?? null;
 		});
 	}, [repositories]);
+
+	// Persist recent repo and trigger sandbox warming
+	useEffect(() => {
+		if (!selectedRepositoryId) {
+			return;
+		}
+		localStorage.setItem("corporation:recent-repo", selectedRepositoryId);
+		warmSandbox({ repositoryId: selectedRepositoryId }).catch(() => {
+			// Warming is best-effort
+		});
+	}, [selectedRepositoryId, warmSandbox]);
 
 	const selectedRepository = useMemo(() => {
 		if (!(repositories && selectedRepositoryId)) {

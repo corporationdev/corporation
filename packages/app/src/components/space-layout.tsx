@@ -15,6 +15,11 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAutoStartSandbox } from "@/hooks/use-auto-start-sandbox";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
 import { addActorConnectionSoftResetListener } from "@/lib/actor-errors";
@@ -157,6 +162,10 @@ export function SpaceLayout() {
 							sessions={sessions}
 							spaceSlug={spaceSlug}
 						/>
+						<SandboxStatusIndicator
+							error={space?.error}
+							status={space?.status}
+						/>
 					</div>
 				</header>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -173,6 +182,43 @@ export function SpaceLayout() {
 				</div>
 			</SidebarInset>
 		</div>
+	);
+}
+
+function SandboxStatusIndicator({
+	status,
+	error,
+}: {
+	status: string | undefined;
+	error: string | undefined;
+}) {
+	let dotClassName = "";
+	let tooltip = "";
+
+	if (status === "running") {
+		dotClassName = "bg-emerald-500";
+		tooltip = "Sandbox running";
+	} else if (status === "creating") {
+		dotClassName = "bg-amber-500";
+		tooltip = "Sandbox building";
+	} else if (status === "error") {
+		dotClassName = "bg-destructive";
+		tooltip = error ? `Sandbox error: ${error}` : "Sandbox error";
+	} else {
+		return null;
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				aria-label={tooltip}
+				className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-accent"
+			>
+				<span className={cn("size-2.5 rounded-full", dotClassName)} />
+				<span className="sr-only">{tooltip}</span>
+			</TooltipTrigger>
+			<TooltipContent side="bottom">{tooltip}</TooltipContent>
+		</Tooltip>
 	);
 }
 

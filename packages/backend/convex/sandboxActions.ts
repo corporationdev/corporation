@@ -4,7 +4,7 @@ import type { FunctionReturnType, GenericActionCtx } from "convex/server";
 import { v } from "convex/values";
 import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
-import type { DataModel, Id } from "./_generated/dataModel";
+import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { getAiEnvs, SANDBOX_AGENT_PORT } from "./lib/sandbox";
 
@@ -33,26 +33,15 @@ async function assertHealthyAndGetUrl(
 	return `https://${sandbox.getHost(port)}`;
 }
 
-async function provisionSandbox(
-	ctx: ActionCtx,
-	spaceId: Id<"spaces">,
-	snapshotId: string
-): Promise<Sandbox> {
+async function createSandbox(snapshotId: string): Promise<Sandbox> {
 	const aiEnvs = getAiEnvs();
 
-	await ctx.runMutation(internal.spaces.internalUpdate, {
-		id: spaceId,
-		status: "creating" as const,
-	});
-
-	const sandbox = await Sandbox.betaCreate(snapshotId, {
+	return await Sandbox.betaCreate(snapshotId, {
 		envs: aiEnvs,
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
 	});
-
-	return sandbox;
 }
 
 async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
@@ -79,7 +68,12 @@ async function resolveSandbox(ctx: ActionCtx, space: Space): Promise<Sandbox> {
 		throw new Error("Repository snapshot is not ready yet");
 	}
 
-	return await provisionSandbox(ctx, space._id, externalSnapshotId);
+	await ctx.runMutation(internal.spaces.internalUpdate, {
+		id: space._id,
+		status: "creating" as const,
+	});
+
+	return await createSandbox(externalSnapshotId);
 }
 
 export const archiveSandbox = internalAction({
@@ -108,7 +102,7 @@ export const deleteSandbox = internalAction({
 	},
 });
 
-export const ensureSandbox = internalAction({
+export const provisionForSpace = internalAction({
 	args: {
 		spaceId: v.id("spaces"),
 	},
@@ -140,6 +134,65 @@ export const ensureSandbox = internalAction({
 			});
 
 			throw error;
+		}
+	},
+});
+
+export const provisionForWarmSandbox = internalAction({
+	args: {
+		warmSandboxId: v.id("warmSandboxes"),
+	},
+	handler: async (ctx, args) => {
+		let sandbox: Sandbox | null = null;
+
+		try {
+			const warmRecord = await ctx.runQuery(internal.warmSandbox.internalGet, {
+				id: args.warmSandboxId,
+			});
+
+			const externalSnapshotId =
+				warmRecord.repository.activeSnapshot?.externalSnapshotId;
+
+			if (!externalSnapshotId) {
+				throw new Error("Repository snapshot is not ready yet");
+			}
+
+			sandbox = await createSandbox(externalSnapshotId);
+
+			const agentUrl = await assertHealthyAndGetUrl(
+				sandbox,
+				SANDBOX_AGENT_PORT,
+				AGENT_HEALTH_URL,
+				"sandbox-agent"
+			);
+
+			const result = await ctx.runMutation(internal.warmSandbox.markReady, {
+				id: args.warmSandboxId,
+				sandboxId: sandbox.sandboxId,
+				agentUrl,
+			});
+
+			if (!result.delivered) {
+				await Sandbox.kill(sandbox.sandboxId);
+			}
+		} catch (error) {
+			if (sandbox) {
+				try {
+					await Sandbox.kill(sandbox.sandboxId);
+				} catch {
+					// Best-effort cleanup
+				}
+			}
+
+			try {
+				await ctx.runMutation(internal.warmSandbox.cleanup, {
+					id: args.warmSandboxId,
+				});
+			} catch {
+				// Warm record may already be gone
+			}
+
+			console.error("Failed to provision warm sandbox", error);
 		}
 	},
 });

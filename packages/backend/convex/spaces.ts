@@ -299,9 +299,11 @@ export const ensure = authedMutation({
 		if (existing) {
 			await requireOwnedSpace(ctx, existing);
 			if (existing.status !== "running") {
-				await ctx.scheduler.runAfter(0, internal.sandboxActions.ensureSandbox, {
-					spaceId: existing._id,
-				});
+				await ctx.scheduler.runAfter(
+					0,
+					internal.sandboxActions.provisionForSpace,
+					{ spaceId: existing._id }
+				);
 			}
 			return existing._id;
 		}
@@ -310,22 +312,68 @@ export const ensure = authedMutation({
 			throw new ConvexError("repositoryId is required when creating a space");
 		}
 
-		const repository = await ctx.db.get(args.repositoryId);
+		const repositoryId = args.repositoryId;
+
+		const repository = await ctx.db.get(repositoryId);
 		if (!repository || repository.userId !== ctx.userId) {
 			throw new ConvexError("Repository not found");
 		}
 
+		// Check for a warm sandbox for this repo
+		const warmSandbox = await ctx.db
+			.query("warmSandboxes")
+			.withIndex("by_user_and_repository", (q) =>
+				q.eq("userId", ctx.userId).eq("repositoryId", repositoryId)
+			)
+			.first();
+
 		const now = Date.now();
+
+		if (
+			warmSandbox?.status === "ready" &&
+			warmSandbox.sandboxId &&
+			warmSandbox.agentUrl
+		) {
+			// Warm sandbox is ready — claim it immediately
+			const spaceId = await ctx.db.insert("spaces", {
+				slug,
+				repositoryId,
+				name: "New Space",
+				status: "running",
+				sandboxId: warmSandbox.sandboxId,
+				agentUrl: warmSandbox.agentUrl,
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.delete(warmSandbox._id);
+			return spaceId;
+		}
+
+		if (warmSandbox?.status === "provisioning") {
+			// Warm sandbox is still provisioning — hand off via spaceId
+			const spaceId = await ctx.db.insert("spaces", {
+				slug,
+				repositoryId,
+				name: "New Space",
+				status: "creating",
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.patch(warmSandbox._id, { spaceId });
+			return spaceId;
+		}
+
+		// No warm sandbox available — cold start
 		const spaceId = await ctx.db.insert("spaces", {
 			slug,
-			repositoryId: args.repositoryId,
+			repositoryId,
 			name: "New Space",
 			status: "creating",
 			createdAt: now,
 			updatedAt: now,
 		});
 
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.ensureSandbox, {
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
 			spaceId,
 		});
 
