@@ -2,7 +2,7 @@
 /* global Bun */
 
 /**
- * corp-agent — compiled Bun binary that runs inside E2B sandboxes.
+ * sandbox-runtime — compiled Bun binary that runs inside E2B sandboxes.
  *
  * Responsibilities:
  *   1. HTTP server on a configurable port (default 5799)
@@ -22,13 +22,11 @@ import {
 	turnRunnerCallbackPayloadSchema,
 } from "@corporation/shared/session-protocol";
 
-declare const Bun: typeof import("bun");
-
 // ---------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------
 
-const LOG_PATH = "/tmp/corp-agent.log";
+const LOG_PATH = "/tmp/sandbox-runtime.log";
 const logStream = fs.createWriteStream(LOG_PATH, { flags: "a" });
 
 function log(level: "info" | "warn" | "error", msg: string, data?: unknown) {
@@ -40,7 +38,7 @@ function log(level: "info" | "warn" | "error", msg: string, data?: unknown) {
 	});
 	logStream.write(`${line}\n`);
 	if (level === "error") {
-		console.error(`[corp-agent] ${msg}`, data ?? "");
+		console.error(`[sandbox-runtime] ${msg}`, data ?? "");
 	}
 }
 
@@ -68,6 +66,39 @@ function agentCommand(agent: string): string[] {
 		throw new Error(`Unknown agent: ${agent}`);
 	}
 	return ["npx", "-y", pkg];
+}
+
+// ---------------------------------------------------------------------------
+// Agent config files
+// ---------------------------------------------------------------------------
+
+// Agent config files are imported as JSON so they get bundled into the compiled binary.
+// To add configs for a new agent, add a JSON file to agent-configs/ and reference it here.
+import claudeCodeSettings from "./agent-configs/claude-code-settings.json";
+
+/** Map of agent name → array of { path, content } config files to write before spawning. */
+const AGENT_CONFIGS: Record<string, { path: string; content: string }[]> = {
+	claude: [
+		{
+			path: "/root/.claude/settings.json",
+			content: JSON.stringify(claudeCodeSettings),
+		},
+	],
+};
+
+function writeAgentConfigs(agent: string): void {
+	const configs = AGENT_CONFIGS[agent];
+	if (!configs) {
+		return;
+	}
+	for (const { path: filePath, content } of configs) {
+		const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+		if (dir) {
+			fs.mkdirSync(dir, { recursive: true });
+		}
+		fs.writeFileSync(filePath, content);
+		log("info", `Wrote agent config: ${filePath}`);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -326,8 +357,11 @@ function spawnStdioBridge(
 	const cmd = agentCommand(agent);
 	log("info", "Spawning agent command (stdio)", { cmd: cmd.join(" ") });
 
+	// Write agent-specific config files before spawning
+	writeAgentConfigs(agent);
+
 	const proc = Bun.spawn(cmd, {
-		env: { ...process.env },
+		env: { ...process.env, IS_SANDBOX: "1" },
 		stdin: "pipe",
 		stdout: "pipe",
 		stderr: "pipe",
@@ -573,7 +607,12 @@ async function bootstrapSessionBridge(
 
 	const initResult = await stdioRequest(bridge, "initialize", {
 		protocolVersion: ACP_PROTOCOL_VERSION,
-		clientInfo: { name: "corp-agent", version: "v1" },
+		clientInfo: { name: "sandbox-runtime", version: "v1" },
+	});
+	log("info", "ACP initialize result ", {
+		sessionId,
+		agent,
+		initResult: JSON.stringify(initResult),
 	});
 	await performAuth(bridge, agent, initResult);
 
@@ -590,7 +629,14 @@ async function bootstrapSessionBridge(
 			const loadResult = await stdioRequest(bridge, "session/load", {
 				sessionId: previousAgentSessionId,
 				cwd,
-				mcpServers: [],
+				mcpServers: [
+					{
+						name: "desktop",
+						command: "bun",
+						args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
+						env: [],
+					},
+				],
 			});
 			agentSessionId =
 				(loadResult.sessionId as string) || previousAgentSessionId;
@@ -605,9 +651,26 @@ async function bootstrapSessionBridge(
 	}
 
 	if (!agentSessionId) {
+		const mcpServers = [
+			{
+				name: "desktop",
+				command: "bun",
+				args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
+				env: [],
+			},
+		];
+		log("info", "Sending session/new with mcpServers", {
+			sessionId,
+			cwd,
+			mcpServers,
+		});
 		const sessionResult = await stdioRequest(bridge, "session/new", {
 			cwd,
-			mcpServers: [],
+			mcpServers,
+		});
+		log("info", "session/new result", {
+			sessionId,
+			sessionResult: JSON.stringify(sessionResult),
 		});
 		agentSessionId = sessionResult.sessionId as string;
 		if (!agentSessionId) {
@@ -616,6 +679,20 @@ async function bootstrapSessionBridge(
 	}
 
 	previousAgentSessionIds.delete(sessionId);
+
+	// Set bypassPermissions mode so MCP servers are auto-approved in ACP mode
+	try {
+		await stdioRequest(bridge, "session/set_mode", {
+			sessionId: agentSessionId,
+			modeId: "bypassPermissions",
+		});
+		log("info", "Set bypassPermissions mode", { sessionId, agentSessionId });
+	} catch (error) {
+		log("warn", "Failed to set bypassPermissions mode", {
+			sessionId,
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
 
 	if (modelId) {
 		await setModelOrThrow(bridge, agentSessionId, modelId);
@@ -1042,7 +1119,7 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 		sessionId,
 		callbackToken,
 		callbackUrl,
-		connectionId: `corp-agent-${turnId}-${crypto.randomUUID()}`,
+		connectionId: `sandbox-runtime-${turnId}-${crypto.randomUUID()}`,
 	});
 	let sessionBridge: SessionBridge | null = null;
 
@@ -1087,6 +1164,31 @@ async function executeTurn(params: PromptRequestBody): Promise<void> {
 
 // ---------------------------------------------------------------------------
 // HTTP server
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Subcommand routing: `sandbox-runtime mcp desktop` starts the desktop MCP server
+// ---------------------------------------------------------------------------
+
+const subcommand = process.argv[2];
+if (subcommand === "mcp") {
+	const mcpName = process.argv[3];
+	if (mcpName === "desktop") {
+		const { runDesktopMcp } = await import("./desktop-mcp");
+		await runDesktopMcp();
+		// Keep the process alive — StdioServerTransport reads from stdin
+		// but server.connect() returns immediately. Block here so we don't
+		// fall through to the HTTP server code below.
+		// biome-ignore lint/suspicious/noEmptyBlockStatements: intentionally block forever
+		await new Promise(() => {});
+	} else {
+		console.error(`Unknown MCP server: ${mcpName}`);
+		process.exit(1);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// HTTP server (default mode)
 // ---------------------------------------------------------------------------
 
 const DEFAULT_PORT = 5799;
@@ -1220,7 +1322,7 @@ function handleTurnCancel(pathname: string): Response {
 
 function handleRequest(req: Request): Response | Promise<Response> {
 	const url = new URL(req.url);
-	// TODO(auth): Require authentication for corp-agent HTTP routes
+	// TODO(auth): Require authentication for sandbox-runtime HTTP routes
 	// (at minimum `/v1/prompt` and `/v1/prompt/:turnId`).
 
 	if (req.method === "GET" && url.pathname === "/v1/health") {
@@ -1242,4 +1344,4 @@ Bun.serve({
 });
 
 log("info", `Listening on ${host}:${port}`);
-console.log(`[corp-agent] Listening on ${host}:${port}`);
+console.log(`[sandbox-runtime] Listening on ${host}:${port}`);

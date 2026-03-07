@@ -249,7 +249,7 @@ export const buildSnapshot = internalAction({
 						// }),
 						bootServer(sandbox, {
 							sessionName: SANDBOX_AGENT_SESSION_NAME,
-							command: `corp-agent --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
+							command: `bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
 							healthUrl: `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`,
 						}),
 					]);

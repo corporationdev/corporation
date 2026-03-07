@@ -9,5 +9,7 @@ const _setTimeout = globalThis.setTimeout;
 globalThis.setTimeout = (() => 0) as unknown as typeof globalThis.setTimeout;
 export const registry = setup({
 	use: { space },
+	// shouldnt be sending the full images. should send urls
+	maxIncomingMessageSize: 10 * 1024 * 1024, // 10 MB — desktop screenshots can be large
 });
 globalThis.setTimeout = _setTimeout;

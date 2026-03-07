@@ -52,7 +52,9 @@ async function launchAgentRunner(
 
 	if (!response.ok) {
 		const text = await response.text().catch(() => "");
-		throw new Error(`corp-agent prompt failed (${response.status}): ${text}`);
+		throw new Error(
+			`sandbox-runtime prompt failed (${response.status}): ${text}`
+		);
 	}
 }
 
