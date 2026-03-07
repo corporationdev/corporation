@@ -4,20 +4,26 @@ import crypto from "node:crypto";
 import { agentCommand, writeAgentConfigs } from "./agents";
 import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
 import { log } from "./logging";
+import {
+	type AcpAgentRequestMethod,
+	type AcpAgentRequestParams,
+	type AcpAgentRequestResult,
+	type AcpEnvelope,
+	acpClientRequestEnvelopeSchema,
+	acpEnvelopeSchema,
+	getAcpAgentRequestMethodSchemas,
+} from "./schemas";
 
 export type StdioBridge = {
 	dead: boolean;
 	onEnvelope:
-		| ((
-				envelope: Record<string, unknown>,
-				direction: "inbound" | "outbound"
-		  ) => void)
+		| ((envelope: AcpEnvelope, direction: "inbound" | "outbound") => void)
 		| null;
-	onNotification: ((envelope: Record<string, unknown>) => void) | null;
+	onNotification: ((envelope: AcpEnvelope) => void) | null;
 	pendingResolvers: Map<
 		string,
 		{
-			resolve: (envelope: Record<string, unknown>) => void;
+			resolve: (envelope: AcpEnvelope) => void;
 			reject: (error: Error) => void;
 			timer: ReturnType<typeof setTimeout>;
 		}
@@ -75,13 +81,11 @@ function rejectPendingRequests(bridge: StdioBridge, error: Error): void {
 	}
 }
 
-function routeStdoutEnvelope(
-	bridge: StdioBridge,
-	envelope: Record<string, unknown>
-): void {
+function routeStdoutEnvelope(bridge: StdioBridge, envelope: AcpEnvelope): void {
 	bridge.onEnvelope?.(envelope, "inbound");
 
-	const envId = envelope.id != null ? String(envelope.id) : null;
+	const envId =
+		"id" in envelope && envelope.id != null ? String(envelope.id) : null;
 	if (envId && bridge.pendingResolvers.has(envId)) {
 		const pending = bridge.pendingResolvers.get(envId);
 		bridge.pendingResolvers.delete(envId);
@@ -101,8 +105,16 @@ function processStdoutLine(bridge: StdioBridge, rawLine: string): void {
 	}
 
 	try {
-		const envelope = JSON.parse(line) as Record<string, unknown>;
-		routeStdoutEnvelope(bridge, envelope);
+		const parsedJson = JSON.parse(line) as unknown;
+		const envelopeResult = acpEnvelopeSchema.safeParse(parsedJson);
+		if (!envelopeResult.success) {
+			log("warn", "Discarding invalid ACP envelope from stdout", {
+				line: line.slice(0, 200),
+				error: envelopeResult.error.message,
+			});
+			return;
+		}
+		routeStdoutEnvelope(bridge, envelopeResult.data);
 	} catch {
 		log("warn", "Failed to parse agent stdout line", {
 			line: line.slice(0, 200),
@@ -119,12 +131,9 @@ function processStderrLine(agent: string, rawLine: string): void {
 
 export function spawnStdioBridge(
 	agent: string,
-	onNotification: (envelope: Record<string, unknown>) => void,
+	onNotification: (envelope: AcpEnvelope) => void,
 	onEnvelope:
-		| ((
-				envelope: Record<string, unknown>,
-				direction: "inbound" | "outbound"
-		  ) => void)
+		| ((envelope: AcpEnvelope, direction: "inbound" | "outbound") => void)
 		| null = null
 ): StdioBridge {
 	const cmd = agentCommand(agent);
@@ -217,10 +226,7 @@ export function teardownBridge(
 	log("info", "Tore down spawned session bridge", context);
 }
 
-export function stdioWrite(
-	bridge: StdioBridge,
-	envelope: Record<string, unknown>
-): void {
+export function stdioWrite(bridge: StdioBridge, envelope: AcpEnvelope): void {
 	bridge.onEnvelope?.(envelope, "outbound");
 	const stdin = bridge.proc.stdin;
 	if (stdin && typeof stdin === "object") {
@@ -228,48 +234,68 @@ export function stdioWrite(
 	}
 }
 
-export async function stdioRequest(
+export async function stdioRequest<M extends AcpAgentRequestMethod>(
 	bridge: StdioBridge,
-	method: string,
-	params: unknown,
+	method: M,
+	params: AcpAgentRequestParams<M>,
+	timeoutMs?: number
+): Promise<AcpAgentRequestResult<M>>;
+export async function stdioRequest<M extends string>(
+	bridge: StdioBridge,
+	method: M,
+	params: M extends AcpAgentRequestMethod ? AcpAgentRequestParams<M> : unknown,
 	timeoutMs: number = ACP_REQUEST_TIMEOUT_MS
-): Promise<Record<string, unknown>> {
+): Promise<
+	M extends AcpAgentRequestMethod ? AcpAgentRequestResult<M> : unknown
+> {
 	const id = `${method}-${crypto.randomUUID()}`;
-	const envelope: Record<string, unknown> = {
+	const methodSchemas = getAcpAgentRequestMethodSchemas(method);
+	const parsedParams = methodSchemas
+		? methodSchemas.params.parse(params)
+		: params;
+	const envelope = acpClientRequestEnvelopeSchema.parse({
 		jsonrpc: "2.0",
 		id,
 		method,
-		params,
-	};
+		params: parsedParams,
+	});
 
-	const responsePromise = new Promise<Record<string, unknown>>(
-		(resolve, reject) => {
-			const timer = setTimeout(() => {
-				const pending = bridge.pendingResolvers.get(id);
-				if (!pending) {
-					return;
-				}
-				bridge.pendingResolvers.delete(id);
-				reject(new Error(`ACP request timed out: ${method} (${id})`));
-			}, timeoutMs);
+	const responsePromise = new Promise<AcpEnvelope>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			const pending = bridge.pendingResolvers.get(id);
+			if (!pending) {
+				return;
+			}
+			bridge.pendingResolvers.delete(id);
+			reject(new Error(`ACP request timed out: ${method} (${id})`));
+		}, timeoutMs);
 
-			bridge.pendingResolvers.set(id, {
-				resolve,
-				reject,
-				timer,
-			});
-		}
-	);
+		bridge.pendingResolvers.set(id, {
+			resolve,
+			reject,
+			timer,
+		});
+	});
 
 	stdioWrite(bridge, envelope);
 	const result = await responsePromise;
 
 	if ("error" in result) {
-		const err = result.error as Record<string, unknown>;
+		const err = result.error as { code?: unknown; message?: unknown };
 		throw new Error(
 			`ACP error (${err.code}): ${err.message ?? JSON.stringify(err)}`
 		);
 	}
 
-	return (result.result as Record<string, unknown>) ?? {};
+	if (!("result" in result)) {
+		throw new Error(`ACP response missing result: ${JSON.stringify(result)}`);
+	}
+
+	const envelopeResult = result.result;
+	const parsedResult = methodSchemas
+		? methodSchemas.result.parse(envelopeResult)
+		: envelopeResult;
+	return parsedResult as M extends AcpAgentRequestMethod
+		? AcpAgentRequestResult<M>
+		: unknown;
 }

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { AGENT_METHODS, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import {
 	ACP_PROTOCOL_VERSION,
 	CALLBACK_MAX_ATTEMPTS,
@@ -12,8 +13,19 @@ import {
 	selectAuthMethod,
 } from "./helpers";
 import { log } from "./logging";
-import type { PromptRequestBody, SessionEvent } from "./schemas";
-import { turnRunnerCallbackPayloadSchema } from "./schemas";
+import type {
+	AcpAgentRequestResult,
+	AcpEnvelope,
+	PromptRequestBody,
+	SessionEvent,
+} from "./schemas";
+import {
+	legacyRequestPermissionEnvelopeSchema,
+	sessionCancelEnvelopeSchema,
+	sessionRequestPermissionEnvelopeSchema,
+	sessionRequestPermissionResponseEnvelopeSchema,
+	turnRunnerCallbackPayloadSchema,
+} from "./schemas";
 import {
 	type StdioBridge,
 	spawnStdioBridge,
@@ -30,10 +42,7 @@ type SessionBridge = {
 	modelId: string | undefined;
 	activeTurnId: string | null;
 	onEvent:
-		| ((
-				envelope: Record<string, unknown>,
-				direction: "inbound" | "outbound"
-		  ) => void)
+		| ((envelope: AcpEnvelope, direction: "inbound" | "outbound") => void)
 		| null;
 };
 
@@ -43,26 +52,35 @@ type SessionBridge = {
 
 function maybeHandlePermissionRequest(
 	bridge: StdioBridge,
-	envelope: Record<string, unknown>
+	envelope: AcpEnvelope
 ): void {
-	if (envelope.method !== "requestPermission" || envelope.id == null) {
+	if (!("method" in envelope)) {
 		return;
 	}
 
-	const reqParams = envelope.params as Record<string, unknown> | undefined;
-	const request = reqParams?.request as Record<string, unknown> | undefined;
-	const options = Array.isArray(request?.options) ? request.options : [];
+	const requestResult =
+		envelope.method === CLIENT_METHODS.session_request_permission
+			? sessionRequestPermissionEnvelopeSchema.safeParse(envelope)
+			: legacyRequestPermissionEnvelopeSchema.safeParse(envelope);
+	if (!requestResult.success) {
+		return;
+	}
+
+	const options =
+		"request" in requestResult.data.params
+			? requestResult.data.params.request.options
+			: requestResult.data.params.options;
 	const selected = pickPermissionOption(options);
 
-	const response: Record<string, unknown> = {
+	const response = sessionRequestPermissionResponseEnvelopeSchema.parse({
 		jsonrpc: "2.0",
-		id: envelope.id,
+		id: requestResult.data.id,
 		result: {
 			outcome: selected
 				? { outcome: "selected", optionId: selected.optionId }
 				: { outcome: "cancelled" },
 		},
-	};
+	});
 	stdioWrite(bridge, response);
 }
 
@@ -77,7 +95,7 @@ async function setModelOrThrow(
 	modelId: string
 ): Promise<void> {
 	try {
-		await stdioRequest(bridge, "session/set_model", {
+		await stdioRequest(bridge, AGENT_METHODS.session_set_model, {
 			sessionId: agentSessionId,
 			modelId,
 		});
@@ -95,7 +113,7 @@ async function setModelOrThrow(
 async function performAuth(
 	bridge: StdioBridge,
 	agent: string,
-	initResult: Record<string, unknown>
+	initResult: AcpAgentRequestResult<typeof AGENT_METHODS.initialize>
 ): Promise<void> {
 	const authMethods = extractAuthMethods(initResult);
 	if (authMethods.length === 0) {
@@ -103,7 +121,7 @@ async function performAuth(
 	}
 	const selectedAuth = selectAuthMethod(authMethods);
 	if (selectedAuth) {
-		await stdioRequest(bridge, "authenticate", {
+		await stdioRequest(bridge, AGENT_METHODS.authenticate, {
 			methodId: selectedAuth.methodId,
 		});
 		log("info", "ACP authentication succeeded", {
@@ -127,7 +145,7 @@ function createTurnCallbackDispatcher(params: {
 	connectionId: string;
 }): {
 	queueEnvelopeEvent: (
-		envelope: Record<string, unknown>,
+		envelope: AcpEnvelope,
 		direction: "inbound" | "outbound"
 	) => void;
 	finalizeSuccess: () => Promise<void>;
@@ -255,7 +273,7 @@ function createTurnCallbackDispatcher(params: {
 	};
 
 	const queueEnvelopeEvent = (
-		envelope: Record<string, unknown>,
+		envelope: AcpEnvelope,
 		direction: "inbound" | "outbound"
 	): void => {
 		if (callbackDeliveryBroken) {
@@ -400,18 +418,10 @@ export class AgentRuntime {
 				queueEnvelopeEvent: callbacks.queueEnvelopeEvent,
 			});
 
-			const promptResult = await stdioRequest(
-				sessionBridge.bridge,
-				"session/prompt",
-				{
-					sessionId: sessionBridge.agentSessionId,
-					prompt,
-				}
-			);
-
-			if ("error" in promptResult) {
-				throw new Error(`Prompt ACP error: ${JSON.stringify(promptResult)}`);
-			}
+			await stdioRequest(sessionBridge.bridge, AGENT_METHODS.session_prompt, {
+				sessionId: sessionBridge.agentSessionId,
+				prompt,
+			});
 
 			await callbacks.finalizeSuccess();
 		} catch (error) {
@@ -437,11 +447,11 @@ export class AgentRuntime {
 
 		const sessionBridge = this.getSessionBridge(sessionId);
 		if (sessionBridge) {
-			const cancelEnvelope: Record<string, unknown> = {
+			const cancelEnvelope = sessionCancelEnvelopeSchema.parse({
 				jsonrpc: "2.0",
-				method: "session/cancel",
+				method: AGENT_METHODS.session_cancel,
 				params: { sessionId: sessionBridge.agentSessionId },
-			};
+			});
 			stdioWrite(sessionBridge.bridge, cancelEnvelope);
 			log("info", "Sent session/cancel to agent", { turnId, sessionId });
 		}
@@ -511,7 +521,7 @@ export class AgentRuntime {
 			);
 		}
 
-		const initResult = await stdioRequest(bridge, "initialize", {
+		const initResult = await stdioRequest<"initialize">(bridge, "initialize", {
 			protocolVersion: ACP_PROTOCOL_VERSION,
 			clientInfo: { name: "sandbox-runtime", version: "v1" },
 		});
@@ -522,17 +532,14 @@ export class AgentRuntime {
 		});
 		await performAuth(bridge, agent, initResult);
 
-		const capabilities = initResult.agentCapabilities as
-			| Record<string, unknown>
-			| undefined;
-		const supportsLoad = capabilities?.loadSession === true;
+		const supportsLoad = initResult.agentCapabilities?.loadSession === true;
 		const previousAgentSessionId = this.previousAgentSessionIds.get(sessionId);
 
 		let agentSessionId: string | null = null;
 
 		if (supportsLoad && previousAgentSessionId) {
 			try {
-				const loadResult = await stdioRequest(bridge, "session/load", {
+				await stdioRequest<"session/load">(bridge, "session/load", {
 					sessionId: previousAgentSessionId,
 					cwd,
 					mcpServers: [
@@ -544,8 +551,7 @@ export class AgentRuntime {
 						},
 					],
 				});
-				agentSessionId =
-					(loadResult.sessionId as string) || previousAgentSessionId;
+				agentSessionId = previousAgentSessionId;
 				log("info", "session/load succeeded", {
 					sessionId,
 					agentSessionId,
@@ -573,15 +579,19 @@ export class AgentRuntime {
 				cwd,
 				mcpServers,
 			});
-			const sessionResult = await stdioRequest(bridge, "session/new", {
-				cwd,
-				mcpServers,
-			});
+			const sessionResult = await stdioRequest<"session/new">(
+				bridge,
+				"session/new",
+				{
+					cwd,
+					mcpServers,
+				}
+			);
 			log("info", "session/new result", {
 				sessionId,
 				sessionResult: JSON.stringify(sessionResult),
 			});
-			agentSessionId = sessionResult.sessionId as string;
+			agentSessionId = sessionResult.sessionId;
 			if (!agentSessionId) {
 				throw new Error("session/new did not return a sessionId");
 			}
@@ -590,7 +600,7 @@ export class AgentRuntime {
 		this.previousAgentSessionIds.delete(sessionId);
 
 		try {
-			await stdioRequest(bridge, "session/set_mode", {
+			await stdioRequest(bridge, AGENT_METHODS.session_set_mode, {
 				sessionId: agentSessionId,
 				modeId: "bypassPermissions",
 			});
@@ -635,7 +645,7 @@ export class AgentRuntime {
 		cwd: string,
 		modelId: string | undefined,
 		queueEnvelopeEvent: (
-			envelope: Record<string, unknown>,
+			envelope: AcpEnvelope,
 			direction: "inbound" | "outbound"
 		) => void,
 		pendingTurnId: string
@@ -699,7 +709,7 @@ export class AgentRuntime {
 		cwd: string;
 		modelId: string | undefined;
 		queueEnvelopeEvent: (
-			envelope: Record<string, unknown>,
+			envelope: AcpEnvelope,
 			direction: "inbound" | "outbound"
 		) => void;
 	}): Promise<SessionBridge> {

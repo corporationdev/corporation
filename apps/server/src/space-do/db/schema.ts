@@ -6,6 +6,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { SessionStreamFrameData } from "sandbox-runtime/schemas";
 
 export const sessionStatusValues = ["idle", "running", "error"] as const;
 export type SessionStatus = (typeof sessionStatusValues)[number];
@@ -50,7 +51,7 @@ export const sessionStreamFrames = sqliteTable(
 		eventId: text("event_id"),
 		data: text("data", { mode: "json" })
 			.notNull()
-			.$type<Record<string, unknown>>(),
+			.$type<SessionStreamFrameData>(),
 	},
 	(table) => [
 		uniqueIndex("session_stream_frames_session_offset_idx").on(

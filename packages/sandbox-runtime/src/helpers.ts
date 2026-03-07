@@ -1,3 +1,5 @@
+import type { InitializeResponse } from "@agentclientprotocol/sdk";
+
 export const ACP_PROTOCOL_VERSION = 1;
 export const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000;
 export const CALLBACK_TIMEOUT_MS = 10_000;
@@ -56,25 +58,16 @@ export function pickPermissionOption(
 }
 
 export function extractAuthMethods(
-	initResult: Record<string, unknown>
+	initResult: InitializeResponse
 ): AuthMethod[] {
-	const authMethods = initResult.authMethods;
+	const authMethods = initResult.authMethods ?? [];
 	if (!Array.isArray(authMethods)) {
 		return [];
 	}
 
 	return authMethods
-		.map((method) => {
-			if (!method || typeof method !== "object") {
-				return null;
-			}
-			const methodId = (method as Record<string, unknown>).id;
-			if (typeof methodId !== "string" || methodId.length === 0) {
-				return null;
-			}
-			return { id: methodId };
-		})
-		.filter((method): method is AuthMethod => method !== null);
+		.filter((method) => method && typeof method.id === "string")
+		.map((method) => ({ id: method.id }));
 }
 
 export function selectAuthMethod(

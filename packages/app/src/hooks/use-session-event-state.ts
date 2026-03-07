@@ -29,6 +29,55 @@ export type SessionState = {
 
 const OPTIMISTIC_MATCH_TIME_TOLERANCE_MS = 5000;
 
+function asObject(value: unknown): Record<string, unknown> | null {
+	return value !== null && typeof value === "object"
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function asString(value: unknown): string | null {
+	return typeof value === "string" ? value : null;
+}
+
+function getSessionPromptParts(
+	payload: SessionEvent["payload"]
+): Array<{ type: string; text?: string }> | null {
+	const payloadObject = asObject(payload);
+	if (!payloadObject || asString(payloadObject.method) !== "session/prompt") {
+		return null;
+	}
+
+	const params = asObject(payloadObject.params);
+	const prompt = params?.prompt;
+	if (!Array.isArray(prompt)) {
+		return null;
+	}
+
+	return prompt.filter(
+		(part): part is { type: string; text?: string } =>
+			part !== null &&
+			typeof part === "object" &&
+			typeof (part as { type?: unknown }).type === "string" &&
+			((part as { text?: unknown }).text === undefined ||
+				typeof (part as { text?: unknown }).text === "string")
+	);
+}
+
+function getSessionUpdate(
+	payload: SessionEvent["payload"]
+): Record<string, unknown> | null {
+	const payloadObject = asObject(payload);
+	if (!payloadObject || asString(payloadObject.method) !== "session/update") {
+		return null;
+	}
+	const params = asObject(payloadObject.params);
+	const update = asObject(params?.update);
+	if (!(update && asString(update.sessionUpdate))) {
+		return null;
+	}
+	return update;
+}
+
 function buildSessionStreamBaseUrl(
 	spaceSlug: string,
 	sessionId: string
@@ -131,19 +180,17 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 	const toolEntryMap = new Map<string, TimelineEntry>();
 
 	for (const event of events) {
-		const payload = event.payload as Record<string, unknown>;
-		const method = typeof payload.method === "string" ? payload.method : null;
 		const time = new Date(event.createdAt).toISOString();
 
-		if (event.sender === "client" && method === "session/prompt") {
+		if (event.sender === "client") {
+			const promptArray = getSessionPromptParts(event.payload);
+			if (!promptArray) {
+				continue;
+			}
 			flushAssistant(time);
 			flushThought(time);
-			const params = payload.params as Record<string, unknown> | undefined;
-			const promptArray = params?.prompt as
-				| Array<{ type: string; text?: string }>
-				| undefined;
 			const replayPrefix = "Previous session history is replayed below";
-			const text = (promptArray ?? [])
+			const text = promptArray
 				.filter(
 					(part) => part?.type === "text" && typeof part.text === "string"
 				)
@@ -167,19 +214,18 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 			continue;
 		}
 
-		if (event.sender === "agent" && method === "session/update") {
-			const params = payload.params as Record<string, unknown> | undefined;
-			const update = params?.update as Record<string, unknown> | undefined;
-			if (!update || typeof update.sessionUpdate !== "string") {
+		if (event.sender === "agent") {
+			const update = getSessionUpdate(event.payload);
+			if (!update) {
 				continue;
 			}
 
 			switch (update.sessionUpdate) {
 				case "agent_message_chunk": {
-					const content = update.content as
-						| { type?: string; text?: string }
-						| undefined;
-					if (content?.type === "text" && content.text) {
+					const content = asObject(update.content);
+					const contentType = asString(content?.type);
+					const contentText = asString(content?.text);
+					if (contentType === "text" && contentText) {
 						if (!assistantAccumId) {
 							assistantAccumId = `assistant-${event.id}`;
 							assistantAccumText = "";
@@ -191,7 +237,7 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 								text: "",
 							});
 						}
-						assistantAccumText += content.text;
+						assistantAccumText += contentText;
 						const entry = entries.find((e) => e.id === assistantAccumId);
 						if (entry) {
 							entry.text = assistantAccumText;
@@ -201,10 +247,10 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 					break;
 				}
 				case "agent_thought_chunk": {
-					const content = update.content as
-						| { type?: string; text?: string }
-						| undefined;
-					if (content?.type === "text" && content.text) {
+					const content = asObject(update.content);
+					const contentType = asString(content?.type);
+					const contentText = asString(content?.text);
+					if (contentType === "text" && contentText) {
 						if (!thoughtAccumId) {
 							thoughtAccumId = `thought-${event.id}`;
 							thoughtAccumText = "";
@@ -218,7 +264,7 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 								},
 							});
 						}
-						thoughtAccumText += content.text;
+						thoughtAccumText += contentText;
 						const entry = entries.find((e) => e.id === thoughtAccumId);
 						if (entry?.reasoning) {
 							entry.reasoning.text = thoughtAccumText;
@@ -230,11 +276,12 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 				case "tool_call": {
 					flushAssistant(time);
 					flushThought(time);
-					const toolCallId = (update.toolCallId as string) ?? event.id;
+					const toolCallId = asString(update.toolCallId) ?? event.id;
 					const existing = toolEntryMap.get(toolCallId);
 					if (existing) {
-						if (update.status) {
-							existing.toolStatus = update.status as string;
+						const status = asString(update.status);
+						if (status) {
+							existing.toolStatus = status;
 						}
 						if (update.rawInput != null) {
 							existing.toolInput = JSON.stringify(update.rawInput, null, 2);
@@ -242,16 +289,19 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 						if (update.rawOutput != null) {
 							existing.toolOutput = JSON.stringify(update.rawOutput, null, 2);
 						}
-						if (update.title) {
-							existing.toolName = update.title as string;
+						const title = asString(update.title);
+						if (title) {
+							existing.toolName = title;
 						}
 						existing.time = time;
 					} else {
+						const title = asString(update.title);
+						const status = asString(update.status);
 						const entry: TimelineEntry = {
 							id: `tool-${toolCallId}`,
 							kind: "tool",
 							time,
-							toolName: (update.title as string) ?? "tool",
+							toolName: title ?? "tool",
 							toolInput:
 								update.rawInput != null
 									? JSON.stringify(update.rawInput, null, 2)
@@ -260,7 +310,7 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 								update.rawOutput != null
 									? JSON.stringify(update.rawOutput, null, 2)
 									: undefined,
-							toolStatus: (update.status as string) ?? "in_progress",
+							toolStatus: status ?? "in_progress",
 						};
 						toolEntryMap.set(toolCallId, entry);
 						entries.push(entry);
@@ -268,28 +318,38 @@ function eventsToEntries(events: SessionEvent[]): TimelineEntry[] {
 					break;
 				}
 				case "tool_call_update": {
-					const toolCallId = update.toolCallId as string;
+					const toolCallId = asString(update.toolCallId);
+					if (!toolCallId) {
+						break;
+					}
 					const existing = toolEntryMap.get(toolCallId);
 					if (existing) {
-						if (update.status) {
-							existing.toolStatus = update.status as string;
+						const status = asString(update.status);
+						if (status) {
+							existing.toolStatus = status;
 						}
 						if (update.rawOutput != null) {
 							existing.toolOutput = JSON.stringify(update.rawOutput, null, 2);
 						}
-						if (update.title) {
-							existing.toolName = update.title as string;
+						const title = asString(update.title);
+						if (title) {
+							existing.toolName = title;
 						}
 						existing.time = time;
 					}
 					break;
 				}
 				case "plan": {
-					const planEntries =
-						(update.entries as Array<{
-							content: string;
-							status: string;
-						}>) ?? [];
+					const planEntries = Array.isArray(update.entries)
+						? update.entries.filter(
+								(entry): entry is { content: string; status: string } =>
+									entry !== null &&
+									typeof entry === "object" &&
+									typeof (entry as { content?: unknown }).content ===
+										"string" &&
+									typeof (entry as { status?: unknown }).status === "string"
+							)
+						: [];
 					const detail = planEntries
 						.map((e) => `[${e.status}] ${e.content}`)
 						.join("\n");
