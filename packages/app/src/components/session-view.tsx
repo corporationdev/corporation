@@ -9,7 +9,6 @@ import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
 import agentModelsData from "@/data/agent-models.json";
 import { useSessionEventState } from "@/hooks/use-session-event-state";
-import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
@@ -172,16 +171,6 @@ export const ConnectedSessionView: FC<{
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
-				const kind = softResetActorConnectionOnTransientError({
-					error,
-					reasonPrefix: "session-pending-send",
-					spaceSlug,
-				});
-				if (kind) {
-					pendingRef.current = pending;
-					sentRef.current = false;
-					return;
-				}
 				removeOptimisticUserMessage(pending.clientId);
 				setSessionStatus("idle");
 				console.error("Failed to send pending message", error);
@@ -193,7 +182,6 @@ export const ConnectedSessionView: FC<{
 		sessionId,
 		space?.agentUrl,
 		space?._id,
-		spaceSlug,
 		touchSpace,
 		removeOptimisticUserMessage,
 		setSessionStatus,
@@ -221,17 +209,6 @@ export const ConnectedSessionView: FC<{
 				touchSpace({ id: space._id }).catch(() => undefined);
 			}
 		} catch (error) {
-			const kind = softResetActorConnectionOnTransientError({
-				error,
-				reasonPrefix: "session-send",
-				spaceSlug,
-			});
-			if (kind) {
-				removeOptimisticUserMessage(optimisticClientId);
-				setSessionStatus("idle");
-				setMessage((current) => (current ? current : text));
-				return;
-			}
 			console.error("Failed to send message", { error, sessionId });
 			removeOptimisticUserMessage(optimisticClientId);
 			setSessionStatus("idle");
@@ -264,18 +241,10 @@ export const ConnectedSessionView: FC<{
 			}
 			await conn.cancelSession(sessionId);
 		} catch (error) {
-			const kind = softResetActorConnectionOnTransientError({
-				error,
-				reasonPrefix: "session-cancel",
-				spaceSlug,
-			});
-			if (kind) {
-				return;
-			}
 			console.error("Failed to cancel session", { error, sessionId });
 			toast.error("Failed to stop session");
 		}
-	}, [actor.connection, sessionId, spaceSlug, sessionState]);
+	}, [actor.connection, sessionId, sessionState]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {

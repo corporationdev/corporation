@@ -9,6 +9,12 @@ import { type SessionRow, schema } from "../db/schema";
 import { ingestAgentRunnerBatch } from "./agent-runner";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
+import {
+	closeTerminal,
+	openTerminal,
+	input as terminalInput,
+	resize as terminalResize,
+} from "./terminal-driver";
 import type { PersistedState, SpaceVars } from "./types";
 
 export type { SessionRow } from "../db/schema";
@@ -51,9 +57,6 @@ export const space = actor({
 			db,
 			sandbox,
 			terminalHandles: new Map(),
-			terminalEnsures: new Map(),
-			terminalOpenActions: new Map(),
-			lastTerminalSnapshotAt: new Map(),
 			sessionStreamWaiters: new Map(),
 			agentRunnerSequenceBySessionId: new Map(),
 		};
@@ -63,20 +66,6 @@ export const space = actor({
 
 	onBeforeActionResponse: (_c, _name, _args, output) => {
 		return output;
-	},
-
-	onDisconnect: (c, conn) => {
-		const prefix = `${conn.id}:`;
-		for (const key of c.vars.terminalOpenActions.keys()) {
-			if (key.startsWith(prefix)) {
-				c.vars.terminalOpenActions.delete(key);
-			}
-		}
-		for (const key of c.vars.lastTerminalSnapshotAt.keys()) {
-			if (key.startsWith(prefix)) {
-				c.vars.lastTerminalSnapshotAt.delete(key);
-			}
-		}
 	},
 
 	actions: {
@@ -101,5 +90,10 @@ export const space = actor({
 			live?: boolean,
 			timeoutMs?: number
 		) => readSessionStream(c, sessionId, afterOffset, limit, live, timeoutMs),
+		openTerminal: (c, cols?: number, rows?: number) =>
+			openTerminal(c, cols, rows),
+		closeTerminal: (c) => closeTerminal(c),
+		input: (c, data: number[]) => terminalInput(c, data),
+		resize: (c, cols: number, rows: number) => terminalResize(c, cols, rows),
 	},
 });

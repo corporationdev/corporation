@@ -13,9 +13,6 @@ export type SpaceVars = {
 	db: SpaceDatabase;
 	sandbox: Sandbox;
 	terminalHandles: Map<string, CommandHandle>;
-	terminalEnsures: Map<string, Promise<void>>;
-	terminalOpenActions: Map<string, Promise<void>>;
-	lastTerminalSnapshotAt: Map<string, number>;
 	sessionStreamWaiters: Map<string, Set<() => void>>;
 	agentRunnerSequenceBySessionId: Map<string, number>;
 };
