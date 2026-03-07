@@ -8,7 +8,7 @@ import { AgentModelPicker } from "@/components/agent-model-picker";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
 import agentModelsData from "@/data/agent-models.json";
-import { useSessionEventState } from "@/hooks/use-session-event-state";
+import { useSessionState } from "@/hooks/use-session-state";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
@@ -102,31 +102,17 @@ export const ConnectedSessionView: FC<{
 	const ensureSpace = useMutation(api.spaces.ensure);
 	const touchSpace = useMutation(api.spaces.touch);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
-	const sessionState = useSessionEventState({ sessionId, spaceSlug, actor });
+	const sessionState = useSessionState({ sessionId, spaceSlug, actor });
 	const agent = agentOverride ?? sessionState.agent ?? INITIAL_AGENT;
 	const modelId = modelIdOverride ?? sessionState.modelId ?? INITIAL_MODEL;
-	const addOptimisticUserMessage = sessionState.addOptimisticUserMessage;
-	const removeOptimisticUserMessage = sessionState.removeOptimisticUserMessage;
-	const setSessionStatus = sessionState.setStatus;
 	const isRunning = sessionState.status === "running";
 
 	const pendingRef = useRef<{
 		text: string;
 		agent: string;
 		modelId: string;
-		clientId: string;
 	} | null>(null);
 	const sentRef = useRef(false);
-
-	const beginOptimisticSend = useCallback(
-		(text: string): string => {
-			const clientId = nanoid();
-			addOptimisticUserMessage({ clientId, text });
-			setSessionStatus("running");
-			return clientId;
-		},
-		[addOptimisticUserMessage, setSessionStatus]
-	);
 
 	// Consume pending message from store on mount
 	useEffect(() => {
@@ -135,15 +121,13 @@ export const ConnectedSessionView: FC<{
 		}
 		const pending = consumeMessage();
 		if (pending) {
-			const clientId = beginOptimisticSend(pending.text);
 			pendingRef.current = {
 				...pending,
-				clientId,
 			};
 			setAgentOverride(pending.agent);
 			setModelIdOverride(pending.modelId);
 		}
-	}, [consumeMessage, beginOptimisticSend]);
+	}, [consumeMessage]);
 
 	// Send pending message once actor is connected and space has agentUrl
 	useEffect(() => {
@@ -171,8 +155,6 @@ export const ConnectedSessionView: FC<{
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
-				removeOptimisticUserMessage(pending.clientId);
-				setSessionStatus("idle");
 				console.error("Failed to send pending message", error);
 				toast.error("Failed to send message");
 			});
@@ -183,8 +165,6 @@ export const ConnectedSessionView: FC<{
 		space?.agentUrl,
 		space?._id,
 		touchSpace,
-		removeOptimisticUserMessage,
-		setSessionStatus,
 	]);
 
 	const handleSend = useCallback(async () => {
@@ -194,7 +174,6 @@ export const ConnectedSessionView: FC<{
 		}
 
 		setMessage("");
-		const optimisticClientId = beginOptimisticSend(text);
 
 		try {
 			await ensureSpace({ slug: spaceSlug });
@@ -210,8 +189,6 @@ export const ConnectedSessionView: FC<{
 			}
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
-			removeOptimisticUserMessage(optimisticClientId);
-			setSessionStatus("idle");
 			setMessage((current) => (current ? current : text));
 			toast.error("Failed to send message");
 		}
@@ -225,16 +202,10 @@ export const ConnectedSessionView: FC<{
 		modelId,
 		space?._id,
 		touchSpace,
-		beginOptimisticSend,
-		removeOptimisticUserMessage,
-		setSessionStatus,
 	]);
 
 	const handleStop = useCallback(async () => {
 		try {
-			// Optimistically update the status to idle
-			sessionState.setStatus("idle");
-
 			const conn = actor.connection;
 			if (!conn) {
 				return;
@@ -244,7 +215,7 @@ export const ConnectedSessionView: FC<{
 			console.error("Failed to cancel session", { error, sessionId });
 			toast.error("Failed to stop session");
 		}
-	}, [actor.connection, sessionId, sessionState]);
+	}, [actor.connection, sessionId]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {

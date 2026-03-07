@@ -259,3 +259,12 @@ export const sessionStreamFrameDataSchema = z.discriminatedUnion("kind", [
 export type SessionStreamFrameData = z.infer<
 	typeof sessionStreamFrameDataSchema
 >;
+
+export const sessionStreamStateSchema = z.object({
+	sessionId: z.string().min(1),
+	status: sessionStatusSchema,
+	agent: z.string().nullable(),
+	modelId: z.string().nullable(),
+	lastOffset: z.number().int().gte(0),
+});
+export type SessionStreamState = z.infer<typeof sessionStreamStateSchema>;

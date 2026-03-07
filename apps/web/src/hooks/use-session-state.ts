@@ -6,8 +6,10 @@ import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
 import type { InferResponseType } from "hono/client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TimelineEntry } from "@/components/chat/types";
 import { apiClient, getAuthHeaders } from "@/lib/api-client";
+import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { toAbsoluteUrl } from "@/lib/url";
 
@@ -18,14 +20,6 @@ type SessionStreamStateResponse = InferResponseType<
 	typeof getSessionStreamStateRoute,
 	200
 >;
-
-export type SessionStreamStateData = {
-	rawEvents: SessionEvent[];
-	status: string;
-	agent: string | null;
-	modelId: string | null;
-	setStatus: (status: string) => void;
-};
 
 function buildSessionStreamBaseUrl(
 	spaceSlug: string,
@@ -86,7 +80,14 @@ function readStreamBatch(
 	return { events, status };
 }
 
-export function useSessionStreamState({
+export type SessionState = {
+	entries: TimelineEntry[];
+	status: string;
+	agent: string | null;
+	modelId: string | null;
+};
+
+export function useSessionState({
 	sessionId,
 	spaceSlug,
 	actor,
@@ -94,7 +95,7 @@ export function useSessionStreamState({
 	sessionId: string;
 	spaceSlug: string;
 	actor: SpaceActor;
-}): SessionStreamStateData {
+}): SessionState {
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const [events, setEvents] = useState<SessionEvent[]>([]);
 	const [sessionStatus, setSessionStatus] = useState<string>("idle");
@@ -195,11 +196,12 @@ export function useSessionStreamState({
 		};
 	}, [actor.connStatus, actor.connection, addEvents, sessionId, spaceSlug]);
 
+	const entries = useMemo(() => sessionEventsToEntries(events), [events]);
+
 	return {
-		rawEvents: events,
+		entries,
 		status: sessionStatus,
 		agent: sessionAgent,
 		modelId: sessionModelId,
-		setStatus: setSessionStatus,
 	};
 }
