@@ -4,8 +4,8 @@ import { createLogger } from "@corporation/logger";
 import { generateText, Output } from "ai";
 import { asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { type SessionRow, sessions } from "../db/schema";
 import { startAgentRunner } from "./agent-runner";
+import { type SessionRow, sessions } from "./db/schema";
 import { appendSessionStatusFrame } from "./session-stream";
 import type { SpaceRuntimeContext } from "./types";
 

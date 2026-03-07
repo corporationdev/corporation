@@ -1,78 +1,9 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bd6d08f8-3199-463c-bb41-a991492a5e94",
-  "prevId": "dff26600-ed85-4b9f-a9a7-08c3a608f580",
+  "id": "612fb128-a679-44c3-8f91-53776cdb5897",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "session_events": {
-      "name": "session_events",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "event_index": {
-          "name": "event_index",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sender": {
-          "name": "sender",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "payload": {
-          "name": "payload",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "session_events_session_id_sessions_id_fk": {
-          "name": "session_events_session_id_sessions_id_fk",
-          "tableFrom": "session_events",
-          "tableTo": "sessions",
-          "columnsFrom": ["session_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "session_stream_frames": {
       "name": "session_stream_frames",
       "columns": {
@@ -111,6 +42,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "data": {
           "name": "data",
           "type": "text",
@@ -123,6 +61,16 @@
         "session_stream_frames_session_offset_idx": {
           "name": "session_stream_frames_session_offset_idx",
           "columns": ["session_id", "offset"],
+          "isUnique": true
+        },
+        "session_stream_frames_session_event_id_unique": {
+          "name": "session_stream_frames_session_event_id_unique",
+          "columns": ["session_id", "event_id"],
+          "isUnique": true
+        },
+        "session_stream_frames_session_kind_offset_idx": {
+          "name": "session_stream_frames_session_kind_offset_idx",
+          "columns": ["session_id", "kind", "offset"],
           "isUnique": false
         }
       },
