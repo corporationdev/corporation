@@ -654,8 +654,8 @@ async function bootstrapSessionBridge(
 		const mcpServers = [
 			{
 				name: "desktop",
-				command: "/usr/local/bin/sandbox-runtime",
-				args: ["mcp", "desktop"],
+				command: "bun",
+				args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
 				env: [],
 			},
 		];
