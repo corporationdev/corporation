@@ -27,7 +27,7 @@ import { useActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
-export function SpaceLayout() {
+export function AgentPanel() {
 	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
 	const { spaceSlug } = match.params;
 	const activeSessionId: string | undefined = match.search.session;
@@ -40,6 +40,7 @@ export function SpaceLayout() {
 
 	const ensureSpace = useMutation(api.spaces.ensure);
 	const consumeSpace = usePendingMessageStore((s) => s.consumeSpace);
+	const pendingMessage = usePendingMessageStore((s) => s.message);
 
 	useEffect(() => {
 		const pending = consumeSpace();
@@ -47,7 +48,11 @@ export function SpaceLayout() {
 			return;
 		}
 		setSpaceCreating(true);
-		ensureSpace({ slug: pending.slug, repositoryId: pending.repositoryId })
+		ensureSpace({
+			slug: pending.slug,
+			repositoryId: pending.repositoryId,
+			firstMessage: pendingMessage?.text,
+		})
 			.catch((error: unknown) => {
 				console.error("Failed to create space", error);
 				toast.error("Failed to create space");
@@ -55,7 +60,7 @@ export function SpaceLayout() {
 			.finally(() => {
 				setSpaceCreating(false);
 			});
-	}, [consumeSpace, ensureSpace]);
+	}, [consumeSpace, pendingMessage, ensureSpace]);
 
 	useAutoStartSandbox(spaceSlug, space?.status);
 

@@ -1,13 +1,7 @@
 import { httpRouter } from "convex/server";
-import { z } from "zod";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
-
-const autoBranchNameSchema = z.object({
-	sandboxId: z.string().min(1),
-	firstMessage: z.string().min(1),
-});
 
 const http = httpRouter();
 
@@ -68,43 +62,6 @@ http.route({
 		} catch {
 			return new Response("Internal webhook processing error", { status: 500 });
 		}
-	}),
-});
-
-http.route({
-	path: "/internal/auto-branch-name",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const internalApiKey = process.env.INTERNAL_API_KEY;
-		if (!internalApiKey) {
-			return new Response("Server misconfiguration", { status: 500 });
-		}
-
-		const authorization = request.headers.get("authorization");
-		if (authorization !== `Bearer ${internalApiKey}`) {
-			return new Response("Unauthorized", { status: 401 });
-		}
-
-		const parsed = autoBranchNameSchema.safeParse(await request.json());
-		if (!parsed.success) {
-			return new Response("Invalid body", { status: 400 });
-		}
-
-		const { sandboxId, firstMessage } = parsed.data;
-
-		const space = await ctx.runQuery(internal.spaces.getBySandboxId, {
-			sandboxId,
-		});
-		if (!space) {
-			return new Response("Space not found", { status: 404 });
-		}
-
-		await ctx.runMutation(internal.spaces.requestAutoRename, {
-			spaceId: space._id,
-			firstMessage,
-		});
-
-		return new Response("OK", { status: 200 });
 	}),
 });
 
