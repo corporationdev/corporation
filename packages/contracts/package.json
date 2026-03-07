@@ -8,7 +8,7 @@
     "./client-do": "./src/client-do.ts"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^0.15.0",
+    "@agentclientprotocol/sdk": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

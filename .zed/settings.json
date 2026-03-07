@@ -1,4 +1,10 @@
 {
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/node_modules",
+    "**/target/debug",
+    "**/target/release"
+  ],
   "formatter": "language_server",
   "format_on_save": "on",
   "lsp": {

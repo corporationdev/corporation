@@ -9,8 +9,8 @@ import type { InferResponseType } from "hono/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimelineEntry } from "@/components/chat/types";
 import { apiClient, getAuthHeaders } from "@/lib/api-client";
-import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
 import type { SpaceActor } from "@/lib/rivetkit";
+import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
 import { toAbsoluteUrl } from "@/lib/url";
 
 const getSessionStreamStateRoute =

@@ -16,6 +16,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
     "ai": "catalog:",
+    "@agentclientprotocol/sdk": "catalog:",
     "@corporation/backend": "workspace:*",
     "@corporation/contracts": "workspace:*",
     "@corporation/env": "workspace:*",
