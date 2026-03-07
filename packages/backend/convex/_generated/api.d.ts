@@ -25,6 +25,7 @@ import type * as snapshot from "../snapshot.js";
 import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaceBranchActions from "../spaceBranchActions.js";
 import type * as spaces from "../spaces.js";
+import type * as warmSandbox from "../warmSandbox.js";
 
 import type {
   ApiFromModules,
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   snapshotActions: typeof snapshotActions;
   spaceBranchActions: typeof spaceBranchActions;
   spaces: typeof spaces;
+  warmSandbox: typeof warmSandbox;
 }>;
 
 /**

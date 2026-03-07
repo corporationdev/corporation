@@ -76,6 +76,17 @@ export default defineSchema(
 				"status",
 				"startedAt",
 			]),
+		warmSandboxes: defineTable({
+			userId: v.string(),
+			repositoryId: v.id("repositories"),
+			sandboxId: v.optional(v.string()),
+			agentUrl: v.optional(v.string()),
+			spaceId: v.optional(v.id("spaces")),
+			status: v.union(v.literal("provisioning"), v.literal("ready")),
+			createdAt: v.number(),
+		})
+			.index("by_user", ["userId"])
+			.index("by_user_and_repository", ["userId", "repositoryId"]),
 	},
 	// TODO: remove schemaValidation: false before launch
 	{ schemaValidation: false }

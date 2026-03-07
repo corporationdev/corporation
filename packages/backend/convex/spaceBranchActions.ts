@@ -10,14 +10,25 @@ import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 
 type ActionCtx = GenericActionCtx<DataModel>;
+const TRAILING_WORKSPACE_PATTERN = /(?:\s*[-–—]?\s*)workspace\s*$/i;
+
+function normalizeSpaceName(value: string): string {
+	return value
+		.replace(/\s+/g, " ")
+		.replace(TRAILING_WORKSPACE_PATTERN, "")
+		.trim()
+		.slice(0, 80);
+}
 
 async function generateSpaceName(firstMessage: string): Promise<string> {
 	const prompt = [
-		"Generate a concise name for a workspace based on the user's first request.",
+		"Generate a concise natural-language name for a workspace based on the user's first request.",
 		"Rules:",
-		"- Lowercase letters, numbers, and hyphens only.",
-		"- Use 2 to 5 words separated by hyphens.",
-		"- Return only the name.",
+		"- Use normal casing and spaces (no slug formatting).",
+		"- The name should read like natural text describing the task.",
+		'- Do not end the name with the word "workspace".',
+		"- Keep it concise (about 2 to 7 words).",
+		"- Return only the name in plain text.",
 		`User request: ${firstMessage}`,
 	].join("\n");
 
@@ -30,13 +41,7 @@ async function generateSpaceName(firstMessage: string): Promise<string> {
 		prompt,
 	});
 
-	return object.name
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9-]/g, "-")
-		.replace(/-+/g, "-")
-		.replace(/^-|-$/g, "")
-		.slice(0, 80);
+	return normalizeSpaceName(object.name) || normalizeSpaceName(firstMessage);
 }
 
 export const generateAndApplyName = internalAction({

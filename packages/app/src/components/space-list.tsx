@@ -96,18 +96,9 @@ const NoRepositoriesState: FC = () => {
 };
 
 const NoSpacesState: FC = () => {
-	const navigate = useNavigate();
-
 	return (
-		<div className="flex flex-col gap-2 px-2 py-3">
+		<div className="px-2 py-3">
 			<p className="text-muted-foreground text-xs">No spaces yet.</p>
-			<Button
-				className="h-8 justify-start px-2 text-xs"
-				onClick={() => navigate({ to: "/" })}
-				variant="outline"
-			>
-				Start a space
-			</Button>
 		</div>
 	);
 };
