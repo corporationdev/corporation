@@ -1,3 +1,4 @@
+import type { SessionStreamFrameData } from "@corporation/contracts/client-do";
 import type { InferSelectModel } from "drizzle-orm";
 import {
 	index,
@@ -6,7 +7,6 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { SessionStreamFrameData } from "sandbox-runtime/schemas";
 
 export const sessionStatusValues = ["idle", "running", "error"] as const;
 export type SessionStatus = (typeof sessionStatusValues)[number];

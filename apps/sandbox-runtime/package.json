@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.15.0",
+    "@corporation/contracts": "workspace:*",
     "@hono/zod-validator": "^0.7.6",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "hono": "catalog:",

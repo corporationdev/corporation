@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
 import { AGENT_METHODS, CLIENT_METHODS } from "@agentclientprotocol/sdk";
+import type {
+	AcpEnvelope,
+	PromptRequestBody,
+	SessionEvent,
+} from "@corporation/contracts/sandbox-do";
+import { turnRunnerCallbackPayloadSchema } from "@corporation/contracts/sandbox-do";
 import {
 	ACP_PROTOCOL_VERSION,
 	CALLBACK_MAX_ATTEMPTS,
@@ -13,17 +19,11 @@ import {
 	selectAuthMethod,
 } from "./helpers";
 import { log } from "./logging";
-import type {
-	AcpAgentRequestResult,
-	AcpEnvelope,
-	PromptRequestBody,
-	SessionEvent,
-} from "./schemas";
 import {
+	type AcpAgentRequestResult,
 	sessionCancelEnvelopeSchema,
 	sessionRequestPermissionEnvelopeSchema,
 	sessionRequestPermissionResponseEnvelopeSchema,
-	turnRunnerCallbackPayloadSchema,
 } from "./schemas";
 import {
 	type StdioBridge,

@@ -20,6 +20,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@agentclientprotocol/sdk": "^0.15.0",
+        "@corporation/contracts": "workspace:*",
         "@hono/zod-validator": "^0.7.6",
         "@modelcontextprotocol/sdk": "^1.12.1",
         "hono": "catalog:",
@@ -36,6 +37,7 @@
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@corporation/backend": "workspace:*",
+        "@corporation/contracts": "workspace:*",
         "@corporation/env": "workspace:*",
         "@corporation/logger": "workspace:*",
         "@e2b/desktop": "catalog:",
@@ -68,6 +70,7 @@
         "@base-ui/react": "catalog:",
         "@convex-dev/better-auth": "catalog:",
         "@corporation/backend": "workspace:*",
+        "@corporation/contracts": "workspace:*",
         "@corporation/env": "workspace:*",
         "@durable-streams/client": "^0.2.1",
         "@radix-ui/react-slot": "catalog:",
@@ -141,6 +144,18 @@
     "packages/config": {
       "name": "@corporation/config",
       "version": "0.0.0",
+    },
+    "packages/contracts": {
+      "name": "@corporation/contracts",
+      "version": "0.0.0",
+      "dependencies": {
+        "@agentclientprotocol/sdk": "^0.15.0",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@corporation/config": "workspace:*",
+        "typescript": "catalog:",
+      },
     },
     "packages/env": {
       "name": "@corporation/env",
@@ -488,6 +503,8 @@
     "@corporation/backend": ["@corporation/backend@workspace:packages/backend"],
 
     "@corporation/config": ["@corporation/config@workspace:packages/config"],
+
+    "@corporation/contracts": ["@corporation/contracts@workspace:packages/contracts"],
 
     "@corporation/env": ["@corporation/env@workspace:packages/env"],
 

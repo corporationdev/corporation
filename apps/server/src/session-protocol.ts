@@ -6,4 +6,4 @@ export type {
 	SessionStreamFrame,
 	SessionStreamState,
 	SessionStreamStatusFrame,
-} from "sandbox-runtime/schemas";
+} from "@corporation/contracts/client-do";

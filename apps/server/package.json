@@ -17,6 +17,7 @@
     "@ai-sdk/anthropic": "catalog:",
     "ai": "catalog:",
     "@corporation/backend": "workspace:*",
+    "@corporation/contracts": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
     "sandbox-runtime": "workspace:*",

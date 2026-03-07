@@ -1,9 +1,9 @@
-import { env } from "@corporation/env/web";
 import type {
 	SessionEvent,
 	SessionStreamFrame,
 	SessionStreamState,
-} from "@corporation/server/session-protocol";
+} from "@corporation/contracts/client-do";
+import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

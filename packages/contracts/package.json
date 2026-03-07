@@ -1,0 +1,22 @@
+{
+  "name": "@corporation/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sandbox-do": "./src/sandbox-do.ts",
+    "./client-do": "./src/client-do.ts"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.15.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@corporation/config": "workspace:*",
+    "typescript": "catalog:"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  }
+}

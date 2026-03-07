@@ -1,8 +1,8 @@
+import type { PromptRequestBody } from "@corporation/contracts/sandbox-do";
+import { promptRequestBodySchema } from "@corporation/contracts/sandbox-do";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { log } from "./logging";
-import type { PromptRequestBody } from "./schemas";
-import { promptRequestBodySchema } from "./schemas";
 
 export type AppRuntime = {
 	cancelTurn(turnId: string): boolean;

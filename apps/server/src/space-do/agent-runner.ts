@@ -1,10 +1,10 @@
+import { turnRunnerCallbackPayloadSchema } from "@corporation/contracts/sandbox-do";
 import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import { eq } from "drizzle-orm";
 import { hc } from "hono/client";
 import { nanoid } from "nanoid";
 import type { SandboxRuntimeApp } from "sandbox-runtime/client";
-import { turnRunnerCallbackPayloadSchema } from "sandbox-runtime/schemas";
 import { sessions } from "./db/schema";
 import {
 	appendSessionEventFrames,

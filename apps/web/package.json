@@ -12,6 +12,7 @@
     "@base-ui/react": "catalog:",
     "@convex-dev/better-auth": "catalog:",
     "@corporation/backend": "workspace:*",
+    "@corporation/contracts": "workspace:*",
     "@corporation/env": "workspace:*",
     "@durable-streams/client": "^0.2.1",
     "@radix-ui/react-slot": "catalog:",
