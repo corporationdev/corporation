@@ -7,7 +7,9 @@ import type {
 } from "@/components/chat/types";
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: event translation is intentionally centralized here
-export function sessionEventsToEntries(events: SessionEvent[]): TimelineEntry[] {
+export function sessionEventsToEntries(
+	events: SessionEvent[]
+): TimelineEntry[] {
 	const entries: TimelineEntry[] = [];
 
 	let assistantEntry: MessageTimelineEntry | null = null;

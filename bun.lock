@@ -19,7 +19,7 @@
       "name": "sandbox-runtime",
       "version": "1.0.0",
       "dependencies": {
-        "@agentclientprotocol/sdk": "^0.15.0",
+        "@agentclientprotocol/sdk": "catalog:",
         "@corporation/contracts": "workspace:*",
         "@hono/zod-validator": "^0.7.6",
         "@modelcontextprotocol/sdk": "^1.12.1",
@@ -35,6 +35,7 @@
     "apps/server": {
       "name": "@corporation/server",
       "dependencies": {
+        "@agentclientprotocol/sdk": "catalog:",
         "@ai-sdk/anthropic": "catalog:",
         "@corporation/backend": "workspace:*",
         "@corporation/contracts": "workspace:*",
@@ -149,7 +150,7 @@
       "name": "@corporation/contracts",
       "version": "0.0.0",
       "dependencies": {
-        "@agentclientprotocol/sdk": "^0.15.0",
+        "@agentclientprotocol/sdk": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -197,6 +198,7 @@
     },
   },
   "catalog": {
+    "@agentclientprotocol/sdk": "^0.15.0",
     "@ai-sdk/anthropic": "^3.0.53",
     "@base-ui/react": "^1.0.0",
     "@cloudflare/workers-types": "^4.20251213.0",
