@@ -489,7 +489,8 @@ export function useSessionEventState({
 			streamResponse = await stream<SessionStreamFrame>({
 				url: streamUrl,
 				offset: "-1",
-				live: true,
+				live: "sse",
+				json: true,
 				headers: {
 					Authorization: async () => (await getAuthHeaders()).Authorization,
 				},

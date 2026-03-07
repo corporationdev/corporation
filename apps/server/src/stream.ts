@@ -31,6 +31,89 @@ function parseLimit(raw: string | undefined): number | undefined {
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+type StreamReadResult = {
+	frames: unknown[];
+	nextOffset: number;
+	upToDate: boolean;
+	streamClosed: boolean;
+};
+
+type SpaceActor = ReturnType<ReturnType<typeof getRivetClient>["space"]["get"]>;
+
+function createSSEStream(opts: {
+	spaceActor: SpaceActor;
+	sessionId: string;
+	initialOffset: number;
+	limit: number | undefined;
+	timeoutMs: number | undefined;
+	signal: AbortSignal;
+}): ReadableStream<Uint8Array> {
+	const encoder = new TextEncoder();
+	let offset = opts.initialOffset;
+
+	const formatSSE = (result: StreamReadResult) => {
+		let out = `event: data\ndata: ${JSON.stringify(result.frames)}\n\n`;
+		out += `event: control\ndata: ${JSON.stringify({
+			streamNextOffset: String(result.nextOffset),
+			upToDate: result.upToDate,
+			streamClosed: result.streamClosed,
+		})}\n\n`;
+		return out;
+	};
+
+	return new ReadableStream({
+		async start(controller) {
+			const enqueue = (chunk: string) => {
+				controller.enqueue(encoder.encode(chunk));
+			};
+
+			try {
+				while (!opts.signal.aborted) {
+					const result = await opts.spaceActor.readSessionStream(
+						opts.sessionId,
+						offset,
+						opts.limit,
+						false,
+						opts.timeoutMs
+					);
+
+					enqueue(formatSSE(result));
+					offset = result.nextOffset;
+
+					if (result.streamClosed) {
+						break;
+					}
+
+					if (result.upToDate) {
+						const liveResult = await opts.spaceActor.readSessionStream(
+							opts.sessionId,
+							offset,
+							opts.limit,
+							true,
+							opts.timeoutMs
+						);
+
+						enqueue(formatSSE(liveResult));
+						offset = liveResult.nextOffset;
+
+						if (liveResult.streamClosed) {
+							break;
+						}
+					}
+				}
+			} catch {
+				// Client disconnected or error
+			} finally {
+				try {
+					controller.close();
+				} catch {
+					// Already closed
+				}
+			}
+		},
+	});
+}
+
 export const streamApp = new Hono<{
 	Bindings: Env;
 	Variables: AuthVariables;
@@ -62,8 +145,6 @@ export const streamApp = new Hono<{
 		}
 
 		const client = getRivetClient(c.req.url);
-		const liveParam = c.req.query("live");
-		const live = liveParam === "long-poll" || liveParam === "sse";
 		const limit = parseLimit(c.req.query("limit"));
 		const timeoutMs = parseLimit(c.req.query("timeoutMs"));
 
@@ -76,20 +157,22 @@ export const streamApp = new Hono<{
 				offset = state.lastOffset;
 			}
 
-			const result = await client.space
-				.get([spaceSlug])
-				.readSessionStream(sessionId, offset, limit, live, timeoutMs);
+			const stream = createSSEStream({
+				spaceActor: client.space.get([spaceSlug]),
+				sessionId,
+				initialOffset: offset,
+				limit,
+				timeoutMs,
+				signal: c.req.raw.signal,
+			});
 
-			c.header("Cache-Control", "no-store");
-			c.header("Stream-Next-Offset", String(result.nextOffset));
-			if (result.upToDate) {
-				c.header("Stream-Up-To-Date", "true");
-			}
-			if (result.streamClosed) {
-				c.header("Stream-Closed", "true");
-			}
-
-			return c.json(result.frames);
+			return new Response(stream, {
+				headers: {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-store",
+					"X-Accel-Buffering": "no",
+				},
+			});
 		} catch (error) {
 			console.error("session-stream.read-failed", {
 				spaceSlug,
