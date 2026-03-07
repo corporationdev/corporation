@@ -7,19 +7,20 @@
     ".": "./src/index.ts",
     "./app": "./src/app.ts",
     "./registry": "./src/registry.ts",
-    "./space": "./src/space/index.ts"
+    "./session-protocol": "./src/session-protocol.ts"
   },
   "scripts": {
-    "check-types": "tsc -b",
+    "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
     "ai": "catalog:",
     "@corporation/backend": "workspace:*",
+    "@corporation/contracts": "workspace:*",
     "@corporation/env": "workspace:*",
     "@corporation/logger": "workspace:*",
-    "@corporation/shared": "workspace:*",
+    "sandbox-runtime": "workspace:*",
     "@e2b/desktop": "catalog:",
     "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",

@@ -1,0 +1,26 @@
+{
+  "name": "sandbox-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./schemas": "./src/schemas.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.15.0",
+    "@corporation/contracts": "workspace:*",
+    "@hono/zod-validator": "^0.7.6",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "hono": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@corporation/config": "workspace:*",
+    "bun-types": "latest",
+    "typescript": "catalog:"
+  }
+}

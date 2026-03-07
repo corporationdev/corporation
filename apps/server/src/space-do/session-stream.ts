@@ -2,8 +2,10 @@ import type {
 	SessionEvent,
 	SessionStatus,
 	SessionStreamFrame,
+	SessionStreamFrameData,
 	SessionStreamState,
-} from "@corporation/shared/session-protocol";
+} from "@corporation/contracts/client-do";
+import { sessionStreamFrameDataSchema } from "@corporation/contracts/client-do";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { sessionStreamFrames, sessions } from "./db/schema";
@@ -20,17 +22,6 @@ type SessionStreamReadResult = {
 	upToDate: boolean;
 	streamClosed: boolean;
 };
-
-type SessionStreamFrameData =
-	| {
-			kind: "event";
-			event: SessionEvent;
-	  }
-	| {
-			kind: "status_changed";
-			status: SessionStatus;
-			reason?: string;
-	  };
 
 function normalizeLimit(limit?: number): number {
 	if (!Number.isFinite(limit)) {
@@ -61,35 +52,28 @@ function normalizeAfterOffset(afterOffset?: number): number {
 
 function mapFrameRowToFrame(row: {
 	offset: number;
-	data: Record<string, unknown>;
+	data: unknown;
 }): SessionStreamFrame | null {
-	const kind = row.data.kind;
-	if (kind === "event") {
-		const event = row.data.event as SessionEvent | undefined;
-		if (!event) {
-			return null;
-		}
+	const parsedDataResult = sessionStreamFrameDataSchema.safeParse(row.data);
+	if (!parsedDataResult.success) {
+		return null;
+	}
+
+	const data = parsedDataResult.data;
+	if (data.kind === "event") {
 		return {
 			kind: "event",
 			offset: row.offset,
-			event,
+			event: data.event,
 		};
 	}
 
-	if (kind === "status_changed") {
-		const status = row.data.status as SessionStatus | undefined;
-		if (!status) {
-			return null;
-		}
-		const reason =
-			typeof row.data.reason === "string" && row.data.reason.length > 0
-				? row.data.reason
-				: undefined;
+	if (data.kind === "status_changed") {
 		return {
 			kind: "status_changed",
 			offset: row.offset,
-			status,
-			reason,
+			status: data.status,
+			reason: data.reason,
 		};
 	}
 
@@ -301,7 +285,7 @@ export function appendSessionEventFrames(
 					createdAt: event.createdAt,
 					kind: "event",
 					eventId: event.id,
-					data: data as Record<string, unknown>,
+					data,
 				})
 				.onConflictDoNothing({
 					target: [sessionStreamFrames.sessionId, sessionStreamFrames.eventId],
@@ -364,7 +348,7 @@ export function appendSessionStatusFrame(
 				createdAt: input.createdAt ?? Date.now(),
 				kind: "status_changed",
 				eventId: null,
-				data: data as Record<string, unknown>,
+				data,
 			})
 			.run();
 

@@ -1,3 +1,4 @@
+import type { SessionStreamFrameData } from "@corporation/contracts/client-do";
 import type { InferSelectModel } from "drizzle-orm";
 import {
 	index,
@@ -50,7 +51,7 @@ export const sessionStreamFrames = sqliteTable(
 		eventId: text("event_id"),
 		data: text("data", { mode: "json" })
 			.notNull()
-			.$type<Record<string, unknown>>(),
+			.$type<SessionStreamFrameData>(),
 	},
 	(table) => [
 		uniqueIndex("session_stream_frames_session_offset_idx").on(
