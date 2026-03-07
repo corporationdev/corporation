@@ -287,6 +287,7 @@ export const ensure = authedMutation({
 	args: {
 		slug: v.string(),
 		repositoryId: v.optional(v.id("repositories")),
+		firstMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const slug = args.slug.trim();
@@ -329,13 +330,15 @@ export const ensure = authedMutation({
 
 		const now = Date.now();
 
+		let spaceId: Id<"spaces">;
+
 		if (
 			warmSandbox?.status === "ready" &&
 			warmSandbox.sandboxId &&
 			warmSandbox.agentUrl
 		) {
 			// Warm sandbox is ready — claim it immediately
-			const spaceId = await ctx.db.insert("spaces", {
+			spaceId = await ctx.db.insert("spaces", {
 				slug,
 				repositoryId,
 				name: "New Space",
@@ -346,12 +349,9 @@ export const ensure = authedMutation({
 				updatedAt: now,
 			});
 			await ctx.db.delete(warmSandbox._id);
-			return spaceId;
-		}
-
-		if (warmSandbox?.status === "provisioning") {
+		} else if (warmSandbox?.status === "provisioning") {
 			// Warm sandbox is still provisioning — hand off via spaceId
-			const spaceId = await ctx.db.insert("spaces", {
+			spaceId = await ctx.db.insert("spaces", {
 				slug,
 				repositoryId,
 				name: "New Space",
@@ -360,22 +360,32 @@ export const ensure = authedMutation({
 				updatedAt: now,
 			});
 			await ctx.db.patch(warmSandbox._id, { spaceId });
-			return spaceId;
+		} else {
+			// No warm sandbox available — cold start
+			spaceId = await ctx.db.insert("spaces", {
+				slug,
+				repositoryId,
+				name: "New Space",
+				status: "creating",
+				createdAt: now,
+				updatedAt: now,
+			});
+
+			await ctx.scheduler.runAfter(
+				0,
+				internal.sandboxActions.provisionForSpace,
+				{
+					spaceId,
+				}
+			);
 		}
 
-		// No warm sandbox available — cold start
-		const spaceId = await ctx.db.insert("spaces", {
-			slug,
-			repositoryId,
-			name: "New Space",
-			status: "creating",
-			createdAt: now,
-			updatedAt: now,
-		});
-
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
-			spaceId,
-		});
+		if (args.firstMessage) {
+			await ctx.scheduler.runAfter(0, internal.spaces.requestAutoRename, {
+				spaceId,
+				firstMessage: args.firstMessage,
+			});
+		}
 
 		return spaceId;
 	},

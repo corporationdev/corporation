@@ -120,33 +120,6 @@ async function ensureSession(
 	await broadcastSessionsChanged(ctx);
 }
 
-async function requestAutoBranchName(
-	ctx: SpaceRuntimeContext,
-	firstMessage: string
-): Promise<void> {
-	const convexSiteUrl = env.CONVEX_SITE_URL;
-	const internalApiKey = env.INTERNAL_API_KEY;
-	if (!(convexSiteUrl && internalApiKey)) {
-		return;
-	}
-
-	const response = await fetch(`${convexSiteUrl}/internal/auto-branch-name`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${internalApiKey}`,
-		},
-		body: JSON.stringify({
-			sandboxId: ctx.state.sandboxId,
-			firstMessage,
-		}),
-	});
-
-	if (!response.ok) {
-		throw new Error(`Auto branch endpoint failed: ${response.status}`);
-	}
-}
-
 export async function sendMessage(
 	ctx: SpaceRuntimeContext,
 	sessionId: string,
@@ -154,21 +127,6 @@ export async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
-	const existingSessions = await ctx.vars.db
-		.select({ id: sessions.id })
-		.from(sessions)
-		.limit(1);
-	if (existingSessions.length === 0) {
-		ctx.waitUntil(
-			requestAutoBranchName(ctx, content).catch((error) => {
-				log.warn(
-					{ err: error, actorId: ctx.actorId, sessionId },
-					"sendMessage: failed to trigger auto branch naming"
-				);
-			})
-		);
-	}
-
 	await ensureSession(ctx, sessionId, agent, modelId);
 
 	// Auto-generate session title on first message of this session

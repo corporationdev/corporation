@@ -1,7 +1,12 @@
 // biome-ignore-all lint/style/useFilenamingConvention: TanStack Router uses `$` for dynamic route params
 import { createFileRoute } from "@tanstack/react-router";
 
-import { SpaceLayout } from "@/components/space-layout";
+import { AgentPanel } from "@/components/agent-panel";
+import {
+	ResizableHandle,
+	ResizablePanel,
+	ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
 type SpaceSearchParams = {
 	session?: string;
@@ -15,5 +20,13 @@ export const Route = createFileRoute("/_authenticated/space_/$spaceSlug")({
 });
 
 function SpaceWithIdRoute() {
-	return <SpaceLayout />;
+	return (
+		<ResizablePanelGroup orientation="horizontal">
+			<ResizablePanel>
+				<AgentPanel />
+			</ResizablePanel>
+			<ResizableHandle />
+			<ResizablePanel>Two</ResizablePanel>
+		</ResizablePanelGroup>
+	);
 }
