@@ -23,9 +23,6 @@ import {
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
 import { z } from "zod";
 
-export type { AcpEnvelope } from "@corporation/contracts/sandbox-do";
-export { acpEnvelopeSchema } from "@corporation/contracts/sandbox-do";
-
 const jsonRpcVersionSchema = z.literal("2.0");
 const jsonRpcEnvelopeBaseSchema = z.object({
 	jsonrpc: jsonRpcVersionSchema,

@@ -1,12 +1,17 @@
 import { z } from "zod";
-import { sessionEventSchema } from "./sandbox-do";
-
-export type {
-	AcpEnvelope,
-	SessionEvent,
-	SessionEventSender,
+import {
+	type AcpEnvelope as SandboxAcpEnvelope,
+	type SessionEvent as SandboxSessionEvent,
+	type SessionEventSender as SandboxSessionEventSender,
+	sessionEventSchema as sandboxSessionEventSchema,
+	sessionEventSenderSchema as sandboxSessionEventSenderSchema,
 } from "./sandbox-do";
-export { sessionEventSchema, sessionEventSenderSchema } from "./sandbox-do";
+
+export type AcpEnvelope = SandboxAcpEnvelope;
+export type SessionEvent = SandboxSessionEvent;
+export type SessionEventSender = SandboxSessionEventSender;
+export const sessionEventSchema = sandboxSessionEventSchema;
+export const sessionEventSenderSchema = sandboxSessionEventSenderSchema;
 
 export const sessionStatusSchema = z.enum(["idle", "running", "error"]);
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;

@@ -1,6 +1,10 @@
 /* global Bun */
 
 import crypto from "node:crypto";
+import {
+	type AcpEnvelope,
+	acpEnvelopeSchema,
+} from "@corporation/contracts/sandbox-do";
 import { agentCommand, writeAgentConfigs } from "./agents";
 import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
 import { log } from "./logging";
@@ -8,9 +12,7 @@ import {
 	type AcpAgentRequestMethod,
 	type AcpAgentRequestParams,
 	type AcpAgentRequestResult,
-	type AcpEnvelope,
 	acpClientRequestEnvelopeSchema,
-	acpEnvelopeSchema,
 	getAcpAgentRequestMethodSchemas,
 } from "./schemas";
 

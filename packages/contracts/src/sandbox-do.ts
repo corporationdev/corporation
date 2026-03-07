@@ -1,16 +1,21 @@
 import { z } from "zod";
-import { sessionEventSchema } from "./session-events";
+import {
+	type AcpEnvelope as SharedAcpEnvelope,
+	type SessionEvent as SharedSessionEvent,
+	type SessionEventSender as SharedSessionEventSender,
+	acpEnvelopeSchema as sharedAcpEnvelopeSchema,
+	sessionEventSchema as sharedSessionEventSchema,
+	sessionEventSenderSchema as sharedSessionEventSenderSchema,
+} from "./session-events";
 
-export type {
-	AcpEnvelope,
-	SessionEvent,
-	SessionEventSender,
-} from "./session-events";
-export {
-	acpEnvelopeSchema,
-	sessionEventSchema,
-	sessionEventSenderSchema,
-} from "./session-events";
+export type AcpEnvelope = SharedAcpEnvelope;
+export const acpEnvelopeSchema = sharedAcpEnvelopeSchema;
+
+export type SessionEvent = SharedSessionEvent;
+export const sessionEventSchema = sharedSessionEventSchema;
+
+export type SessionEventSender = SharedSessionEventSender;
+export const sessionEventSenderSchema = sharedSessionEventSenderSchema;
 
 export const promptPartSchema = z.object({
 	type: z.literal("text"),
