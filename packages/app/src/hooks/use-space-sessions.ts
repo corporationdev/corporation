@@ -1,6 +1,5 @@
 import type { SessionRow } from "@corporation/server/space";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { softResetActorConnectionOnTransientError } from "@/lib/actor-errors";
 import type { SpaceActor } from "@/lib/rivetkit";
 
 function getActorSpaceSlug(actor: SpaceActor): string | undefined {
@@ -33,14 +32,7 @@ export function useSpaceSessions(actor: SpaceActor): SpaceSessionsResult {
 			);
 		},
 		enabled: isConnected,
-		retry: (_, error) => {
-			const kind = softResetActorConnectionOnTransientError({
-				error,
-				reasonPrefix: "space-sessions",
-				spaceSlug,
-			});
-			return !!kind;
-		},
+		retry: false,
 	});
 
 	actor.useEvent("sessions.changed", (event) => {

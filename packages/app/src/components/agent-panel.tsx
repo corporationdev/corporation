@@ -1,7 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { SessionRow } from "@corporation/server/space";
-import { useMatch, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useNavigate } from "@tanstack/react-router";
+import { useMutation } from "convex/react";
 import { HistoryIcon, PlusIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -20,22 +20,31 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAutoStartSandbox } from "@/hooks/use-auto-start-sandbox";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
-import { addActorConnectionSoftResetListener } from "@/lib/actor-errors";
-import { useActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
-export function AgentPanel() {
-	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
-	const { spaceSlug } = match.params;
-	const activeSessionId: string | undefined = match.search.session;
+type AgentPanelProps = {
+	actor: SpaceActor;
+	spaceSlug: string;
+	activeSessionId: string | undefined;
+	space:
+		| {
+				status: string;
+				error?: string;
+		  }
+		| null
+		| undefined;
+};
 
-	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
+export function AgentPanel({
+	actor,
+	spaceSlug,
+	activeSessionId,
+	space,
+}: AgentPanelProps) {
 	const isSpaceMissing = space === null;
-	const [connectionResetNonce, setConnectionResetNonce] = useState(0);
-	const lastResetAtRef = useRef(0);
 	const [spaceCreating, setSpaceCreating] = useState(false);
 
 	const ensureSpace = useMutation(api.spaces.ensure);
@@ -61,46 +70,6 @@ export function AgentPanel() {
 				setSpaceCreating(false);
 			});
 	}, [consumeSpace, pendingMessage, ensureSpace]);
-
-	useAutoStartSandbox(spaceSlug, space?.status);
-
-	const sandboxReady = !!space?.sandboxId && !!space?.agentUrl;
-
-	useEffect(() => {
-		return addActorConnectionSoftResetListener(
-			({ reason, spaceSlug: target }) => {
-				if (target && target !== spaceSlug) {
-					return;
-				}
-
-				const now = Date.now();
-				if (now - lastResetAtRef.current < 1000) {
-					return;
-				}
-				lastResetAtRef.current = now;
-
-				setConnectionResetNonce((value) => {
-					const next = value + 1;
-					console.warn("space.actor.soft-reset", { spaceSlug, reason, next });
-					return next;
-				});
-			}
-		);
-	}, [spaceSlug]);
-
-	const actor = useActor({
-		name: "space",
-		key: [spaceSlug],
-		params: { reconnectNonce: String(connectionResetNonce) },
-		createWithInput: sandboxReady
-			? {
-					sandboxId: space.sandboxId,
-					agentUrl: space.agentUrl,
-					workdir: space.workdir,
-				}
-			: undefined,
-		enabled: sandboxReady,
-	});
 
 	const navigate = useNavigate();
 	const { sessions, isLoading: isSessionsLoading } = useSpaceSessions(actor);
