@@ -133,6 +133,8 @@ export async function startAgentRunner(
 			.update(sessions)
 			.set({
 				status: "error",
+				runId: null,
+				callbackToken: null,
 				error: {
 					message: error instanceof Error ? error.message : String(error),
 				},
@@ -176,7 +178,20 @@ export async function ingestAgentRunnerBatch(
 	}
 
 	if (session.runId !== parsed.turnId) {
-		throw new Error("Stale callback for non-current run");
+		// Late callbacks are expected after cancel/restart races.
+		// Treat these as no-op so the runner can drain and release cleanly.
+		log.warn(
+			{
+				actorId: ctx.actorId,
+				sessionId: session.id,
+				incomingTurnId: parsed.turnId,
+				currentRunId: session.runId,
+				kind: parsed.kind,
+				sequence: parsed.sequence,
+			},
+			"ignoring stale callback for non-current run"
+		);
+		return;
 	}
 	if (!session.callbackToken || session.callbackToken !== parsed.token) {
 		throw new Error("Invalid callback token");
@@ -215,7 +230,13 @@ export async function ingestAgentRunnerBatch(
 	if (parsed.kind === "completed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: "idle", pid: null, error: null })
+			.set({
+				status: "idle",
+				runId: null,
+				callbackToken: null,
+				pid: null,
+				error: null,
+			})
 			.where(eq(sessions.id, session.id));
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		appendSessionStatusFrame(ctx, {
@@ -229,7 +250,13 @@ export async function ingestAgentRunnerBatch(
 	if (parsed.kind === "failed") {
 		await ctx.vars.db
 			.update(sessions)
-			.set({ status: "error", pid: null, error: parsed.error })
+			.set({
+				status: "error",
+				runId: null,
+				callbackToken: null,
+				pid: null,
+				error: parsed.error,
+			})
 			.where(eq(sessions.id, session.id));
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		appendSessionStatusFrame(ctx, {

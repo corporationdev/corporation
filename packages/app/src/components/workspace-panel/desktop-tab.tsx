@@ -17,7 +17,9 @@ export function DesktopTab({ actor }: DesktopTabProps) {
 			return url;
 		},
 		enabled: actor.connStatus === "connected" && !!actor.connection,
-		retry: false,
+		retry: 3,
+		retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+		refetchOnReconnect: true,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
 
