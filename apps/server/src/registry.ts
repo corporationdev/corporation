@@ -1,5 +1,5 @@
 import { setup } from "rivetkit";
-import { space } from "./space";
+import { space } from "./space-do";
 
 // Workaround: rivetkit's Registry constructor calls setTimeout() which is
 // disallowed in Cloudflare Workers global scope when using alchemy/Miniflare.

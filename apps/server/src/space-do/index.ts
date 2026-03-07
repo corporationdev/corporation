@@ -4,9 +4,9 @@ import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { actor } from "rivetkit";
-import bundledMigrations from "../db/migrations/migrations";
-import { type SessionRow, schema } from "../db/schema";
 import { ingestAgentRunnerBatch } from "./agent-runner";
+import bundledMigrations from "./db/migrations";
+import { type SessionRow, schema } from "./db/schema";
 import { getDesktopStreamUrl } from "./desktop";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
@@ -17,7 +17,7 @@ import {
 } from "./terminal";
 import type { PersistedState, SpaceVars } from "./types";
 
-export type { SessionRow } from "../db/schema";
+export type { SessionRow } from "./db/schema";
 
 export const space = actor({
 	createState: (

@@ -6,7 +6,7 @@ import type {
 } from "@corporation/shared/session-protocol";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { sessionStreamFrames, sessions } from "../db/schema";
+import { sessionStreamFrames, sessions } from "./db/schema";
 import type { SpaceRuntimeContext } from "./types";
 
 const DEFAULT_STREAM_LIMIT = 200;

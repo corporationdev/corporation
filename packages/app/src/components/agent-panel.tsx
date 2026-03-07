@@ -1,5 +1,4 @@
 import { api } from "@corporation/backend/convex/_generated/api";
-import type { SessionRow } from "@corporation/server/space";
 import { useNavigate } from "@tanstack/react-router";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation } from "convex/react";
@@ -25,6 +24,7 @@ import { useSpaceSessions } from "@/hooks/use-space-sessions";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
+import type { SessionRow } from "../../../../apps/server/src/space-do";
 
 type AgentPanelProps = {
 	actor: SpaceActor;

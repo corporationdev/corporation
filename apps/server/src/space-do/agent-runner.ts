@@ -6,7 +6,7 @@ import {
 } from "@corporation/shared/session-protocol";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { sessions } from "../db/schema";
+import { sessions } from "./db/schema";
 import {
 	appendSessionEventFrames,
 	appendSessionStatusFrame,
