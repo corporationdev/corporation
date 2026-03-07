@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 
 /**
- * Tail corp-agent logs from a running E2B sandbox.
+ * Tail sandbox-runtime logs from a running E2B sandbox.
  *
  * Usage:
- *   bun scripts/corp-agent-logs.ts <sandbox-id> [--follow]
+ *   bun scripts/sandbox-runtime-logs.ts <sandbox-id> [--follow]
  */
 
 import { resolve } from "node:path";
@@ -28,7 +28,7 @@ const follow = process.argv.includes("--follow") || process.argv.includes("-f");
 
 if (!sandboxId) {
 	console.error(
-		"Usage: bun scripts/corp-agent-logs.ts <sandbox-id> [--follow]"
+		"Usage: bun scripts/sandbox-runtime-logs.ts <sandbox-id> [--follow]"
 	);
 	process.exit(1);
 }
@@ -41,12 +41,12 @@ if (follow) {
 	const poll = async () => {
 		try {
 			const result = await sandbox.commands.run(
-				"wc -c < /tmp/corp-agent.log 2>/dev/null || echo 0"
+				"wc -c < /tmp/sandbox-runtime.log 2>/dev/null || echo 0"
 			);
 			const size = Number.parseInt(result.stdout.trim(), 10);
 			if (size > offset) {
 				const chunk = await sandbox.commands.run(
-					`tail -c +${offset + 1} /tmp/corp-agent.log`
+					`tail -c +${offset + 1} /tmp/sandbox-runtime.log`
 				);
 				process.stdout.write(chunk.stdout);
 				offset = size;
@@ -56,14 +56,16 @@ if (follow) {
 		}
 	};
 
-	console.error(`[tailing /tmp/corp-agent.log on sandbox ${sandboxId}...]`);
+	console.error(
+		`[tailing /tmp/sandbox-runtime.log on sandbox ${sandboxId}...]`
+	);
 	setInterval(poll, 1000);
 	await poll();
 } else {
 	// One-shot: dump the log file then truncate it
 	try {
 		const result = await sandbox.commands.run(
-			"cat /tmp/corp-agent.log && : > /tmp/corp-agent.log"
+			"cat /tmp/sandbox-runtime.log && : > /tmp/sandbox-runtime.log"
 		);
 		process.stdout.write(result.stdout);
 		if (result.stderr.trim()) {

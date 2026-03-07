@@ -16,8 +16,11 @@ config({
 	quiet: true,
 });
 
-const localBinaryPath = resolve(repoRoot, "scripts/corp-agent/dist/corp-agent");
-const remoteBinaryPath = "/usr/local/bin/corp-agent";
+const localBinaryPath = resolve(
+	repoRoot,
+	"packages/sandbox-runtime/dist/sandbox-runtime"
+);
+const remoteBinaryPath = "/usr/local/bin/sandbox-runtime";
 
 const argv = process.argv.slice(2);
 
@@ -32,8 +35,8 @@ if (!sandboxId) {
 		[
 			"Missing sandbox id.",
 			"Usage:",
-			"  bun scripts/sync-corp-agent.ts <sandbox-id>",
-			"  bun scripts/sync-corp-agent.ts --sandbox-id <sandbox-id>",
+			"  bun scripts/sync-sandbox-runtime.ts <sandbox-id>",
+			"  bun scripts/sync-sandbox-runtime.ts --sandbox-id <sandbox-id>",
 		].join("\n")
 	);
 	process.exit(1);
@@ -49,7 +52,7 @@ if (!process.env.E2B_API_KEY) {
 	process.exit(1);
 }
 
-console.log(`Syncing corp-agent to sandbox ${sandboxId}...`);
+console.log(`Syncing sandbox-runtime to sandbox ${sandboxId}...`);
 
 try {
 	const sandbox = await Sandbox.connect(sandboxId);
@@ -72,15 +75,20 @@ try {
 		timeoutMs: 5000,
 	});
 
-	// Restart the corp-agent tmux session
+	// Ensure imagemagick is installed (needed for desktop MCP screenshot tool)
+	await sandbox.commands.run("which import || apt-get install -y imagemagick", {
+		timeoutMs: 30_000,
+	});
+
+	// Restart the sandbox-runtime tmux session
 	await sandbox.commands.run(
-		'tmux new-session -d -s sandbox-agent "corp-agent --host 0.0.0.0 --port 5799"',
+		'tmux new-session -d -s sandbox-agent "sandbox-runtime --host 0.0.0.0 --port 5799"',
 		{ timeoutMs: 5000 }
 	);
 
-	console.log("Corp-agent sync complete.");
+	console.log("Sandbox-runtime sync complete.");
 } catch (error) {
 	const message = error instanceof Error ? error.message : String(error);
-	console.error(`Corp-agent sync failed: ${message}`);
+	console.error(`Sandbox-runtime sync failed: ${message}`);
 	process.exit(1);
 }

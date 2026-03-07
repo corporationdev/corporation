@@ -4,8 +4,7 @@
   "workspaces": {
     "packages": [
       "apps/*",
-      "packages/*",
-      "scripts/corp-agent"
+      "packages/*"
     ],
     "catalog": {
       "@base-ui/react": "^1.0.0",
@@ -93,9 +92,9 @@
     "fix:force": "ultracite fix --unsafe",
     "db:generate": "turbo db:generate",
     "setup": "bun scripts/setup.ts",
-    "build:corp-agent": "bun build --compile --target=bun-linux-x64 scripts/corp-agent/corp-agent.ts --outfile scripts/corp-agent/dist/corp-agent",
-    "sync:corp-agent": "bun scripts/sync-corp-agent.ts",
-    "logs:corp-agent": "bun scripts/corp-agent-logs.ts",
+    "build:sandbox-runtime": "bun build --compile --target=bun-linux-x64 packages/sandbox-runtime/sandbox-runtime.ts --outfile packages/sandbox-runtime/dist/sandbox-runtime",
+    "sync:sandbox-runtime": "bun scripts/sync-sandbox-runtime.ts",
+    "logs:sandbox-runtime": "bun scripts/sandbox-runtime-logs.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:models": "bun scripts/generate-agent-models.ts"
   },

@@ -1,11 +1,11 @@
 // Build the E2B base template with Node 22, common package managers,
-// corp-agent, and preinstalled coding agents.
+// sandbox-runtime, and preinstalled coding agents.
 //
 // Usage:
 //   bun scripts/build-base-template.ts
 //
 // Prerequisites:
-//   bun run build:corp-agent   (compiles scripts/corp-agent/dist/corp-agent)
+//   bun run build:sandbox-runtime   (compiles packages/sandbox-runtime/dist/sandbox-runtime)
 //
 // Reads E2B_API_KEY from apps/server/.env automatically.
 
@@ -32,7 +32,16 @@ const template = Template()
 	.runCmd(
 		"curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs"
 	)
-	.aptInstall(["ca-certificates", "git", "zip", "unzip", "zsh", "curl", "tmux"])
+	.aptInstall([
+		"ca-certificates",
+		"git",
+		"zip",
+		"unzip",
+		"zsh",
+		"curl",
+		"tmux",
+		"imagemagick",
+	])
 	// TODO: move cloudflared to dynamic installation once we add that capability
 	.runCmd(
 		'set -euo pipefail; ARCH=$(dpkg --print-architecture); curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH.deb" -o /tmp/cloudflared.deb; dpkg -i /tmp/cloudflared.deb; rm -f /tmp/cloudflared.deb; cloudflared --version'
@@ -45,9 +54,12 @@ const template = Template()
 	.runCmd(
 		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
 	)
-	// Install corp-agent binary
-	.copy("corp-agent/dist/corp-agent", "/usr/local/bin/corp-agent")
-	.runCmd("chmod +x /usr/local/bin/corp-agent")
+	// Install sandbox-runtime binary (agent configs are written at runtime by sandbox-runtime itself)
+	.copy(
+		"packages/sandbox-runtime/dist/sandbox-runtime",
+		"/usr/local/bin/sandbox-runtime"
+	)
+	.runCmd("chmod +x /usr/local/bin/sandbox-runtime")
 	// Pre-cache ACP agent npm packages so npx doesn't download at runtime
 	.runCmd(
 		"set -euo pipefail; npm install -g @zed-industries/claude-code-acp @zed-industries/codex-acp pi-acp @blowmage/cursor-agent-acp"
