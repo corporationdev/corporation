@@ -60,9 +60,11 @@ function readStreamBatch(
 ): {
 	events: SessionEvent[];
 	status: string | null;
+	error: string | null | undefined;
 } {
 	const events: SessionEvent[] = [];
 	let status: string | null = null;
+	let error: string | null | undefined;
 
 	for (const frame of batch.items) {
 		if (frame.kind === "event") {
@@ -74,15 +76,17 @@ function readStreamBatch(
 
 		if (frame.kind === "status_changed") {
 			status = frame.status;
+			error = frame.error;
 		}
 	}
 
-	return { events, status };
+	return { events, status, error };
 }
 
 export type SessionState = {
 	entries: TimelineEntry[];
 	status: string;
+	error: string | null;
 	agent: string | null;
 	modelId: string | null;
 };
@@ -99,6 +103,7 @@ export function useSessionState({
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const [events, setEvents] = useState<SessionEvent[]>([]);
 	const [sessionStatus, setSessionStatus] = useState<string>("idle");
+	const [sessionError, setSessionError] = useState<string | null>(null);
 	const [sessionAgent, setSessionAgent] = useState<string | null>(null);
 	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
 
@@ -122,6 +127,7 @@ export function useSessionState({
 		seenEventIdsRef.current = new Set();
 		setEvents([]);
 		setSessionStatus("idle");
+		setSessionError(null);
 		setSessionAgent(null);
 		setSessionModelId(null);
 	}, [sessionId]);
@@ -147,6 +153,7 @@ export function useSessionState({
 			}
 
 			setSessionStatus(state.status);
+			setSessionError(state.error ?? null);
 			setSessionAgent(state.agent);
 			setSessionModelId(state.modelId);
 
@@ -179,6 +186,9 @@ export function useSessionState({
 					if (updates.status) {
 						setSessionStatus(updates.status);
 					}
+					if (updates.error !== undefined) {
+						setSessionError(updates.error ?? null);
+					}
 				}
 			);
 		})().catch((error: unknown) => {
@@ -201,6 +211,7 @@ export function useSessionState({
 	return {
 		entries,
 		status: sessionStatus,
+		error: sessionError,
 		agent: sessionAgent,
 		modelId: sessionModelId,
 	};
