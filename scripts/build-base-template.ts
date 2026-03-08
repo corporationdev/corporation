@@ -6,11 +6,14 @@
 //
 // Reads E2B_API_KEY from apps/server/.env automatically.
 
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { config } from "dotenv";
 import { defaultBuildLogger, Template } from "e2b";
 
-config({ path: resolve(import.meta.dirname, "../apps/server/.env") });
+const repoRoot = resolve(import.meta.dirname, "..");
+
+config({ path: resolve(repoRoot, "apps/server/.env") });
 
 const TEMPLATE_CPU_COUNT = 4;
 const TEMPLATE_MEMORY_MB = 8192;
@@ -24,7 +27,20 @@ if (!apiKey) {
 
 // Build sandbox-runtime JS bundle
 console.log("Building sandbox-runtime…");
-const build = Bun.spawnSync(["bun", "run", "build:sandbox-runtime"]);
+const sandboxRuntimeDir = resolve(repoRoot, "apps/sandbox-runtime");
+const sandboxRuntimeBundlePath = resolve(
+	sandboxRuntimeDir,
+	"dist/sandbox-runtime.js"
+);
+await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
+const build = Bun.spawnSync([
+	"bun",
+	"build",
+	resolve(sandboxRuntimeDir, "src/index.ts"),
+	"--outfile",
+	sandboxRuntimeBundlePath,
+	"--target=bun",
+]);
 if (build.exitCode !== 0) {
 	throw new Error(
 		`sandbox-runtime build failed: ${build.stderr.toString().trim()}`
@@ -32,7 +48,7 @@ if (build.exitCode !== 0) {
 }
 console.log("sandbox-runtime built.");
 
-const template = Template()
+const template = Template({ fileContextPath: repoRoot })
 	.fromTemplate("desktop")
 	.setUser("root")
 	// Install Node.js 22 (desktop template doesn't include it)
@@ -63,7 +79,7 @@ const template = Template()
 	)
 	// Install sandbox-runtime JS bundle
 	.copy(
-		"packages/sandbox-runtime/dist/sandbox-runtime.js",
+		"apps/sandbox-runtime/dist/sandbox-runtime.js",
 		"/usr/local/bin/sandbox-runtime.js"
 	)
 	// Pre-cache ACP agent npm packages so npx doesn't download at runtime

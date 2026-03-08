@@ -7,14 +7,13 @@ import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 
 const webUrl = process.env.WEB_URL ?? "";
-const desktopUrl = process.env.DESKTOP_URL ?? "";
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 function createAuth(ctx: GenericCtx<DataModel>) {
 	return betterAuth({
-		trustedOrigins: [webUrl, desktopUrl, ...sandboxTrustedOriginPatterns],
+		trustedOrigins: [webUrl, ...sandboxTrustedOriginPatterns],
 		database: authComponent.adapter(ctx),
 		emailAndPassword: {
 			enabled: true,

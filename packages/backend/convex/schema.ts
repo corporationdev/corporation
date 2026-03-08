@@ -87,6 +87,17 @@ export default defineSchema(
 		})
 			.index("by_user", ["userId"])
 			.index("by_user_and_repository", ["userId", "repositoryId"]),
+		secrets: defineTable({
+			userId: v.string(),
+			name: v.string(),
+			encryptedKey: v.string(),
+			iv: v.string(),
+			hint: v.string(),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		})
+			.index("by_user", ["userId"])
+			.index("by_user_and_name", ["userId", "name"]),
 	},
 	// TODO: remove schemaValidation: false before launch
 	{ schemaValidation: false }
