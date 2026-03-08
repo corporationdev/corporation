@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import {
 	buildEnvByPath,
 	type EnvFileValues,
-	parseDevPort,
 	RepositoryConfigForm,
 	repositoryConfigSchema,
 } from "@/components/repository-config-form";
@@ -42,29 +41,18 @@ function ConnectRepositoryPage() {
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
 
 	const { mutateAsync: connectRepo } = useMutation({
-		mutationFn: async (value: {
-			setupCommand: string;
-			updateCommand: string;
-			devCommand: string;
-			devPort: string | number;
-			envFiles: EnvFileValues[];
-		}) => {
+		mutationFn: async (value: { envFiles: EnvFileValues[] }) => {
 			if (!selectedRepo) {
 				throw new Error("No repository selected");
 			}
 
 			const envByPath = buildEnvByPath(value.envFiles);
-			const devPort = parseDevPort(value.devPort);
 
 			await createRepo({
 				githubRepoId: selectedRepo.id,
 				owner: selectedRepo.owner,
 				name: selectedRepo.name,
 				defaultBranch: selectedRepo.defaultBranch,
-				setupCommand: value.setupCommand,
-				updateCommand: value.updateCommand,
-				devCommand: value.devCommand,
-				devPort,
 				envByPath,
 			});
 		},
@@ -78,10 +66,6 @@ function ConnectRepositoryPage() {
 
 	const form = useForm({
 		defaultValues: {
-			setupCommand: "",
-			updateCommand: "",
-			devCommand: "",
-			devPort: "",
 			envFiles: [{ path: "", envVars: [{ key: "", value: "" }] }],
 		},
 		validators: {

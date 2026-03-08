@@ -28,10 +28,6 @@ export default defineSchema(
 			owner: v.string(),
 			name: v.string(),
 			defaultBranch: v.string(),
-			setupCommand: v.string(),
-			updateCommand: v.string(),
-			devCommand: v.string(),
-			devPort: v.number(),
 			envByPath: v.optional(
 				v.record(v.string(), v.record(v.string(), v.string()))
 			),

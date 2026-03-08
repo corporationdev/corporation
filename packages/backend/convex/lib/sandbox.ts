@@ -39,10 +39,6 @@ export type SandboxEnv = {
 		name: string;
 		defaultBranch: string;
 	};
-	setupCommand: string;
-	updateCommand: string;
-	devCommand: string;
-	devPort: number;
 	envByPath?: Record<string, Record<string, string>> | null;
 };
 

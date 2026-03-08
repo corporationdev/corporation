@@ -3,28 +3,13 @@ import type React from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import {
-	Field,
-	FieldError,
-	FieldGroup,
-	FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const QUOTED_VALUE_RE = /^(['"])(.*)\1$/;
 const LEADING_DOT_SLASH_RE = /^\.\/+/;
 const TRAILING_SLASH_RE = /\/+$/;
 const SECTION_HEADER_RE = /^\[(.*)\]$/;
-const DEV_PORT_DIGITS_RE = /^\d+$/;
-const DEV_PORT_ERROR_MESSAGE =
-	"Dev port must be an integer between 1 and 65535";
-const devPortNumberSchema = z.coerce
-	.number({
-		error: DEV_PORT_ERROR_MESSAGE,
-	})
-	.int(DEV_PORT_ERROR_MESSAGE)
-	.min(1, DEV_PORT_ERROR_MESSAGE)
-	.max(65_535, DEV_PORT_ERROR_MESSAGE);
 
 const envVarSchema = z.object({
 	key: z.string(),
@@ -37,17 +22,6 @@ const envFileSchema = z.object({
 });
 
 export const repositoryConfigSchema = z.object({
-	setupCommand: z.string().min(1, "Setup command is required"),
-	updateCommand: z.string().min(1, "Update command is required"),
-	devCommand: z.string().min(1, "Dev command is required"),
-	devPort: z
-		.string()
-		.trim()
-		.min(1, "Dev port is required")
-		.refine(
-			(value) => devPortNumberSchema.safeParse(value).success,
-			DEV_PORT_ERROR_MESSAGE
-		),
 	envFiles: z.array(envFileSchema),
 });
 
@@ -116,27 +90,6 @@ function normalizePath(inputPath: string): string {
 	);
 
 	return withoutTrailingSlash || ".";
-}
-
-export function parseDevPort(value: string | number): number {
-	if (typeof value === "number") {
-		if (!Number.isInteger(value) || value < 1 || value > 65_535) {
-			throw new Error("Invalid dev port");
-		}
-		return value;
-	}
-
-	const trimmed = value.trim();
-	if (!(trimmed && DEV_PORT_DIGITS_RE.test(trimmed))) {
-		throw new Error("Invalid dev port");
-	}
-
-	const num = Number(trimmed);
-	if (!Number.isInteger(num) || num < 1 || num > 65_535) {
-		throw new Error("Invalid dev port");
-	}
-
-	return num;
 }
 
 export function buildEnvByPath(envFiles: EnvFileValues[]): EnvByPath {
@@ -337,97 +290,6 @@ export function RepositoryConfigForm({
 }) {
 	return (
 		<>
-			<FieldGroup>
-				<form.Field name="setupCommand">
-					{(field: FieldState) => {
-						const isInvalid =
-							field.state.meta.isTouched && !field.state.meta.isValid;
-						return (
-							<Field data-invalid={isInvalid}>
-								<FieldLabel htmlFor={field.name}>Setup Command</FieldLabel>
-								<Input
-									aria-invalid={isInvalid}
-									id={field.name}
-									name={field.name}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-									placeholder="e.g. npm install"
-									value={field.state.value}
-								/>
-								{isInvalid && <FieldError errors={field.state.meta.errors} />}
-							</Field>
-						);
-					}}
-				</form.Field>
-
-				<form.Field name="updateCommand">
-					{(field: FieldState) => {
-						const isInvalid =
-							field.state.meta.isTouched && !field.state.meta.isValid;
-						return (
-							<Field data-invalid={isInvalid}>
-								<FieldLabel htmlFor={field.name}>Update Command</FieldLabel>
-								<Input
-									aria-invalid={isInvalid}
-									id={field.name}
-									name={field.name}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-									placeholder="e.g. npm install (defaults to setup command)"
-									value={field.state.value}
-								/>
-								{isInvalid && <FieldError errors={field.state.meta.errors} />}
-							</Field>
-						);
-					}}
-				</form.Field>
-
-				<form.Field name="devCommand">
-					{(field: FieldState) => {
-						const isInvalid =
-							field.state.meta.isTouched && !field.state.meta.isValid;
-						return (
-							<Field data-invalid={isInvalid}>
-								<FieldLabel htmlFor={field.name}>Dev Command</FieldLabel>
-								<Input
-									aria-invalid={isInvalid}
-									id={field.name}
-									name={field.name}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-									placeholder="e.g. npm run dev"
-									value={field.state.value}
-								/>
-								{isInvalid && <FieldError errors={field.state.meta.errors} />}
-							</Field>
-						);
-					}}
-				</form.Field>
-
-				<form.Field name="devPort">
-					{(field: FieldState) => {
-						const isInvalid =
-							field.state.meta.isTouched && !field.state.meta.isValid;
-						return (
-							<Field data-invalid={isInvalid}>
-								<FieldLabel htmlFor={field.name}>Dev Port</FieldLabel>
-								<Input
-									aria-invalid={isInvalid}
-									id={field.name}
-									name={field.name}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-									placeholder="e.g. 3000"
-									type="number"
-									value={field.state.value}
-								/>
-								{isInvalid && <FieldError errors={field.state.meta.errors} />}
-							</Field>
-						);
-					}}
-				</form.Field>
-			</FieldGroup>
-
 			<form.Field mode="array" name="envFiles">
 				{(envFilesField: EnvFilesArrayFieldState) =>
 					(() => {

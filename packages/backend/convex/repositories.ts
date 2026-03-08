@@ -4,7 +4,6 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { assertValidDevPort } from "./lib/devPort";
 import { normalizeEnvByPath } from "./lib/envByPath";
 import { scheduleSnapshot, withDerivedSnapshotState } from "./snapshot";
 
@@ -53,10 +52,6 @@ export const create = authedMutation({
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
-		setupCommand: v.string(),
-		updateCommand: v.string(),
-		devCommand: v.string(),
-		devPort: v.number(),
 		envByPath: v.optional(
 			v.record(v.string(), v.record(v.string(), v.string()))
 		),
@@ -73,7 +68,6 @@ export const create = authedMutation({
 			throw new ConvexError("Repository already connected");
 		}
 
-		assertValidDevPort(args.devPort);
 		const now = Date.now();
 		const normalizedEnvByPath = normalizeEnvByPath(args.envByPath);
 
@@ -83,10 +77,6 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
-			setupCommand: args.setupCommand,
-			updateCommand: args.updateCommand,
-			devCommand: args.devCommand,
-			devPort: args.devPort,
 			envByPath: normalizedEnvByPath,
 			createdAt: now,
 			updatedAt: now,
@@ -107,10 +97,6 @@ export const update = authedMutation({
 	args: {
 		id: v.id("repositories"),
 		defaultBranch: v.optional(v.string()),
-		setupCommand: v.optional(v.string()),
-		updateCommand: v.optional(v.string()),
-		devCommand: v.optional(v.string()),
-		devPort: v.optional(v.number()),
 		envByPath: v.optional(
 			v.record(v.string(), v.record(v.string(), v.string()))
 		),
@@ -121,10 +107,6 @@ export const update = authedMutation({
 			throw new ConvexError("Repository not found");
 		}
 		requireOwnedRepository(ctx.userId, repository);
-
-		if (args.devPort !== undefined) {
-			assertValidDevPort(args.devPort);
-		}
 
 		const { id, envByPath, ...fields } = args;
 		const normalizedEnvByPath =
