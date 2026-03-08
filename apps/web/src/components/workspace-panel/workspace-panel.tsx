@@ -6,15 +6,20 @@ import { DesktopTab } from "./desktop-tab";
 import { TerminalTab } from "./terminal-tab";
 
 const tabs = [
-	{ id: "desktop", label: "Desktop", icon: MonitorIcon },
 	{ id: "terminal", label: "Terminal", icon: TerminalIcon },
+	{ id: "desktop", label: "Desktop", icon: MonitorIcon },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
 const defaultTab: TabId = "terminal";
+const WORKSPACE_TAB_STORAGE_KEY_PREFIX = "corporation:space-workspace-tab:";
 
 function isTabId(value: string): value is TabId {
 	return tabs.some((tab) => tab.id === value);
+}
+
+function getWorkspaceTabStorageKey(spaceSlug: string) {
+	return `${WORKSPACE_TAB_STORAGE_KEY_PREFIX}${spaceSlug}`;
 }
 
 type WorkspacePanelProps = {
@@ -23,8 +28,9 @@ type WorkspacePanelProps = {
 };
 
 export function WorkspacePanel({ actor, spaceSlug }: WorkspacePanelProps) {
-	const [storedActiveTab, setActiveTab] = useLocalStorage<string>(
-		`space-workspace-tab:${spaceSlug}`,
+	const storageKey = getWorkspaceTabStorageKey(spaceSlug);
+	const [storedActiveTab, setActiveTab] = useLocalStorage<TabId>(
+		storageKey,
 		defaultTab
 	);
 	const activeTab = isTabId(storedActiveTab) ? storedActiveTab : defaultTab;

@@ -1,14 +1,6 @@
 import { ChevronDownIcon, LoaderCircleIcon } from "lucide-react";
 import { type FC, useCallback, useMemo } from "react";
 import {
-	Combobox,
-	ComboboxContent,
-	ComboboxEmpty,
-	ComboboxInput,
-	ComboboxItem,
-	ComboboxList,
-} from "@/components/ui/combobox";
-import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -85,8 +77,7 @@ export const AgentModelPicker: FC<{
 		models.find((m) => m.id === modelId)?.name ?? modelId;
 
 	const locked = agentLocked && modelLocked;
-
-	const modelNames = useMemo(() => models.map((m) => m.name ?? m.id), [models]);
+	const lockedClassName = "pointer-events-none";
 
 	const nameToId = useMemo(() => {
 		const map: Record<string, string> = {};
@@ -102,7 +93,7 @@ export const AgentModelPicker: FC<{
 				<DropdownMenuTrigger
 					className={cn(
 						"inline-flex h-7 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground",
-						(agentLocked || locked) && "pointer-events-none opacity-50"
+						(agentLocked || locked) && lockedClassName
 					)}
 				>
 					{agentLabel}
@@ -122,38 +113,35 @@ export const AgentModelPicker: FC<{
 					<span>Loading models…</span>
 				</div>
 			) : models.length > 0 ? (
-				<Combobox
-					disabled={modelLocked || locked}
-					items={modelNames}
-					onValueChange={(val) => {
-						if (val) {
-							const id = nameToId[val as string];
-							if (id) {
-								onModelIdChange(id);
-							}
-						}
-					}}
-					value={currentModelLabel}
-				>
-					<ComboboxInput
+				<DropdownMenu>
+					<DropdownMenuTrigger
 						className={cn(
-							"h-7 rounded-full border-border/50 bg-muted/50 text-muted-foreground text-xs",
-							(modelLocked || locked) && "pointer-events-none opacity-50"
+							"inline-flex h-7 min-w-0 max-w-80 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground",
+							(modelLocked || locked) && lockedClassName
 						)}
-						onFocus={(e) => e.currentTarget.select()}
-						placeholder="Select model..."
-					/>
-					<ComboboxContent>
-						<ComboboxEmpty>No model found.</ComboboxEmpty>
-						<ComboboxList>
-							{(item) => (
-								<ComboboxItem key={item} value={item}>
-									{item}
-								</ComboboxItem>
-							)}
-						</ComboboxList>
-					</ComboboxContent>
-				</Combobox>
+					>
+						<span className="truncate">{currentModelLabel}</span>
+						<ChevronDownIcon className="size-3" />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="start">
+						{models.map((model) => {
+							const label = model.name ?? model.id;
+							const id = nameToId[label];
+							return (
+								<DropdownMenuItem
+									key={model.id}
+									onClick={() => {
+										if (id) {
+											onModelIdChange(id);
+										}
+									}}
+								>
+									{label}
+								</DropdownMenuItem>
+							);
+						})}
+					</DropdownMenuContent>
+				</DropdownMenu>
 			) : null}
 		</div>
 	);

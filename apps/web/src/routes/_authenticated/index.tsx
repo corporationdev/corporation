@@ -22,13 +22,8 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import agentModelsData from "@/data/agent-models.json";
+import { usePersistedAgentModelSelection } from "@/hooks/use-persisted-agent-model-selection";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
-
-const INITIAL_AGENT = "claude";
-const INITIAL_MODEL =
-	agentModelsData[INITIAL_AGENT as keyof typeof agentModelsData].defaultModel ??
-	"";
 
 export const Route = createFileRoute("/_authenticated/")({
 	component: AuthenticatedIndex,
@@ -42,8 +37,8 @@ function AuthenticatedIndex() {
 	const [selectedSnapshotId, setSelectedSnapshotId] =
 		useState<Id<"snapshots"> | null>(null);
 	const [input, setInput] = useState("");
-	const [agent, setAgent] = useState(INITIAL_AGENT);
-	const [modelId, setModelId] = useState(INITIAL_MODEL);
+	const { agent, modelId, setAgent, setModelId } =
+		usePersistedAgentModelSelection();
 	const [selectedProjectId, setSelectedProjectId] =
 		useLocalStorage<Id<"projects"> | null>("corporation:recent-project", null);
 

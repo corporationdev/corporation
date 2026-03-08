@@ -165,15 +165,12 @@ async function resolveSandbox(
 		try {
 			return await Sandbox.connect(space.sandboxId);
 		} catch (error) {
-			console.warn(
-				"Failed to connect existing sandbox; provisioning new sandbox",
-				{
-					spaceId: space._id,
-					sandboxId: space.sandboxId,
-					error,
-				}
-			);
-			// Fall through to provisioning from snapshot when reconnect fails.
+			console.warn("Failed to connect existing sandbox", {
+				spaceId: space._id,
+				sandboxId: space.sandboxId,
+				error,
+			});
+			throw error;
 		}
 	}
 

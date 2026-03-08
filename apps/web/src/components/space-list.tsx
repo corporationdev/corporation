@@ -101,12 +101,14 @@ const ProjectSpaceGroup: FC<{
 	return (
 		<section className="flex flex-col gap-1">
 			<div className="flex items-center gap-2 px-2">
-				<div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1 text-muted-foreground text-xs">
+				<div className="flex min-w-0 flex-1 items-center gap-2 py-1 text-muted-foreground text-xs">
 					<FolderIcon className="size-3.5 shrink-0" />
-					<span className="truncate font-medium text-sm">{projectLabel}</span>
+					<span className="min-w-0 flex-1 truncate font-medium text-sm">
+						{projectLabel}
+					</span>
 				</div>
 				<button
-					className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 					onClick={handleCreateSpace}
 					type="button"
 				>
