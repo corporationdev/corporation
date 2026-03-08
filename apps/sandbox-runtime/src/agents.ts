@@ -9,6 +9,14 @@ const AGENT_NPX_PACKAGES: Record<string, string> = {
 	cursor: "@blowmage/cursor-agent-acp",
 };
 
+function stringEnv(): Record<string, string | undefined> {
+	return Object.fromEntries(
+		Object.entries(process.env).filter(
+			(entry): entry is [string, string] => typeof entry[1] === "string"
+		)
+	);
+}
+
 export function agentCommand(agent: string): string[] {
 	if (agent === "opencode") {
 		return ["opencode", "acp"];
@@ -22,6 +30,26 @@ export function agentCommand(agent: string): string[] {
 		throw new Error(`Unknown agent: ${agent}`);
 	}
 	return ["npx", "-y", pkg];
+}
+
+export function agentEnv(agent: string): Record<string, string> {
+	const env = stringEnv();
+
+	if (agent !== "claude") {
+		return env as Record<string, string>;
+	}
+
+	// Claude Code ACP consumes credentials from the process environment.
+	// If an OAuth token is available, prefer it and omit the API key.
+	if (env.CLAUDE_CODE_OAUTH_TOKEN) {
+		env.ANTHROPIC_API_KEY = undefined;
+	}
+
+	return Object.fromEntries(
+		Object.entries(env).filter(
+			(entry): entry is [string, string] => typeof entry[1] === "string"
+		)
+	);
 }
 
 /** Map of agent name -> array of { path, content } config files to write before spawning. */

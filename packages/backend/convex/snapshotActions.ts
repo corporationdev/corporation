@@ -216,20 +216,9 @@ export const buildSnapshot = internalAction({
 					);
 				}
 
-				// Shared: write env files, run command, get commit SHA
+				// Shared: write env files
 				await writeEnvFiles(sandbox, { ...repository, repository }, workdir);
 				appendLog("Environment files written.\n");
-
-				const installCommand =
-					request.type === "update"
-						? repository.updateCommand
-						: repository.setupCommand;
-				await runRootCommand(sandbox, installCommand, {
-					cwd: workdir,
-					timeoutMs: REPO_SYNC_TIMEOUT_MS,
-					onStdout: appendLog,
-					onStderr: appendLog,
-				});
 
 				// Create snapshot and cleanup
 				try {
