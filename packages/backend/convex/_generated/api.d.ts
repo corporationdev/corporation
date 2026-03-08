@@ -16,14 +16,12 @@ import type * as http from "../http.js";
 import type * as lib_claudeCodeAuth from "../lib/claudeCodeAuth.js";
 import type * as lib_codexAuth from "../lib/codexAuth.js";
 import type * as lib_crypto from "../lib/crypto.js";
-import type * as lib_devPort from "../lib/devPort.js";
-import type * as lib_envByPath from "../lib/envByPath.js";
 import type * as lib_git from "../lib/git.js";
 import type * as lib_nango from "../lib/nango.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
-import type * as repositories from "../repositories.js";
+import type * as projects from "../projects.js";
 import type * as sandboxActions from "../sandboxActions.js";
 import type * as secretActions from "../secretActions.js";
 import type * as secrets from "../secrets.js";
@@ -31,7 +29,6 @@ import type * as snapshot from "../snapshot.js";
 import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaceBranchActions from "../spaceBranchActions.js";
 import type * as spaces from "../spaces.js";
-import type * as warmSandbox from "../warmSandbox.js";
 
 import type {
   ApiFromModules,
@@ -48,14 +45,12 @@ declare const fullApi: ApiFromModules<{
   "lib/claudeCodeAuth": typeof lib_claudeCodeAuth;
   "lib/codexAuth": typeof lib_codexAuth;
   "lib/crypto": typeof lib_crypto;
-  "lib/devPort": typeof lib_devPort;
-  "lib/envByPath": typeof lib_envByPath;
   "lib/git": typeof lib_git;
   "lib/nango": typeof lib_nango;
   "lib/sandbox": typeof lib_sandbox;
   "lib/validSecrets": typeof lib_validSecrets;
   nangoWebhook: typeof nangoWebhook;
-  repositories: typeof repositories;
+  projects: typeof projects;
   sandboxActions: typeof sandboxActions;
   secretActions: typeof secretActions;
   secrets: typeof secrets;
@@ -63,7 +58,6 @@ declare const fullApi: ApiFromModules<{
   snapshotActions: typeof snapshotActions;
   spaceBranchActions: typeof spaceBranchActions;
   spaces: typeof spaces;
-  warmSandbox: typeof warmSandbox;
 }>;
 
 /**

@@ -15,13 +15,13 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as PublicSignupRouteImport } from './routes/_public/signup'
 import { Route as PublicLoginRouteImport } from './routes/_public/login'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedSpaceSpaceSlugRouteImport } from './routes/_authenticated/space_.$spaceSlug'
 import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_authenticated/settings/connections'
 import { Route as AuthenticatedSettingsAgentsRouteImport } from './routes/_authenticated/settings/agents'
-import { Route as AuthenticatedSettingsRepositoriesIndexRouteImport } from './routes/_authenticated/settings/repositories/index'
-import { Route as AuthenticatedSettingsRepositoriesConnectRouteImport } from './routes/_authenticated/settings/repositories/connect'
-import { Route as AuthenticatedSettingsRepositoriesRepositoryIdIndexRouteImport } from './routes/_authenticated/settings/repositories/$repositoryId.index'
-import { Route as AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport } from './routes/_authenticated/settings/repositories/$repositoryId.edit'
+import { Route as AuthenticatedSettingsProjectsIndexRouteImport } from './routes/_authenticated/settings/projects/index'
+import { Route as AuthenticatedSettingsProjectsNewRouteImport } from './routes/_authenticated/settings/projects/new'
+import { Route as AuthenticatedSettingsProjectsProjectIdIndexRouteImport } from './routes/_authenticated/settings/projects/$projectId.index'
 
 const PublicRoute = PublicRouteImport.update({
   id: '/_public',
@@ -51,6 +51,12 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedSettingsIndexRoute =
+  AuthenticatedSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSpaceSpaceSlugRoute =
   AuthenticatedSpaceSpaceSlugRouteImport.update({
     id: '/space_/$spaceSlug',
@@ -69,28 +75,22 @@ const AuthenticatedSettingsAgentsRoute =
     path: '/agents',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
-const AuthenticatedSettingsRepositoriesIndexRoute =
-  AuthenticatedSettingsRepositoriesIndexRouteImport.update({
-    id: '/repositories/',
-    path: '/repositories/',
+const AuthenticatedSettingsProjectsIndexRoute =
+  AuthenticatedSettingsProjectsIndexRouteImport.update({
+    id: '/projects/',
+    path: '/projects/',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
-const AuthenticatedSettingsRepositoriesConnectRoute =
-  AuthenticatedSettingsRepositoriesConnectRouteImport.update({
-    id: '/repositories/connect',
-    path: '/repositories/connect',
+const AuthenticatedSettingsProjectsNewRoute =
+  AuthenticatedSettingsProjectsNewRouteImport.update({
+    id: '/projects/new',
+    path: '/projects/new',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
-const AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute =
-  AuthenticatedSettingsRepositoriesRepositoryIdIndexRouteImport.update({
-    id: '/repositories/$repositoryId/',
-    path: '/repositories/$repositoryId/',
-    getParentRoute: () => AuthenticatedSettingsRoute,
-  } as any)
-const AuthenticatedSettingsRepositoriesRepositoryIdEditRoute =
-  AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport.update({
-    id: '/repositories/$repositoryId/edit',
-    path: '/repositories/$repositoryId/edit',
+const AuthenticatedSettingsProjectsProjectIdIndexRoute =
+  AuthenticatedSettingsProjectsProjectIdIndexRouteImport.update({
+    id: '/projects/$projectId/',
+    path: '/projects/$projectId/',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 
@@ -102,23 +102,22 @@ export interface FileRoutesByFullPath {
   '/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
-  '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
-  '/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
-  '/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
-  '/settings/repositories/$repositoryId/': typeof AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute
+  '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/settings/projects/new': typeof AuthenticatedSettingsProjectsNewRoute
+  '/settings/projects/': typeof AuthenticatedSettingsProjectsIndexRoute
+  '/settings/projects/$projectId/': typeof AuthenticatedSettingsProjectsProjectIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
-  '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
   '/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
-  '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
-  '/settings/repositories': typeof AuthenticatedSettingsRepositoriesIndexRoute
-  '/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
-  '/settings/repositories/$repositoryId': typeof AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute
+  '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/settings/projects/new': typeof AuthenticatedSettingsProjectsNewRoute
+  '/settings/projects': typeof AuthenticatedSettingsProjectsIndexRoute
+  '/settings/projects/$projectId': typeof AuthenticatedSettingsProjectsProjectIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -131,10 +130,10 @@ export interface FileRoutesById {
   '/_authenticated/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/_authenticated/space_/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
-  '/_authenticated/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
-  '/_authenticated/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
-  '/_authenticated/settings/repositories/$repositoryId/edit': typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
-  '/_authenticated/settings/repositories/$repositoryId/': typeof AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute
+  '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/_authenticated/settings/projects/new': typeof AuthenticatedSettingsProjectsNewRoute
+  '/_authenticated/settings/projects/': typeof AuthenticatedSettingsProjectsIndexRoute
+  '/_authenticated/settings/projects/$projectId/': typeof AuthenticatedSettingsProjectsProjectIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -146,23 +145,22 @@ export interface FileRouteTypes {
     | '/settings/agents'
     | '/settings/connections'
     | '/space/$spaceSlug'
-    | '/settings/repositories/connect'
-    | '/settings/repositories/'
-    | '/settings/repositories/$repositoryId/edit'
-    | '/settings/repositories/$repositoryId/'
+    | '/settings/'
+    | '/settings/projects/new'
+    | '/settings/projects/'
+    | '/settings/projects/$projectId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/settings'
     | '/login'
     | '/signup'
     | '/settings/agents'
     | '/settings/connections'
     | '/space/$spaceSlug'
-    | '/settings/repositories/connect'
-    | '/settings/repositories'
-    | '/settings/repositories/$repositoryId/edit'
-    | '/settings/repositories/$repositoryId'
+    | '/settings'
+    | '/settings/projects/new'
+    | '/settings/projects'
+    | '/settings/projects/$projectId'
   id:
     | '__root__'
     | '/_authenticated'
@@ -174,10 +172,10 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/agents'
     | '/_authenticated/settings/connections'
     | '/_authenticated/space_/$spaceSlug'
-    | '/_authenticated/settings/repositories/connect'
-    | '/_authenticated/settings/repositories/'
-    | '/_authenticated/settings/repositories/$repositoryId/edit'
-    | '/_authenticated/settings/repositories/$repositoryId/'
+    | '/_authenticated/settings/'
+    | '/_authenticated/settings/projects/new'
+    | '/_authenticated/settings/projects/'
+    | '/_authenticated/settings/projects/$projectId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -229,6 +227,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/': {
+      id: '/_authenticated/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/space_/$spaceSlug': {
       id: '/_authenticated/space_/$spaceSlug'
       path: '/space/$spaceSlug'
@@ -250,32 +255,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsAgentsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
-    '/_authenticated/settings/repositories/': {
-      id: '/_authenticated/settings/repositories/'
-      path: '/repositories'
-      fullPath: '/settings/repositories/'
-      preLoaderRoute: typeof AuthenticatedSettingsRepositoriesIndexRouteImport
+    '/_authenticated/settings/projects/': {
+      id: '/_authenticated/settings/projects/'
+      path: '/projects'
+      fullPath: '/settings/projects/'
+      preLoaderRoute: typeof AuthenticatedSettingsProjectsIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
-    '/_authenticated/settings/repositories/connect': {
-      id: '/_authenticated/settings/repositories/connect'
-      path: '/repositories/connect'
-      fullPath: '/settings/repositories/connect'
-      preLoaderRoute: typeof AuthenticatedSettingsRepositoriesConnectRouteImport
+    '/_authenticated/settings/projects/new': {
+      id: '/_authenticated/settings/projects/new'
+      path: '/projects/new'
+      fullPath: '/settings/projects/new'
+      preLoaderRoute: typeof AuthenticatedSettingsProjectsNewRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
-    '/_authenticated/settings/repositories/$repositoryId/': {
-      id: '/_authenticated/settings/repositories/$repositoryId/'
-      path: '/repositories/$repositoryId'
-      fullPath: '/settings/repositories/$repositoryId/'
-      preLoaderRoute: typeof AuthenticatedSettingsRepositoriesRepositoryIdIndexRouteImport
-      parentRoute: typeof AuthenticatedSettingsRoute
-    }
-    '/_authenticated/settings/repositories/$repositoryId/edit': {
-      id: '/_authenticated/settings/repositories/$repositoryId/edit'
-      path: '/repositories/$repositoryId/edit'
-      fullPath: '/settings/repositories/$repositoryId/edit'
-      preLoaderRoute: typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRouteImport
+    '/_authenticated/settings/projects/$projectId/': {
+      id: '/_authenticated/settings/projects/$projectId/'
+      path: '/projects/$projectId'
+      fullPath: '/settings/projects/$projectId/'
+      preLoaderRoute: typeof AuthenticatedSettingsProjectsProjectIdIndexRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
   }
@@ -284,23 +282,21 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsAgentsRoute: typeof AuthenticatedSettingsAgentsRoute
   AuthenticatedSettingsConnectionsRoute: typeof AuthenticatedSettingsConnectionsRoute
-  AuthenticatedSettingsRepositoriesConnectRoute: typeof AuthenticatedSettingsRepositoriesConnectRoute
-  AuthenticatedSettingsRepositoriesIndexRoute: typeof AuthenticatedSettingsRepositoriesIndexRoute
-  AuthenticatedSettingsRepositoriesRepositoryIdEditRoute: typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
-  AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute: typeof AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute
+  AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
+  AuthenticatedSettingsProjectsNewRoute: typeof AuthenticatedSettingsProjectsNewRoute
+  AuthenticatedSettingsProjectsIndexRoute: typeof AuthenticatedSettingsProjectsIndexRoute
+  AuthenticatedSettingsProjectsProjectIdIndexRoute: typeof AuthenticatedSettingsProjectsProjectIdIndexRoute
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsAgentsRoute: AuthenticatedSettingsAgentsRoute,
   AuthenticatedSettingsConnectionsRoute: AuthenticatedSettingsConnectionsRoute,
-  AuthenticatedSettingsRepositoriesConnectRoute:
-    AuthenticatedSettingsRepositoriesConnectRoute,
-  AuthenticatedSettingsRepositoriesIndexRoute:
-    AuthenticatedSettingsRepositoriesIndexRoute,
-  AuthenticatedSettingsRepositoriesRepositoryIdEditRoute:
-    AuthenticatedSettingsRepositoriesRepositoryIdEditRoute,
-  AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute:
-    AuthenticatedSettingsRepositoriesRepositoryIdIndexRoute,
+  AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
+  AuthenticatedSettingsProjectsNewRoute: AuthenticatedSettingsProjectsNewRoute,
+  AuthenticatedSettingsProjectsIndexRoute:
+    AuthenticatedSettingsProjectsIndexRoute,
+  AuthenticatedSettingsProjectsProjectIdIndexRoute:
+    AuthenticatedSettingsProjectsProjectIdIndexRoute,
 }
 
 const AuthenticatedSettingsRouteWithChildren =

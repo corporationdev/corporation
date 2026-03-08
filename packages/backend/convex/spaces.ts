@@ -2,46 +2,58 @@ import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { getSandboxWorkdir } from "./lib/sandbox";
 import { spaceStatusValidator } from "./schema";
-import { withDerivedSnapshotState } from "./snapshot";
 
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string },
 	space: Doc<"spaces">
 ): Promise<{
 	space: Doc<"spaces">;
-	repository: Doc<"repositories">;
+	project: Doc<"projects">;
 }> {
-	if (!space.repositoryId) {
+	if (!space.projectId) {
 		throw new ConvexError("Space not found");
 	}
-	const repository = await ctx.db.get(space.repositoryId);
-	if (!repository || repository.userId !== ctx.userId) {
+	const project = await ctx.db.get(space.projectId);
+	if (!project || project.userId !== ctx.userId) {
 		throw new ConvexError("Space not found");
 	}
 
-	return { space, repository };
+	return { space, project };
+}
+
+async function requireReadySnapshot(
+	ctx: MutationCtx,
+	project: Doc<"projects">,
+	snapshotId: Id<"snapshots">
+): Promise<Doc<"snapshots">> {
+	const snapshot = await ctx.db.get(snapshotId);
+	if (!snapshot || snapshot.projectId !== project._id) {
+		throw new ConvexError("Snapshot not found");
+	}
+	if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
+		throw new ConvexError("Snapshot is not ready");
+	}
+	return snapshot;
 }
 
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const repositories = await ctx.db
-			.query("repositories")
+		const projects = await ctx.db
+			.query("projects")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
 		const spaces = (
-			await asyncMap(repositories, (repository) =>
+			await asyncMap(projects, (project) =>
 				ctx.db
 					.query("spaces")
-					.withIndex("by_repository", (q) =>
-						q.eq("repositoryId", repository._id)
-					)
+					.withIndex("by_project", (q) => q.eq("projectId", project._id))
 					.collect()
 			)
 		).flat();
@@ -51,52 +63,39 @@ export const list = authedQuery({
 	},
 });
 
-export const listByRepository = authedQuery({
+export const listByProject = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const repositories = await ctx.db
-			.query("repositories")
+		const projects = await ctx.db
+			.query("projects")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		const spacesByRepository = new Map<Id<"repositories">, Doc<"spaces">[]>();
-		const repositorySpaces = await asyncMap(
-			repositories,
-			async (repository) => ({
-				repositoryId: repository._id,
-				spaces: await ctx.db
-					.query("spaces")
-					.withIndex("by_repository", (q) =>
-						q.eq("repositoryId", repository._id)
-					)
-					.collect(),
-			})
-		);
-		for (const { repositoryId, spaces } of repositorySpaces) {
-			spacesByRepository.set(repositoryId, spaces);
+		const spacesByProject = new Map<Id<"projects">, Doc<"spaces">[]>();
+		const projectSpaces = await asyncMap(projects, async (project) => ({
+			projectId: project._id,
+			spaces: await ctx.db
+				.query("spaces")
+				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.collect(),
+		}));
+		for (const { projectId, spaces } of projectSpaces) {
+			spacesByProject.set(projectId, spaces);
 		}
 
-		const grouped = await asyncMap(repositories, async (repository) => {
-			const spaces = (spacesByRepository.get(repository._id) ?? []).filter(
+		const grouped = projects.map((project) => {
+			const spaces = (spacesByProject.get(project._id) ?? []).filter(
 				(space) => !space.archived
 			);
 			spaces.sort((a, b) => b.updatedAt - a.updatedAt);
-			const repositoryWithSnapshots = await withDerivedSnapshotState(
-				ctx,
-				repository
-			);
 
 			return {
-				repository: repositoryWithSnapshots,
+				project,
 				spaces,
 			};
 		});
 
-		grouped.sort((a, b) => {
-			const aName = `${a.repository.owner}/${a.repository.name}`;
-			const bName = `${b.repository.owner}/${b.repository.name}`;
-			return aName.localeCompare(bName);
-		});
+		grouped.sort((a, b) => a.project.name.localeCompare(b.project.name));
 		return grouped;
 	},
 });
@@ -111,16 +110,12 @@ export const getBySlug = authedQuery({
 		if (!space) {
 			return null;
 		}
-		const { repository } = await requireOwnedSpace(ctx, space);
-		const repositoryWithSnapshot = await withDerivedSnapshotState(
-			ctx,
-			repository
-		);
+		const { project } = await requireOwnedSpace(ctx, space);
 
 		return {
 			...space,
-			workdir: getSandboxWorkdir(repository),
-			repository: repositoryWithSnapshot,
+			workdir: getSandboxWorkdir(project),
+			project,
 		};
 	},
 });
@@ -132,16 +127,12 @@ export const get = authedQuery({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		const { repository } = await requireOwnedSpace(ctx, space);
-		const repositoryWithSnapshot = await withDerivedSnapshotState(
-			ctx,
-			repository
-		);
+		const { project } = await requireOwnedSpace(ctx, space);
 
 		return {
 			...space,
-			workdir: getSandboxWorkdir(repository),
-			repository: repositoryWithSnapshot,
+			workdir: getSandboxWorkdir(project),
+			project,
 		};
 	},
 });
@@ -229,18 +220,14 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Space not found");
 		}
 
-		const repository = await ctx.db.get(space.repositoryId);
-		if (!repository) {
-			throw new ConvexError("Repository not found");
+		const project = await ctx.db.get(space.projectId);
+		if (!project) {
+			throw new ConvexError("Project not found");
 		}
-		const repositoryWithSnapshot = await withDerivedSnapshotState(
-			ctx,
-			repository
-		);
 
 		return {
 			...space,
-			repository: repositoryWithSnapshot,
+			project,
 		};
 	},
 });
@@ -286,7 +273,8 @@ export const requestAutoRename = internalMutation({
 export const ensure = authedMutation({
 	args: {
 		slug: v.string(),
-		repositoryId: v.optional(v.id("repositories")),
+		projectId: v.optional(v.id("projects")),
+		snapshotId: v.optional(v.id("snapshots")),
 		firstMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -309,76 +297,37 @@ export const ensure = authedMutation({
 			return existing._id;
 		}
 
-		if (!args.repositoryId) {
-			throw new ConvexError("repositoryId is required when creating a space");
+		if (!args.projectId) {
+			throw new ConvexError("projectId is required when creating a space");
 		}
 
-		const repositoryId = args.repositoryId;
+		const projectId = args.projectId;
 
-		const repository = await ctx.db.get(repositoryId);
-		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Repository not found");
+		const project = await ctx.db.get(projectId);
+		if (!project || project.userId !== ctx.userId) {
+			throw new ConvexError("Project not found");
 		}
-
-		// Check for a warm sandbox for this repo
-		const warmSandbox = await ctx.db
-			.query("warmSandboxes")
-			.withIndex("by_user_and_repository", (q) =>
-				q.eq("userId", ctx.userId).eq("repositoryId", repositoryId)
-			)
-			.first();
+		const snapshotId = args.snapshotId ?? project.defaultSnapshotId;
+		if (!snapshotId) {
+			throw new ConvexError("Project does not have a default snapshot");
+		}
+		await requireReadySnapshot(ctx, project, snapshotId);
 
 		const now = Date.now();
 
-		let spaceId: Id<"spaces">;
+		const spaceId = await ctx.db.insert("spaces", {
+			slug,
+			projectId,
+			snapshotId,
+			name: "New Space",
+			status: "creating",
+			createdAt: now,
+			updatedAt: now,
+		});
 
-		if (
-			warmSandbox?.status === "ready" &&
-			warmSandbox.sandboxId &&
-			warmSandbox.agentUrl
-		) {
-			// Warm sandbox is ready — claim it immediately
-			spaceId = await ctx.db.insert("spaces", {
-				slug,
-				repositoryId,
-				name: "New Space",
-				status: "running",
-				sandboxId: warmSandbox.sandboxId,
-				agentUrl: warmSandbox.agentUrl,
-				createdAt: now,
-				updatedAt: now,
-			});
-			await ctx.db.delete(warmSandbox._id);
-		} else if (warmSandbox?.status === "provisioning") {
-			// Warm sandbox is still provisioning — hand off via spaceId
-			spaceId = await ctx.db.insert("spaces", {
-				slug,
-				repositoryId,
-				name: "New Space",
-				status: "creating",
-				createdAt: now,
-				updatedAt: now,
-			});
-			await ctx.db.patch(warmSandbox._id, { spaceId });
-		} else {
-			// No warm sandbox available — cold start
-			spaceId = await ctx.db.insert("spaces", {
-				slug,
-				repositoryId,
-				name: "New Space",
-				status: "creating",
-				createdAt: now,
-				updatedAt: now,
-			});
-
-			await ctx.scheduler.runAfter(
-				0,
-				internal.sandboxActions.provisionForSpace,
-				{
-					spaceId,
-				}
-			);
-		}
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
+			spaceId,
+		});
 
 		if (args.firstMessage) {
 			await ctx.scheduler.runAfter(0, internal.spaces.requestAutoRename, {

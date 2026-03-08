@@ -3,7 +3,8 @@ import { create } from "zustand";
 
 type PendingSpace = {
 	slug: string;
-	repositoryId: Id<"repositories">;
+	projectId: Id<"projects">;
+	snapshotId: Id<"snapshots">;
 };
 
 type PendingMessage = {

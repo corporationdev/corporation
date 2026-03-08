@@ -1,17 +1,26 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
-import { GitBranchIcon, MonitorIcon, TerminalIcon } from "lucide-react";
+import { MonitorIcon, TerminalIcon } from "lucide-react";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { DesktopTab } from "./desktop-tab";
 import { TerminalTab } from "./terminal-tab";
 
 const tabs = [
-	{ id: "git", label: "Git", icon: GitBranchIcon },
-	{ id: "desktop", label: "Desktop", icon: MonitorIcon },
 	{ id: "terminal", label: "Terminal", icon: TerminalIcon },
+	{ id: "desktop", label: "Desktop", icon: MonitorIcon },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
+const defaultTab: TabId = "terminal";
+const WORKSPACE_TAB_STORAGE_KEY_PREFIX = "corporation:space-workspace-tab:";
+
+function isTabId(value: string): value is TabId {
+	return tabs.some((tab) => tab.id === value);
+}
+
+function getWorkspaceTabStorageKey(spaceSlug: string) {
+	return `${WORKSPACE_TAB_STORAGE_KEY_PREFIX}${spaceSlug}`;
+}
 
 type WorkspacePanelProps = {
 	actor: SpaceActor;
@@ -19,10 +28,12 @@ type WorkspacePanelProps = {
 };
 
 export function WorkspacePanel({ actor, spaceSlug }: WorkspacePanelProps) {
-	const [activeTab, setActiveTab] = useLocalStorage<TabId>(
-		`space-workspace-tab:${spaceSlug}`,
-		"terminal"
+	const storageKey = getWorkspaceTabStorageKey(spaceSlug);
+	const [storedActiveTab, setActiveTab] = useLocalStorage<TabId>(
+		storageKey,
+		defaultTab
 	);
+	const activeTab = isTabId(storedActiveTab) ? storedActiveTab : defaultTab;
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
@@ -47,11 +58,6 @@ export function WorkspacePanel({ actor, spaceSlug }: WorkspacePanelProps) {
 			<div className="min-h-0 flex-1">
 				{activeTab === "terminal" && (
 					<TerminalTab actor={actor} spaceSlug={spaceSlug} />
-				)}
-				{activeTab === "git" && (
-					<div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-						Git panel coming soon
-					</div>
 				)}
 				{activeTab === "desktop" && <DesktopTab actor={actor} />}
 			</div>

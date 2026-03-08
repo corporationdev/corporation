@@ -165,23 +165,23 @@ async function resolveSandbox(
 		try {
 			return await Sandbox.connect(space.sandboxId);
 		} catch (error) {
-			console.warn(
-				"Failed to connect existing sandbox; provisioning new sandbox",
-				{
-					spaceId: space._id,
-					sandboxId: space.sandboxId,
-					error,
-				}
-			);
-			// Fall through to provisioning from snapshot when reconnect fails.
+			console.warn("Failed to connect existing sandbox", {
+				spaceId: space._id,
+				sandboxId: space.sandboxId,
+				error,
+			});
+			throw error;
 		}
 	}
 
-	const externalSnapshotId =
-		space.repository.activeSnapshot?.externalSnapshotId;
-
-	if (!externalSnapshotId) {
-		throw new Error("Repository snapshot is not ready yet");
+	if (!space.snapshotId) {
+		throw new Error("Space snapshot is not set");
+	}
+	const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
+		id: space.snapshotId,
+	});
+	if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
+		throw new Error("Space snapshot is not ready");
 	}
 
 	await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -189,7 +189,7 @@ async function resolveSandbox(
 		status: "creating" as const,
 	});
 
-	return await createSandbox(externalSnapshotId, aiEnvs);
+	return await createSandbox(snapshot.externalSnapshotId, aiEnvs);
 }
 
 export const archiveSandbox = internalAction({
@@ -228,10 +228,10 @@ export const provisionForSpace = internalAction({
 				id: args.spaceId,
 			});
 
-			const aiEnvs = await getUserAiEnvs(ctx, space.repository.userId);
+			const aiEnvs = await getUserAiEnvs(ctx, space.project.userId);
 			const codexAuthJson = await getUserCodexAuthJson(
 				ctx,
-				space.repository.userId
+				space.project.userId
 			);
 			const sandbox = await resolveSandbox(ctx, space, aiEnvs);
 			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
@@ -253,69 +253,6 @@ export const provisionForSpace = internalAction({
 			});
 
 			throw error;
-		}
-	},
-});
-
-export const provisionForWarmSandbox = internalAction({
-	args: {
-		warmSandboxId: v.id("warmSandboxes"),
-	},
-	handler: async (ctx, args) => {
-		let sandbox: Sandbox | null = null;
-
-		try {
-			const warmRecord = await ctx.runQuery(internal.warmSandbox.internalGet, {
-				id: args.warmSandboxId,
-			});
-
-			const externalSnapshotId =
-				warmRecord.repository.activeSnapshot?.externalSnapshotId;
-
-			if (!externalSnapshotId) {
-				throw new Error("Repository snapshot is not ready yet");
-			}
-
-			const aiEnvs = await getUserAiEnvs(ctx, warmRecord.repository.userId);
-			const codexAuthJson = await getUserCodexAuthJson(
-				ctx,
-				warmRecord.repository.userId
-			);
-			sandbox = await createSandbox(externalSnapshotId, aiEnvs);
-
-			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
-			await syncCodexAuthToAgent({
-				sandbox,
-				authJson: codexAuthJson,
-			});
-
-			const result = await ctx.runMutation(internal.warmSandbox.markReady, {
-				id: args.warmSandboxId,
-				sandboxId: sandbox.sandboxId,
-				agentUrl,
-			});
-
-			if (!result.delivered) {
-				await Sandbox.kill(sandbox.sandboxId);
-			}
-		} catch (error) {
-			if (sandbox) {
-				try {
-					await Sandbox.kill(sandbox.sandboxId);
-				} catch {
-					// Best-effort cleanup
-				}
-			}
-
-			try {
-				await ctx.runMutation(internal.warmSandbox.cleanup, {
-					id: args.warmSandboxId,
-				});
-			} catch {
-				// Warm record may already be gone
-			}
-
-			console.error("Failed to provision warm sandbox", error);
 		}
 	},
 });

@@ -8,6 +8,7 @@ import { AgentModelPicker } from "@/components/agent-model-picker";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
 import agentModelsData from "@/data/agent-models.json";
+import { usePersistedAgentModelSelection } from "@/hooks/use-persisted-agent-model-selection";
 import { useSessionState } from "@/hooks/use-session-state";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
@@ -40,8 +41,8 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 	const navigate = useNavigate();
 	const setMessageStore = usePendingMessageStore((s) => s.setMessage);
 	const [message, setMessage] = useState("");
-	const [agent, setAgent] = useState(INITIAL_AGENT);
-	const [modelId, setModelId] = useState(INITIAL_MODEL);
+	const { agent, modelId, setAgent, setModelId } =
+		usePersistedAgentModelSelection();
 
 	const handleSend = useCallback(() => {
 		const text = message.trim();
@@ -245,7 +246,9 @@ export const ConnectedSessionView: FC<{
 				footer={
 					<AgentModelPicker
 						agent={agent}
+						agentLocked
 						modelId={modelId}
+						modelLocked
 						onAgentChange={setAgentOverride}
 						onModelIdChange={setModelIdOverride}
 					/>

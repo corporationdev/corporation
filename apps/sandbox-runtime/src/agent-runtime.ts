@@ -87,6 +87,10 @@ function isUnsupportedMethodError(error: unknown): boolean {
 	return msg.includes("(-32601)");
 }
 
+function shouldSkipRpcAuth(agent: string, methodId: string): boolean {
+	return agent === "claude" && methodId === "claude-login";
+}
+
 async function setModelOrThrow(
 	bridge: StdioBridge,
 	agentSessionId: string,
@@ -119,6 +123,14 @@ async function performAuth(
 	}
 	const selectedAuth = selectAuthMethod(authMethods);
 	if (selectedAuth) {
+		if (shouldSkipRpcAuth(agent, selectedAuth.methodId)) {
+			log("info", "Skipping ACP authenticate; agent uses env-based auth", {
+				agent,
+				methodId: selectedAuth.methodId,
+				envVar: selectedAuth.envVar,
+			});
+			return;
+		}
 		await stdioRequest(bridge, AGENT_METHODS.authenticate, {
 			methodId: selectedAuth.methodId,
 		});

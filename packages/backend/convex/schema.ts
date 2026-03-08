@@ -7,11 +7,6 @@ export const snapshotStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const snapshotTypeValidator = v.union(
-	v.literal("setup"),
-	v.literal("update")
-);
-
 export const spaceStatusValidator = v.union(
 	v.literal("creating"),
 	v.literal("running"),
@@ -22,19 +17,15 @@ export const spaceStatusValidator = v.union(
 
 export default defineSchema(
 	{
-		repositories: defineTable({
+		projects: defineTable({
 			userId: v.string(),
-			githubRepoId: v.number(),
-			owner: v.string(),
 			name: v.string(),
-			defaultBranch: v.string(),
-			setupCommand: v.string(),
-			updateCommand: v.string(),
-			devCommand: v.string(),
-			devPort: v.number(),
-			envByPath: v.optional(
-				v.record(v.string(), v.record(v.string(), v.string()))
-			),
+			githubRepoId: v.optional(v.number()),
+			githubOwner: v.optional(v.string()),
+			githubName: v.optional(v.string()),
+			defaultBranch: v.optional(v.string()),
+			secrets: v.optional(v.record(v.string(), v.string())),
+			defaultSnapshotId: v.optional(v.id("snapshots")),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
@@ -44,7 +35,8 @@ export default defineSchema(
 
 		spaces: defineTable({
 			slug: v.string(),
-			repositoryId: v.id("repositories"),
+			projectId: v.id("projects"),
+			snapshotId: v.optional(v.id("snapshots")),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),
 			name: v.string(),
@@ -54,39 +46,26 @@ export default defineSchema(
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
-			.index("by_repository", ["repositoryId"])
+			.index("by_project", ["projectId"])
 			.index("by_slug", ["slug"])
 			.index("by_sandboxId", ["sandboxId"]),
 
 		snapshots: defineTable({
-			repositoryId: v.id("repositories"),
-			type: snapshotTypeValidator,
+			projectId: v.id("projects"),
+			label: v.string(),
 			status: snapshotStatusValidator,
-			logs: v.string(),
-			logsTruncated: v.optional(v.boolean()),
 			error: v.optional(v.string()),
 			externalSnapshotId: v.optional(v.string()),
 			startedAt: v.number(),
 			completedAt: v.optional(v.number()),
 		})
-			.index("by_repository", ["repositoryId"])
-			.index("by_repository_and_startedAt", ["repositoryId", "startedAt"])
-			.index("by_repository_status_startedAt", [
-				"repositoryId",
+			.index("by_project", ["projectId"])
+			.index("by_project_and_startedAt", ["projectId", "startedAt"])
+			.index("by_project_status_startedAt", [
+				"projectId",
 				"status",
 				"startedAt",
 			]),
-		warmSandboxes: defineTable({
-			userId: v.string(),
-			repositoryId: v.id("repositories"),
-			sandboxId: v.optional(v.string()),
-			agentUrl: v.optional(v.string()),
-			spaceId: v.optional(v.id("spaces")),
-			status: v.union(v.literal("provisioning"), v.literal("ready")),
-			createdAt: v.number(),
-		})
-			.index("by_user", ["userId"])
-			.index("by_user_and_repository", ["userId", "repositoryId"]),
 		secrets: defineTable({
 			userId: v.string(),
 			name: v.string(),

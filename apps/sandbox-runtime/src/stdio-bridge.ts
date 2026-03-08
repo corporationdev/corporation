@@ -5,7 +5,7 @@ import {
 	type AcpEnvelope,
 	acpEnvelopeSchema,
 } from "@corporation/contracts/sandbox-do";
-import { agentCommand, writeAgentConfigs } from "./agents";
+import { agentCommand, agentEnv, writeAgentConfigs } from "./agents";
 import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
 import { log } from "./logging";
 import {
@@ -148,7 +148,7 @@ export function spawnStdioBridge(
 	writeAgentConfigs(agent);
 
 	const proc = Bun.spawn(cmd, {
-		env: { ...process.env, IS_SANDBOX: "1" },
+		env: { ...agentEnv(agent), IS_SANDBOX: "1" },
 		stdin: "pipe",
 		stdout: "pipe",
 		stderr: "pipe",

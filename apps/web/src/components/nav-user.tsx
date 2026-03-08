@@ -69,7 +69,7 @@ export function NavUser({ user }: { user: User }) {
 						<DropdownMenuGroup>
 							<DropdownMenuItem
 								onClick={() => {
-									navigate({ to: "/settings/connections" });
+									navigate({ to: "/settings/projects" });
 								}}
 							>
 								<Settings />

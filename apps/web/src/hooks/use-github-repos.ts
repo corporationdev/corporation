@@ -20,7 +20,7 @@ async function fetchGitHubRepos() {
 
 export function useGitHubRepos(options?: { excludeConnected?: boolean }) {
 	const connectedRepos = useConvexQuery(
-		api.repositories.list,
+		api.projects.list,
 		options?.excludeConnected ? {} : "skip"
 	);
 
@@ -33,7 +33,9 @@ export function useGitHubRepos(options?: { excludeConnected?: boolean }) {
 		return query;
 	}
 
-	const connectedIds = new Set(connectedRepos?.map((r) => r.githubRepoId));
+	const connectedIds = new Set(
+		connectedRepos?.flatMap((p) => (p.githubRepoId ? [p.githubRepoId] : []))
+	);
 
 	return {
 		...query,

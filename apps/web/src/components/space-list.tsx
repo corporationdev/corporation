@@ -2,30 +2,28 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
+import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation, useQuery } from "convex/react";
-import { ArchiveIcon, BoxIcon } from "lucide-react";
-import { type FC, useMemo } from "react";
+import type { FunctionReturnType } from "convex/server";
+import { ArchiveIcon, FolderIcon, PlusIcon } from "lucide-react";
+import type { FC } from "react";
 
 import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const SpaceList: FC = () => {
-	const groupedSpaces = useQuery(api.spaces.listByRepository);
+const RECENT_PROJECT_STORAGE_KEY = "corporation:recent-project";
 
-	const spaces = useMemo(() => {
-		if (!groupedSpaces) {
-			return [];
-		}
-		return groupedSpaces
-			.flatMap((group) =>
-				group.spaces.map((space) => ({
-					repository: group.repository,
-					space,
-				}))
-			)
-			.sort((a, b) => b.space.updatedAt - a.space.updatedAt);
-	}, [groupedSpaces]);
+type GroupedSpaceListItem = FunctionReturnType<
+	typeof api.spaces.listByProject
+>[number];
+
+export const SpaceList: FC = () => {
+	const groupedSpaces = useQuery(api.spaces.listByProject);
+	const [, setSelectedProjectId] = useLocalStorage<Id<"projects"> | null>(
+		RECENT_PROJECT_STORAGE_KEY,
+		null
+	);
 
 	if (groupedSpaces === undefined) {
 		return (
@@ -40,19 +38,14 @@ export const SpaceList: FC = () => {
 	}
 
 	return (
-		<div className="flex flex-col gap-1">
-			{spaces.length === 0 ? (
-				<NoSpacesState />
-			) : (
-				spaces.map(({ space }) => (
-					<SpaceListItem
-						id={space._id}
-						key={space._id}
-						name={space.name}
-						slug={space.slug}
-					/>
-				))
-			)}
+		<div className="flex flex-col gap-3">
+			{groupedSpaces.map((group) => (
+				<ProjectSpaceGroup
+					group={group}
+					key={group.project._id}
+					onProjectSelect={setSelectedProjectId}
+				/>
+			))}
 		</div>
 	);
 };
@@ -81,33 +74,69 @@ const NoRepositoriesState: FC = () => {
 
 	return (
 		<div className="flex flex-col gap-2 px-2 py-3">
-			<p className="text-muted-foreground text-xs">
-				No repositories connected.
-			</p>
+			<p className="text-muted-foreground text-xs">No projects yet.</p>
 			<Button
 				className="h-8 justify-start px-2 text-xs"
-				onClick={() => navigate({ to: "/settings/repositories/connect" })}
+				onClick={() => navigate({ to: "/settings/projects/new" })}
 				variant="outline"
 			>
-				Connect Repository
+				New Project
 			</Button>
 		</div>
 	);
 };
 
-const NoSpacesState: FC = () => {
+const ProjectSpaceGroup: FC<{
+	group: GroupedSpaceListItem;
+	onProjectSelect: (projectId: Id<"projects"> | null) => void;
+}> = ({ group, onProjectSelect }) => {
+	const navigate = useNavigate();
+	const projectLabel = getProjectLabel(group.project);
+
+	const handleCreateSpace = () => {
+		onProjectSelect(group.project._id);
+		navigate({ to: "/" });
+	};
+
 	return (
-		<div className="px-2 py-3">
-			<p className="text-muted-foreground text-xs">No spaces yet.</p>
-		</div>
+		<section className="flex flex-col gap-1">
+			<div className="flex items-center gap-2 px-2">
+				<div className="flex min-w-0 flex-1 items-center gap-2 py-1 text-muted-foreground text-xs">
+					<FolderIcon className="size-3.5 shrink-0" />
+					<span className="min-w-0 flex-1 truncate font-medium text-sm">
+						{projectLabel}
+					</span>
+				</div>
+				<button
+					className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+					onClick={handleCreateSpace}
+					type="button"
+				>
+					<PlusIcon className="size-3.5" />
+					<span className="sr-only">Create a space in {projectLabel}</span>
+				</button>
+			</div>
+			{group.spaces.map((space) => (
+				<SpaceListItem
+					id={space._id}
+					key={space._id}
+					name={space.name}
+					projectId={group.project._id}
+					setSelectedProjectId={onProjectSelect}
+					slug={space.slug}
+				/>
+			))}
+		</section>
 	);
 };
 
 const SpaceListItem: FC<{
 	id: Id<"spaces">;
+	projectId: Id<"projects">;
 	slug: string;
 	name: string;
-}> = ({ id, slug, name }) => {
+	setSelectedProjectId: (projectId: Id<"projects"> | null) => void;
+}> = ({ id, projectId, slug, name, setSelectedProjectId }) => {
 	const navigate = useNavigate();
 	const match = useMatch({
 		from: "/_authenticated/space_/$spaceSlug",
@@ -128,16 +157,16 @@ const SpaceListItem: FC<{
 	return (
 		<SpaceContextMenu isActive={isActive} name={name} slug={slug} spaceId={id}>
 			<button
-				className="flex h-full min-w-0 flex-1 items-center gap-2 truncate px-3 text-start text-sm"
-				onClick={() =>
+				className="flex h-full min-w-0 flex-1 items-center truncate px-8 text-start text-sm"
+				onClick={() => {
+					setSelectedProjectId(projectId);
 					navigate({
 						to: "/space/$spaceSlug",
 						params: { spaceSlug: slug },
-					})
-				}
+					});
+				}}
 				type="button"
 			>
-				<BoxIcon className="size-3.5 shrink-0" />
 				<span className="truncate">{name}</span>
 			</button>
 			<button
@@ -151,3 +180,9 @@ const SpaceListItem: FC<{
 		</SpaceContextMenu>
 	);
 };
+
+function getProjectLabel(project: GroupedSpaceListItem["project"]) {
+	return project.githubOwner && project.githubName
+		? `${project.githubOwner}/${project.githubName}`
+		: project.name;
+}
