@@ -88,9 +88,13 @@ async function getUserAiEnvs(
 		internal.secretActions.decryptSecretValues,
 		{
 			userId,
-			secrets: encryptedKeys.filter((secret) =>
-				ENV_SECRET_NAMES.has(secret.name)
-			),
+			secrets: encryptedKeys
+				.filter((secret) => ENV_SECRET_NAMES.has(secret.name))
+				.map((secret) => ({
+					name: secret.name,
+					encryptedKey: secret.encryptedKey,
+					iv: secret.iv,
+				})),
 		}
 	);
 
