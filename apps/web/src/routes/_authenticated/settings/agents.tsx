@@ -33,12 +33,37 @@ type AcpAgent = {
 
 const agents = acpAgents as AcpAgent[];
 const configurableAgents = agents.filter((a) => a.auth !== null);
+const CLAUDE_SETUP_TOKEN_COMMAND = "claude setup-token";
+const CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME = "CLAUDE_CODE_OAUTH_TOKEN";
 const CODEX_IMPORT_COMMAND =
 	"node -e \"const fs=require('fs');const os=require('os');const path=require('path');const file=path.join(process.env.CODEX_HOME||path.join(os.homedir(),'.codex'),'auth.json');const value=Buffer.from(fs.readFileSync(file,'utf8')).toString('base64url');process.stdout.write('\\n\\n'+value+'\\n\\n')\"";
 const CODEX_AUTH_SECRET_NAME = "CODEX_AUTH_JSON";
+const CLAUDE_CODE_OAUTH_TOKEN_ENV_PATTERN =
+	/(?:^|\b)(?:export\s+)?CLAUDE_CODE_OAUTH_TOKEN\s*=\s*['"]?([^'"\s]+)['"]?/m;
+const WHITESPACE_PATTERN = /\s/;
+const WHITESPACE_GLOBAL_PATTERN = /\s+/g;
 const CONNECTED_SECRET_NAMES_BY_AGENT: Partial<Record<string, string[]>> = {
+	"claude-acp": ["ANTHROPIC_API_KEY", CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME],
 	"codex-acp": ["OPENAI_API_KEY", CODEX_AUTH_SECRET_NAME],
 };
+
+function normalizeClaudeCodeOauthToken(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		throw new Error("Missing Claude Code OAuth token");
+	}
+
+	const envMatch = trimmed.match(CLAUDE_CODE_OAUTH_TOKEN_ENV_PATTERN);
+	const token = (envMatch?.[1] ?? trimmed)
+		.trim()
+		.replace(WHITESPACE_GLOBAL_PATTERN, "");
+
+	if (!token || WHITESPACE_PATTERN.test(token)) {
+		throw new Error("Invalid Claude Code OAuth token");
+	}
+
+	return token;
+}
 
 function decodeCodexImportBlob(blob: string): string {
 	const trimmed = blob.trim();
@@ -77,6 +102,87 @@ function validateCodexAuthJson(authJson: string): string {
 	return JSON.stringify(parsed, null, 2);
 }
 
+function ClaudeOauthSection({
+	claudeBusy,
+	claudeError,
+	claudeOauthSecret,
+	claudeTokenInput,
+	copiedClaudeCommand,
+	onClaudeDisconnect,
+	onClaudeImport,
+	onClaudeTokenInputChange,
+	onCopyClaudeCommand,
+}: {
+	claudeBusy: "disconnect" | "import" | null;
+	claudeError: string | null;
+	claudeOauthSecret: { name: string; hint: string } | undefined;
+	claudeTokenInput: string;
+	copiedClaudeCommand: boolean;
+	onClaudeDisconnect: () => void;
+	onClaudeImport: () => void;
+	onClaudeTokenInputChange: (value: string) => void;
+	onCopyClaudeCommand: () => void;
+}) {
+	return (
+		<div className="rounded-md border p-2">
+			<div className="mb-2 flex items-center justify-between gap-2">
+				<div>
+					<div className="font-medium text-sm">Claude Code subscription</div>
+					<div className="text-muted-foreground text-xs">
+						{claudeOauthSecret
+							? `Connected: ${claudeOauthSecret.hint ?? "Connected"}`
+							: "Create a Claude Code OAuth token locally, then paste it here to use your subscription inside new sandboxes."}
+					</div>
+				</div>
+				{claudeOauthSecret && (
+					<Button
+						disabled={claudeBusy !== null}
+						onClick={onClaudeDisconnect}
+						size="sm"
+						variant="ghost"
+					>
+						{claudeBusy === "disconnect" ? "Disconnecting..." : "Disconnect"}
+					</Button>
+				)}
+			</div>
+			<div className="mb-2 flex flex-wrap items-center gap-2">
+				<Button
+					disabled={claudeBusy !== null}
+					onClick={onCopyClaudeCommand}
+					size="sm"
+					variant="outline"
+				>
+					{copiedClaudeCommand ? "Copied command" : "Copy command"}
+				</Button>
+				<span className="text-muted-foreground text-xs">
+					Run it locally, then paste the token or export line below.
+				</span>
+			</div>
+			<Textarea
+				className="mb-2 min-h-20 text-xs"
+				onChange={(event) => onClaudeTokenInputChange(event.target.value)}
+				placeholder="Paste CLAUDE_CODE_OAUTH_TOKEN or export CLAUDE_CODE_OAUTH_TOKEN=..."
+				value={claudeTokenInput}
+			/>
+			<div className="flex items-center gap-2">
+				<Button
+					disabled={!claudeTokenInput.trim() || claudeBusy !== null}
+					onClick={onClaudeImport}
+					size="sm"
+				>
+					{claudeBusy === "import" ? "Saving..." : "Save token"}
+				</Button>
+				<span className="text-muted-foreground text-xs">
+					Used for Claude Code ACP in newly created sandboxes.
+				</span>
+			</div>
+			{claudeError && (
+				<div className="mt-2 text-destructive text-xs">{claudeError}</div>
+			)}
+		</div>
+	);
+}
+
 function AgentCard({
 	agent,
 	secrets,
@@ -96,8 +202,15 @@ function AgentCard({
 	const [codexError, setCodexError] = useState<string | null>(null);
 	const [copiedCommand, setCopiedCommand] = useState(false);
 	const [importBlob, setImportBlob] = useState("");
+	const [claudeBusy, setClaudeBusy] = useState<"disconnect" | "import" | null>(
+		null
+	);
+	const [claudeError, setClaudeError] = useState<string | null>(null);
+	const [claudeTokenInput, setClaudeTokenInput] = useState("");
+	const [copiedClaudeCommand, setCopiedClaudeCommand] = useState(false);
 
 	const storedSecretNames = new Set(secrets.map((secret) => secret.name));
+	const isClaudeAgent = agent.id === "claude-acp";
 	const isCodexAgent = agent.id === "codex-acp";
 	const connectedSecretNames =
 		CONNECTED_SECRET_NAMES_BY_AGENT[agent.id] ??
@@ -107,6 +220,11 @@ function AgentCard({
 	);
 	const codexAuthSecret = isCodexAgent
 		? secrets.find((secret) => secret.name === CODEX_AUTH_SECRET_NAME)
+		: undefined;
+	const claudeOauthSecret = isClaudeAgent
+		? secrets.find(
+				(secret) => secret.name === CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME
+			)
 		: undefined;
 
 	const handleSave = async (varName: string) => {
@@ -138,6 +256,54 @@ function AgentCard({
 			setCodexError(
 				error instanceof Error ? error.message : "Failed to copy command"
 			);
+		}
+	};
+
+	const handleCopyClaudeCommand = async () => {
+		try {
+			await navigator.clipboard.writeText(CLAUDE_SETUP_TOKEN_COMMAND);
+			setCopiedClaudeCommand(true);
+			setClaudeError(null);
+		} catch (error) {
+			setClaudeError(
+				error instanceof Error ? error.message : "Failed to copy command"
+			);
+		}
+	};
+
+	const handleClaudeImport = async () => {
+		setClaudeBusy("import");
+		setClaudeError(null);
+		try {
+			await upsertKey({
+				name: CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME,
+				apiKey: normalizeClaudeCodeOauthToken(claudeTokenInput),
+			});
+			setClaudeTokenInput("");
+		} catch (error) {
+			setClaudeError(
+				error instanceof Error
+					? error.message
+					: "Failed to save Claude Code OAuth token"
+			);
+		} finally {
+			setClaudeBusy(null);
+		}
+	};
+
+	const handleClaudeDisconnect = async () => {
+		setClaudeBusy("disconnect");
+		setClaudeError(null);
+		try {
+			await removeKey({ name: CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME });
+		} catch (error) {
+			setClaudeError(
+				error instanceof Error
+					? error.message
+					: "Failed to disconnect Claude Code"
+			);
+		} finally {
+			setClaudeBusy(null);
 		}
 	};
 
@@ -208,6 +374,19 @@ function AgentCard({
 				</CardAction>
 			</CardHeader>
 			<div className="space-y-2 px-3 pb-3">
+				{isClaudeAgent && (
+					<ClaudeOauthSection
+						claudeBusy={claudeBusy}
+						claudeError={claudeError}
+						claudeOauthSecret={claudeOauthSecret}
+						claudeTokenInput={claudeTokenInput}
+						copiedClaudeCommand={copiedClaudeCommand}
+						onClaudeDisconnect={handleClaudeDisconnect}
+						onClaudeImport={handleClaudeImport}
+						onClaudeTokenInputChange={setClaudeTokenInput}
+						onCopyClaudeCommand={handleCopyClaudeCommand}
+					/>
+				)}
 				{isCodexAgent && (
 					<div className="rounded-md border p-2">
 						<div className="mb-2 flex items-center justify-between gap-2">
@@ -358,7 +537,7 @@ function AgentsPage() {
 			<div className="p-6">
 				<h1 className="font-semibold text-lg">Agents</h1>
 				<p className="mt-1 mb-4 text-muted-foreground text-sm">
-					Configure API keys for ACP coding agents.
+					Configure API keys and subscription auth for ACP coding agents.
 				</p>
 				<div className="flex flex-col gap-3">
 					<Skeleton className="h-16 w-full" />
@@ -373,7 +552,7 @@ function AgentsPage() {
 		<div className="p-6">
 			<h1 className="font-semibold text-lg">Agents</h1>
 			<p className="mt-1 mb-4 text-muted-foreground text-sm">
-				Configure API keys for ACP coding agents.
+				Configure API keys and subscription auth for ACP coding agents.
 			</p>
 
 			<div className="flex flex-col gap-3">

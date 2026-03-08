@@ -13,6 +13,7 @@ import type * as e2bWebhook from "../e2bWebhook.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as lib_claudeCodeAuth from "../lib/claudeCodeAuth.js";
 import type * as lib_codexAuth from "../lib/codexAuth.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_devPort from "../lib/devPort.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  "lib/claudeCodeAuth": typeof lib_claudeCodeAuth;
   "lib/codexAuth": typeof lib_codexAuth;
   "lib/crypto": typeof lib_crypto;
   "lib/devPort": typeof lib_devPort;

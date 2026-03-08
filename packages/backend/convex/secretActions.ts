@@ -4,6 +4,11 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 import {
+	buildClaudeCodeOauthHint,
+	CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME,
+	normalizeClaudeCodeOauthToken,
+} from "./lib/claudeCodeAuth";
+import {
 	buildCodexAuthHint,
 	CODEX_AUTH_SECRET_NAME,
 	parseCodexAuthJson,
@@ -22,19 +27,24 @@ export const encryptAndStore = internalAction({
 			throw new Error("Missing API_KEY_MASTER_KEY env var");
 		}
 
+		const secretValue =
+			args.name === CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME
+				? normalizeClaudeCodeOauthToken(args.apiKey)
+				: args.apiKey;
 		const userKey = await deriveUserKey(masterKey, args.userId);
-		const { ciphertext, iv } = await encrypt(userKey, args.apiKey);
+		const { ciphertext, iv } = await encrypt(userKey, secretValue);
 		const hint =
 			args.name === CODEX_AUTH_SECRET_NAME
 				? (() => {
-						const { email, accountId, planType } = parseCodexAuthJson(
-							args.apiKey
-						);
+						const { email, accountId, planType } =
+							parseCodexAuthJson(secretValue);
 						return buildCodexAuthHint({ email, accountId, planType });
 					})()
-				: args.apiKey.length <= 4
-					? "****"
-					: `...${args.apiKey.slice(-4)}`;
+				: args.name === CLAUDE_CODE_OAUTH_TOKEN_SECRET_NAME
+					? buildClaudeCodeOauthHint(secretValue)
+					: secretValue.length <= 4
+						? "****"
+						: `...${secretValue.slice(-4)}`;
 
 		await ctx.runMutation(internal.secrets.upsertInternal, {
 			userId: args.userId,
