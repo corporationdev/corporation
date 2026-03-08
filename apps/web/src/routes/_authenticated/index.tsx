@@ -55,9 +55,7 @@ function AuthenticatedIndex() {
 				return current;
 			}
 
-			const firstReadyProject =
-				projects.find((project) => project.activeSnapshot) ?? projects[0];
-			return firstReadyProject?._id ?? null;
+			return projects[0]?._id ?? null;
 		});
 	}, [projects, setSelectedProjectId]);
 

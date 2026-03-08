@@ -2,12 +2,11 @@ import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { getSandboxWorkdir } from "./lib/sandbox";
 import { spaceStatusValidator } from "./schema";
-import { withDerivedSnapshotState } from "./snapshot";
 
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string },
@@ -25,6 +24,21 @@ async function requireOwnedSpace(
 	}
 
 	return { space, project };
+}
+
+async function requireReadySnapshot(
+	ctx: MutationCtx,
+	project: Doc<"projects">,
+	snapshotId: Id<"snapshots">
+): Promise<Doc<"snapshots">> {
+	const snapshot = await ctx.db.get(snapshotId);
+	if (!snapshot || snapshot.projectId !== project._id) {
+		throw new ConvexError("Snapshot not found");
+	}
+	if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
+		throw new ConvexError("Snapshot is not ready");
+	}
+	return snapshot;
 }
 
 export const list = authedQuery({
@@ -69,15 +83,14 @@ export const listByProject = authedQuery({
 			spacesByProject.set(projectId, spaces);
 		}
 
-		const grouped = await asyncMap(projects, async (project) => {
+		const grouped = projects.map((project) => {
 			const spaces = (spacesByProject.get(project._id) ?? []).filter(
 				(space) => !space.archived
 			);
 			spaces.sort((a, b) => b.updatedAt - a.updatedAt);
-			const projectWithSnapshots = await withDerivedSnapshotState(ctx, project);
 
 			return {
-				project: projectWithSnapshots,
+				project,
 				spaces,
 			};
 		});
@@ -98,12 +111,11 @@ export const getBySlug = authedQuery({
 			return null;
 		}
 		const { project } = await requireOwnedSpace(ctx, space);
-		const projectWithSnapshot = await withDerivedSnapshotState(ctx, project);
 
 		return {
 			...space,
 			workdir: getSandboxWorkdir(project),
-			project: projectWithSnapshot,
+			project,
 		};
 	},
 });
@@ -116,12 +128,11 @@ export const get = authedQuery({
 			throw new ConvexError("Space not found");
 		}
 		const { project } = await requireOwnedSpace(ctx, space);
-		const projectWithSnapshot = await withDerivedSnapshotState(ctx, project);
 
 		return {
 			...space,
 			workdir: getSandboxWorkdir(project),
-			project: projectWithSnapshot,
+			project,
 		};
 	},
 });
@@ -213,11 +224,10 @@ export const internalGet = internalQuery({
 		if (!project) {
 			throw new ConvexError("Project not found");
 		}
-		const projectWithSnapshot = await withDerivedSnapshotState(ctx, project);
 
 		return {
 			...space,
-			project: projectWithSnapshot,
+			project,
 		};
 	},
 });
@@ -264,6 +274,7 @@ export const ensure = authedMutation({
 	args: {
 		slug: v.string(),
 		projectId: v.optional(v.id("projects")),
+		snapshotId: v.optional(v.id("snapshots")),
 		firstMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -296,12 +307,18 @@ export const ensure = authedMutation({
 		if (!project || project.userId !== ctx.userId) {
 			throw new ConvexError("Project not found");
 		}
+		const snapshotId = args.snapshotId ?? project.defaultSnapshotId;
+		if (!snapshotId) {
+			throw new ConvexError("Project does not have a default snapshot");
+		}
+		await requireReadySnapshot(ctx, project, snapshotId);
 
 		const now = Date.now();
 
 		const spaceId = await ctx.db.insert("spaces", {
 			slug,
 			projectId,
+			snapshotId,
 			name: "New Space",
 			status: "creating",
 			createdAt: now,

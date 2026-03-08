@@ -177,10 +177,14 @@ async function resolveSandbox(
 		}
 	}
 
-	const externalSnapshotId = space.project.activeSnapshot?.externalSnapshotId;
-
-	if (!externalSnapshotId) {
-		throw new Error("Project snapshot is not ready yet");
+	if (!space.snapshotId) {
+		throw new Error("Space snapshot is not set");
+	}
+	const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
+		id: space.snapshotId,
+	});
+	if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
+		throw new Error("Space snapshot is not ready");
 	}
 
 	await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -188,7 +192,7 @@ async function resolveSandbox(
 		status: "creating" as const,
 	});
 
-	return await createSandbox(externalSnapshotId, aiEnvs);
+	return await createSandbox(snapshot.externalSnapshotId, aiEnvs);
 }
 
 export const archiveSandbox = internalAction({

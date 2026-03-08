@@ -1,4 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useNavigate } from "@tanstack/react-router";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation } from "convex/react";
@@ -38,6 +39,7 @@ type AgentPanelProps = {
 	activeSessionId: string | undefined;
 	space:
 		| {
+				_id: Id<"spaces">;
 				status: string;
 				error?: string;
 				sandboxId?: string;
@@ -152,7 +154,10 @@ export function AgentPanel({
 				<header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
 					<SidebarTrigger />
 					<div className="flex items-center gap-1">
-						<CreateSnapshotPopover />
+						<CreateSnapshotPopover
+							sandboxId={space?.sandboxId}
+							spaceId={space?._id}
+						/>
 						<Button
 							onClick={() =>
 								navigate({
@@ -204,21 +209,41 @@ export function AgentPanel({
 	);
 }
 
-function CreateSnapshotPopover() {
+function CreateSnapshotPopover({
+	spaceId,
+	sandboxId,
+}: {
+	spaceId: Id<"spaces"> | undefined;
+	sandboxId: string | undefined;
+}) {
 	const [open, setOpen] = useState(false);
 	const [label, setLabel] = useState("");
 	const [makeDefault, setMakeDefault] = useState(false);
 	const labelId = useId();
 	const defaultId = useId();
+	const createSnapshot = useMutation(api.snapshot.createFromSpace);
 
-	const handleCreate = () => {
-		console.log("created", {
-			label: label.trim(),
-			makeDefault,
-		});
-		setOpen(false);
-		setLabel("");
-		setMakeDefault(false);
+	const handleCreate = async () => {
+		if (!(spaceId && sandboxId)) {
+			toast.error("Sandbox is not running");
+			return;
+		}
+
+		try {
+			await createSnapshot({
+				spaceId,
+				label: label.trim() || undefined,
+				setAsDefault: makeDefault,
+			});
+			toast.success("Snapshot started");
+			setOpen(false);
+			setLabel("");
+			setMakeDefault(false);
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Failed to create snapshot"
+			);
+		}
 	};
 
 	return (
@@ -230,8 +255,8 @@ function CreateSnapshotPopover() {
 				<PopoverHeader>
 					<PopoverTitle>Create snapshot</PopoverTitle>
 					<PopoverDescription>
-						Capture the current sandbox with a label and optionally use it
-						as the default for new spaces.
+						Capture the current sandbox with a label and optionally use it as
+						the default for new spaces.
 					</PopoverDescription>
 				</PopoverHeader>
 				<div className="flex flex-col gap-3">
@@ -258,7 +283,11 @@ function CreateSnapshotPopover() {
 						</div>
 					</div>
 					<div className="flex justify-end">
-						<Button onClick={handleCreate} size="sm">
+						<Button
+							disabled={!(spaceId && sandboxId)}
+							onClick={handleCreate}
+							size="sm"
+						>
 							Create
 						</Button>
 					</div>

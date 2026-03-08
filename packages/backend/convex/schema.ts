@@ -36,6 +36,7 @@ export default defineSchema(
 		spaces: defineTable({
 			slug: v.string(),
 			projectId: v.id("projects"),
+			snapshotId: v.optional(v.id("snapshots")),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),
 			name: v.string(),

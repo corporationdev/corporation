@@ -4,7 +4,7 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { AlertTriangle, ArrowLeft, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 
 import { useState } from "react";
 import { toast } from "sonner";
@@ -77,8 +77,6 @@ function ProjectDetail({ project }: { project: Project }) {
 			},
 		});
 
-	const isError = project.latestSnapshot?.status === "error";
-
 	return (
 		<div className="flex flex-col gap-6 p-6">
 			<div className="flex items-center justify-between">
@@ -125,7 +123,7 @@ function ProjectDetail({ project }: { project: Project }) {
 
 				<div className="mt-4">
 					{activeTab === "snapshots" && (
-						<SnapshotsTab isError={isError} projectId={project._id} />
+						<SnapshotsTab projectId={project._id} />
 					)}
 					{activeTab === "settings" && <SettingsTab project={project} />}
 				</div>
@@ -134,34 +132,10 @@ function ProjectDetail({ project }: { project: Project }) {
 	);
 }
 
-function SnapshotsTab({
-	projectId,
-	isError,
-}: {
-	projectId: Id<"projects">;
-	isError: boolean;
-}) {
+function SnapshotsTab({ projectId }: { projectId: Id<"projects"> }) {
 	return (
 		<div className="flex flex-col gap-4">
-			{isError && <LatestSnapshotError projectId={projectId} />}
 			<SnapshotHistory projectId={projectId} />
-		</div>
-	);
-}
-
-function LatestSnapshotError({ projectId }: { projectId: Id<"projects"> }) {
-	const latestSnapshot = useQuery(api.snapshot.getLatest, { projectId });
-
-	if (!latestSnapshot?.error) {
-		return null;
-	}
-
-	return (
-		<div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
-			<AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-			<p className="whitespace-pre-wrap text-destructive text-sm">
-				{latestSnapshot.error}
-			</p>
 		</div>
 	);
 }

@@ -1,29 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { internalMutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 
-export const getLatest = authedQuery({
-	args: {
-		projectId: v.id("projects"),
-	},
-	handler: async (ctx, args) => {
-		const project = await ctx.db.get(args.projectId);
-		if (!project || project.userId !== ctx.userId) {
-			throw new ConvexError("Project not found");
-		}
-
-		return await ctx.db
-			.query("snapshots")
-			.withIndex("by_project_and_startedAt", (q) =>
-				q.eq("projectId", project._id)
-			)
-			.order("desc")
-			.first();
-	},
-});
+const ISO_MILLIS_SUFFIX = /\.\d{3}Z$/;
 
 export const listByProject = authedQuery({
 	args: {
@@ -64,66 +46,52 @@ export const get = authedQuery({
 	},
 });
 
-type DbCtx = {
-	db: QueryCtx["db"] | MutationCtx["db"];
-};
+export const internalGet = internalQuery({
+	args: {
+		id: v.id("snapshots"),
+	},
+	handler: async (ctx, args) => {
+		const snapshot = await ctx.db.get(args.id);
+		if (!snapshot) {
+			throw new ConvexError("Snapshot not found");
+		}
 
-export async function withDerivedSnapshotState(
-	ctx: DbCtx,
-	project: Doc<"projects">
-) {
-	const [latestSnapshot, activeSnapshot, defaultSnapshot] = await Promise.all([
-		ctx.db
-			.query("snapshots")
-			.withIndex("by_project_and_startedAt", (q) =>
-				q.eq("projectId", project._id)
-			)
-			.order("desc")
-			.first(),
-		ctx.db
-			.query("snapshots")
-			.withIndex("by_project_status_startedAt", (q) =>
-				q.eq("projectId", project._id).eq("status", "ready")
-			)
-			.order("desc")
-			.first(),
-		project.defaultSnapshotId ? ctx.db.get(project.defaultSnapshotId) : null,
-	]);
+		return snapshot;
+	},
+});
 
-	return {
-		...project,
-		latestSnapshot,
-		activeSnapshot,
-		defaultSnapshot,
-	};
+function buildDefaultSnapshotLabel(now: Date): string {
+	const iso = now.toISOString().replace(ISO_MILLIS_SUFFIX, "Z");
+	return `snapshot-${iso}`;
 }
 
-export async function scheduleInitialSnapshot(
+async function createSnapshotRecord(
 	ctx: MutationCtx,
 	project: Doc<"projects">,
-	options?: { setAsDefault?: boolean }
+	options?: { label?: string }
 ): Promise<Id<"snapshots">> {
-	const latestSnapshot = await ctx.db
-		.query("snapshots")
-		.withIndex("by_project_and_startedAt", (q) =>
-			q.eq("projectId", project._id)
-		)
-		.order("desc")
-		.first();
-
-	if (latestSnapshot?.status === "building") {
-		throw new ConvexError("A snapshot build is already in progress");
-	}
-
 	const now = Date.now();
+	const trimmedLabel = options?.label?.trim();
 	const snapshotId = await ctx.db.insert("snapshots", {
 		projectId: project._id,
-		label: "Base Snapshot",
+		label: trimmedLabel || buildDefaultSnapshotLabel(new Date(now)),
 		status: "building",
 		startedAt: now,
 	});
 
 	await ctx.db.patch(project._id, { updatedAt: now });
+
+	return snapshotId;
+}
+
+export async function scheduleInitialSnapshot(
+	ctx: MutationCtx,
+	project: Doc<"projects">,
+	options?: { setAsDefault?: boolean; label?: string }
+): Promise<Id<"snapshots">> {
+	const snapshotId = await createSnapshotRecord(ctx, project, {
+		label: options?.label ?? "Base Snapshot",
+	});
 
 	await ctx.scheduler.runAfter(
 		0,
@@ -149,6 +117,46 @@ export const buildInitialSnapshot = authedMutation({
 		}
 
 		await scheduleInitialSnapshot(ctx, project);
+	},
+});
+
+export const createFromSpace = authedMutation({
+	args: {
+		spaceId: v.id("spaces"),
+		label: v.optional(v.string()),
+		setAsDefault: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.spaceId);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+
+		const project = await ctx.db.get(space.projectId);
+		if (!project || project.userId !== ctx.userId) {
+			throw new ConvexError("Space not found");
+		}
+
+		if (!space.sandboxId) {
+			throw new ConvexError("Sandbox is not running");
+		}
+
+		const snapshotId = await createSnapshotRecord(ctx, project, {
+			label: args.label,
+		});
+
+		await ctx.scheduler.runAfter(
+			0,
+			internal.snapshotActions.createFromSandbox,
+			{
+				projectId: project._id,
+				snapshotId,
+				sandboxId: space.sandboxId,
+				setAsDefault: args.setAsDefault ?? false,
+			}
+		);
+
+		return snapshotId;
 	},
 });
 

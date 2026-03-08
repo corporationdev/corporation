@@ -18,12 +18,7 @@ export const SpaceList: FC = () => {
 			return [];
 		}
 		return groupedSpaces
-			.flatMap((group) =>
-				group.spaces.map((space) => ({
-					repository: group.repository,
-					space,
-				}))
-			)
+			.flatMap((group) => group.spaces.map((space) => ({ space })))
 			.sort((a, b) => b.space.updatedAt - a.space.updatedAt);
 	}, [groupedSpaces]);
 

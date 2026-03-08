@@ -112,3 +112,37 @@ export const buildInitialSnapshot = internalAction({
 		}
 	},
 });
+
+export const createFromSandbox = internalAction({
+	args: {
+		projectId: v.id("projects"),
+		snapshotId: v.id("snapshots"),
+		sandboxId: v.string(),
+		setAsDefault: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		try {
+			const sandbox = await Sandbox.connect(args.sandboxId);
+			const snapshot = await sandbox.createSnapshot();
+
+			await ctx.runMutation(internal.snapshot.completeSnapshot, {
+				snapshotId: args.snapshotId,
+				projectId: args.projectId,
+				status: "ready",
+				externalSnapshotId: snapshot.snapshotId,
+				setAsDefault: args.setAsDefault,
+			});
+		} catch (error) {
+			await ctx.runMutation(internal.snapshot.completeSnapshot, {
+				snapshotId: args.snapshotId,
+				status: "error",
+				error: formatSnapshotError(error),
+			});
+			throw error;
+		} finally {
+			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
+				id: args.projectId,
+			});
+		}
+	},
+});

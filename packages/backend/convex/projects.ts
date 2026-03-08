@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { scheduleInitialSnapshot, withDerivedSnapshotState } from "./snapshot";
+import { scheduleInitialSnapshot } from "./snapshot";
 
 function requireOwnedProject(
 	userId: string,
@@ -18,16 +18,11 @@ function requireOwnedProject(
 
 export const list = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		const projects = await ctx.db
+	handler: async (ctx) =>
+		await ctx.db
 			.query("projects")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-			.collect();
-
-		return await Promise.all(
-			projects.map((project) => withDerivedSnapshotState(ctx, project))
-		);
-	},
+			.collect(),
 });
 
 export const get = authedQuery({
@@ -39,7 +34,7 @@ export const get = authedQuery({
 		}
 		requireOwnedProject(ctx.userId, project);
 
-		return await withDerivedSnapshotState(ctx, project);
+		return project;
 	},
 });
 
