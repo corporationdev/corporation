@@ -1,34 +1,29 @@
 // biome-ignore-all lint/style/useFilenamingConvention: TanStack Router uses `$` for dynamic route params
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
 	AlertTriangle,
 	ArrowLeft,
-	ChevronDown,
 	Hammer,
 	Loader2,
-	Pencil,
-	RefreshCw,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import {
+	buildSecrets,
+	RepositoryConfigForm,
+	repositoryConfigSchema,
+	secretsFromRecord,
+} from "@/components/repository-config-form";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute(
 	"/_authenticated/settings/repositories/$repositoryId/"
@@ -70,11 +65,14 @@ type Repository = NonNullable<
 	ReturnType<typeof useQuery<typeof api.repositories.get>>
 >;
 
+type Tab = "snapshots" | "secrets";
+
 function RepositoryDetail({ repository }: { repository: Repository }) {
 	const navigate = useNavigate();
+	const [activeTab, setActiveTab] = useState<Tab>("snapshots");
 
-	const { mutate: createSnapshot, isPending: isSnapshotting } =
-		useConvexTanstackMutation(api.snapshot.createSnapshot, {
+	const { mutate: buildSnapshot, isPending: isSnapshotting } =
+		useConvexTanstackMutation(api.snapshot.buildInitialSnapshot, {
 			onError: (error) => {
 				toast.error(error.message);
 			},
@@ -105,57 +103,15 @@ function RepositoryDetail({ repository }: { repository: Repository }) {
 					<StatusIndicator status={repository.latestSnapshot?.status ?? null} />
 				</div>
 				<div className="flex items-center gap-1">
-					<Tooltip>
-						<Button
-							disabled={isSnapshotting || isBuilding}
-							onClick={() =>
-								createSnapshot({
-									request: {
-										type: "update",
-										repositoryId: repository._id,
-									},
-								})
-							}
-							render={<TooltipTrigger />}
-							size="sm"
-							variant="outline"
-						>
-							<RefreshCw className="size-4" />
-							Update
-						</Button>
-						<TooltipContent>
-							Incremental update from current snapshot
-						</TooltipContent>
-					</Tooltip>
-					<Tooltip>
-						<Button
-							disabled={isSnapshotting || isBuilding}
-							onClick={() =>
-								createSnapshot({
-									request: {
-										type: "setup",
-										repositoryId: repository._id,
-									},
-								})
-							}
-							render={<TooltipTrigger />}
-							size="sm"
-							variant="outline"
-						>
-							<Hammer className="size-4" />
-							Full Setup
-						</Button>
-						<TooltipContent>Fresh setup from scratch</TooltipContent>
-					</Tooltip>
-					<Link
-						params={{ repositoryId: repository._id }}
-						to="/settings/repositories/$repositoryId/edit"
+					<Button
+						disabled={isSnapshotting || isBuilding}
+						onClick={() => buildSnapshot({ repositoryId: repository._id })}
+						size="sm"
+						variant="outline"
 					>
-						<Button size="sm" variant="outline">
-							<Pencil className="size-4" />
-							Edit
-						</Button>
-					</Link>
+						<Hammer className="size-4" />
+						Build Snapshot
+					</Button>
 					<Button
 						disabled={isDeleting}
 						onClick={() => removeRepository({ id: repository._id })}
@@ -168,14 +124,32 @@ function RepositoryDetail({ repository }: { repository: Repository }) {
 				</div>
 			</div>
 
-			{isError && <LatestSnapshotError repositoryId={repository._id} />}
+			<div>
+				<div className="flex border-b">
+					{(["snapshots", "secrets"] as Tab[]).map((tab) => (
+						<button
+							className={cn(
+								"px-4 py-2 text-sm transition-colors",
+								activeTab === tab
+									? "border-foreground border-b-2 font-medium text-foreground"
+									: "text-muted-foreground hover:text-foreground"
+							)}
+							key={tab}
+							onClick={() => setActiveTab(tab)}
+							type="button"
+						>
+							{tab.charAt(0).toUpperCase() + tab.slice(1)}
+						</button>
+					))}
+				</div>
 
-			<LatestSnapshotLogs
-				isBuilding={isBuilding}
-				repositoryId={repository._id}
-			/>
-
-			<SnapshotHistory repositoryId={repository._id} />
+				<div className="mt-4">
+					{activeTab === "snapshots" && (
+						<SnapshotsTab isError={isError} repositoryId={repository._id} />
+					)}
+					{activeTab === "secrets" && <SecretsTab repository={repository} />}
+				</div>
+			</div>
 		</div>
 	);
 }
@@ -215,6 +189,21 @@ function StatusIndicator({
 	);
 }
 
+function SnapshotsTab({
+	repositoryId,
+	isError,
+}: {
+	repositoryId: Id<"repositories">;
+	isError: boolean;
+}) {
+	return (
+		<div className="flex flex-col gap-4">
+			{isError && <LatestSnapshotError repositoryId={repositoryId} />}
+			<SnapshotHistory repositoryId={repositoryId} />
+		</div>
+	);
+}
+
 function LatestSnapshotError({
 	repositoryId,
 }: {
@@ -233,62 +222,6 @@ function LatestSnapshotError({
 				{latestSnapshot.error}
 			</p>
 		</div>
-	);
-}
-
-function LatestSnapshotLogs({
-	repositoryId,
-	isBuilding,
-}: {
-	repositoryId: Id<"repositories">;
-	isBuilding: boolean;
-}) {
-	const latestSnapshot = useQuery(api.snapshot.getLatest, { repositoryId });
-	const [isOpen, setIsOpen] = useState(false);
-	const logsEndRef = useRef<HTMLDivElement>(null);
-
-	const hasLogs = !!latestSnapshot?.logs;
-
-	useEffect(() => {
-		if (isBuilding) {
-			setIsOpen(true);
-		}
-	}, [isBuilding]);
-
-	const logs = latestSnapshot?.logs;
-	useEffect(() => {
-		if (isBuilding && logs && logsEndRef.current) {
-			logsEndRef.current.scrollIntoView({ behavior: "smooth" });
-		}
-	}, [isBuilding, logs]);
-
-	if (!hasLogs) {
-		return null;
-	}
-
-	return (
-		<Collapsible onOpenChange={setIsOpen} open={isOpen}>
-			<CollapsibleTrigger className="flex items-center gap-1 text-muted-foreground text-sm hover:text-foreground">
-				<ChevronDown
-					className={`size-4 transition-transform ${isOpen ? "" : "-rotate-90"}`}
-				/>
-				Build Logs
-				{isBuilding && <Loader2 className="ml-1 size-3 animate-spin" />}
-			</CollapsibleTrigger>
-			<CollapsibleContent>
-				<div className="mt-2 max-h-96 overflow-auto rounded-md bg-muted p-4">
-					<pre className="whitespace-pre-wrap break-all font-mono text-xs leading-5">
-						{latestSnapshot.logs}
-					</pre>
-					{latestSnapshot.logsTruncated && (
-						<p className="mt-2 text-muted-foreground text-xs italic">
-							Logs truncated (exceeded maximum length)
-						</p>
-					)}
-					<div ref={logsEndRef} />
-				</div>
-			</CollapsibleContent>
-		</Collapsible>
 	);
 }
 
@@ -321,9 +254,7 @@ function SnapshotHistory({
 }: {
 	repositoryId: Id<"repositories">;
 }) {
-	const snapshots = useQuery(api.snapshot.listByRepository, {
-		repositoryId,
-	});
+	const snapshots = useQuery(api.snapshot.listByRepository, { repositoryId });
 
 	if (snapshots === undefined) {
 		return <Skeleton className="h-32 w-full" />;
@@ -350,8 +281,6 @@ type SnapshotSummary = NonNullable<
 >[number];
 
 function SnapshotRow({ snapshot }: { snapshot: SnapshotSummary }) {
-	const [expanded, setExpanded] = useState(false);
-
 	const statusDot =
 		snapshot.status === "ready" ? (
 			<span className="size-1.5 rounded-full bg-emerald-500" />
@@ -366,9 +295,7 @@ function SnapshotRow({ snapshot }: { snapshot: SnapshotSummary }) {
 			<CardHeader className="py-2">
 				<div className="flex items-center gap-3 text-sm">
 					{statusDot}
-					<span className="w-16 text-muted-foreground capitalize">
-						{snapshot.type}
-					</span>
+					<span className="font-medium">{snapshot.label}</span>
 					<span className="text-muted-foreground">
 						{formatTime(snapshot.startedAt)}
 					</span>
@@ -381,55 +308,48 @@ function SnapshotRow({ snapshot }: { snapshot: SnapshotSummary }) {
 						</span>
 					)}
 				</div>
-				{(snapshot.status === "ready" || snapshot.status === "error") && (
-					<Button
-						onClick={() => setExpanded(!expanded)}
-						size="xs"
-						variant="ghost"
-					>
-						<ChevronDown
-							className={`size-3 transition-transform ${expanded ? "" : "-rotate-90"}`}
-						/>
-						Logs
-					</Button>
-				)}
 			</CardHeader>
-			{expanded && <SnapshotLogs snapshotId={snapshot._id} />}
 		</Card>
 	);
 }
 
-function SnapshotLogs({ snapshotId }: { snapshotId: Id<"snapshots"> }) {
-	const snapshot = useQuery(api.snapshot.get, { id: snapshotId });
+function SecretsTab({ repository }: { repository: Repository }) {
+	const updateRepository = useMutation(api.repositories.update);
 
-	if (snapshot === undefined) {
-		return (
-			<CardContent>
-				<Skeleton className="h-24 w-full" />
-			</CardContent>
-		);
-	}
-
-	if (!snapshot.logs) {
-		return (
-			<CardContent>
-				<p className="text-muted-foreground text-xs">No logs available.</p>
-			</CardContent>
-		);
-	}
+	const form = useForm({
+		defaultValues: {
+			secrets: secretsFromRecord(repository.secrets),
+		},
+		validators: {
+			onSubmit: repositoryConfigSchema,
+		},
+		onSubmit: async ({ value }) => {
+			await updateRepository({
+				id: repository._id,
+				secrets: buildSecrets(value.secrets),
+			});
+			toast.success("Secrets saved");
+		},
+	});
 
 	return (
-		<CardContent>
-			<div className="max-h-64 overflow-auto rounded-md bg-muted p-3">
-				<pre className="whitespace-pre-wrap break-all font-mono text-xs leading-5">
-					{snapshot.logs}
-				</pre>
-				{snapshot.logsTruncated && (
-					<p className="mt-2 text-muted-foreground text-xs italic">
-						Logs truncated (exceeded maximum length)
-					</p>
-				)}
+		<form
+			className="flex flex-col gap-6"
+			onSubmit={(e) => {
+				e.preventDefault();
+				form.handleSubmit();
+			}}
+		>
+			<RepositoryConfigForm form={form} />
+			<div className="flex justify-end">
+				<form.Subscribe selector={(state) => state.isSubmitting}>
+					{(isSubmitting) => (
+						<Button disabled={isSubmitting} type="submit">
+							{isSubmitting ? "Saving..." : "Save Changes"}
+						</Button>
+					)}
+				</form.Subscribe>
 			</div>
-		</CardContent>
+		</form>
 	);
 }

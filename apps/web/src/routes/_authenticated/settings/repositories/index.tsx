@@ -1,13 +1,11 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const Route = createFileRoute("/_authenticated/settings/repositories/")({
 	component: RepositoriesPage,
@@ -56,60 +54,32 @@ function RepositoryCard({
 		owner: string;
 		name: string;
 		latestSnapshot: { status: "building" | "ready" | "error" } | null;
+		defaultSnapshot: { label: string } | null;
 	};
 }) {
-	const navigate = useNavigate();
-
-	const { mutate: removeRepository, isPending: isDeleting } =
-		useConvexTanstackMutation(api.repositories.delete, {
-			onSuccess: () => {
-				toast.success("Repository deleted");
-				navigate({ to: "/settings/repositories" });
-			},
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		});
-
 	return (
-		<Card size="sm">
-			<CardHeader>
-				<div className="flex items-center gap-3">
-					<Link
-						className="hover:underline"
-						params={{ repositoryId: repository._id }}
-						to="/settings/repositories/$repositoryId"
-					>
-						<CardTitle>
+		<Link
+			params={{ repositoryId: repository._id }}
+			to="/settings/repositories/$repositoryId"
+		>
+			<Card size="sm">
+				<CardHeader>
+					<div className="flex items-center gap-3">
+						<CardTitle className="hover:underline">
 							{repository.owner}/{repository.name}
 						</CardTitle>
-					</Link>
-					<SnapshotStatusIndicator
-						status={repository.latestSnapshot?.status ?? null}
-					/>
-				</div>
-				<CardAction>
-					<div className="flex items-center gap-1">
-						<Link
-							params={{ repositoryId: repository._id }}
-							to="/settings/repositories/$repositoryId/edit"
-						>
-							<Button size="icon-sm" variant="ghost">
-								<Pencil className="size-4" />
-							</Button>
-						</Link>
-						<Button
-							disabled={isDeleting}
-							onClick={() => removeRepository({ id: repository._id })}
-							size="icon-sm"
-							variant="ghost"
-						>
-							<Trash2 className="size-4" />
-						</Button>
+						<SnapshotStatusIndicator
+							status={repository.latestSnapshot?.status ?? null}
+						/>
+						{repository.defaultSnapshot && (
+							<span className="text-muted-foreground text-xs">
+								{repository.defaultSnapshot.label}
+							</span>
+						)}
 					</div>
-				</CardAction>
-			</CardHeader>
-		</Card>
+				</CardHeader>
+			</Card>
+		</Link>
 	);
 }
 

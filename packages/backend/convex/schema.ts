@@ -7,11 +7,6 @@ export const snapshotStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const snapshotTypeValidator = v.union(
-	v.literal("setup"),
-	v.literal("update")
-);
-
 export const spaceStatusValidator = v.union(
 	v.literal("creating"),
 	v.literal("running"),
@@ -29,6 +24,7 @@ export default defineSchema(
 			name: v.string(),
 			defaultBranch: v.string(),
 			secrets: v.optional(v.record(v.string(), v.string())),
+			defaultSnapshotId: v.optional(v.id("snapshots")),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
@@ -54,10 +50,8 @@ export default defineSchema(
 
 		snapshots: defineTable({
 			repositoryId: v.id("repositories"),
-			type: snapshotTypeValidator,
+			label: v.string(),
 			status: snapshotStatusValidator,
-			logs: v.string(),
-			logsTruncated: v.optional(v.boolean()),
 			error: v.optional(v.string()),
 			externalSnapshotId: v.optional(v.string()),
 			startedAt: v.number(),

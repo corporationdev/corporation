@@ -4,7 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { scheduleSnapshot, withDerivedSnapshotState } from "./snapshot";
+import { withDerivedSnapshotState } from "./snapshot";
 
 function requireOwnedRepository(
 	userId: string,
@@ -83,7 +83,7 @@ export const create = authedMutation({
 			throw new ConvexError("Repository not found");
 		}
 
-		await scheduleSnapshot(ctx, repository, "setup");
+		await scheduleInitialSnapshot(ctx, repository, { setAsDefault: true });
 
 		return repositoryId;
 	},
