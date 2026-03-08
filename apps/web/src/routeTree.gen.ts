@@ -16,8 +16,8 @@ import { Route as PublicSignupRouteImport } from './routes/_public/signup'
 import { Route as PublicLoginRouteImport } from './routes/_public/login'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSpaceSpaceSlugRouteImport } from './routes/_authenticated/space_.$spaceSlug'
-import { Route as AuthenticatedSettingsSecretsRouteImport } from './routes/_authenticated/settings/secrets'
 import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_authenticated/settings/connections'
+import { Route as AuthenticatedSettingsAgentsRouteImport } from './routes/_authenticated/settings/agents'
 import { Route as AuthenticatedSettingsRepositoriesIndexRouteImport } from './routes/_authenticated/settings/repositories/index'
 import { Route as AuthenticatedSettingsRepositoriesConnectRouteImport } from './routes/_authenticated/settings/repositories/connect'
 import { Route as AuthenticatedSettingsRepositoriesRepositoryIdIndexRouteImport } from './routes/_authenticated/settings/repositories/$repositoryId.index'
@@ -57,16 +57,16 @@ const AuthenticatedSpaceSpaceSlugRoute =
     path: '/space/$spaceSlug',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedSettingsSecretsRoute =
-  AuthenticatedSettingsSecretsRouteImport.update({
-    id: '/secrets',
-    path: '/secrets',
-    getParentRoute: () => AuthenticatedSettingsRoute,
-  } as any)
 const AuthenticatedSettingsConnectionsRoute =
   AuthenticatedSettingsConnectionsRouteImport.update({
     id: '/connections',
     path: '/connections',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedSettingsAgentsRoute =
+  AuthenticatedSettingsAgentsRouteImport.update({
+    id: '/agents',
+    path: '/agents',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsRepositoriesIndexRoute =
@@ -99,8 +99,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
+  '/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
-  '/settings/secrets': typeof AuthenticatedSettingsSecretsRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
@@ -112,8 +112,8 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
+  '/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
-  '/settings/secrets': typeof AuthenticatedSettingsSecretsRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/settings/repositories': typeof AuthenticatedSettingsRepositoriesIndexRoute
@@ -128,8 +128,8 @@ export interface FileRoutesById {
   '/_public/login': typeof PublicLoginRoute
   '/_public/signup': typeof PublicSignupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
-  '/_authenticated/settings/secrets': typeof AuthenticatedSettingsSecretsRoute
   '/_authenticated/space_/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/_authenticated/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
   '/_authenticated/settings/repositories/': typeof AuthenticatedSettingsRepositoriesIndexRoute
@@ -143,8 +143,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/signup'
+    | '/settings/agents'
     | '/settings/connections'
-    | '/settings/secrets'
     | '/space/$spaceSlug'
     | '/settings/repositories/connect'
     | '/settings/repositories/'
@@ -156,8 +156,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/signup'
+    | '/settings/agents'
     | '/settings/connections'
-    | '/settings/secrets'
     | '/space/$spaceSlug'
     | '/settings/repositories/connect'
     | '/settings/repositories'
@@ -171,8 +171,8 @@ export interface FileRouteTypes {
     | '/_public/login'
     | '/_public/signup'
     | '/_authenticated/'
+    | '/_authenticated/settings/agents'
     | '/_authenticated/settings/connections'
-    | '/_authenticated/settings/secrets'
     | '/_authenticated/space_/$spaceSlug'
     | '/_authenticated/settings/repositories/connect'
     | '/_authenticated/settings/repositories/'
@@ -236,18 +236,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSpaceSpaceSlugRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/settings/secrets': {
-      id: '/_authenticated/settings/secrets'
-      path: '/secrets'
-      fullPath: '/settings/secrets'
-      preLoaderRoute: typeof AuthenticatedSettingsSecretsRouteImport
-      parentRoute: typeof AuthenticatedSettingsRoute
-    }
     '/_authenticated/settings/connections': {
       id: '/_authenticated/settings/connections'
       path: '/connections'
       fullPath: '/settings/connections'
       preLoaderRoute: typeof AuthenticatedSettingsConnectionsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/agents': {
+      id: '/_authenticated/settings/agents'
+      path: '/agents'
+      fullPath: '/settings/agents'
+      preLoaderRoute: typeof AuthenticatedSettingsAgentsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/repositories/': {
@@ -282,8 +282,8 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedSettingsRouteChildren {
+  AuthenticatedSettingsAgentsRoute: typeof AuthenticatedSettingsAgentsRoute
   AuthenticatedSettingsConnectionsRoute: typeof AuthenticatedSettingsConnectionsRoute
-  AuthenticatedSettingsSecretsRoute: typeof AuthenticatedSettingsSecretsRoute
   AuthenticatedSettingsRepositoriesConnectRoute: typeof AuthenticatedSettingsRepositoriesConnectRoute
   AuthenticatedSettingsRepositoriesIndexRoute: typeof AuthenticatedSettingsRepositoriesIndexRoute
   AuthenticatedSettingsRepositoriesRepositoryIdEditRoute: typeof AuthenticatedSettingsRepositoriesRepositoryIdEditRoute
@@ -291,8 +291,8 @@ interface AuthenticatedSettingsRouteChildren {
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
+  AuthenticatedSettingsAgentsRoute: AuthenticatedSettingsAgentsRoute,
   AuthenticatedSettingsConnectionsRoute: AuthenticatedSettingsConnectionsRoute,
-  AuthenticatedSettingsSecretsRoute: AuthenticatedSettingsSecretsRoute,
   AuthenticatedSettingsRepositoriesConnectRoute:
     AuthenticatedSettingsRepositoriesConnectRoute,
   AuthenticatedSettingsRepositoriesIndexRoute:

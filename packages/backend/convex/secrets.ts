@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { VALID_SECRET_NAMES } from "./lib/validSecrets";
 
 export const list = authedQuery({
 	args: {},
@@ -25,6 +26,12 @@ export const upsert = authedMutation({
 		apiKey: v.string(),
 	},
 	handler: async (ctx, args) => {
+		if (!VALID_SECRET_NAMES.has(args.name)) {
+			throw new ConvexError(
+				`Invalid secret name: ${args.name}. Allowed: ${[...VALID_SECRET_NAMES].join(", ")}`
+			);
+		}
+
 		await ctx.scheduler.runAfter(0, internal.secretActions.encryptAndStore, {
 			userId: ctx.userId,
 			name: args.name,

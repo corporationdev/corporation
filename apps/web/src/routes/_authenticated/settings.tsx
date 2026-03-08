@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { ArrowLeft, Cable, GitFork, KeyRound } from "lucide-react";
+import { ArrowLeft, Bot, Cable, GitFork } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/settings")({
 	component: SettingsLayout,
@@ -8,7 +8,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 const navItems = [
 	{ label: "Repositories", href: "/settings/repositories", icon: GitFork },
 	{ label: "Connections", href: "/settings/connections", icon: Cable },
-	{ label: "Secrets", href: "/settings/secrets", icon: KeyRound },
+	{ label: "Agents", href: "/settings/agents", icon: Bot },
 ];
 
 function SettingsLayout() {

@@ -19,6 +19,7 @@ import type * as lib_envByPath from "../lib/envByPath.js";
 import type * as lib_git from "../lib/git.js";
 import type * as lib_nango from "../lib/nango.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
+import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
 import type * as repositories from "../repositories.js";
 import type * as sandboxActions from "../sandboxActions.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   "lib/git": typeof lib_git;
   "lib/nango": typeof lib_nango;
   "lib/sandbox": typeof lib_sandbox;
+  "lib/validSecrets": typeof lib_validSecrets;
   nangoWebhook: typeof nangoWebhook;
   repositories: typeof repositories;
   sandboxActions: typeof sandboxActions;
