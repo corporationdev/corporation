@@ -8,10 +8,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import {
-	buildEnvByPath,
-	type EnvFileValues,
+	buildSecrets,
 	RepositoryConfigForm,
 	repositoryConfigSchema,
+	type SecretEntry,
 } from "@/components/repository-config-form";
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field";
@@ -41,19 +41,17 @@ function ConnectRepositoryPage() {
 	const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
 
 	const { mutateAsync: connectRepo } = useMutation({
-		mutationFn: async (value: { envFiles: EnvFileValues[] }) => {
+		mutationFn: async (value: { secrets: SecretEntry[] }) => {
 			if (!selectedRepo) {
 				throw new Error("No repository selected");
 			}
-
-			const envByPath = buildEnvByPath(value.envFiles);
 
 			await createRepo({
 				githubRepoId: selectedRepo.id,
 				owner: selectedRepo.owner,
 				name: selectedRepo.name,
 				defaultBranch: selectedRepo.defaultBranch,
-				envByPath,
+				secrets: buildSecrets(value.secrets),
 			});
 		},
 		onError: (error) => {
@@ -66,7 +64,7 @@ function ConnectRepositoryPage() {
 
 	const form = useForm({
 		defaultValues: {
-			envFiles: [{ path: "", envVars: [{ key: "", value: "" }] }],
+			secrets: [{ key: "", value: "" }],
 		},
 		validators: {
 			onSubmit: repositoryConfigSchema,

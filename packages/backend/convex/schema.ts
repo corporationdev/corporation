@@ -28,9 +28,7 @@ export default defineSchema(
 			owner: v.string(),
 			name: v.string(),
 			defaultBranch: v.string(),
-			envByPath: v.optional(
-				v.record(v.string(), v.record(v.string(), v.string()))
-			),
+			secrets: v.optional(v.record(v.string(), v.string())),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})

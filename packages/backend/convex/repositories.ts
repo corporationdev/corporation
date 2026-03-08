@@ -4,7 +4,6 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { normalizeEnvByPath } from "./lib/envByPath";
 import { scheduleSnapshot, withDerivedSnapshotState } from "./snapshot";
 
 function requireOwnedRepository(
@@ -52,9 +51,7 @@ export const create = authedMutation({
 		owner: v.string(),
 		name: v.string(),
 		defaultBranch: v.string(),
-		envByPath: v.optional(
-			v.record(v.string(), v.record(v.string(), v.string()))
-		),
+		secrets: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -69,7 +66,6 @@ export const create = authedMutation({
 		}
 
 		const now = Date.now();
-		const normalizedEnvByPath = normalizeEnvByPath(args.envByPath);
 
 		const repositoryId = await ctx.db.insert("repositories", {
 			userId: ctx.userId,
@@ -77,7 +73,7 @@ export const create = authedMutation({
 			owner: args.owner,
 			name: args.name,
 			defaultBranch: args.defaultBranch,
-			envByPath: normalizedEnvByPath,
+			secrets: args.secrets,
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -97,9 +93,7 @@ export const update = authedMutation({
 	args: {
 		id: v.id("repositories"),
 		defaultBranch: v.optional(v.string()),
-		envByPath: v.optional(
-			v.record(v.string(), v.record(v.string(), v.string()))
-		),
+		secrets: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args) => {
 		const repository = await ctx.db.get(args.id);
@@ -108,13 +102,10 @@ export const update = authedMutation({
 		}
 		requireOwnedRepository(ctx.userId, repository);
 
-		const { id, envByPath, ...fields } = args;
-		const normalizedEnvByPath =
-			envByPath === undefined ? undefined : normalizeEnvByPath(envByPath);
+		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
 			Object.entries({
 				...fields,
-				envByPath: normalizedEnvByPath,
 				updatedAt: Date.now(),
 			}).filter(([, value]) => value !== undefined)
 		);

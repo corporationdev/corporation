@@ -16,7 +16,6 @@ import type * as http from "../http.js";
 import type * as lib_claudeCodeAuth from "../lib/claudeCodeAuth.js";
 import type * as lib_codexAuth from "../lib/codexAuth.js";
 import type * as lib_crypto from "../lib/crypto.js";
-import type * as lib_envByPath from "../lib/envByPath.js";
 import type * as lib_git from "../lib/git.js";
 import type * as lib_nango from "../lib/nango.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
@@ -47,7 +46,6 @@ declare const fullApi: ApiFromModules<{
   "lib/claudeCodeAuth": typeof lib_claudeCodeAuth;
   "lib/codexAuth": typeof lib_codexAuth;
   "lib/crypto": typeof lib_crypto;
-  "lib/envByPath": typeof lib_envByPath;
   "lib/git": typeof lib_git;
   "lib/nango": typeof lib_nango;
   "lib/sandbox": typeof lib_sandbox;

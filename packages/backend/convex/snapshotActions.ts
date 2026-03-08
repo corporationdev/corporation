@@ -12,7 +12,6 @@ import {
 	getSandboxWorkdir,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
-	writeEnvFiles,
 } from "./lib/sandbox";
 
 const BASE_TEMPLATE = "corporation-base";
@@ -183,10 +182,12 @@ export const buildSnapshot = internalAction({
 				const appendLog = (chunk: string) => reporter.appendLog(chunk);
 
 				// Create sandbox and sync repo (diverges by type)
+				const sandboxEnvs = repository.secrets ?? {};
 				let sandbox: Sandbox;
 				if (request.type === "setup") {
 					sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
 						network: { allowPublicTraffic: true },
+						envs: sandboxEnvs,
 					});
 
 					const safeWorkdir = quoteShellArg(workdir);
@@ -202,6 +203,7 @@ export const buildSnapshot = internalAction({
 				} else {
 					sandbox = await Sandbox.betaCreate(request.oldExternalSnapshotId, {
 						network: { allowPublicTraffic: true },
+						envs: sandboxEnvs,
 					});
 
 					await runRootCommand(
@@ -215,10 +217,6 @@ export const buildSnapshot = internalAction({
 						}
 					);
 				}
-
-				// Shared: write env files
-				await writeEnvFiles(sandbox, { ...repository, repository }, workdir);
-				appendLog("Environment files written.\n");
 
 				// Create snapshot and cleanup
 				try {

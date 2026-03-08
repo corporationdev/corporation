@@ -8,14 +8,10 @@ const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
 export const REPO_SYNC_TIMEOUT_MS = 15 * 60 * 1000;
-const NEEDS_QUOTING_RE = /[\s"'#]/;
-const LOCALHOST_PORT_RE = /http:\/\/localhost:(\d+)/g;
-const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 export const DEV_SERVER_SESSION_NAME = "devserver";
 export const SANDBOX_AGENT_SESSION_NAME = "sandbox-agent";
 
-type EnvVar = { key: string; value: string };
 type CommandExitErrorLike = {
 	exitCode: number;
 	stderr: string;
@@ -31,63 +27,6 @@ export function getSandboxWorkdir(repository: {
 	name: string;
 }): string {
 	return `/root/${repository.owner}-${repository.name}`;
-}
-
-export type SandboxEnv = {
-	repository: {
-		owner: string;
-		name: string;
-		defaultBranch: string;
-	};
-	envByPath?: Record<string, Record<string, string>> | null;
-};
-
-function getPreviewUrl(sandbox: Sandbox, port: number): string {
-	return `https://${sandbox.getHost(port)}`;
-}
-
-function formatEnvContent(envVars: EnvVar[]): string {
-	return envVars
-		.map(({ key, value }) => {
-			if (NEEDS_QUOTING_RE.test(value)) {
-				return `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-			}
-			return `${key}=${value}`;
-		})
-		.join("\n");
-}
-
-function resolvePreviewUrls(sandbox: Sandbox, envVars: EnvVar[]): EnvVar[] {
-	const ports = new Set<number>();
-	for (const { value } of envVars) {
-		for (const match of value.matchAll(LOCALHOST_PORT_RE)) {
-			ports.add(Number.parseInt(match[1], 10));
-		}
-	}
-
-	if (ports.size === 0) {
-		return envVars;
-	}
-
-	const portToUrl = new Map<number, string>();
-	for (const port of ports) {
-		const url = getPreviewUrl(sandbox, port);
-		portToUrl.set(port, url.replace(TRAILING_SLASH_RE, ""));
-	}
-
-	return envVars.map(({ key, value }) => ({
-		key,
-		value: value.replace(LOCALHOST_PORT_RE, (_match, portStr) => {
-			const port = Number.parseInt(portStr, 10);
-			return portToUrl.get(port) ?? _match;
-		}),
-	}));
-}
-
-function envMapToPairs(envMap: Record<string, string>): EnvVar[] {
-	return Object.entries(envMap)
-		.filter(([key]) => key.trim().length > 0)
-		.map(([key, value]) => ({ key, value }));
 }
 
 function truncateOutput(
@@ -136,35 +75,6 @@ export async function runRootCommand(
 		}
 		throw error;
 	}
-}
-
-export async function writeEnvFiles(
-	sandbox: Sandbox,
-	env: SandboxEnv,
-	workdir: string
-): Promise<void> {
-	const files: Array<{ path: string; data: string }> = [];
-	const envByPath = env.envByPath ?? {};
-
-	for (const [rawPath, envMap] of Object.entries(envByPath)) {
-		const envVars = envMapToPairs(envMap);
-		if (envVars.length === 0) {
-			continue;
-		}
-
-		const resolved = resolvePreviewUrls(sandbox, envVars);
-		const path = rawPath === "." ? workdir : `${workdir}/${rawPath}`;
-		files.push({
-			path: `${path}/.env`,
-			data: formatEnvContent(resolved),
-		});
-	}
-
-	if (files.length === 0) {
-		return;
-	}
-
-	await sandbox.files.writeFiles(files);
 }
 
 function sleep(ms: number): Promise<void> {

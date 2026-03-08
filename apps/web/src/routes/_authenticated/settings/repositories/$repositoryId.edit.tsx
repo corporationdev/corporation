@@ -6,10 +6,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 
 import {
-	buildEnvByPath,
-	envFilesFromEnvByPath,
+	buildSecrets,
 	RepositoryConfigForm,
 	repositoryConfigSchema,
+	secretsFromRecord,
 } from "@/components/repository-config-form";
 import { Button } from "@/components/ui/button";
 
@@ -48,7 +48,7 @@ function EditRepositoryForm({
 
 	const form = useForm({
 		defaultValues: {
-			envFiles: envFilesFromEnvByPath(repository.envByPath),
+			secrets: secretsFromRecord(repository.secrets),
 		},
 		validators: {
 			onSubmit: repositoryConfigSchema,
@@ -56,7 +56,7 @@ function EditRepositoryForm({
 		onSubmit: async ({ value }) => {
 			await updateRepository({
 				id: repository._id,
-				envByPath: buildEnvByPath(value.envFiles),
+				secrets: buildSecrets(value.secrets),
 			});
 
 			navigate({ to: "/settings/repositories" });
