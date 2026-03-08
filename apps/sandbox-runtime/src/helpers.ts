@@ -9,6 +9,7 @@ export const EVENT_BATCH_MAX_DELAY_MS = 5;
 
 export const AUTH_METHOD_ENV_CANDIDATES: Record<string, string[]> = {
 	"anthropic-api-key": ["ANTHROPIC_API_KEY"],
+	"claude-login": ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
 	"codex-api-key": ["CODEX_API_KEY"],
 	"openai-api-key": ["OPENAI_API_KEY"],
 	"opencode-api-key": ["OPENCODE_API_KEY"],
@@ -71,12 +72,13 @@ export function extractAuthMethods(
 }
 
 export function selectAuthMethod(
-	authMethods: AuthMethod[]
+	authMethods: AuthMethod[],
+	env: Record<string, string | undefined> = process.env
 ): { methodId: string; envVar: string } | null {
 	for (const method of authMethods) {
 		const envCandidates = AUTH_METHOD_ENV_CANDIDATES[method.id] ?? [];
 		for (const envVar of envCandidates) {
-			if (typeof process.env[envVar] === "string" && process.env[envVar]) {
+			if (typeof env[envVar] === "string" && env[envVar]) {
 				return { methodId: method.id, envVar };
 			}
 		}

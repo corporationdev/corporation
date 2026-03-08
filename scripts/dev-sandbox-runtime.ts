@@ -8,9 +8,9 @@
  *   bun scripts/dev-sandbox-runtime.ts <sandbox-id> --no-watch   # build + sync once
  */
 
-import { watch } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { existsSync, watch } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 import process from "node:process";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
@@ -52,13 +52,17 @@ if (!process.env.E2B_API_KEY) {
 	process.exit(1);
 }
 
-const srcDir = resolve(repoRoot, "packages/sandbox-runtime");
-const bundlePath = resolve(srcDir, "dist/sandbox-runtime.js");
-const setupPath = resolve(srcDir, "setup.sh");
+const sandboxRuntimeDir = [
+	resolve(repoRoot, "apps/sandbox-runtime"),
+	resolve(repoRoot, "packages/sandbox-runtime"),
+].find((path) => existsSync(path));
+
+const bundlePath = resolve(sandboxRuntimeDir, "dist/sandbox-runtime.js");
+const setupPath = resolve(sandboxRuntimeDir, "setup.sh");
 const remoteBundlePath = "/usr/local/bin/sandbox-runtime.js";
 const remoteSetupPath = "/usr/local/bin/sandbox-runtime-setup.sh";
 
-const entrypoint = resolve(srcDir, "src/index.ts");
+const entrypoint = resolve(sandboxRuntimeDir, "src/index.ts");
 const buildCmd = [
 	"bun",
 	"build",
@@ -116,6 +120,8 @@ async function buildAndSync() {
 	try {
 		const start = Date.now();
 
+		await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
+
 		// Build
 		const build = Bun.spawnSync(buildCmd);
 		if (build.exitCode !== 0) {
@@ -124,10 +130,9 @@ async function buildAndSync() {
 		}
 
 		// Stop running process
-		await sandbox.commands.run(
-			"tmux kill-session -t sandbox-agent 2>/dev/null || true",
-			{ timeoutMs: 5000 }
-		);
+		await sandbox.commands.run(" fuser -k 5799/tcp 2>/dev/null; true", {
+			timeoutMs: 5000,
+		});
 
 		// Upload bundle + setup script
 		const [bundleData, setupData] = await Promise.all([
@@ -185,9 +190,11 @@ if (noWatch) {
 // Watch for changes — debounce rapid saves
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-console.log(`[watching] packages/sandbox-runtime/ → sandbox ${sandboxId}`);
+console.log(
+	`[watching] ${relative(repoRoot, sandboxRuntimeDir)}/ → sandbox ${sandboxId}`
+);
 
-watch(srcDir, { recursive: true }, (_event, filename) => {
+watch(sandboxRuntimeDir, { recursive: true }, (_event, filename) => {
 	if (!filename) {
 		return;
 	}
