@@ -119,10 +119,6 @@ function NewProjectPage() {
 		);
 	});
 
-	const canSubmit = noGithub
-		? form.state.values.name.trim().length > 0
-		: selectedRepo !== null;
-
 	return (
 		<form
 			className="flex flex-col gap-6 p-6"
@@ -256,12 +252,23 @@ function NewProjectPage() {
 			<ProjectConfigForm form={form} />
 
 			<div className="flex justify-end">
-				<form.Subscribe selector={(state) => state.isSubmitting}>
-					{(isSubmitting) => (
-						<Button disabled={!canSubmit || isSubmitting} type="submit">
-							{isSubmitting ? "Creating..." : "Create Project"}
-						</Button>
-					)}
+				<form.Subscribe
+					selector={(state) => ({
+						isSubmitting: state.isSubmitting,
+						name: state.values.name,
+					})}
+				>
+					{({ isSubmitting, name }) => {
+						const canSubmit = noGithub
+							? name.trim().length > 0
+							: selectedRepo !== null;
+
+						return (
+							<Button disabled={!canSubmit || isSubmitting} type="submit">
+								{isSubmitting ? "Creating..." : "Create Project"}
+							</Button>
+						);
+					}}
 				</form.Subscribe>
 			</div>
 		</form>

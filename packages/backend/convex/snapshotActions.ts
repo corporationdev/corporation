@@ -78,6 +78,8 @@ export const buildInitialSnapshot = internalAction({
 					network: { allowPublicTraffic: true },
 					envs: project.secrets ?? {},
 				});
+				const workdir = getSandboxWorkdir(project);
+				await runRootCommand(sandbox, `mkdir -p ${quoteShellArg(workdir)}`);
 			}
 
 			const snapshot = await sandbox.createSnapshot();
