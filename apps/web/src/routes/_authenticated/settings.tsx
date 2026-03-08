@@ -6,7 +6,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 const navItems = [
-	{ label: "Repositories", href: "/settings/repositories", icon: GitFork },
+	{ label: "Projects", href: "/settings/projects", icon: GitFork },
 	{ label: "Connections", href: "/settings/connections", icon: Cable },
 	{ label: "Agents", href: "/settings/agents", icon: Bot },
 ];

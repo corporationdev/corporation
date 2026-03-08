@@ -177,11 +177,10 @@ async function resolveSandbox(
 		}
 	}
 
-	const externalSnapshotId =
-		space.repository.activeSnapshot?.externalSnapshotId;
+	const externalSnapshotId = space.project.activeSnapshot?.externalSnapshotId;
 
 	if (!externalSnapshotId) {
-		throw new Error("Repository snapshot is not ready yet");
+		throw new Error("Project snapshot is not ready yet");
 	}
 
 	await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -228,10 +227,10 @@ export const provisionForSpace = internalAction({
 				id: args.spaceId,
 			});
 
-			const aiEnvs = await getUserAiEnvs(ctx, space.repository.userId);
+			const aiEnvs = await getUserAiEnvs(ctx, space.project.userId);
 			const codexAuthJson = await getUserCodexAuthJson(
 				ctx,
-				space.repository.userId
+				space.project.userId
 			);
 			const sandbox = await resolveSandbox(ctx, space, aiEnvs);
 			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);

@@ -7,38 +7,38 @@ import { authedMutation, authedQuery } from "./functions";
 
 export const getLatest = authedQuery({
 	args: {
-		repositoryId: v.id("repositories"),
+		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const repository = await ctx.db.get(args.repositoryId);
-		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Repository not found");
+		const project = await ctx.db.get(args.projectId);
+		if (!project || project.userId !== ctx.userId) {
+			throw new ConvexError("Project not found");
 		}
 
 		return await ctx.db
 			.query("snapshots")
-			.withIndex("by_repository_and_startedAt", (q) =>
-				q.eq("repositoryId", repository._id)
+			.withIndex("by_project_and_startedAt", (q) =>
+				q.eq("projectId", project._id)
 			)
 			.order("desc")
 			.first();
 	},
 });
 
-export const listByRepository = authedQuery({
+export const listByProject = authedQuery({
 	args: {
-		repositoryId: v.id("repositories"),
+		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const repository = await ctx.db.get(args.repositoryId);
-		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Repository not found");
+		const project = await ctx.db.get(args.projectId);
+		if (!project || project.userId !== ctx.userId) {
+			throw new ConvexError("Project not found");
 		}
 
 		return await ctx.db
 			.query("snapshots")
-			.withIndex("by_repository_and_startedAt", (q) =>
-				q.eq("repositoryId", args.repositoryId)
+			.withIndex("by_project_and_startedAt", (q) =>
+				q.eq("projectId", args.projectId)
 			)
 			.order("desc")
 			.collect();
@@ -55,8 +55,8 @@ export const get = authedQuery({
 			throw new ConvexError("Snapshot not found");
 		}
 
-		const repository = await ctx.db.get(snapshot.repositoryId);
-		if (!repository || repository.userId !== ctx.userId) {
+		const project = await ctx.db.get(snapshot.projectId);
+		if (!project || project.userId !== ctx.userId) {
 			throw new ConvexError("Snapshot not found");
 		}
 
@@ -70,30 +70,28 @@ type DbCtx = {
 
 export async function withDerivedSnapshotState(
 	ctx: DbCtx,
-	repository: Doc<"repositories">
+	project: Doc<"projects">
 ) {
 	const [latestSnapshot, activeSnapshot, defaultSnapshot] = await Promise.all([
 		ctx.db
 			.query("snapshots")
-			.withIndex("by_repository_and_startedAt", (q) =>
-				q.eq("repositoryId", repository._id)
+			.withIndex("by_project_and_startedAt", (q) =>
+				q.eq("projectId", project._id)
 			)
 			.order("desc")
 			.first(),
 		ctx.db
 			.query("snapshots")
-			.withIndex("by_repository_status_startedAt", (q) =>
-				q.eq("repositoryId", repository._id).eq("status", "ready")
+			.withIndex("by_project_status_startedAt", (q) =>
+				q.eq("projectId", project._id).eq("status", "ready")
 			)
 			.order("desc")
 			.first(),
-		repository.defaultSnapshotId
-			? ctx.db.get(repository.defaultSnapshotId)
-			: null,
+		project.defaultSnapshotId ? ctx.db.get(project.defaultSnapshotId) : null,
 	]);
 
 	return {
-		...repository,
+		...project,
 		latestSnapshot,
 		activeSnapshot,
 		defaultSnapshot,
@@ -102,13 +100,13 @@ export async function withDerivedSnapshotState(
 
 export async function scheduleInitialSnapshot(
 	ctx: MutationCtx,
-	repository: Doc<"repositories">,
+	project: Doc<"projects">,
 	options?: { setAsDefault?: boolean }
 ): Promise<Id<"snapshots">> {
 	const latestSnapshot = await ctx.db
 		.query("snapshots")
-		.withIndex("by_repository_and_startedAt", (q) =>
-			q.eq("repositoryId", repository._id)
+		.withIndex("by_project_and_startedAt", (q) =>
+			q.eq("projectId", project._id)
 		)
 		.order("desc")
 		.first();
@@ -119,19 +117,19 @@ export async function scheduleInitialSnapshot(
 
 	const now = Date.now();
 	const snapshotId = await ctx.db.insert("snapshots", {
-		repositoryId: repository._id,
+		projectId: project._id,
 		label: "Base Snapshot",
 		status: "building",
 		startedAt: now,
 	});
 
-	await ctx.db.patch(repository._id, { updatedAt: now });
+	await ctx.db.patch(project._id, { updatedAt: now });
 
 	await ctx.scheduler.runAfter(
 		0,
 		internal.snapshotActions.buildInitialSnapshot,
 		{
-			repositoryId: repository._id,
+			projectId: project._id,
 			snapshotId,
 			setAsDefault: options?.setAsDefault ?? false,
 		}
@@ -142,15 +140,15 @@ export async function scheduleInitialSnapshot(
 
 export const buildInitialSnapshot = authedMutation({
 	args: {
-		repositoryId: v.id("repositories"),
+		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const repository = await ctx.db.get(args.repositoryId);
-		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Repository not found");
+		const project = await ctx.db.get(args.projectId);
+		if (!project || project.userId !== ctx.userId) {
+			throw new ConvexError("Project not found");
 		}
 
-		await scheduleInitialSnapshot(ctx, repository);
+		await scheduleInitialSnapshot(ctx, project);
 	},
 });
 
@@ -158,7 +156,7 @@ export const completeSnapshot = internalMutation({
 	args: {
 		snapshotId: v.id("snapshots"),
 		status: v.union(v.literal("ready"), v.literal("error")),
-		repositoryId: v.optional(v.id("repositories")),
+		projectId: v.optional(v.id("projects")),
 		externalSnapshotId: v.optional(v.string()),
 		error: v.optional(v.string()),
 		setAsDefault: v.optional(v.boolean()),
@@ -184,13 +182,13 @@ export const completeSnapshot = internalMutation({
 			return;
 		}
 
-		if (!(args.repositoryId && args.externalSnapshotId)) {
+		if (!(args.projectId && args.externalSnapshotId)) {
 			throw new ConvexError(
-				"repositoryId and externalSnapshotId are required when status is ready"
+				"projectId and externalSnapshotId are required when status is ready"
 			);
 		}
-		if (snapshot.repositoryId !== args.repositoryId) {
-			throw new ConvexError("Snapshot does not belong to repository");
+		if (snapshot.projectId !== args.projectId) {
+			throw new ConvexError("Snapshot does not belong to project");
 		}
 		await ctx.db.patch(args.snapshotId, {
 			status: "ready",
@@ -199,7 +197,7 @@ export const completeSnapshot = internalMutation({
 		});
 
 		if (args.setAsDefault) {
-			await ctx.db.patch(args.repositoryId, {
+			await ctx.db.patch(args.projectId, {
 				defaultSnapshotId: args.snapshotId,
 			});
 		}

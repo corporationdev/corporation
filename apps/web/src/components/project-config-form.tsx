@@ -13,7 +13,7 @@ const secretEntrySchema = z.object({
 	value: z.string(),
 });
 
-export const repositoryConfigSchema = z.object({
+export const projectConfigSchema = z.object({
 	secrets: z.array(secretEntrySchema),
 });
 
@@ -80,7 +80,7 @@ type SecretEntryArrayFieldState = {
 };
 
 // biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
-export function RepositoryConfigForm({ form }: { form: any }) {
+export function ProjectConfigForm({ form }: { form: any }) {
 	return (
 		<form.Field mode="array" name="secrets">
 			{(field: SecretEntryArrayFieldState) => {

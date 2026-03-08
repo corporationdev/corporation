@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const SpaceList: FC = () => {
-	const groupedSpaces = useQuery(api.spaces.listByRepository);
+	const groupedSpaces = useQuery(api.spaces.listByProject);
 
 	const spaces = useMemo(() => {
 		if (!groupedSpaces) {
@@ -81,15 +81,13 @@ const NoRepositoriesState: FC = () => {
 
 	return (
 		<div className="flex flex-col gap-2 px-2 py-3">
-			<p className="text-muted-foreground text-xs">
-				No repositories connected.
-			</p>
+			<p className="text-muted-foreground text-xs">No projects yet.</p>
 			<Button
 				className="h-8 justify-start px-2 text-xs"
-				onClick={() => navigate({ to: "/settings/repositories/connect" })}
+				onClick={() => navigate({ to: "/settings/projects/new" })}
 				variant="outline"
 			>
-				Connect Repository
+				New Project
 			</Button>
 		</div>
 	);

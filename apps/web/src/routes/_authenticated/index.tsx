@@ -33,65 +33,60 @@ function AuthenticatedIndex() {
 	const navigate = useNavigate();
 	const setSpace = usePendingMessageStore((s) => s.setSpace);
 	const setMessage = usePendingMessageStore((s) => s.setMessage);
-	const repositories = useQuery(api.repositories.list);
+	const projects = useQuery(api.projects.list);
 	const [input, setInput] = useState("");
 	const [agent, setAgent] = useState(INITIAL_AGENT);
 	const [modelId, setModelId] = useState(INITIAL_MODEL);
-	const [selectedRepositoryId, setSelectedRepositoryId] =
-		useLocalStorage<Id<"repositories"> | null>("corporation:recent-repo", null);
+	const [selectedProjectId, setSelectedProjectId] =
+		useLocalStorage<Id<"projects"> | null>("corporation:recent-project", null);
+
 	useEffect(() => {
-		if (!repositories) {
+		if (!projects) {
 			return;
 		}
 
-		if (repositories.length === 0) {
-			setSelectedRepositoryId(null);
+		if (projects.length === 0) {
+			setSelectedProjectId(null);
 			return;
 		}
 
-		setSelectedRepositoryId((current) => {
-			if (
-				current &&
-				repositories.some((repository) => repository._id === current)
-			) {
+		setSelectedProjectId((current) => {
+			if (current && projects.some((project) => project._id === current)) {
 				return current;
 			}
 
-			const firstReadyRepository =
-				repositories.find((repository) => repository.activeSnapshot) ??
-				repositories[0];
-			return firstReadyRepository?._id ?? null;
+			const firstReadyProject =
+				projects.find((project) => project.activeSnapshot) ?? projects[0];
+			return firstReadyProject?._id ?? null;
 		});
-	}, [repositories, setSelectedRepositoryId]);
+	}, [projects, setSelectedProjectId]);
 
-	const selectedRepository = useMemo(() => {
-		if (!(repositories && selectedRepositoryId)) {
+	const selectedProject = useMemo(() => {
+		if (!(projects && selectedProjectId)) {
 			return null;
 		}
 		return (
-			repositories.find(
-				(repository) => repository._id === selectedRepositoryId
-			) ?? null
+			projects.find((project) => project._id === selectedProjectId) ?? null
 		);
-	}, [repositories, selectedRepositoryId]);
+	}, [projects, selectedProjectId]);
 
 	const centerMessage =
-		repositories === undefined
-			? "Loading repositories..."
-			: repositories.length === 0
-				? "Connect a repository to get started."
+		projects === undefined
+			? "Loading projects..."
+			: projects.length === 0
+				? "Create a project to get started."
 				: "How can I help you today?";
 
 	const handleSend = useCallback(() => {
 		const text = input.trim();
-		if (!(text && selectedRepository)) {
+		if (!(text && selectedProject)) {
 			return;
 		}
 
 		const spaceSlug = nanoid();
 		const sessionId = nanoid();
 
-		setSpace({ slug: spaceSlug, repositoryId: selectedRepository._id });
+		setSpace({ slug: spaceSlug, projectId: selectedProject._id });
 		setMessage({ text, agent, modelId });
 		setInput("");
 
@@ -100,15 +95,7 @@ function AuthenticatedIndex() {
 			params: { spaceSlug },
 			search: { session: sessionId },
 		});
-	}, [
-		input,
-		selectedRepository,
-		agent,
-		modelId,
-		setSpace,
-		setMessage,
-		navigate,
-	]);
+	}, [input, selectedProject, agent, modelId, setSpace, setMessage, navigate]);
 
 	return (
 		<div className="flex h-full w-full overflow-hidden">
@@ -125,13 +112,13 @@ function AuthenticatedIndex() {
 						</p>
 					</div>
 					<ChatInput
-						disabled={!selectedRepository}
+						disabled={!selectedProject}
 						footer={
 							<div className="flex items-center gap-2">
-								<RepositorySelector
-									onRepositoryIdChange={setSelectedRepositoryId}
-									repositories={repositories ?? []}
-									repositoryId={selectedRepositoryId}
+								<ProjectSelector
+									onProjectIdChange={setSelectedProjectId}
+									projectId={selectedProjectId}
+									projects={projects ?? []}
 								/>
 								<AgentModelPicker
 									agent={agent}
@@ -152,21 +139,21 @@ function AuthenticatedIndex() {
 	);
 }
 
-type RepositoryListItem = FunctionReturnType<
-	typeof api.repositories.list
->[number];
+type ProjectListItem = FunctionReturnType<typeof api.projects.list>[number];
 
-const RepositorySelector: FC<{
-	repositories: RepositoryListItem[];
-	repositoryId: Id<"repositories"> | null;
-	onRepositoryIdChange: (repositoryId: Id<"repositories">) => void;
-}> = ({ repositories, repositoryId, onRepositoryIdChange }) => {
-	const selectedRepository =
-		repositories.find((repository) => repository._id === repositoryId) ?? null;
-	const label = selectedRepository
-		? `${selectedRepository.owner}/${selectedRepository.name}`
-		: "Select repository";
-	const isDisabled = repositories.length === 0;
+const ProjectSelector: FC<{
+	projects: ProjectListItem[];
+	projectId: Id<"projects"> | null;
+	onProjectIdChange: (projectId: Id<"projects">) => void;
+}> = ({ projects, projectId, onProjectIdChange }) => {
+	const selectedProject =
+		projects.find((project) => project._id === projectId) ?? null;
+	const label = selectedProject
+		? selectedProject.githubOwner && selectedProject.githubName
+			? `${selectedProject.githubOwner}/${selectedProject.githubName}`
+			: selectedProject.name
+		: "Select project";
+	const isDisabled = projects.length === 0;
 
 	return (
 		<DropdownMenu>
@@ -178,12 +165,14 @@ const RepositorySelector: FC<{
 				<ChevronDownIcon className="size-3" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start">
-				{repositories.map((repository) => (
+				{projects.map((project) => (
 					<DropdownMenuItem
-						key={repository._id}
-						onClick={() => onRepositoryIdChange(repository._id)}
+						key={project._id}
+						onClick={() => onProjectIdChange(project._id)}
 					>
-						{repository.owner}/{repository.name}
+						{project.githubOwner && project.githubName
+							? `${project.githubOwner}/${project.githubName}`
+							: project.name}
 					</DropdownMenuItem>
 				))}
 			</DropdownMenuContent>

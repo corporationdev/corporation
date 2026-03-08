@@ -2,13 +2,13 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Loader2, Plus } from "lucide-react";
+import { Github, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const Route = createFileRoute("/_authenticated/settings/repositories/")({
-	component: RepositoriesPage,
+export const Route = createFileRoute("/_authenticated/settings/projects/")({
+	component: ProjectsPage,
 });
 
 function SnapshotStatusIndicator({
@@ -46,34 +46,41 @@ function SnapshotStatusIndicator({
 	);
 }
 
-function RepositoryCard({
-	repository,
+function ProjectCard({
+	project,
 }: {
-	repository: {
-		_id: Id<"repositories">;
-		owner: string;
+	project: {
+		_id: Id<"projects">;
 		name: string;
+		githubOwner?: string;
+		githubName?: string;
 		latestSnapshot: { status: "building" | "ready" | "error" } | null;
 		defaultSnapshot: { label: string } | null;
 	};
 }) {
+	const isGitHubBacked = !!(project.githubOwner && project.githubName);
+
 	return (
 		<Link
-			params={{ repositoryId: repository._id }}
-			to="/settings/repositories/$repositoryId"
+			params={{ projectId: project._id }}
+			to="/settings/projects/$projectId"
 		>
 			<Card size="sm">
 				<CardHeader>
 					<div className="flex items-center gap-3">
-						<CardTitle className="hover:underline">
-							{repository.owner}/{repository.name}
-						</CardTitle>
+						<CardTitle className="hover:underline">{project.name}</CardTitle>
+						{isGitHubBacked && (
+							<span className="flex items-center gap-1 text-muted-foreground text-xs">
+								<Github className="size-3" />
+								{project.githubOwner}/{project.githubName}
+							</span>
+						)}
 						<SnapshotStatusIndicator
-							status={repository.latestSnapshot?.status ?? null}
+							status={project.latestSnapshot?.status ?? null}
 						/>
-						{repository.defaultSnapshot && (
+						{project.defaultSnapshot && (
 							<span className="text-muted-foreground text-xs">
-								{repository.defaultSnapshot.label}
+								{project.defaultSnapshot.label}
 							</span>
 						)}
 					</div>
@@ -83,23 +90,23 @@ function RepositoryCard({
 	);
 }
 
-function RepositoriesPage() {
-	const repositories = useQuery(api.repositories.list);
-	const isLoading = repositories === undefined;
+function ProjectsPage() {
+	const projects = useQuery(api.projects.list);
+	const isLoading = projects === undefined;
 
 	return (
 		<div className="p-6">
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="font-semibold text-lg">Repositories</h1>
+					<h1 className="font-semibold text-lg">Projects</h1>
 					<p className="mt-1 text-muted-foreground text-sm">
-						Manage your repositories and their configuration.
+						Manage your projects and their configuration.
 					</p>
 				</div>
-				<Link to="/settings/repositories/connect">
+				<Link to="/settings/projects/new">
 					<Button size="sm" variant="outline">
 						<Plus className="size-4" />
-						Connect Repository
+						New Project
 					</Button>
 				</Link>
 			</div>
@@ -110,16 +117,14 @@ function RepositoriesPage() {
 						<Skeleton className="h-16 w-full" />
 						<Skeleton className="h-16 w-full" />
 					</div>
-				) : repositories.length ? (
+				) : projects.length ? (
 					<div className="flex flex-col gap-3">
-						{repositories.map((repo) => (
-							<RepositoryCard key={repo._id} repository={repo} />
+						{projects.map((project) => (
+							<ProjectCard key={project._id} project={project} />
 						))}
 					</div>
 				) : (
-					<p className="text-muted-foreground text-sm">
-						No repositories connected yet.
-					</p>
+					<p className="text-muted-foreground text-sm">No projects yet.</p>
 				)}
 			</div>
 		</div>

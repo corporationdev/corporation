@@ -22,11 +22,14 @@ type RunRootCommandOptions = Omit<
 	"user"
 >;
 
-export function getSandboxWorkdir(repository: {
-	owner: string;
-	name: string;
+export function getSandboxWorkdir(project: {
+	githubOwner?: string;
+	githubName?: string;
 }): string {
-	return `/root/${repository.owner}-${repository.name}`;
+	if (project.githubOwner && project.githubName) {
+		return `/root/${project.githubOwner}-${project.githubName}`;
+	}
+	return "/root/project";
 }
 
 function truncateOutput(

@@ -31,7 +31,7 @@ function formatSnapshotError(error: unknown): string {
 
 export const buildInitialSnapshot = internalAction({
 	args: {
-		repositoryId: v.id("repositories"),
+		projectId: v.id("projects"),
 		snapshotId: v.id("snapshots"),
 		setAsDefault: v.boolean(),
 	},
@@ -39,40 +39,52 @@ export const buildInitialSnapshot = internalAction({
 		let sandbox: Sandbox | null = null;
 
 		try {
-			const nangoSecretKey = process.env.NANGO_SECRET_KEY;
-			if (!nangoSecretKey) {
-				throw new Error("Missing NANGO_SECRET_KEY env var");
+			const project = await ctx.runQuery(internal.projects.internalGet, {
+				id: args.projectId,
+			});
+
+			if (
+				project.githubRepoId &&
+				project.githubOwner &&
+				project.githubName &&
+				project.defaultBranch
+			) {
+				const nangoSecretKey = process.env.NANGO_SECRET_KEY;
+				if (!nangoSecretKey) {
+					throw new Error("Missing NANGO_SECRET_KEY env var");
+				}
+
+				const nango = new Nango({ secretKey: nangoSecretKey });
+				const githubToken = await getGitHubToken(nango, project.userId);
+
+				const workdir = getSandboxWorkdir(project);
+				const repoUrl = `https://x-access-token:${githubToken}@github.com/${project.githubOwner}/${project.githubName}.git`;
+				const safeRepoUrl = quoteShellArg(repoUrl);
+				const safeDefaultBranch = quoteShellArg(project.defaultBranch);
+				const safeWorkdir = quoteShellArg(workdir);
+
+				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+					network: { allowPublicTraffic: true },
+					envs: project.secrets ?? {},
+				});
+
+				await runRootCommand(
+					sandbox,
+					`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
+					{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
+				);
+			} else {
+				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+					network: { allowPublicTraffic: true },
+					envs: project.secrets ?? {},
+				});
 			}
-
-			const repository = await ctx.runQuery(internal.repositories.internalGet, {
-				id: args.repositoryId,
-			});
-
-			const nango = new Nango({ secretKey: nangoSecretKey });
-			const githubToken = await getGitHubToken(nango, repository.userId);
-
-			const workdir = getSandboxWorkdir(repository);
-			const repoUrl = `https://x-access-token:${githubToken}@github.com/${repository.owner}/${repository.name}.git`;
-			const safeRepoUrl = quoteShellArg(repoUrl);
-			const safeDefaultBranch = quoteShellArg(repository.defaultBranch);
-			const safeWorkdir = quoteShellArg(workdir);
-
-			sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
-				network: { allowPublicTraffic: true },
-				envs: repository.secrets ?? {},
-			});
-
-			await runRootCommand(
-				sandbox,
-				`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
-				{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
-			);
 
 			const snapshot = await sandbox.createSnapshot();
 
 			await ctx.runMutation(internal.snapshot.completeSnapshot, {
 				snapshotId: args.snapshotId,
-				repositoryId: args.repositoryId,
+				projectId: args.projectId,
 				status: "ready",
 				externalSnapshotId: snapshot.snapshotId,
 				setAsDefault: args.setAsDefault,
@@ -92,8 +104,8 @@ export const buildInitialSnapshot = internalAction({
 					// Best-effort cleanup
 				}
 			}
-			await ctx.runMutation(internal.repositories.completeSnapshotBuild, {
-				id: args.repositoryId,
+			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
+				id: args.projectId,
 			});
 		}
 	},

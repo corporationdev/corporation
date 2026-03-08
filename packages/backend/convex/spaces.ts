@@ -14,34 +14,32 @@ async function requireOwnedSpace(
 	space: Doc<"spaces">
 ): Promise<{
 	space: Doc<"spaces">;
-	repository: Doc<"repositories">;
+	project: Doc<"projects">;
 }> {
-	if (!space.repositoryId) {
+	if (!space.projectId) {
 		throw new ConvexError("Space not found");
 	}
-	const repository = await ctx.db.get(space.repositoryId);
-	if (!repository || repository.userId !== ctx.userId) {
+	const project = await ctx.db.get(space.projectId);
+	if (!project || project.userId !== ctx.userId) {
 		throw new ConvexError("Space not found");
 	}
 
-	return { space, repository };
+	return { space, project };
 }
 
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const repositories = await ctx.db
-			.query("repositories")
+		const projects = await ctx.db
+			.query("projects")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
 		const spaces = (
-			await asyncMap(repositories, (repository) =>
+			await asyncMap(projects, (project) =>
 				ctx.db
 					.query("spaces")
-					.withIndex("by_repository", (q) =>
-						q.eq("repositoryId", repository._id)
-					)
+					.withIndex("by_project", (q) => q.eq("projectId", project._id))
 					.collect()
 			)
 		).flat();
@@ -51,52 +49,40 @@ export const list = authedQuery({
 	},
 });
 
-export const listByRepository = authedQuery({
+export const listByProject = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const repositories = await ctx.db
-			.query("repositories")
+		const projects = await ctx.db
+			.query("projects")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		const spacesByRepository = new Map<Id<"repositories">, Doc<"spaces">[]>();
-		const repositorySpaces = await asyncMap(
-			repositories,
-			async (repository) => ({
-				repositoryId: repository._id,
-				spaces: await ctx.db
-					.query("spaces")
-					.withIndex("by_repository", (q) =>
-						q.eq("repositoryId", repository._id)
-					)
-					.collect(),
-			})
-		);
-		for (const { repositoryId, spaces } of repositorySpaces) {
-			spacesByRepository.set(repositoryId, spaces);
+		const spacesByProject = new Map<Id<"projects">, Doc<"spaces">[]>();
+		const projectSpaces = await asyncMap(projects, async (project) => ({
+			projectId: project._id,
+			spaces: await ctx.db
+				.query("spaces")
+				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.collect(),
+		}));
+		for (const { projectId, spaces } of projectSpaces) {
+			spacesByProject.set(projectId, spaces);
 		}
 
-		const grouped = await asyncMap(repositories, async (repository) => {
-			const spaces = (spacesByRepository.get(repository._id) ?? []).filter(
+		const grouped = await asyncMap(projects, async (project) => {
+			const spaces = (spacesByProject.get(project._id) ?? []).filter(
 				(space) => !space.archived
 			);
 			spaces.sort((a, b) => b.updatedAt - a.updatedAt);
-			const repositoryWithSnapshots = await withDerivedSnapshotState(
-				ctx,
-				repository
-			);
+			const projectWithSnapshots = await withDerivedSnapshotState(ctx, project);
 
 			return {
-				repository: repositoryWithSnapshots,
+				project: projectWithSnapshots,
 				spaces,
 			};
 		});
 
-		grouped.sort((a, b) => {
-			const aName = `${a.repository.owner}/${a.repository.name}`;
-			const bName = `${b.repository.owner}/${b.repository.name}`;
-			return aName.localeCompare(bName);
-		});
+		grouped.sort((a, b) => a.project.name.localeCompare(b.project.name));
 		return grouped;
 	},
 });
@@ -111,16 +97,13 @@ export const getBySlug = authedQuery({
 		if (!space) {
 			return null;
 		}
-		const { repository } = await requireOwnedSpace(ctx, space);
-		const repositoryWithSnapshot = await withDerivedSnapshotState(
-			ctx,
-			repository
-		);
+		const { project } = await requireOwnedSpace(ctx, space);
+		const projectWithSnapshot = await withDerivedSnapshotState(ctx, project);
 
 		return {
 			...space,
-			workdir: getSandboxWorkdir(repository),
-			repository: repositoryWithSnapshot,
+			workdir: getSandboxWorkdir(project),
+			project: projectWithSnapshot,
 		};
 	},
 });
@@ -132,16 +115,13 @@ export const get = authedQuery({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		const { repository } = await requireOwnedSpace(ctx, space);
-		const repositoryWithSnapshot = await withDerivedSnapshotState(
-			ctx,
-			repository
-		);
+		const { project } = await requireOwnedSpace(ctx, space);
+		const projectWithSnapshot = await withDerivedSnapshotState(ctx, project);
 
 		return {
 			...space,
-			workdir: getSandboxWorkdir(repository),
-			repository: repositoryWithSnapshot,
+			workdir: getSandboxWorkdir(project),
+			project: projectWithSnapshot,
 		};
 	},
 });
@@ -229,18 +209,15 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Space not found");
 		}
 
-		const repository = await ctx.db.get(space.repositoryId);
-		if (!repository) {
-			throw new ConvexError("Repository not found");
+		const project = await ctx.db.get(space.projectId);
+		if (!project) {
+			throw new ConvexError("Project not found");
 		}
-		const repositoryWithSnapshot = await withDerivedSnapshotState(
-			ctx,
-			repository
-		);
+		const projectWithSnapshot = await withDerivedSnapshotState(ctx, project);
 
 		return {
 			...space,
-			repository: repositoryWithSnapshot,
+			project: projectWithSnapshot,
 		};
 	},
 });
@@ -286,7 +263,7 @@ export const requestAutoRename = internalMutation({
 export const ensure = authedMutation({
 	args: {
 		slug: v.string(),
-		repositoryId: v.optional(v.id("repositories")),
+		projectId: v.optional(v.id("projects")),
 		firstMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -309,22 +286,22 @@ export const ensure = authedMutation({
 			return existing._id;
 		}
 
-		if (!args.repositoryId) {
-			throw new ConvexError("repositoryId is required when creating a space");
+		if (!args.projectId) {
+			throw new ConvexError("projectId is required when creating a space");
 		}
 
-		const repositoryId = args.repositoryId;
+		const projectId = args.projectId;
 
-		const repository = await ctx.db.get(repositoryId);
-		if (!repository || repository.userId !== ctx.userId) {
-			throw new ConvexError("Repository not found");
+		const project = await ctx.db.get(projectId);
+		if (!project || project.userId !== ctx.userId) {
+			throw new ConvexError("Project not found");
 		}
 
 		const now = Date.now();
 
 		const spaceId = await ctx.db.insert("spaces", {
 			slug,
-			repositoryId,
+			projectId,
 			name: "New Space",
 			status: "creating",
 			createdAt: now,

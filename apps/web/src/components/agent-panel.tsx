@@ -61,7 +61,7 @@ export function AgentPanel({
 		setSpaceCreating(true);
 		ensureSpace({
 			slug: pending.slug,
-			repositoryId: pending.repositoryId,
+			projectId: pending.projectId,
 			firstMessage: pendingMessage?.text,
 		})
 			.catch((error: unknown) => {

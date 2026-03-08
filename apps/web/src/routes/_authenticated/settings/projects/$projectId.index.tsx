@@ -4,21 +4,15 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import {
-	AlertTriangle,
-	ArrowLeft,
-	Hammer,
-	Loader2,
-	Trash2,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
 	buildSecrets,
-	RepositoryConfigForm,
-	repositoryConfigSchema,
+	ProjectConfigForm,
+	projectConfigSchema,
 	secretsFromRecord,
-} from "@/components/repository-config-form";
+} from "@/components/project-config-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,18 +20,18 @@ import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute(
-	"/_authenticated/settings/repositories/$repositoryId/"
+	"/_authenticated/settings/projects/$projectId/"
 )({
-	component: RepositoryDetailPage,
+	component: ProjectDetailPage,
 });
 
-function RepositoryDetailPage() {
-	const { repositoryId } = Route.useParams();
-	const repository = useQuery(api.repositories.get, {
-		id: repositoryId as Id<"repositories">,
+function ProjectDetailPage() {
+	const { projectId } = Route.useParams();
+	const project = useQuery(api.projects.get, {
+		id: projectId as Id<"projects">,
 	});
 
-	if (repository === undefined) {
+	if (project === undefined) {
 		return (
 			<div className="p-6">
 				<Skeleton className="h-8 w-64" />
@@ -46,75 +40,61 @@ function RepositoryDetailPage() {
 		);
 	}
 
-	return <RepositoryDetail repository={repository} />;
+	return <ProjectDetail project={project} />;
 }
 
 function BackLink() {
 	return (
 		<Link
 			className="flex items-center gap-1 text-muted-foreground text-sm hover:text-foreground"
-			to="/settings/repositories"
+			to="/settings/projects"
 		>
 			<ArrowLeft className="size-4" />
-			Repositories
+			Projects
 		</Link>
 	);
 }
 
-type Repository = NonNullable<
-	ReturnType<typeof useQuery<typeof api.repositories.get>>
+type Project = NonNullable<
+	ReturnType<typeof useQuery<typeof api.projects.get>>
 >;
 
-type Tab = "snapshots" | "secrets";
+type Tab = "snapshots" | "settings";
 
-function RepositoryDetail({ repository }: { repository: Repository }) {
+function ProjectDetail({ project }: { project: Project }) {
 	const navigate = useNavigate();
 	const [activeTab, setActiveTab] = useState<Tab>("snapshots");
 
-	const { mutate: buildSnapshot, isPending: isSnapshotting } =
-		useConvexTanstackMutation(api.snapshot.buildInitialSnapshot, {
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		});
-
-	const { mutate: removeRepository, isPending: isDeleting } =
-		useConvexTanstackMutation(api.repositories.delete, {
+	const { mutate: removeProject, isPending: isDeleting } =
+		useConvexTanstackMutation(api.projects.delete, {
 			onSuccess: () => {
-				toast.success("Repository deleted");
-				navigate({ to: "/settings/repositories" });
+				toast.success("Project deleted");
+				navigate({ to: "/settings/projects" });
 			},
 			onError: (error) => {
 				toast.error(error.message);
 			},
 		});
 
-	const isBuilding = repository.latestSnapshot?.status === "building";
-	const isError = repository.latestSnapshot?.status === "error";
+	const isError = project.latestSnapshot?.status === "error";
 
 	return (
 		<div className="flex flex-col gap-6 p-6">
 			<div className="flex items-center justify-between">
 				<div>
 					<BackLink />
-					<h1 className="mt-2 font-semibold text-lg">
-						{repository.owner}/{repository.name}
-					</h1>
-					<StatusIndicator status={repository.latestSnapshot?.status ?? null} />
+					<h1 className="mt-2 font-semibold text-lg">{project.name}</h1>
+					{project.githubOwner && project.githubName && (
+						<p className="text-muted-foreground text-sm">
+							{project.githubOwner}/{project.githubName}
+						</p>
+					)}
+					<StatusIndicator status={project.latestSnapshot?.status ?? null} />
 				</div>
 				<div className="flex items-center gap-1">
 					<Button
-						disabled={isSnapshotting || isBuilding}
-						onClick={() => buildSnapshot({ repositoryId: repository._id })}
-						size="sm"
-						variant="outline"
-					>
-						<Hammer className="size-4" />
-						Build Snapshot
-					</Button>
-					<Button
 						disabled={isDeleting}
-						onClick={() => removeRepository({ id: repository._id })}
+						onClick={() => removeProject({ id: project._id })}
 						size="sm"
 						variant="destructive"
 					>
@@ -126,7 +106,7 @@ function RepositoryDetail({ repository }: { repository: Repository }) {
 
 			<div>
 				<div className="flex border-b">
-					{(["snapshots", "secrets"] as Tab[]).map((tab) => (
+					{(["snapshots", "settings"] as Tab[]).map((tab) => (
 						<button
 							className={cn(
 								"px-4 py-2 text-sm transition-colors",
@@ -145,9 +125,9 @@ function RepositoryDetail({ repository }: { repository: Repository }) {
 
 				<div className="mt-4">
 					{activeTab === "snapshots" && (
-						<SnapshotsTab isError={isError} repositoryId={repository._id} />
+						<SnapshotsTab isError={isError} projectId={project._id} />
 					)}
-					{activeTab === "secrets" && <SecretsTab repository={repository} />}
+					{activeTab === "settings" && <SettingsTab project={project} />}
 				</div>
 			</div>
 		</div>
@@ -190,26 +170,22 @@ function StatusIndicator({
 }
 
 function SnapshotsTab({
-	repositoryId,
+	projectId,
 	isError,
 }: {
-	repositoryId: Id<"repositories">;
+	projectId: Id<"projects">;
 	isError: boolean;
 }) {
 	return (
 		<div className="flex flex-col gap-4">
-			{isError && <LatestSnapshotError repositoryId={repositoryId} />}
-			<SnapshotHistory repositoryId={repositoryId} />
+			{isError && <LatestSnapshotError projectId={projectId} />}
+			<SnapshotHistory projectId={projectId} />
 		</div>
 	);
 }
 
-function LatestSnapshotError({
-	repositoryId,
-}: {
-	repositoryId: Id<"repositories">;
-}) {
-	const latestSnapshot = useQuery(api.snapshot.getLatest, { repositoryId });
+function LatestSnapshotError({ projectId }: { projectId: Id<"projects"> }) {
+	const latestSnapshot = useQuery(api.snapshot.getLatest, { projectId });
 
 	if (!latestSnapshot?.error) {
 		return null;
@@ -249,12 +225,8 @@ function formatTime(timestamp: number): string {
 	});
 }
 
-function SnapshotHistory({
-	repositoryId,
-}: {
-	repositoryId: Id<"repositories">;
-}) {
-	const snapshots = useQuery(api.snapshot.listByRepository, { repositoryId });
+function SnapshotHistory({ projectId }: { projectId: Id<"projects"> }) {
+	const snapshots = useQuery(api.snapshot.listByProject, { projectId });
 
 	if (snapshots === undefined) {
 		return <Skeleton className="h-32 w-full" />;
@@ -277,7 +249,7 @@ function SnapshotHistory({
 }
 
 type SnapshotSummary = NonNullable<
-	ReturnType<typeof useQuery<typeof api.snapshot.listByRepository>>
+	ReturnType<typeof useQuery<typeof api.snapshot.listByProject>>
 >[number];
 
 function SnapshotRow({ snapshot }: { snapshot: SnapshotSummary }) {
@@ -313,22 +285,22 @@ function SnapshotRow({ snapshot }: { snapshot: SnapshotSummary }) {
 	);
 }
 
-function SecretsTab({ repository }: { repository: Repository }) {
-	const updateRepository = useMutation(api.repositories.update);
+function SettingsTab({ project }: { project: Project }) {
+	const updateProject = useMutation(api.projects.update);
 
 	const form = useForm({
 		defaultValues: {
-			secrets: secretsFromRecord(repository.secrets),
+			secrets: secretsFromRecord(project.secrets),
 		},
 		validators: {
-			onSubmit: repositoryConfigSchema,
+			onSubmit: projectConfigSchema,
 		},
 		onSubmit: async ({ value }) => {
-			await updateRepository({
-				id: repository._id,
+			await updateProject({
+				id: project._id,
 				secrets: buildSecrets(value.secrets),
 			});
-			toast.success("Secrets saved");
+			toast.success("Settings saved");
 		},
 	});
 
@@ -340,7 +312,7 @@ function SecretsTab({ repository }: { repository: Repository }) {
 				form.handleSubmit();
 			}}
 		>
-			<RepositoryConfigForm form={form} />
+			<ProjectConfigForm form={form} />
 			<div className="flex justify-end">
 				<form.Subscribe selector={(state) => state.isSubmitting}>
 					{(isSubmitting) => (

@@ -17,12 +17,13 @@ export const spaceStatusValidator = v.union(
 
 export default defineSchema(
 	{
-		repositories: defineTable({
+		projects: defineTable({
 			userId: v.string(),
-			githubRepoId: v.number(),
-			owner: v.string(),
 			name: v.string(),
-			defaultBranch: v.string(),
+			githubRepoId: v.optional(v.number()),
+			githubOwner: v.optional(v.string()),
+			githubName: v.optional(v.string()),
+			defaultBranch: v.optional(v.string()),
 			secrets: v.optional(v.record(v.string(), v.string())),
 			defaultSnapshotId: v.optional(v.id("snapshots")),
 			createdAt: v.number(),
@@ -34,7 +35,7 @@ export default defineSchema(
 
 		spaces: defineTable({
 			slug: v.string(),
-			repositoryId: v.id("repositories"),
+			projectId: v.id("projects"),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),
 			name: v.string(),
@@ -44,12 +45,12 @@ export default defineSchema(
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
-			.index("by_repository", ["repositoryId"])
+			.index("by_project", ["projectId"])
 			.index("by_slug", ["slug"])
 			.index("by_sandboxId", ["sandboxId"]),
 
 		snapshots: defineTable({
-			repositoryId: v.id("repositories"),
+			projectId: v.id("projects"),
 			label: v.string(),
 			status: snapshotStatusValidator,
 			error: v.optional(v.string()),
@@ -57,10 +58,10 @@ export default defineSchema(
 			startedAt: v.number(),
 			completedAt: v.optional(v.number()),
 		})
-			.index("by_repository", ["repositoryId"])
-			.index("by_repository_and_startedAt", ["repositoryId", "startedAt"])
-			.index("by_repository_status_startedAt", [
-				"repositoryId",
+			.index("by_project", ["projectId"])
+			.index("by_project_and_startedAt", ["projectId", "startedAt"])
+			.index("by_project_status_startedAt", [
+				"projectId",
 				"status",
 				"startedAt",
 			]),

@@ -21,7 +21,7 @@ import type * as lib_nango from "../lib/nango.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
-import type * as repositories from "../repositories.js";
+import type * as projects from "../projects.js";
 import type * as sandboxActions from "../sandboxActions.js";
 import type * as secretActions from "../secretActions.js";
 import type * as secrets from "../secrets.js";
@@ -50,7 +50,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sandbox": typeof lib_sandbox;
   "lib/validSecrets": typeof lib_validSecrets;
   nangoWebhook: typeof nangoWebhook;
-  repositories: typeof repositories;
+  projects: typeof projects;
   sandboxActions: typeof sandboxActions;
   secretActions: typeof secretActions;
   secrets: typeof secrets;
