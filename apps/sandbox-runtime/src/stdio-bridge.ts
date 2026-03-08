@@ -12,7 +12,6 @@ import {
 	type AcpAgentRequestMethod,
 	type AcpAgentRequestParams,
 	type AcpAgentRequestResult,
-	acpClientRequestEnvelopeSchema,
 	getAcpAgentRequestMethodSchemas,
 } from "./schemas";
 
@@ -116,7 +115,11 @@ function processStdoutLine(bridge: StdioBridge, rawLine: string): void {
 			});
 			return;
 		}
-		routeStdoutEnvelope(bridge, envelopeResult.data);
+
+		// The generic ACP SDK response schemas are lossy for method-specific
+		// `result` payloads like `session/new`, so validate shape but preserve
+		// the original parsed envelope for downstream method-specific parsing.
+		routeStdoutEnvelope(bridge, parsedJson as AcpEnvelope);
 	} catch {
 		log("warn", "Failed to parse agent stdout line", {
 			line: line.slice(0, 200),
@@ -255,12 +258,12 @@ export async function stdioRequest<M extends string>(
 	const parsedParams = methodSchemas
 		? methodSchemas.params.parse(params)
 		: params;
-	const envelope = acpClientRequestEnvelopeSchema.parse({
+	const envelope = {
 		jsonrpc: "2.0",
 		id,
 		method,
 		params: parsedParams,
-	});
+	} satisfies AcpEnvelope;
 
 	const responsePromise = new Promise<AcpEnvelope>((resolve, reject) => {
 		const timer = setTimeout(() => {

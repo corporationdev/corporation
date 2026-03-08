@@ -142,10 +142,9 @@ async function buildAndSync() {
 		}
 
 		// Stop running process
-		await sandbox.commands.run(
-			"tmux kill-session -t sandbox-agent 2>/dev/null || true",
-			{ timeoutMs: 5000 }
-		);
+		await sandbox.commands.run(" fuser -k 5799/tcp 2>/dev/null; true", {
+			timeoutMs: 5000,
+		});
 
 		// Upload bundle + setup script
 		const [bundleData, setupData] = await Promise.all([

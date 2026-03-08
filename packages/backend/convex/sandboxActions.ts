@@ -6,11 +6,7 @@ import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import {
-	decryptUserAiEnvs,
-	SANDBOX_AGENT_PORT,
-	SANDBOX_AGENT_SESSION_NAME,
-} from "./lib/sandbox";
+import { decryptUserAiEnvs, SANDBOX_AGENT_PORT } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -25,15 +21,6 @@ const AGENT_POLL_INTERVAL_MS = 500;
 const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
 
 async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
-	// Kill any stale agent from the snapshot
-	try {
-		await sandbox.commands.run(
-			`tmux kill-session -t ${SANDBOX_AGENT_SESSION_NAME} 2>/dev/null; fuser -k ${SANDBOX_AGENT_PORT}/tcp 2>/dev/null; true`
-		);
-	} catch {
-		// No existing session/process
-	}
-
 	// Start agent as a background process
 	await sandbox.commands.run(
 		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`

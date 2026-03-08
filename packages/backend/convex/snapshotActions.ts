@@ -231,8 +231,6 @@ export const buildSnapshot = internalAction({
 					onStderr: appendLog,
 				});
 
-				// Snapshot is repo + deps only; sandbox-agent is booted at sandbox creation time
-
 				// Create snapshot and cleanup
 				try {
 					reporter.appendLog("Creating snapshot...\n");
