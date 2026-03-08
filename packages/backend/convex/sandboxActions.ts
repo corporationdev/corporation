@@ -34,7 +34,7 @@ async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
 		// No existing session/process
 	}
 
-	// Start agent as a background process (no tmux)
+	// Start agent as a background process
 	await sandbox.commands.run(
 		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`
 	);
@@ -61,12 +61,12 @@ async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
 	throw new Error("sandbox-agent did not become ready in time");
 }
 
-async function assertAgentHealthy(sandbox: Sandbox): Promise<string> {
+async function ensureAgentReadyAndGetUrl(sandbox: Sandbox): Promise<string> {
 	try {
 		await sandbox.commands.run(`curl -sf --max-time 2 ${AGENT_HEALTH_URL}`);
 	} catch (error) {
 		if (error instanceof CommandExitError) {
-			throw new Error("sandbox-agent is not healthy");
+			return await bootAgentAndGetUrl(sandbox);
 		}
 		throw error;
 	}
@@ -99,10 +99,10 @@ async function resolveSandbox(
 	ctx: ActionCtx,
 	space: Space,
 	aiEnvs: Record<string, string>
-): Promise<{ sandbox: Sandbox; isNew: boolean }> {
+): Promise<Sandbox> {
 	if (space.sandboxId) {
 		try {
-			return { sandbox: await Sandbox.connect(space.sandboxId), isNew: false };
+			return await Sandbox.connect(space.sandboxId);
 		} catch (error) {
 			console.warn(
 				"Failed to connect existing sandbox; provisioning new sandbox",
@@ -128,10 +128,7 @@ async function resolveSandbox(
 		status: "creating" as const,
 	});
 
-	return {
-		sandbox: await createSandbox(externalSnapshotId, aiEnvs),
-		isNew: true,
-	};
+	return await createSandbox(externalSnapshotId, aiEnvs);
 }
 
 export const archiveSandbox = internalAction({
@@ -171,11 +168,8 @@ export const provisionForSpace = internalAction({
 			});
 
 			const aiEnvs = await getUserAiEnvs(ctx, space.repository.userId);
-			const { sandbox, isNew } = await resolveSandbox(ctx, space, aiEnvs);
-
-			const agentUrl = isNew
-				? await bootAgentAndGetUrl(sandbox)
-				: await assertAgentHealthy(sandbox);
+			const sandbox = await resolveSandbox(ctx, space, aiEnvs);
+			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
@@ -216,7 +210,7 @@ export const provisionForWarmSandbox = internalAction({
 			const aiEnvs = await getUserAiEnvs(ctx, warmRecord.repository.userId);
 			sandbox = await createSandbox(externalSnapshotId, aiEnvs);
 
-			const agentUrl = await bootAgentAndGetUrl(sandbox);
+			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
 
 			const result = await ctx.runMutation(internal.warmSandbox.markReady, {
 				id: args.warmSandboxId,
