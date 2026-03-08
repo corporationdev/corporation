@@ -2,7 +2,7 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Github, Loader2, Plus } from "lucide-react";
+import { Github, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,41 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 export const Route = createFileRoute("/_authenticated/settings/projects/")({
 	component: ProjectsPage,
 });
-
-function SnapshotStatusIndicator({
-	status,
-}: {
-	status: "building" | "ready" | "error" | null;
-}) {
-	if (!status) {
-		return null;
-	}
-
-	if (status === "building") {
-		return (
-			<span className="flex items-center gap-1 text-muted-foreground text-xs">
-				<Loader2 className="size-3 animate-spin" />
-				Building
-			</span>
-		);
-	}
-
-	if (status === "ready") {
-		return (
-			<span className="flex items-center gap-1 text-emerald-600 text-xs">
-				<span className="size-1.5 rounded-full bg-emerald-500" />
-				Ready
-			</span>
-		);
-	}
-
-	return (
-		<span className="flex items-center gap-1 text-destructive text-xs">
-			<span className="size-1.5 rounded-full bg-destructive" />
-			Error
-		</span>
-	);
-}
 
 function ProjectCard({
 	project,
@@ -54,8 +19,6 @@ function ProjectCard({
 		name: string;
 		githubOwner?: string;
 		githubName?: string;
-		latestSnapshot: { status: "building" | "ready" | "error" } | null;
-		defaultSnapshot: { label: string } | null;
 	};
 }) {
 	const isGitHubBacked = !!(project.githubOwner && project.githubName);
@@ -68,20 +31,14 @@ function ProjectCard({
 			<Card size="sm">
 				<CardHeader>
 					<div className="flex items-center gap-3">
-						<CardTitle className="hover:underline">{project.name}</CardTitle>
-						{isGitHubBacked && (
+						<CardTitle>{project.name}</CardTitle>
+						{isGitHubBacked ? (
 							<span className="flex items-center gap-1 text-muted-foreground text-xs">
 								<Github className="size-3" />
 								{project.githubOwner}/{project.githubName}
 							</span>
-						)}
-						<SnapshotStatusIndicator
-							status={project.latestSnapshot?.status ?? null}
-						/>
-						{project.defaultSnapshot && (
-							<span className="text-muted-foreground text-xs">
-								{project.defaultSnapshot.label}
-							</span>
+						) : (
+							<span className="text-muted-foreground text-xs">No repo</span>
 						)}
 					</div>
 				</CardHeader>

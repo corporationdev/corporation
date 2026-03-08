@@ -100,6 +100,7 @@ export const update = authedMutation({
 		githubName: v.optional(v.string()),
 		defaultBranch: v.optional(v.string()),
 		secrets: v.optional(v.record(v.string(), v.string())),
+		defaultSnapshotId: v.optional(v.id("snapshots")),
 	},
 	handler: async (ctx, args) => {
 		const project = await ctx.db.get(args.id);

@@ -5,6 +5,7 @@ import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { AlertTriangle, ArrowLeft, Loader2, Trash2 } from "lucide-react";
+
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -89,7 +90,6 @@ function ProjectDetail({ project }: { project: Project }) {
 							{project.githubOwner}/{project.githubName}
 						</p>
 					)}
-					<StatusIndicator status={project.latestSnapshot?.status ?? null} />
 				</div>
 				<div className="flex items-center gap-1">
 					<Button
@@ -131,41 +131,6 @@ function ProjectDetail({ project }: { project: Project }) {
 				</div>
 			</div>
 		</div>
-	);
-}
-
-function StatusIndicator({
-	status,
-}: {
-	status: "building" | "ready" | "error" | null;
-}) {
-	if (!status) {
-		return null;
-	}
-
-	if (status === "building") {
-		return (
-			<span className="mt-1 flex items-center gap-1.5 text-muted-foreground text-sm">
-				<Loader2 className="size-3.5 animate-spin" />
-				Building snapshot...
-			</span>
-		);
-	}
-
-	if (status === "ready") {
-		return (
-			<span className="mt-1 flex items-center gap-1.5 text-emerald-600 text-sm">
-				<span className="size-2 rounded-full bg-emerald-500" />
-				Ready
-			</span>
-		);
-	}
-
-	return (
-		<span className="mt-1 flex items-center gap-1.5 text-destructive text-sm">
-			<span className="size-2 rounded-full bg-destructive" />
-			Error
-		</span>
 	);
 }
 
@@ -238,7 +203,6 @@ function SnapshotHistory({ projectId }: { projectId: Id<"projects"> }) {
 
 	return (
 		<div>
-			<h2 className="mb-3 font-medium text-sm">Build History</h2>
 			<div className="flex flex-col gap-2">
 				{snapshots.map((snapshot) => (
 					<SnapshotRow key={snapshot._id} snapshot={snapshot} />
