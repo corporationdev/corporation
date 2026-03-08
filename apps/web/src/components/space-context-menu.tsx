@@ -2,7 +2,7 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
-import { ArchiveIcon, BoxIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { ArchiveIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FC, type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -71,8 +71,7 @@ export const SpaceContextMenu: FC<{
 				}
 			>
 				{isRenaming ? (
-					<div className="flex h-full min-w-0 flex-1 items-center gap-2 px-3">
-						<BoxIcon className="size-3.5 shrink-0" />
+					<div className="flex h-full min-w-0 flex-1 items-center px-8">
 						<input
 							className="min-w-0 flex-1 truncate bg-transparent text-sm outline-none"
 							onBlur={commitRename}

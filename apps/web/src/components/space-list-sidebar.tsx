@@ -1,9 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { Building, PlusIcon } from "lucide-react";
+import { Building } from "lucide-react";
 import type * as React from "react";
 import { NavUser } from "@/components/nav-user";
 import { SpaceList } from "@/components/space-list";
-import { buttonVariants } from "@/components/ui/button";
 import {
 	Sidebar,
 	SidebarContent,
@@ -12,7 +11,6 @@ import {
 	SidebarRail,
 } from "@/components/ui/sidebar";
 import { useAuthedSession } from "@/hooks/use-authed-session";
-import { cn } from "@/lib/utils";
 
 export function SpaceListSidebar({
 	...props
@@ -31,16 +29,6 @@ export function SpaceListSidebar({
 				</Link>
 			</SidebarHeader>
 			<SidebarContent className="aui-sidebar-content px-2">
-				<Link
-					className={cn(
-						buttonVariants({ variant: "outline" }),
-						"mb-2 h-8 w-full justify-start px-2 text-xs"
-					)}
-					to="/"
-				>
-					<PlusIcon className="size-3.5" />
-					New space
-				</Link>
 				<SpaceList />
 			</SidebarContent>
 			<SidebarRail />

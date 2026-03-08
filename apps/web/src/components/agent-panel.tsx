@@ -70,6 +70,7 @@ export function AgentPanel({
 		ensureSpace({
 			slug: pending.slug,
 			projectId: pending.projectId,
+			snapshotId: pending.snapshotId,
 			firstMessage: pendingMessage?.text,
 		})
 			.catch((error: unknown) => {
