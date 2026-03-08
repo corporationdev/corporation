@@ -76,7 +76,7 @@ async function getUserAiEnvs(
 	ctx: ActionCtx,
 	userId: string
 ): Promise<Record<string, string>> {
-	const encryptedKeys = await ctx.runQuery(internal.apiKeys.getByUser, {
+	const encryptedKeys = await ctx.runQuery(internal.secrets.getByUser, {
 		userId,
 	});
 	return decryptUserAiEnvs(userId, encryptedKeys);

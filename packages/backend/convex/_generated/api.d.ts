@@ -8,8 +8,6 @@
  * @module
  */
 
-import type * as apiKeyActions from "../apiKeyActions.js";
-import type * as apiKeys from "../apiKeys.js";
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
 import type * as functions from "../functions.js";
@@ -24,6 +22,8 @@ import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
 import type * as repositories from "../repositories.js";
 import type * as sandboxActions from "../sandboxActions.js";
+import type * as secretActions from "../secretActions.js";
+import type * as secrets from "../secrets.js";
 import type * as snapshot from "../snapshot.js";
 import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaceBranchActions from "../spaceBranchActions.js";
@@ -37,8 +37,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  apiKeyActions: typeof apiKeyActions;
-  apiKeys: typeof apiKeys;
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
   functions: typeof functions;
@@ -53,6 +51,8 @@ declare const fullApi: ApiFromModules<{
   nangoWebhook: typeof nangoWebhook;
   repositories: typeof repositories;
   sandboxActions: typeof sandboxActions;
+  secretActions: typeof secretActions;
+  secrets: typeof secrets;
   snapshot: typeof snapshot;
   snapshotActions: typeof snapshotActions;
   spaceBranchActions: typeof spaceBranchActions;

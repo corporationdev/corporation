@@ -15,8 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const Route = createFileRoute("/_authenticated/settings/api-keys")({
-	component: ApiKeysPage,
+export const Route = createFileRoute("/_authenticated/settings/secrets")({
+	component: SecretsPage,
 });
 
 const KNOWN_KEYS = [
@@ -29,7 +29,7 @@ function getLabel(name: string): string {
 	return known?.label ?? name;
 }
 
-function ApiKeyCard({
+function SecretCard({
 	name,
 	hint,
 	onRemove,
@@ -62,10 +62,10 @@ function ApiKeyCard({
 	);
 }
 
-function ApiKeysPage() {
-	const keys = useQuery(api.apiKeys.list);
-	const removeKey = useMutation(api.apiKeys.remove);
-	const upsertKey = useMutation(api.apiKeys.upsert);
+function SecretsPage() {
+	const keys = useQuery(api.secrets.list);
+	const removeKey = useMutation(api.secrets.remove);
+	const upsertKey = useMutation(api.secrets.upsert);
 	const [removingName, setRemovingName] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 
@@ -93,7 +93,7 @@ function ApiKeysPage() {
 
 	return (
 		<div className="p-6">
-			<h1 className="font-semibold text-lg">API Keys</h1>
+			<h1 className="font-semibold text-lg">Secrets</h1>
 			<p className="mt-1 mb-4 text-muted-foreground text-sm">
 				Add your API keys to use AI agents in your sandboxes.
 			</p>
@@ -106,7 +106,7 @@ function ApiKeysPage() {
 			) : keys.length > 0 ? (
 				<div className="flex flex-col gap-3">
 					{keys.map((key) => (
-						<ApiKeyCard
+						<SecretCard
 							hint={key.hint}
 							isRemoving={removingName === key.name}
 							key={key.name}
@@ -117,12 +117,12 @@ function ApiKeysPage() {
 				</div>
 			) : (
 				<p className="mb-4 text-muted-foreground text-sm">
-					No API keys configured yet.
+					No secrets configured yet.
 				</p>
 			)}
 
 			<div className="mt-6 max-w-md space-y-4">
-				<h2 className="font-medium text-sm">Add API Key</h2>
+				<h2 className="font-medium text-sm">Add Secret</h2>
 
 				<div className="space-y-2">
 					<Label htmlFor="key-name">Provider</Label>

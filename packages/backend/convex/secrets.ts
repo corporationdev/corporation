@@ -7,7 +7,7 @@ export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
 		const keys = await ctx.db
-			.query("apiKeys")
+			.query("secrets")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
@@ -25,7 +25,7 @@ export const upsert = authedMutation({
 		apiKey: v.string(),
 	},
 	handler: async (ctx, args) => {
-		await ctx.scheduler.runAfter(0, internal.apiKeyActions.encryptAndStore, {
+		await ctx.scheduler.runAfter(0, internal.secretActions.encryptAndStore, {
 			userId: ctx.userId,
 			name: args.name,
 			apiKey: args.apiKey,
@@ -43,7 +43,7 @@ export const upsertInternal = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
-			.query("apiKeys")
+			.query("secrets")
 			.withIndex("by_user_and_name", (q) =>
 				q.eq("userId", args.userId).eq("name", args.name)
 			)
@@ -59,7 +59,7 @@ export const upsertInternal = internalMutation({
 				updatedAt: now,
 			});
 		} else {
-			await ctx.db.insert("apiKeys", {
+			await ctx.db.insert("secrets", {
 				userId: args.userId,
 				name: args.name,
 				encryptedKey: args.encryptedKey,
@@ -78,14 +78,14 @@ export const remove = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
-			.query("apiKeys")
+			.query("secrets")
 			.withIndex("by_user_and_name", (q) =>
 				q.eq("userId", ctx.userId).eq("name", args.name)
 			)
 			.unique();
 
 		if (!existing) {
-			throw new ConvexError("API key not found");
+			throw new ConvexError("Secret not found");
 		}
 
 		await ctx.db.delete(existing._id);
@@ -96,7 +96,7 @@ export const getByUser = internalQuery({
 	args: { userId: v.string() },
 	handler: async (ctx, args) => {
 		return await ctx.db
-			.query("apiKeys")
+			.query("secrets")
 			.withIndex("by_user", (q) => q.eq("userId", args.userId))
 			.collect();
 	},

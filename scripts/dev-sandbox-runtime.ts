@@ -57,18 +57,6 @@ const sandboxRuntimeDir = [
 	resolve(repoRoot, "packages/sandbox-runtime"),
 ].find((path) => existsSync(path));
 
-if (!sandboxRuntimeDir) {
-	console.error(
-		[
-			"Missing sandbox-runtime workspace.",
-			"Looked in:",
-			`  - ${resolve(repoRoot, "apps/sandbox-runtime")}`,
-			`  - ${resolve(repoRoot, "packages/sandbox-runtime")}`,
-		].join("\n")
-	);
-	process.exit(1);
-}
-
 const bundlePath = resolve(sandboxRuntimeDir, "dist/sandbox-runtime.js");
 const setupPath = resolve(sandboxRuntimeDir, "setup.sh");
 const remoteBundlePath = "/usr/local/bin/sandbox-runtime.js";

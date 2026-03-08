@@ -8,7 +8,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 const navItems = [
 	{ label: "Repositories", href: "/settings/repositories", icon: GitFork },
 	{ label: "Connections", href: "/settings/connections", icon: Cable },
-	{ label: "API Keys", href: "/settings/api-keys", icon: KeyRound },
+	{ label: "Secrets", href: "/settings/secrets", icon: KeyRound },
 ];
 
 function SettingsLayout() {

@@ -87,7 +87,7 @@ export default defineSchema(
 		})
 			.index("by_user", ["userId"])
 			.index("by_user_and_repository", ["userId", "repositoryId"]),
-		apiKeys: defineTable({
+		secrets: defineTable({
 			userId: v.string(),
 			name: v.string(),
 			encryptedKey: v.string(),

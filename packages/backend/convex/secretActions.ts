@@ -22,7 +22,7 @@ export const encryptAndStore = internalAction({
 		const hint =
 			args.apiKey.length <= 4 ? "****" : `...${args.apiKey.slice(-4)}`;
 
-		await ctx.runMutation(internal.apiKeys.upsertInternal, {
+		await ctx.runMutation(internal.secrets.upsertInternal, {
 			userId: args.userId,
 			name: args.name,
 			encryptedKey: ciphertext,

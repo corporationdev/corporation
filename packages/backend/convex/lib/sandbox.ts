@@ -27,7 +27,7 @@ export async function decryptUserAiEnvs(
 ): Promise<Record<string, string>> {
 	if (encryptedKeys.length === 0) {
 		throw new Error(
-			"No API keys configured. Please add your API keys in Settings."
+			"No secrets configured. Please add your secrets in Settings."
 		);
 	}
 
