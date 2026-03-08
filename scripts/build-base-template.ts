@@ -58,6 +58,7 @@ const template = Template({ fileContextPath: repoRoot })
 	.aptInstall([
 		"ca-certificates",
 		"git",
+		"ripgrep",
 		"zip",
 		"unzip",
 		"zsh",

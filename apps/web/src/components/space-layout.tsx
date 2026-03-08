@@ -46,7 +46,7 @@ export function SpaceLayout() {
 			</ResizablePanel>
 			<ResizableHandle />
 			<ResizablePanel>
-				<WorkspacePanel actor={actor} spaceSlug={spaceSlug} />
+				<WorkspacePanel actor={actor} space={space} spaceSlug={spaceSlug} />
 			</ResizablePanel>
 		</ResizablePanelGroup>
 	);
