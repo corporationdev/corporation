@@ -6,7 +6,9 @@ import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { decryptUserAiEnvs, SANDBOX_AGENT_PORT } from "./lib/sandbox";
+import { CODEX_AUTH_SECRET_NAME } from "./lib/codexAuth";
+import { runRootCommand, SANDBOX_AGENT_PORT } from "./lib/sandbox";
+import { ENV_SECRET_NAMES } from "./lib/validSecrets";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -65,7 +67,10 @@ async function createSandbox(
 	aiEnvs: Record<string, string>
 ): Promise<Sandbox> {
 	return await Sandbox.betaCreate(snapshotId, {
-		envs: aiEnvs,
+		envs: {
+			...aiEnvs,
+			CODEX_HOME: "/root/.codex",
+		},
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
@@ -79,7 +84,72 @@ async function getUserAiEnvs(
 	const encryptedKeys = await ctx.runQuery(internal.secrets.getByUser, {
 		userId,
 	});
-	return decryptUserAiEnvs(userId, encryptedKeys);
+	const decrypted = await ctx.runAction(
+		internal.secretActions.decryptSecretValues,
+		{
+			userId,
+			secrets: encryptedKeys.filter((secret) =>
+				ENV_SECRET_NAMES.has(secret.name)
+			),
+		}
+	);
+
+	return Object.fromEntries(
+		decrypted
+			.filter(
+				(entry): entry is { name: string; value: string } =>
+					typeof entry.name === "string"
+			)
+			.map((entry) => [entry.name, entry.value])
+	);
+}
+
+async function getUserCodexAuthJson(
+	ctx: ActionCtx,
+	userId: string
+): Promise<string | null> {
+	const secret = await ctx.runQuery(internal.secrets.getByUserAndName, {
+		userId,
+		name: CODEX_AUTH_SECRET_NAME,
+	});
+
+	if (!secret) {
+		return null;
+	}
+
+	const [decrypted] = await ctx.runAction(
+		internal.secretActions.decryptSecretValues,
+		{
+			userId,
+			secrets: [
+				{
+					name: secret.name,
+					encryptedKey: secret.encryptedKey,
+					iv: secret.iv,
+				},
+			],
+		}
+	);
+	return decrypted?.value ?? null;
+}
+
+async function syncCodexAuthToAgent(args: {
+	sandbox: Sandbox;
+	authJson: string | null;
+}) {
+	await runRootCommand(args.sandbox, "mkdir -p /root/.codex");
+	if (args.authJson === null) {
+		await runRootCommand(args.sandbox, "rm -f /root/.codex/auth.json");
+		return;
+	}
+
+	JSON.parse(args.authJson);
+	await args.sandbox.files.writeFiles([
+		{
+			path: "/root/.codex/auth.json",
+			data: args.authJson,
+		},
+	]);
 }
 
 async function resolveSandbox(
@@ -155,8 +225,16 @@ export const provisionForSpace = internalAction({
 			});
 
 			const aiEnvs = await getUserAiEnvs(ctx, space.repository.userId);
+			const codexAuthJson = await getUserCodexAuthJson(
+				ctx,
+				space.repository.userId
+			);
 			const sandbox = await resolveSandbox(ctx, space, aiEnvs);
 			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
+			await syncCodexAuthToAgent({
+				sandbox,
+				authJson: codexAuthJson,
+			});
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
@@ -195,9 +273,17 @@ export const provisionForWarmSandbox = internalAction({
 			}
 
 			const aiEnvs = await getUserAiEnvs(ctx, warmRecord.repository.userId);
+			const codexAuthJson = await getUserCodexAuthJson(
+				ctx,
+				warmRecord.repository.userId
+			);
 			sandbox = await createSandbox(externalSnapshotId, aiEnvs);
 
 			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
+			await syncCodexAuthToAgent({
+				sandbox,
+				authJson: codexAuthJson,
+			});
 
 			const result = await ctx.runMutation(internal.warmSandbox.markReady, {
 				id: args.warmSandboxId,

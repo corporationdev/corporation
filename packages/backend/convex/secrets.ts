@@ -12,11 +12,13 @@ export const list = authedQuery({
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		return keys.map((key) => ({
-			name: key.name,
-			hint: key.hint,
-			createdAt: key.createdAt,
-		}));
+		return keys
+			.filter((key) => VALID_SECRET_NAMES.has(key.name))
+			.map((key) => ({
+				name: key.name,
+				hint: key.hint,
+				createdAt: key.createdAt,
+			}));
 	},
 });
 
@@ -99,6 +101,15 @@ export const remove = authedMutation({
 	},
 });
 
+export const removeInternal = internalMutation({
+	args: {
+		id: v.id("secrets"),
+	},
+	handler: async (ctx, args) => {
+		await ctx.db.delete(args.id);
+	},
+});
+
 export const getByUser = internalQuery({
 	args: { userId: v.string() },
 	handler: async (ctx, args) => {
@@ -106,5 +117,21 @@ export const getByUser = internalQuery({
 			.query("secrets")
 			.withIndex("by_user", (q) => q.eq("userId", args.userId))
 			.collect();
+	},
+});
+
+export const getByUserAndName = internalQuery({
+	args: { userId: v.string(), name: v.string() },
+	handler: async (ctx, args) => {
+		if (!VALID_SECRET_NAMES.has(args.name)) {
+			return null;
+		}
+
+		return await ctx.db
+			.query("secrets")
+			.withIndex("by_user_and_name", (q) =>
+				q.eq("userId", args.userId).eq("name", args.name)
+			)
+			.unique();
 	},
 });

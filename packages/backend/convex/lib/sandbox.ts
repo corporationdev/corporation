@@ -1,7 +1,6 @@
 "use node";
 
 import type { Sandbox } from "e2b";
-import { decrypt, deriveUserKey } from "./crypto";
 import { quoteShellArg } from "./git";
 
 export const SANDBOX_AGENT_PORT = 5799;
@@ -15,34 +14,6 @@ const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 export const DEV_SERVER_SESSION_NAME = "devserver";
 export const SANDBOX_AGENT_SESSION_NAME = "sandbox-agent";
-type EncryptedKey = {
-	name: string;
-	encryptedKey: string;
-	iv: string;
-};
-
-export async function decryptUserAiEnvs(
-	userId: string,
-	encryptedKeys: EncryptedKey[]
-): Promise<Record<string, string>> {
-	if (encryptedKeys.length === 0) {
-		throw new Error(
-			"No secrets configured. Please add your secrets in Settings."
-		);
-	}
-
-	const masterKey = process.env.API_KEY_MASTER_KEY;
-	if (!masterKey) {
-		throw new Error("Missing API_KEY_MASTER_KEY env var");
-	}
-
-	const userKey = await deriveUserKey(masterKey, userId);
-	const result: Record<string, string> = {};
-	for (const k of encryptedKeys) {
-		result[k.name] = await decrypt(userKey, k.encryptedKey, k.iv);
-	}
-	return result;
-}
 
 type EnvVar = { key: string; value: string };
 type CommandExitErrorLike = {
