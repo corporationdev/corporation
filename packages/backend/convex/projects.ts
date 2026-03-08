@@ -34,7 +34,15 @@ export const get = authedQuery({
 		}
 		requireOwnedProject(ctx.userId, project);
 
-		return project;
+		const snapshots = await ctx.db
+			.query("snapshots")
+			.withIndex("by_project_and_startedAt", (q) =>
+				q.eq("projectId", project._id)
+			)
+			.order("desc")
+			.collect();
+
+		return { ...project, snapshots };
 	},
 });
 

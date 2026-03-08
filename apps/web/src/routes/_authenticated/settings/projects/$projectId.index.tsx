@@ -5,7 +5,6 @@ import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
-
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -15,7 +14,7 @@ import {
 	secretsFromRecord,
 } from "@/components/project-config-form";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card, CardAction, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import { cn } from "@/lib/utils";
@@ -122,20 +121,10 @@ function ProjectDetail({ project }: { project: Project }) {
 				</div>
 
 				<div className="mt-4">
-					{activeTab === "snapshots" && (
-						<SnapshotsTab projectId={project._id} />
-					)}
+					{activeTab === "snapshots" && <SnapshotList project={project} />}
 					{activeTab === "settings" && <SettingsTab project={project} />}
 				</div>
 			</div>
-		</div>
-	);
-}
-
-function SnapshotsTab({ projectId }: { projectId: Id<"projects"> }) {
-	return (
-		<div className="flex flex-col gap-4">
-			<SnapshotHistory projectId={projectId} />
 		</div>
 	);
 }
@@ -164,62 +153,66 @@ function formatTime(timestamp: number): string {
 	});
 }
 
-function SnapshotHistory({ projectId }: { projectId: Id<"projects"> }) {
-	const snapshots = useQuery(api.snapshot.listByProject, { projectId });
-
-	if (snapshots === undefined) {
-		return <Skeleton className="h-32 w-full" />;
-	}
-
-	if (snapshots.length === 0) {
-		return null;
-	}
+function SnapshotList({ project }: { project: Project }) {
+	const updateProject = useMutation(api.projects.update);
 
 	return (
-		<div>
-			<div className="flex flex-col gap-2">
-				{snapshots.map((snapshot) => (
-					<SnapshotRow key={snapshot._id} snapshot={snapshot} />
-				))}
-			</div>
+		<div className="flex flex-col gap-2">
+			{project.snapshots.map((snapshot) => {
+				const isDefault = snapshot._id === project.defaultSnapshotId;
+				const statusDot =
+					snapshot.status === "ready" ? (
+						<span className="size-1.5 rounded-full bg-emerald-500" />
+					) : snapshot.status === "error" ? (
+						<span className="size-1.5 rounded-full bg-destructive" />
+					) : (
+						<Loader2 className="size-3 animate-spin text-muted-foreground" />
+					);
+
+				return (
+					<Card key={snapshot._id} size="sm">
+						<CardHeader className="py-2">
+							<div className="flex items-center gap-3 text-sm">
+								{statusDot}
+								<span className="font-medium">{snapshot.label}</span>
+								<span className="text-muted-foreground">
+									{formatTime(snapshot.startedAt)}
+								</span>
+								<span className="text-muted-foreground">
+									{formatDuration(snapshot.startedAt, snapshot.completedAt)}
+								</span>
+								{snapshot.error && (
+									<span className="truncate text-destructive text-xs">
+										{snapshot.error}
+									</span>
+								)}
+							</div>
+							<CardAction>
+								{isDefault ? (
+									<span className="rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground text-xs">
+										Default
+									</span>
+								) : snapshot.status === "ready" ? (
+									<Button
+										onClick={() =>
+											updateProject({
+												id: project._id,
+												defaultSnapshotId: snapshot._id,
+											})
+										}
+										size="sm"
+										type="button"
+										variant="outline"
+									>
+										Make Default
+									</Button>
+								) : null}
+							</CardAction>
+						</CardHeader>
+					</Card>
+				);
+			})}
 		</div>
-	);
-}
-
-type SnapshotSummary = NonNullable<
-	ReturnType<typeof useQuery<typeof api.snapshot.listByProject>>
->[number];
-
-function SnapshotRow({ snapshot }: { snapshot: SnapshotSummary }) {
-	const statusDot =
-		snapshot.status === "ready" ? (
-			<span className="size-1.5 rounded-full bg-emerald-500" />
-		) : snapshot.status === "error" ? (
-			<span className="size-1.5 rounded-full bg-destructive" />
-		) : (
-			<Loader2 className="size-3 animate-spin text-muted-foreground" />
-		);
-
-	return (
-		<Card size="sm">
-			<CardHeader className="py-2">
-				<div className="flex items-center gap-3 text-sm">
-					{statusDot}
-					<span className="font-medium">{snapshot.label}</span>
-					<span className="text-muted-foreground">
-						{formatTime(snapshot.startedAt)}
-					</span>
-					<span className="text-muted-foreground">
-						{formatDuration(snapshot.startedAt, snapshot.completedAt)}
-					</span>
-					{snapshot.error && (
-						<span className="truncate text-destructive text-xs">
-							{snapshot.error}
-						</span>
-					)}
-				</div>
-			</CardHeader>
-		</Card>
 	);
 }
 
