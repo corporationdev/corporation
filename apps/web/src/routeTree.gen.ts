@@ -17,6 +17,7 @@ import { Route as PublicLoginRouteImport } from './routes/_public/login'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSpaceSpaceSlugRouteImport } from './routes/_authenticated/space_.$spaceSlug'
 import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_authenticated/settings/connections'
+import { Route as AuthenticatedSettingsApiKeysRouteImport } from './routes/_authenticated/settings/api-keys'
 import { Route as AuthenticatedSettingsRepositoriesIndexRouteImport } from './routes/_authenticated/settings/repositories/index'
 import { Route as AuthenticatedSettingsRepositoriesConnectRouteImport } from './routes/_authenticated/settings/repositories/connect'
 import { Route as AuthenticatedSettingsRepositoriesRepositoryIdIndexRouteImport } from './routes/_authenticated/settings/repositories/$repositoryId.index'
@@ -62,6 +63,12 @@ const AuthenticatedSettingsConnectionsRoute =
     path: '/connections',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsApiKeysRoute =
+  AuthenticatedSettingsApiKeysRouteImport.update({
+    id: '/api-keys',
+    path: '/api-keys',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsRepositoriesIndexRoute =
   AuthenticatedSettingsRepositoriesIndexRouteImport.update({
     id: '/repositories/',
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
+  '/settings/api-keys': typeof AuthenticatedSettingsApiKeysRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
@@ -104,6 +112,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
+  '/settings/api-keys': typeof AuthenticatedSettingsApiKeysRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
@@ -119,6 +128,7 @@ export interface FileRoutesById {
   '/_public/login': typeof PublicLoginRoute
   '/_public/signup': typeof PublicSignupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/settings/api-keys': typeof AuthenticatedSettingsApiKeysRoute
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
   '/_authenticated/space_/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/_authenticated/settings/repositories/connect': typeof AuthenticatedSettingsRepositoriesConnectRoute
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/signup'
+    | '/settings/api-keys'
     | '/settings/connections'
     | '/space/$spaceSlug'
     | '/settings/repositories/connect'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/login'
     | '/signup'
+    | '/settings/api-keys'
     | '/settings/connections'
     | '/space/$spaceSlug'
     | '/settings/repositories/connect'
@@ -159,6 +171,7 @@ export interface FileRouteTypes {
     | '/_public/login'
     | '/_public/signup'
     | '/_authenticated/'
+    | '/_authenticated/settings/api-keys'
     | '/_authenticated/settings/connections'
     | '/_authenticated/space_/$spaceSlug'
     | '/_authenticated/settings/repositories/connect'
@@ -230,6 +243,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsConnectionsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/api-keys': {
+      id: '/_authenticated/settings/api-keys'
+      path: '/api-keys'
+      fullPath: '/settings/api-keys'
+      preLoaderRoute: typeof AuthenticatedSettingsApiKeysRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/repositories/': {
       id: '/_authenticated/settings/repositories/'
       path: '/repositories'
@@ -262,6 +282,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedSettingsRouteChildren {
+  AuthenticatedSettingsApiKeysRoute: typeof AuthenticatedSettingsApiKeysRoute
   AuthenticatedSettingsConnectionsRoute: typeof AuthenticatedSettingsConnectionsRoute
   AuthenticatedSettingsRepositoriesConnectRoute: typeof AuthenticatedSettingsRepositoriesConnectRoute
   AuthenticatedSettingsRepositoriesIndexRoute: typeof AuthenticatedSettingsRepositoriesIndexRoute
@@ -270,6 +291,7 @@ interface AuthenticatedSettingsRouteChildren {
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
+  AuthenticatedSettingsApiKeysRoute: AuthenticatedSettingsApiKeysRoute,
   AuthenticatedSettingsConnectionsRoute: AuthenticatedSettingsConnectionsRoute,
   AuthenticatedSettingsRepositoriesConnectRoute:
     AuthenticatedSettingsRepositoriesConnectRoute,

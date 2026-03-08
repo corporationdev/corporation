@@ -1,6 +1,7 @@
 "use node";
 
 import type { Sandbox } from "e2b";
+import { decrypt, deriveUserKey } from "./crypto";
 import { quoteShellArg } from "./git";
 
 export const SANDBOX_AGENT_PORT = 5799;
@@ -14,26 +15,33 @@ const TRAILING_SLASH_RE = /\/$/;
 const COMMAND_OUTPUT_MAX_LENGTH = 2000;
 export const DEV_SERVER_SESSION_NAME = "devserver";
 export const SANDBOX_AGENT_SESSION_NAME = "sandbox-agent";
-const AI_API_KEY_NAMES = [
-	"ANTHROPIC_API_KEY",
-	"OPENAI_API_KEY",
-	"OPENCODE_API_KEY",
-] as const;
+type EncryptedKey = {
+	name: string;
+	encryptedKey: string;
+	iv: string;
+};
 
-export function getAiEnvs(): Record<string, string> {
-	const envs: Record<string, string> = {};
-	for (const key of AI_API_KEY_NAMES) {
-		const value = process.env[key];
-		if (value) {
-			envs[key] = value;
-		}
-	}
-	if (Object.keys(envs).length === 0) {
+export async function decryptUserAiEnvs(
+	userId: string,
+	encryptedKeys: EncryptedKey[]
+): Promise<Record<string, string>> {
+	if (encryptedKeys.length === 0) {
 		throw new Error(
-			`Missing AI API key env vars (need at least one of: ${AI_API_KEY_NAMES.join(", ")})`
+			"No API keys configured. Please add your API keys in Settings."
 		);
 	}
-	return envs;
+
+	const masterKey = process.env.API_KEY_MASTER_KEY;
+	if (!masterKey) {
+		throw new Error("Missing API_KEY_MASTER_KEY env var");
+	}
+
+	const userKey = await deriveUserKey(masterKey, userId);
+	const result: Record<string, string> = {};
+	for (const k of encryptedKeys) {
+		result[k.name] = await decrypt(userKey, k.encryptedKey, k.iv);
+	}
+	return result;
 }
 
 type EnvVar = { key: string; value: string };

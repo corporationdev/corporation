@@ -8,11 +8,14 @@
  * @module
  */
 
+import type * as apiKeyActions from "../apiKeyActions.js";
+import type * as apiKeys from "../apiKeys.js";
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_devPort from "../lib/devPort.js";
 import type * as lib_envByPath from "../lib/envByPath.js";
 import type * as lib_git from "../lib/git.js";
@@ -34,11 +37,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  apiKeyActions: typeof apiKeyActions;
+  apiKeys: typeof apiKeys;
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  "lib/crypto": typeof lib_crypto;
   "lib/devPort": typeof lib_devPort;
   "lib/envByPath": typeof lib_envByPath;
   "lib/git": typeof lib_git;

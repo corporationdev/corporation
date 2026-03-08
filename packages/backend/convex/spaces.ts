@@ -290,6 +290,17 @@ export const ensure = authedMutation({
 		firstMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// Require at least one API key before creating/provisioning a space
+		const hasKeys = await ctx.db
+			.query("apiKeys")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.first();
+		if (!hasKeys) {
+			throw new ConvexError(
+				"Please add your API keys in Settings before creating a space."
+			);
+		}
+
 		const slug = args.slug.trim();
 
 		// Look up by slug — may already exist from a prior call

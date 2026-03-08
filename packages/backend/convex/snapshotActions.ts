@@ -9,13 +9,9 @@ import { type ActionCtx, internalAction } from "./_generated/server";
 import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
-	bootServer,
-	getAiEnvs,
 	getSandboxWorkdir,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
-	SANDBOX_AGENT_PORT,
-	SANDBOX_AGENT_SESSION_NAME,
 	writeEnvFiles,
 } from "./lib/sandbox";
 
@@ -169,7 +165,6 @@ export const buildSnapshot = internalAction({
 				if (!nangoSecretKey) {
 					throw new Error("Missing NANGO_SECRET_KEY env var");
 				}
-				const aiEnvs = getAiEnvs();
 
 				const repository = await ctx.runQuery(
 					internal.repositories.internalGet,
@@ -177,6 +172,7 @@ export const buildSnapshot = internalAction({
 						id: request.repositoryId,
 					}
 				);
+
 				const nango = new Nango({ secretKey: nangoSecretKey });
 				const githubToken = await getGitHubToken(nango, repository.userId);
 
@@ -190,7 +186,6 @@ export const buildSnapshot = internalAction({
 				let sandbox: Sandbox;
 				if (request.type === "setup") {
 					sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
-						envs: aiEnvs,
 						network: { allowPublicTraffic: true },
 					});
 
@@ -206,7 +201,6 @@ export const buildSnapshot = internalAction({
 					);
 				} else {
 					sandbox = await Sandbox.betaCreate(request.oldExternalSnapshotId, {
-						envs: aiEnvs,
 						network: { allowPublicTraffic: true },
 					});
 
@@ -237,25 +231,9 @@ export const buildSnapshot = internalAction({
 					onStderr: appendLog,
 				});
 
-				// Setup-only: boot all servers
-				if (request.type === "setup") {
-					await Promise.all([
-						// bootServer(sandbox, {
-						// 	sessionName: DEV_SERVER_SESSION_NAME,
-						// 	command: repository.devCommand,
-						// 	healthUrl: `http://localhost:${repository.devPort}/`,
-						// 	workdir,
-						// 	appendLog,
-						// }),
-						bootServer(sandbox, {
-							sessionName: SANDBOX_AGENT_SESSION_NAME,
-							command: `bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT}`,
-							healthUrl: `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`,
-						}),
-					]);
-				}
+				// Snapshot is repo + deps only; sandbox-agent is booted at sandbox creation time
 
-				// Shared: create snapshot and cleanup
+				// Create snapshot and cleanup
 				try {
 					reporter.appendLog("Creating snapshot...\n");
 					const snapshot = await sandbox.createSnapshot();

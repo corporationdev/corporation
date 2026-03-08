@@ -11,6 +11,15 @@ export const request = authedMutation({
 		repositoryId: v.id("repositories"),
 	},
 	handler: async (ctx, args) => {
+		// Require at least one API key
+		const hasKeys = await ctx.db
+			.query("apiKeys")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.first();
+		if (!hasKeys) {
+			return;
+		}
+
 		const existing = await ctx.db
 			.query("warmSandboxes")
 			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
