@@ -320,65 +320,20 @@ export const ensure = authedMutation({
 			throw new ConvexError("Repository not found");
 		}
 
-		// Check for a warm sandbox for this repo
-		const warmSandbox = await ctx.db
-			.query("warmSandboxes")
-			.withIndex("by_user_and_repository", (q) =>
-				q.eq("userId", ctx.userId).eq("repositoryId", repositoryId)
-			)
-			.first();
-
 		const now = Date.now();
 
-		let spaceId: Id<"spaces">;
+		const spaceId = await ctx.db.insert("spaces", {
+			slug,
+			repositoryId,
+			name: "New Space",
+			status: "creating",
+			createdAt: now,
+			updatedAt: now,
+		});
 
-		if (
-			warmSandbox?.status === "ready" &&
-			warmSandbox.sandboxId &&
-			warmSandbox.agentUrl
-		) {
-			// Warm sandbox is ready — claim it immediately
-			spaceId = await ctx.db.insert("spaces", {
-				slug,
-				repositoryId,
-				name: "New Space",
-				status: "running",
-				sandboxId: warmSandbox.sandboxId,
-				agentUrl: warmSandbox.agentUrl,
-				createdAt: now,
-				updatedAt: now,
-			});
-			await ctx.db.delete(warmSandbox._id);
-		} else if (warmSandbox?.status === "provisioning") {
-			// Warm sandbox is still provisioning — hand off via spaceId
-			spaceId = await ctx.db.insert("spaces", {
-				slug,
-				repositoryId,
-				name: "New Space",
-				status: "creating",
-				createdAt: now,
-				updatedAt: now,
-			});
-			await ctx.db.patch(warmSandbox._id, { spaceId });
-		} else {
-			// No warm sandbox available — cold start
-			spaceId = await ctx.db.insert("spaces", {
-				slug,
-				repositoryId,
-				name: "New Space",
-				status: "creating",
-				createdAt: now,
-				updatedAt: now,
-			});
-
-			await ctx.scheduler.runAfter(
-				0,
-				internal.sandboxActions.provisionForSpace,
-				{
-					spaceId,
-				}
-			);
-		}
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
+			spaceId,
+		});
 
 		if (args.firstMessage) {
 			await ctx.scheduler.runAfter(0, internal.spaces.requestAutoRename, {
