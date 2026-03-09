@@ -8,9 +8,9 @@ import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { actor } from "rivetkit";
 import { ingestAgentRunnerBatch } from "./agent-runner";
 import bundledMigrations from "./db/migrations";
-import { requireSandbox } from "./sandbox";
 import { type SessionRow, schema } from "./db/schema";
 import { getDesktopStreamUrl } from "./desktop";
+import { requireSandbox } from "./sandbox";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
@@ -186,10 +186,8 @@ export const space = actor({
 
 	actions: {
 		getAgentProbeState: (c) => getAgentProbeState(c),
-		syncSandboxBinding: (
-			c,
-			binding: SandboxBinding | null
-		) => syncSandboxBinding(c, binding),
+		syncSandboxBinding: (c, binding: SandboxBinding | null) =>
+			syncSandboxBinding(c, binding),
 		runCommand: async (
 			c,
 			command: string,
