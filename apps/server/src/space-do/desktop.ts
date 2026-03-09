@@ -1,10 +1,12 @@
+import type { Sandbox } from "@e2b/desktop";
+import { requireSandbox } from "./sandbox";
 import type { SpaceRuntimeContext } from "./types";
 
 const DISPLAY = ":0";
 
-function tryGetExistingStreamUrl(c: SpaceRuntimeContext): string | null {
+function tryGetExistingStreamUrl(sandbox: Sandbox): string | null {
 	try {
-		const url = c.vars.sandbox.stream.getUrl();
+		const url = sandbox.stream.getUrl();
 		return typeof url === "string" && url.length > 0 ? url : null;
 	} catch {
 		return null;
@@ -14,7 +16,7 @@ function tryGetExistingStreamUrl(c: SpaceRuntimeContext): string | null {
 export async function getDesktopStreamUrl(
 	c: SpaceRuntimeContext
 ): Promise<string> {
-	const { sandbox } = c.vars;
+	const sandbox = requireSandbox(c);
 
 	// Start Xvfb if not already running (connect() doesn't start the desktop)
 	try {
@@ -45,14 +47,14 @@ export async function getDesktopStreamUrl(
 
 	// If the stream is already running, reuse it. Avoid stop/start churn,
 	// which can invalidate the previously issued stream URL.
-	const existingUrl = tryGetExistingStreamUrl(c);
+	const existingUrl = tryGetExistingStreamUrl(sandbox);
 	if (existingUrl) {
 		return existingUrl;
 	}
 
 	try {
 		await sandbox.stream.start();
-		const url = tryGetExistingStreamUrl(c);
+		const url = tryGetExistingStreamUrl(sandbox);
 		if (url) {
 			return url;
 		}
@@ -67,7 +69,7 @@ export async function getDesktopStreamUrl(
 		// May not be running — that's fine
 	}
 	await sandbox.stream.start();
-	const url = tryGetExistingStreamUrl(c);
+	const url = tryGetExistingStreamUrl(sandbox);
 	if (!url) {
 		throw new Error("Desktop stream unavailable");
 	}

@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { AGENT_METHODS } from "@agentclientprotocol/sdk";
+import { AGENT_METHODS } from "@agentclientprotocol/sdk";
 import type {
 	AgentProbeAgent,
 	AgentProbeRequestBody,
@@ -8,15 +8,22 @@ import type {
 import { isAgentInstalled, runtimeAgentEntries } from "./agents";
 import { ACP_PROTOCOL_VERSION } from "./helpers";
 import { log } from "./logging";
-import type { AcpAgentRequestResult } from "./schemas";
 import { spawnStdioBridge, stdioRequest, teardownBridge } from "./stdio-bridge";
 
 const PROBE_TIMEOUT_MS = 15_000;
 const PROBE_CONCURRENCY = 9;
+const ACP_ERROR_CODE_REGEX = /acp error \((-?\d+)\):/i;
+const PROBE_CWD = "/workspace";
 
-type ProbeModelsResult = {
-	models: AgentProbeAgent["models"];
-	defaultModelId: string | null;
+type RuntimeAgentEntry = ReturnType<typeof runtimeAgentEntries>[number];
+
+type VerifiedProbeEntry = {
+	verifiedAt: number;
+};
+
+type ProbeState = {
+	verifiedProbeByAgent: Map<string, VerifiedProbeEntry>;
+	inFlightProbeByAgent: Map<string, Promise<AgentProbeAgent>>;
 };
 
 function buildProbeAgentBase(params: {
@@ -27,17 +34,29 @@ function buildProbeAgentBase(params: {
 		id: params.id,
 		name: params.name,
 		status: "not_installed",
-		models: [],
-		defaultModelId: null,
+		configOptions: null,
+		verifiedAt: null,
+		authCheckedAt: null,
 		error: null,
 	};
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
+function getAcpErrorCode(error: unknown): number | null {
+	const message = error instanceof Error ? error.message : String(error);
+	const match = ACP_ERROR_CODE_REGEX.exec(message);
+	const code = match?.[1];
+	if (!code) {
+		return null;
+	}
+
+	return Number.parseInt(code, 10);
 }
 
-function isAuthRequiredError(error: unknown): boolean {
+export function isAuthRequiredError(error: unknown): boolean {
+	if (getAcpErrorCode(error) === -32_000) {
+		return true;
+	}
+
 	const message = (error instanceof Error ? error.message : String(error))
 		.toLowerCase()
 		.trim();
@@ -53,90 +72,6 @@ function isAuthRequiredError(error: unknown): boolean {
 		message.includes("unauthorized") ||
 		message.includes("unauthenticated")
 	);
-}
-
-function flattenConfigOptionValues(
-	options: unknown
-): Array<{ value: string; name: string }> {
-	if (!Array.isArray(options)) {
-		return [];
-	}
-
-	const values: Array<{ value: string; name: string }> = [];
-	for (const option of options) {
-		if (!isObject(option)) {
-			continue;
-		}
-
-		if (Array.isArray(option.options)) {
-			values.push(...flattenConfigOptionValues(option.options));
-			continue;
-		}
-
-		if (typeof option.value === "string" && typeof option.name === "string") {
-			values.push({ value: option.value, name: option.name });
-		}
-	}
-
-	return values;
-}
-
-function dedupeProbeModels(models: AgentProbeAgent["models"]) {
-	const deduped: AgentProbeAgent["models"] = [];
-	const seen = new Set<string>();
-
-	for (const model of models) {
-		if (seen.has(model.id)) {
-			continue;
-		}
-		seen.add(model.id);
-		deduped.push(model);
-	}
-
-	return deduped;
-}
-
-function normalizeConfigOptionModels(
-	configOptions: AcpAgentRequestResult<
-		typeof AGENT_METHODS.session_new
-	>["configOptions"]
-): ProbeModelsResult {
-	const configModels: AgentProbeAgent["models"] = [];
-	let defaultModelId: string | null = null;
-
-	if (!Array.isArray(configOptions)) {
-		return {
-			models: [],
-			defaultModelId,
-		};
-	}
-
-	for (const option of configOptions) {
-		if (!isObject(option) || option.category !== "model") {
-			continue;
-		}
-
-		if (defaultModelId === null && typeof option.currentValue === "string") {
-			defaultModelId = option.currentValue;
-		}
-		for (const model of flattenConfigOptionValues(option.options)) {
-			configModels.push({
-				id: model.value,
-				name: model.name,
-			});
-		}
-	}
-
-	return {
-		models: dedupeProbeModels(configModels),
-		defaultModelId,
-	};
-}
-
-function normalizeProbeModels(
-	sessionResult: AcpAgentRequestResult<typeof AGENT_METHODS.session_new>
-): ProbeModelsResult {
-	return normalizeConfigOptionModels(sessionResult.configOptions);
 }
 
 function getAbortError(signal: AbortSignal, fallback: string): Error {
@@ -199,21 +134,94 @@ async function withTimeout<T>(
 	}
 }
 
+function isUnsupportedMethodError(error: unknown): boolean {
+	const msg = error instanceof Error ? error.message : String(error);
+	return msg.includes("(-32601)");
+}
+
+async function setProbeModelOrThrow(
+	bridge: ReturnType<typeof spawnStdioBridge>,
+	agentSessionId: string,
+	modelId: string,
+	options?: {
+		signal?: AbortSignal;
+		timeoutMs?: number;
+	}
+): Promise<void> {
+	try {
+		await stdioRequest(
+			bridge,
+			AGENT_METHODS.session_set_model,
+			{
+				sessionId: agentSessionId,
+				modelId,
+			},
+			options
+		);
+	} catch (error) {
+		if (isUnsupportedMethodError(error)) {
+			log("warn", "session/set_model not supported by agent during probe", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return;
+		}
+		throw error;
+	}
+}
+
+async function runVerificationPrompt(params: {
+	entry: RuntimeAgentEntry;
+	bridge: ReturnType<typeof spawnStdioBridge>;
+	agentSessionId: string;
+	currentModelId: string | null;
+	signal?: AbortSignal;
+	state: ProbeState;
+}): Promise<void> {
+	const { entry, bridge, agentSessionId, currentModelId, signal, state } =
+		params;
+
+	if (currentModelId) {
+		await setProbeModelOrThrow(bridge, agentSessionId, currentModelId, {
+			timeoutMs: PROBE_TIMEOUT_MS,
+			signal,
+		});
+	}
+
+	await stdioRequest(
+		bridge,
+		AGENT_METHODS.session_prompt,
+		{
+			sessionId: agentSessionId,
+			prompt: [{ type: "text", text: "Reply with OK." }],
+		},
+		{ timeoutMs: PROBE_TIMEOUT_MS, signal }
+	);
+
+	state.verifiedProbeByAgent.set(entry.id, {
+		verifiedAt: Date.now(),
+	});
+}
+
 async function probeSingleAgent(
-	entry: ReturnType<typeof runtimeAgentEntries>[number],
-	cwd: string,
+	entry: RuntimeAgentEntry,
+	state: ProbeState,
 	signal?: AbortSignal
 ): Promise<AgentProbeAgent> {
 	const base = buildProbeAgentBase({
 		id: entry.id,
 		name: entry.name,
 	});
-	if (!isAgentInstalled(entry.runtimeId)) {
-		return base;
+	const authCheckedAt = Date.now();
+
+	if (!isAgentInstalled(entry.id)) {
+		return {
+			...base,
+			authCheckedAt,
+		};
 	}
 
-	const bridge = spawnStdioBridge(entry.runtimeId, () => undefined);
-	const sessionId = `probe-${entry.runtimeId}-${crypto.randomUUID()}`;
+	const bridge = spawnStdioBridge(entry.id, () => undefined);
+	const probeSessionId = `probe-${entry.id}-${crypto.randomUUID()}`;
 	let bridgeTornDown = false;
 	const closeBridge = (reason: string) => {
 		if (bridgeTornDown) {
@@ -221,8 +229,8 @@ async function probeSingleAgent(
 		}
 		bridgeTornDown = true;
 		teardownBridge(bridge, {
-			agent: entry.runtimeId,
-			sessionId,
+			agent: entry.id,
+			sessionId: probeSessionId,
 			reason,
 		});
 	};
@@ -230,9 +238,7 @@ async function probeSingleAgent(
 		if (!signal) {
 			return;
 		}
-		closeBridge(
-			getAbortError(signal, `Probe for ${entry.runtimeId} aborted`).message
-		);
+		closeBridge(getAbortError(signal, `Probe for ${entry.id} aborted`).message);
 	};
 
 	if (signal?.aborted) {
@@ -245,7 +251,7 @@ async function probeSingleAgent(
 		await sleepWithSignal(250, signal);
 		if (bridge.proc.exitCode !== null) {
 			throw new Error(
-				`Agent ${entry.runtimeId} exited immediately with code ${bridge.proc.exitCode}`
+				`Agent ${entry.id} exited immediately with code ${bridge.proc.exitCode}`
 			);
 		}
 
@@ -262,26 +268,50 @@ async function probeSingleAgent(
 		const sessionResult = await stdioRequest<"session/new">(
 			bridge,
 			"session/new",
-			{ cwd, mcpServers: [] },
+			{ cwd: PROBE_CWD, mcpServers: [] },
 			{ timeoutMs: PROBE_TIMEOUT_MS, signal }
 		);
-		const normalizedModels = normalizeProbeModels(sessionResult);
+		const configOptions = sessionResult.configOptions ?? [];
+		const cached = state.verifiedProbeByAgent.get(entry.id);
+
+		if (cached) {
+			return {
+				...base,
+				status: "verified",
+				configOptions,
+				verifiedAt: cached.verifiedAt,
+				authCheckedAt,
+			};
+		}
+
+		await runVerificationPrompt({
+			entry,
+			bridge,
+			agentSessionId: sessionResult.sessionId,
+			currentModelId: sessionResult.models?.currentModelId ?? null,
+			signal,
+			state,
+		});
 
 		return {
 			...base,
-			status: "ready",
-			models: normalizedModels.models,
-			defaultModelId: normalizedModels.defaultModelId,
+			status: "verified",
+			configOptions,
+			verifiedAt: state.verifiedProbeByAgent.get(entry.id)?.verifiedAt ?? null,
+			authCheckedAt,
 		};
 	} catch (error) {
+		state.verifiedProbeByAgent.delete(entry.id);
+
 		if (signal?.aborted) {
-			throw getAbortError(signal, `Probe for ${entry.runtimeId} aborted`);
+			throw getAbortError(signal, `Probe for ${entry.id} aborted`);
 		}
 
 		if (isAuthRequiredError(error)) {
 			return {
 				...base,
 				status: "requires_auth",
+				authCheckedAt,
 				error: error instanceof Error ? error.message : String(error),
 			};
 		}
@@ -289,6 +319,7 @@ async function probeSingleAgent(
 		return {
 			...base,
 			status: "error",
+			authCheckedAt,
 			error: error instanceof Error ? error.message : String(error),
 		};
 	} finally {
@@ -297,11 +328,34 @@ async function probeSingleAgent(
 	}
 }
 
+function getOrCreateProbePromise(
+	entry: RuntimeAgentEntry,
+	state: ProbeState
+): Promise<AgentProbeAgent> {
+	const existing = state.inFlightProbeByAgent.get(entry.id);
+	if (existing) {
+		return existing;
+	}
+
+	const promise = withTimeout(
+		(signal) => probeSingleAgent(entry, state, signal),
+		PROBE_TIMEOUT_MS,
+		`Probe for ${entry.id}`
+	).finally(() => {
+		if (state.inFlightProbeByAgent.get(entry.id) === promise) {
+			state.inFlightProbeByAgent.delete(entry.id);
+		}
+	});
+
+	state.inFlightProbeByAgent.set(entry.id, promise);
+	return promise;
+}
+
 export async function probeAgents(
-	body: AgentProbeRequestBody
+	body: AgentProbeRequestBody,
+	state: ProbeState
 ): Promise<AgentProbeResponse> {
 	const entries = runtimeAgentEntries(body.ids);
-	const cwd = body.cwd ?? process.cwd();
 	const results = new Array<AgentProbeAgent>(entries.length);
 	let nextIndex = 0;
 
@@ -317,18 +371,18 @@ export async function probeAgents(
 			if (!entry) {
 				return;
 			}
-			results[index] = await withTimeout(
-				(signal) => probeSingleAgent(entry, cwd, signal),
-				PROBE_TIMEOUT_MS,
-				`Probe for ${entry.runtimeId}`
-			).catch((error) => ({
-				...buildProbeAgentBase({
-					id: entry.id,
-					name: entry.name,
-				}),
-				status: "error" as const,
-				error: error instanceof Error ? error.message : String(error),
-			}));
+
+			results[index] = await getOrCreateProbePromise(entry, state).catch(
+				(error) => ({
+					...buildProbeAgentBase({
+						id: entry.id,
+						name: entry.name,
+					}),
+					status: "error" as const,
+					authCheckedAt: Date.now(),
+					error: error instanceof Error ? error.message : String(error),
+				})
+			);
 		}
 	};
 
@@ -340,7 +394,7 @@ export async function probeAgents(
 
 	log("info", "Completed agent probe batch", {
 		count: results.length,
-		cwd,
+		cwd: PROBE_CWD,
 	});
 
 	return {

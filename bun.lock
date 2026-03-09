@@ -21,6 +21,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
+        "@corporation/config": "workspace:*",
         "@corporation/contracts": "workspace:*",
         "@hono/zod-validator": "^0.7.6",
         "@modelcontextprotocol/sdk": "^1.12.1",
@@ -28,7 +29,6 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@corporation/config": "workspace:*",
         "bun-types": "latest",
         "typescript": "catalog:",
       },
@@ -72,6 +72,7 @@
         "@base-ui/react": "^1.2.0",
         "@convex-dev/better-auth": "catalog:",
         "@corporation/backend": "workspace:*",
+        "@corporation/config": "workspace:*",
         "@corporation/contracts": "workspace:*",
         "@corporation/env": "workspace:*",
         "@durable-streams/client": "^0.2.1",
@@ -105,7 +106,6 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "catalog:",
-        "@corporation/config": "workspace:*",
         "@corporation/server": "workspace:*",
         "@tailwindcss/vite": "catalog:",
         "@tanstack/react-router-devtools": "catalog:",
@@ -133,6 +133,7 @@
         "convex-helpers": "catalog:",
         "dotenv": "catalog:",
         "e2b": "catalog:",
+        "nanoid": "catalog:",
         "svix": "catalog:",
         "zod": "catalog:",
       },

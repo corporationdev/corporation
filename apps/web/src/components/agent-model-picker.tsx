@@ -6,26 +6,10 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import agentModelsData from "@/data/agent-models.json";
+import type { AgentSelectorOption } from "@/lib/agent-config-options";
 import { cn } from "@/lib/utils";
 
 type ModelInfo = { id: string; name?: string };
-
-const KNOWN_AGENTS = Object.keys(agentModelsData);
-
-const AGENT_LABELS: Record<string, string> = Object.fromEntries(
-	Object.entries(agentModelsData).map(([id, cfg]) => [id, cfg.label])
-);
-
-const STATIC_MODELS: Record<string, ModelInfo[]> = Object.fromEntries(
-	Object.entries(agentModelsData).map(([id, cfg]) => [id, cfg.models])
-);
-
-const STATIC_DEFAULTS: Record<string, string> = Object.fromEntries(
-	Object.entries(agentModelsData)
-		.filter(([, cfg]) => cfg.defaultModel !== null)
-		.map(([id, cfg]) => [id, cfg.defaultModel as string])
-);
 
 export const AgentModelPicker: FC<{
 	agent: string;
@@ -34,8 +18,8 @@ export const AgentModelPicker: FC<{
 	onModelIdChange: (modelId: string) => void;
 	agentLocked?: boolean;
 	modelLocked?: boolean;
-	agentModels?: Record<string, ModelInfo[]>;
-	defaultModels?: Record<string, string>;
+	agentOptions?: AgentSelectorOption[];
+	isLoading?: boolean;
 }> = ({
 	agent,
 	onAgentChange,
@@ -43,27 +27,54 @@ export const AgentModelPicker: FC<{
 	onModelIdChange,
 	agentLocked,
 	modelLocked,
-	agentModels,
-	defaultModels,
+	agentOptions,
+	isLoading,
 }) => {
+	const availableAgents = agentOptions ?? [];
+	const agentModels = useMemo(
+		() =>
+			Object.fromEntries(
+				availableAgents.map((agentOption) => [
+					agentOption.id,
+					agentOption.models,
+				])
+			) as Record<string, ModelInfo[]>,
+		[availableAgents]
+	);
+	const defaultModels = useMemo(
+		() =>
+			Object.fromEntries(
+				availableAgents
+					.filter((agentOption) => agentOption.defaultModelId)
+					.map((agentOption) => [
+						agentOption.id,
+						agentOption.defaultModelId as string,
+					])
+			),
+		[availableAgents]
+	);
+	const agentLabels = useMemo(
+		() =>
+			Object.fromEntries(
+				availableAgents.map((agentOption) => [
+					agentOption.id,
+					agentOption.label,
+				])
+			),
+		[availableAgents]
+	);
 	const models = useMemo(() => {
-		const dynamic = agentModels?.[agent];
-		if (dynamic && dynamic.length > 0) {
-			return dynamic;
-		}
-		return STATIC_MODELS[agent] ?? [];
+		return agentModels[agent] ?? [];
 	}, [agent, agentModels]);
 
 	const handleAgentChange = useCallback(
 		(nextAgent: string) => {
 			onAgentChange(nextAgent);
-			const defaults = defaultModels ?? STATIC_DEFAULTS;
-			const nextDefault = defaults[nextAgent];
+			const nextDefault = defaultModels[nextAgent];
 			if (nextDefault) {
 				onModelIdChange(nextDefault);
 			} else {
-				const dynamic = agentModels?.[nextAgent];
-				const fallback = dynamic?.[0]?.id ?? STATIC_MODELS[nextAgent]?.[0]?.id;
+				const fallback = agentModels[nextAgent]?.[0]?.id;
 				if (fallback) {
 					onModelIdChange(fallback);
 				}
@@ -72,7 +83,8 @@ export const AgentModelPicker: FC<{
 		[onAgentChange, onModelIdChange, agentModels, defaultModels]
 	);
 
-	const agentLabel = AGENT_LABELS[agent] ?? agent;
+	const agentLabel =
+		availableAgents.length === 0 ? "No agents" : (agentLabels[agent] ?? agent);
 	const currentModelLabel =
 		models.find((m) => m.id === modelId)?.name ?? modelId;
 
@@ -93,21 +105,25 @@ export const AgentModelPicker: FC<{
 				<DropdownMenuTrigger
 					className={cn(
 						"inline-flex h-7 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground",
-						(agentLocked || locked) && lockedClassName
+						(agentLocked || locked || availableAgents.length === 0) &&
+							lockedClassName
 					)}
 				>
 					{agentLabel}
 					<ChevronDownIcon className="size-3" />
 				</DropdownMenuTrigger>
 				<DropdownMenuContent>
-					{KNOWN_AGENTS.map((id) => (
-						<DropdownMenuItem key={id} onClick={() => handleAgentChange(id)}>
-							{AGENT_LABELS[id] ?? id}
+					{availableAgents.map((agentOption) => (
+						<DropdownMenuItem
+							key={agentOption.id}
+							onClick={() => handleAgentChange(agentOption.id)}
+						>
+							{agentOption.label}
 						</DropdownMenuItem>
 					))}
 				</DropdownMenuContent>
 			</DropdownMenu>
-			{agentModels === undefined && models.length === 0 ? (
+			{isLoading ? (
 				<div className="inline-flex h-7 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs">
 					<LoaderCircleIcon className="size-3 animate-spin" />
 					<span>Loading models…</span>

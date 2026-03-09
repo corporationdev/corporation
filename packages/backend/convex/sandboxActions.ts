@@ -7,8 +7,10 @@ import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import {
+	bootServer,
 	runWorkspaceCommand,
 	SANDBOX_AGENT_PORT,
+	SANDBOX_AGENT_SESSION_NAME,
 	SANDBOX_WORKDIR,
 } from "./lib/sandbox";
 
@@ -20,38 +22,40 @@ const SANDBOX_TIMEOUT_MS = 900_000;
 
 const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
 
-const AGENT_STARTUP_TIMEOUT_MS = 30_000;
-const AGENT_POLL_INTERVAL_MS = 500;
 const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
+const AGENT_STDERR_LOG_FILE = "/tmp/sandbox-agent.stderr.log";
 
 async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
-	// Start agent as a background process
 	await runWorkspaceCommand(
 		sandbox,
-		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`,
+		`tmux kill-session -t ${SANDBOX_AGENT_SESSION_NAME} || true`,
+		{ cwd: SANDBOX_WORKDIR }
+	);
+	await runWorkspaceCommand(
+		sandbox,
+		`fuser -k ${SANDBOX_AGENT_PORT}/tcp || true`,
+		{
+			cwd: SANDBOX_WORKDIR,
+		}
+	);
+	await runWorkspaceCommand(
+		sandbox,
+		`: > ${AGENT_LOG_FILE}; : > ${AGENT_STDERR_LOG_FILE}`,
 		{ cwd: SANDBOX_WORKDIR }
 	);
 
-	// Poll until healthy
-	const deadline = Date.now() + AGENT_STARTUP_TIMEOUT_MS;
-	while (Date.now() < deadline) {
-		try {
-			await sandbox.commands.run(`curl -sf --max-time 2 ${AGENT_HEALTH_URL}`);
-			return `https://${sandbox.getHost(SANDBOX_AGENT_PORT)}`;
-		} catch {
-			// Not ready yet
-		}
-		await new Promise((resolve) => setTimeout(resolve, AGENT_POLL_INTERVAL_MS));
-	}
-
-	// Timed out — capture logs for debugging
 	try {
-		const logs = await sandbox.commands.run(`cat ${AGENT_LOG_FILE}`);
-		console.error("sandbox-agent boot logs:", logs.stdout);
-	} catch {
-		// Best effort
+		await bootServer(sandbox, {
+			sessionName: SANDBOX_AGENT_SESSION_NAME,
+			command: `bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
+			healthUrl: AGENT_HEALTH_URL,
+			workdir: SANDBOX_WORKDIR,
+		});
+		return `https://${sandbox.getHost(SANDBOX_AGENT_PORT)}`;
+	} catch (error) {
+		console.error("sandbox-agent failed to boot", error);
+		throw error;
 	}
-	throw new Error("sandbox-agent did not become ready in time");
 }
 
 async function ensureAgentReadyAndGetUrl(sandbox: Sandbox): Promise<string> {
@@ -92,7 +96,13 @@ async function resolveSandbox(
 				sandboxId: space.sandboxId,
 				error,
 			});
-			throw error;
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: space._id,
+				status: "creating",
+				sandboxId: null,
+				agentUrl: null,
+				error: null,
+			});
 		}
 	}
 
@@ -123,6 +133,40 @@ export const archiveSandbox = internalAction({
 			await Sandbox.betaPause(args.sandboxId);
 		} catch (error) {
 			console.error("Failed to pause sandbox in E2B", error);
+		}
+	},
+});
+
+export const pauseForSpace = internalAction({
+	args: {
+		spaceId: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.runQuery(internal.spaces.internalGet, {
+			id: args.spaceId,
+		});
+
+		if (!space.sandboxId) {
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: args.spaceId,
+				status: "killed",
+			});
+			return;
+		}
+
+		try {
+			await Sandbox.betaPause(space.sandboxId);
+		} catch (error) {
+			console.error("Failed to pause sandbox in E2B", {
+				spaceId: args.spaceId,
+				sandboxId: space.sandboxId,
+				error,
+			});
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: args.spaceId,
+				status: "running",
+			});
+			throw error;
 		}
 	},
 });
@@ -162,6 +206,7 @@ export const provisionForSpace = internalAction({
 				status: "running",
 				sandboxId: sandbox.sandboxId,
 				agentUrl,
+				error: null,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {

@@ -3,12 +3,13 @@ import type { SpaceActor } from "@/lib/rivetkit";
 
 type DesktopTabProps = {
 	actor: SpaceActor;
+	sandboxId?: string | null;
 	spaceSlug: string;
 };
 
-export function DesktopTab({ actor, spaceSlug }: DesktopTabProps) {
+export function DesktopTab({ actor, sandboxId, spaceSlug }: DesktopTabProps) {
 	const { data: streamUrl, error } = useQuery({
-		queryKey: ["desktop-stream", spaceSlug, actor.connStatus],
+		queryKey: ["desktop-stream", spaceSlug, sandboxId ?? null],
 		queryFn: async () => {
 			const connection = actor.connection;
 			if (!connection) {
@@ -17,7 +18,8 @@ export function DesktopTab({ actor, spaceSlug }: DesktopTabProps) {
 			const url = await connection.getDesktopStreamUrl();
 			return url;
 		},
-		enabled: actor.connStatus === "connected" && !!actor.connection,
+		enabled:
+			actor.connStatus === "connected" && !!actor.connection && !!sandboxId,
 		retry: 3,
 		retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
 		refetchOnReconnect: true,

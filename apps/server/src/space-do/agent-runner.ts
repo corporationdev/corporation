@@ -11,7 +11,7 @@ import {
 	appendSessionEventFrames,
 	appendSessionStatusFrame,
 } from "./session-stream";
-import type { SpaceRuntimeContext } from "./types";
+import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
 
 const TRAILING_SLASH_RE = /\/$/;
 const AGENT_RUNNER_ACTION = "ingestAgentRunnerBatch";
@@ -31,7 +31,12 @@ async function launchAgentRunner(
 		callbackToken: string;
 	}
 ): Promise<void> {
-	const client = hc<SandboxRuntimeApp>(ctx.state.agentUrl);
+	const binding = ctx.state.binding;
+	if (!binding) {
+		throw new Error("Sandbox runtime is not connected");
+	}
+
+	const client = hc<SandboxRuntimeApp>(binding.agentUrl);
 	const response = await client.v1.prompt.$post(
 		{
 			json: {
@@ -40,7 +45,7 @@ async function launchAgentRunner(
 				agent: params.agent,
 				modelId: params.modelId,
 				prompt: params.prompt,
-				cwd: ctx.state.workdir,
+				cwd: SANDBOX_WORKDIR,
 				callbackUrl: params.callbackUrl,
 				callbackToken: params.callbackToken,
 			},
@@ -65,6 +70,10 @@ export async function startAgentRunner(
 		modelId: string;
 	}
 ): Promise<void> {
+	if (!ctx.state.binding) {
+		throw new Error("Sandbox runtime is not connected");
+	}
+
 	const turnId = nanoid();
 	const callbackToken = crypto.randomUUID();
 	const baseUrl = env.SERVER_PUBLIC_URL;

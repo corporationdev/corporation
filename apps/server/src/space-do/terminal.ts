@@ -1,6 +1,7 @@
 import { createLogger } from "@corporation/logger";
 import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
-import type { SpaceRuntimeContext } from "./types";
+import { requireSandbox } from "./sandbox";
+import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_ID = "workspace";
@@ -114,11 +115,11 @@ async function ensureTerminal(
 		return;
 	}
 
-	const sandbox = ctx.vars.sandbox;
+	const sandbox = requireSandbox(ctx);
 	const normalizedCols = normalizeDimension(cols, DEFAULT_COLS);
 	const normalizedRows = normalizeDimension(rows, DEFAULT_ROWS);
 
-	await ensureTmuxSession(sandbox, ctx.state.workdir ?? undefined);
+	await ensureTmuxSession(sandbox, SANDBOX_WORKDIR);
 
 	const onData = (chunk: Uint8Array) => {
 		const payload: TerminalOutputPayload = {
@@ -156,6 +157,31 @@ async function ensureTerminal(
 		});
 }
 
+async function disconnectTerminalHandle(handle: CommandHandle): Promise<void> {
+	try {
+		await handle.disconnect();
+	} catch {
+		// Best-effort disconnect
+	}
+}
+
+function broadcastSnapshot(
+	ctx: SpaceRuntimeContext,
+	payload: TerminalOutputPayload
+) {
+	for (const connection of ctx.conns.values()) {
+		connection.send("terminal.output", payload);
+	}
+}
+
+function buildEmptySnapshotPayload(): TerminalOutputPayload {
+	return {
+		terminalId: TERMINAL_ID,
+		snapshot: true,
+		data: [],
+	};
+}
+
 async function recreateHandle(
 	ctx: SpaceRuntimeContext,
 	cols?: number,
@@ -163,11 +189,7 @@ async function recreateHandle(
 ): Promise<CommandHandle> {
 	const previous = ctx.vars.terminalHandles.get(TERMINAL_ID);
 	if (previous) {
-		try {
-			await previous.disconnect();
-		} catch {
-			// Best-effort disconnect
-		}
+		await disconnectTerminalHandle(previous);
 	}
 	ctx.vars.terminalHandles.delete(TERMINAL_ID);
 	await ensureTerminal(ctx, cols, rows);
@@ -178,11 +200,58 @@ async function recreateHandle(
 	return handle;
 }
 
+async function captureSnapshotPayload(
+	ctx: SpaceRuntimeContext
+): Promise<TerminalOutputPayload | null> {
+	await ensureTerminal(ctx);
+
+	try {
+		const result = await runTerminalCommand(
+			requireSandbox(ctx),
+			`tmux capture-pane -p -e -J -t ${quoteShellArg(TERMINAL_ID)} -S -`
+		);
+		if (result.stdout) {
+			// Trim trailing empty lines so the cursor doesn't start at the bottom
+			const trimmed = result.stdout.replace(/\n\s*$/g, "\n");
+			return {
+				terminalId: TERMINAL_ID,
+				snapshot: true,
+				data: toBytes(trimmed),
+			};
+		}
+	} catch (error) {
+		if (!(error instanceof CommandExitError)) {
+			throw error;
+		}
+	}
+
+	return null;
+}
+
+export async function resetTerminal(ctx: SpaceRuntimeContext): Promise<void> {
+	const previous = ctx.vars.terminalHandles.get(TERMINAL_ID);
+	if (previous) {
+		await disconnectTerminalHandle(previous);
+	}
+	ctx.vars.terminalHandles.delete(TERMINAL_ID);
+	broadcastSnapshot(ctx, buildEmptySnapshotPayload());
+}
+
+export async function broadcastTerminalSnapshot(
+	ctx: SpaceRuntimeContext
+): Promise<boolean> {
+	const payload = await captureSnapshotPayload(ctx);
+	if (!payload) {
+		return false;
+	}
+
+	broadcastSnapshot(ctx, payload);
+	return true;
+}
+
 export async function getTerminalSnapshot(
 	ctx: SpaceRuntimeContext
 ): Promise<boolean> {
-	await ensureTerminal(ctx);
-
 	if (!ctx.conn) {
 		return false;
 	}
@@ -191,29 +260,13 @@ export async function getTerminalSnapshot(
 		return false;
 	}
 
-	try {
-		const result = await runTerminalCommand(
-			ctx.vars.sandbox,
-			`tmux capture-pane -p -e -J -t ${quoteShellArg(TERMINAL_ID)} -S -`
-		);
-		if (result.stdout) {
-			// Trim trailing empty lines so the cursor doesn't start at the bottom
-			const trimmed = result.stdout.replace(/\n\s*$/g, "\n");
-			const payload: TerminalOutputPayload = {
-				terminalId: TERMINAL_ID,
-				snapshot: true,
-				data: toBytes(trimmed),
-			};
-			connection.send("terminal.output", payload);
-			return true;
-		}
-	} catch (error) {
-		if (!(error instanceof CommandExitError)) {
-			throw error;
-		}
+	const payload = await captureSnapshotPayload(ctx);
+	if (!payload) {
+		return false;
 	}
 
-	return false;
+	connection.send("terminal.output", payload);
+	return true;
 }
 
 export async function input(
@@ -230,14 +283,17 @@ export async function input(
 	}
 
 	try {
-		await ctx.vars.sandbox.pty.sendInput(handle.pid, new Uint8Array(data));
+		await requireSandbox(ctx).pty.sendInput(handle.pid, new Uint8Array(data));
 	} catch (error) {
 		if (!isProcessNotFoundError(error)) {
 			throw error;
 		}
 		log.warn({ pid: handle.pid }, "pty not found, recreating");
 		const refreshed = await recreateHandle(ctx);
-		await ctx.vars.sandbox.pty.sendInput(refreshed.pid, new Uint8Array(data));
+		await requireSandbox(ctx).pty.sendInput(
+			refreshed.pid,
+			new Uint8Array(data)
+		);
 	}
 }
 
@@ -254,13 +310,13 @@ export async function resize(
 	}
 
 	try {
-		await ctx.vars.sandbox.pty.resize(handle.pid, { cols, rows });
+		await requireSandbox(ctx).pty.resize(handle.pid, { cols, rows });
 	} catch (error) {
 		if (!isProcessNotFoundError(error)) {
 			throw error;
 		}
 		log.warn({ pid: handle.pid }, "pty not found during resize, recreating");
 		const refreshed = await recreateHandle(ctx, cols, rows);
-		await ctx.vars.sandbox.pty.resize(refreshed.pid, { cols, rows });
+		await requireSandbox(ctx).pty.resize(refreshed.pid, { cols, rows });
 	}
 }

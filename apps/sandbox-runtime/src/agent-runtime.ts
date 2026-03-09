@@ -2,13 +2,14 @@ import crypto from "node:crypto";
 import { AGENT_METHODS, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import type {
 	AcpEnvelope,
+	AgentProbeAgent,
 	AgentProbeRequestBody,
 	AgentProbeResponse,
 	PromptRequestBody,
 	SessionEvent,
 } from "@corporation/contracts/sandbox-do";
 import { turnRunnerCallbackPayloadSchema } from "@corporation/contracts/sandbox-do";
-import { probeAgents } from "./agent-probe";
+import { isAuthRequiredError, probeAgents } from "./agent-probe";
 import {
 	ACP_PROTOCOL_VERSION,
 	CALLBACK_MAX_ATTEMPTS,
@@ -43,6 +44,10 @@ type SessionBridge = {
 	onEvent:
 		| ((envelope: AcpEnvelope, direction: "inbound" | "outbound") => void)
 		| null;
+};
+
+type VerifiedProbeEntry = {
+	verifiedAt: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -334,6 +339,11 @@ export class AgentRuntime {
 	private readonly activeSessionTurns = new Map<string, string>();
 	private readonly sessionBridges = new Map<string, SessionBridge>();
 	private readonly previousAgentSessionIds = new Map<string, string>();
+	private readonly verifiedProbeByAgent = new Map<string, VerifiedProbeEntry>();
+	private readonly inFlightProbeByAgent = new Map<
+		string,
+		Promise<AgentProbeAgent>
+	>();
 
 	// -- Public API ----------------------------------------------------------
 
@@ -360,7 +370,10 @@ export class AgentRuntime {
 	}
 
 	probeAgents(body: AgentProbeRequestBody): Promise<AgentProbeResponse> {
-		return probeAgents(body);
+		return probeAgents(body, {
+			verifiedProbeByAgent: this.verifiedProbeByAgent,
+			inFlightProbeByAgent: this.inFlightProbeByAgent,
+		});
 	}
 
 	async executeTurn({
@@ -411,6 +424,9 @@ export class AgentRuntime {
 
 			await callbacks.finalizeSuccess();
 		} catch (error) {
+			if (isAuthRequiredError(error)) {
+				this.clearCachedVerifiedProbe(agent);
+			}
 			await callbacks.finalizeFailure(error);
 			log("error", "Turn failed", { turnId, error: formatError(error) });
 		} finally {
@@ -491,6 +507,10 @@ export class AgentRuntime {
 			return null;
 		}
 		return existing;
+	}
+
+	private clearCachedVerifiedProbe(agent: string): void {
+		this.verifiedProbeByAgent.delete(agent);
 	}
 
 	private async bootstrapSessionBridge(

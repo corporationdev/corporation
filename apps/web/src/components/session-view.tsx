@@ -3,31 +3,42 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { AlertTriangleIcon } from "lucide-react";
 import { nanoid } from "nanoid";
-import { type FC, useCallback, useEffect, useRef, useState } from "react";
+import {
+	type FC,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { toast } from "sonner";
 import { AgentModelPicker } from "@/components/agent-model-picker";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
-import agentModelsData from "@/data/agent-models.json";
 import { usePersistedAgentModelSelection } from "@/hooks/use-persisted-agent-model-selection";
 import { useSessionState } from "@/hooks/use-session-state";
+import { deriveAgentSelectorOptions } from "@/lib/agent-config-options";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
-const INITIAL_AGENT = "claude";
-const INITIAL_MODEL =
-	agentModelsData[INITIAL_AGENT as keyof typeof agentModelsData].defaultModel ??
-	"";
-
 export const SessionView: FC<{
 	actor: SpaceActor;
+	isBindingSynced: boolean;
 	sessionId?: string;
 	spaceSlug: string;
-}> = ({ actor, sessionId, spaceSlug }) => {
+}> = ({ actor, isBindingSynced, sessionId, spaceSlug }) => {
+	const agentConfigs = useQuery(api.agentConfig.list);
+	const agentOptions = useMemo(
+		() => deriveAgentSelectorOptions(agentConfigs),
+		[agentConfigs]
+	);
+
 	if (sessionId) {
 		return (
 			<ConnectedSessionView
 				actor={actor}
+				agentOptions={agentOptions}
+				isBindingSynced={isBindingSynced}
 				key={sessionId}
 				sessionId={sessionId}
 				spaceSlug={spaceSlug}
@@ -35,19 +46,30 @@ export const SessionView: FC<{
 		);
 	}
 
-	return <NewSessionView key={spaceSlug} spaceSlug={spaceSlug} />;
+	return (
+		<NewSessionView
+			agentOptions={agentOptions}
+			isAgentOptionsLoading={agentConfigs === undefined}
+			key={spaceSlug}
+			spaceSlug={spaceSlug}
+		/>
+	);
 };
 
-const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
+const NewSessionView: FC<{
+	spaceSlug: string;
+	agentOptions: ReturnType<typeof deriveAgentSelectorOptions>;
+	isAgentOptionsLoading: boolean;
+}> = ({ spaceSlug, agentOptions, isAgentOptionsLoading }) => {
 	const navigate = useNavigate();
 	const setMessageStore = usePendingMessageStore((s) => s.setMessage);
 	const [message, setMessage] = useState("");
 	const { agent, modelId, setAgent, setModelId } =
-		usePersistedAgentModelSelection();
+		usePersistedAgentModelSelection(agentOptions);
 
 	const handleSend = useCallback(() => {
 		const text = message.trim();
-		if (!text) {
+		if (!(text && agent && modelId)) {
 			return;
 		}
 
@@ -76,6 +98,8 @@ const NewSessionView: FC<{ spaceSlug: string }> = ({ spaceSlug }) => {
 				footer={
 					<AgentModelPicker
 						agent={agent}
+						agentOptions={agentOptions}
+						isLoading={isAgentOptionsLoading}
 						modelId={modelId}
 						onAgentChange={setAgent}
 						onModelIdChange={setModelId}
@@ -94,7 +118,9 @@ export const ConnectedSessionView: FC<{
 	sessionId: string;
 	spaceSlug: string;
 	actor: SpaceActor;
-}> = ({ sessionId, spaceSlug, actor }) => {
+	agentOptions: ReturnType<typeof deriveAgentSelectorOptions>;
+	isBindingSynced: boolean;
+}> = ({ sessionId, spaceSlug, actor, agentOptions, isBindingSynced }) => {
 	const [message, setMessage] = useState("");
 	const [agentOverride, setAgentOverride] = useState<string | null>(null);
 	const [modelIdOverride, setModelIdOverride] = useState<string | null>(null);
@@ -105,68 +131,67 @@ export const ConnectedSessionView: FC<{
 	const touchSpace = useMutation(api.spaces.touch);
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const sessionState = useSessionState({ sessionId, spaceSlug, actor });
-	const agent = agentOverride ?? sessionState.agent ?? INITIAL_AGENT;
-	const modelId = modelIdOverride ?? sessionState.modelId ?? INITIAL_MODEL;
-	const isRunning = sessionState.status === "running";
-	const hasError = sessionState.status === "error" && !!sessionState.error;
-
-	const pendingRef = useRef<{
+	const agent = agentOverride ?? sessionState.agent ?? "";
+	const modelId = modelIdOverride ?? sessionState.modelId ?? "";
+	const [pendingSend, setPendingSend] = useState<{
 		text: string;
 		agent: string;
 		modelId: string;
 	} | null>(null);
-	const sentRef = useRef(false);
+	const isRunning = sessionState.status === "running" && !pendingSend;
+	const hasError = sessionState.status === "error" && !!sessionState.error;
+	const hasConsumedStoredMessageRef = useRef(false);
+	const canFlushPendingSend =
+		!!pendingSend &&
+		actor.connStatus === "connected" &&
+		!!actor.connection &&
+		space?.status === "running" &&
+		isBindingSynced;
 
 	// Consume pending message from store on mount
 	useEffect(() => {
-		if (sentRef.current) {
+		if (hasConsumedStoredMessageRef.current) {
 			return;
 		}
+		hasConsumedStoredMessageRef.current = true;
 		const pending = consumeMessage();
 		if (pending) {
-			pendingRef.current = {
-				...pending,
-			};
+			setPendingSend({ ...pending });
 			setAgentOverride(pending.agent);
 			setModelIdOverride(pending.modelId);
 			sessionState.addOptimisticMessage(pending.text);
 		}
 	}, [consumeMessage, sessionState.addOptimisticMessage]);
 
-	// Send pending message once actor is connected and space has agentUrl
+	// Flush pending messages once the space is running and the actor is synced.
 	useEffect(() => {
-		if (sentRef.current) {
+		if (!canFlushPendingSend) {
 			return;
 		}
-		const pending = pendingRef.current;
-		if (!pending) {
-			return;
-		}
-		if (actor.connStatus !== "connected" || !actor.connection) {
-			return;
-		}
-		if (!space?.agentUrl) {
-			return;
-		}
-
-		pendingRef.current = null;
-		sentRef.current = true;
-
+		const pending = pendingSend;
 		const conn = actor.connection;
+		if (!(pending && conn)) {
+			return;
+		}
+
+		setPendingSend(null);
 		if (space?._id) {
 			touchSpace({ id: space._id }).catch(() => undefined);
 		}
 		conn
 			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
-				console.error("Failed to send pending message", error);
+				console.error("Failed to flush pending message", error);
+				sessionState.clearOptimisticMessages();
+				setMessage((current) => (current ? current : pending.text));
 				toast.error("Failed to send message");
 			});
 	}, [
-		actor.connStatus,
 		actor.connection,
+		canFlushPendingSend,
+		pendingSend,
+		sessionState.clearOptimisticMessages,
 		sessionId,
-		space?.agentUrl,
 		space?._id,
 		touchSpace,
 	]);
@@ -179,34 +204,46 @@ export const ConnectedSessionView: FC<{
 
 		setMessage("");
 		sessionState.addOptimisticMessage(text);
+		const nextPending = { text, agent, modelId };
 
 		try {
-			await ensureSpace({ slug: spaceSlug });
-
-			const conn = actor.connection;
-			if (!conn) {
-				throw new Error("Actor connection is unavailable");
+			if (
+				actor.connStatus === "connected" &&
+				actor.connection &&
+				space?.status === "running" &&
+				isBindingSynced
+			) {
+				await actor.connection.sendMessage(sessionId, text, agent, modelId);
+				if (space?._id) {
+					touchSpace({ id: space._id }).catch(() => undefined);
+				}
+				return;
 			}
 
-			await conn.sendMessage(sessionId, text, agent, modelId);
-			if (space?._id) {
-				touchSpace({ id: space._id }).catch(() => undefined);
+			setPendingSend(nextPending);
+
+			if (space?.status !== "running" && space?.status !== "creating") {
+				await ensureSpace({ slug: spaceSlug });
 			}
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
+			setPendingSend(null);
 			sessionState.clearOptimisticMessages();
 			setMessage((current) => (current ? current : text));
 			toast.error("Failed to send message");
 		}
 	}, [
 		message,
-		ensureSpace,
-		spaceSlug,
+		actor.connStatus,
 		actor.connection,
+		ensureSpace,
+		isBindingSynced,
 		sessionId,
 		agent,
 		modelId,
+		space?.status,
 		space?._id,
+		spaceSlug,
 		touchSpace,
 		sessionState.addOptimisticMessage,
 		sessionState.clearOptimisticMessages,
@@ -262,11 +299,12 @@ export const ConnectedSessionView: FC<{
 				</div>
 			)}
 			<ChatInput
-				disabled={actor.connStatus !== "connected" || !actor.connection}
+				disabled={false}
 				footer={
 					<AgentModelPicker
 						agent={agent}
 						agentLocked
+						agentOptions={agentOptions}
 						modelId={modelId}
 						modelLocked
 						onAgentChange={setAgentOverride}

@@ -3,7 +3,7 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useNavigate } from "@tanstack/react-router";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation } from "convex/react";
-import { CopyIcon, HistoryIcon, PlusIcon } from "lucide-react";
+import { HistoryIcon, PanelRightIcon, PlusIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SessionView } from "@/components/session-view";
@@ -16,11 +16,6 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
@@ -29,8 +24,11 @@ import type { SessionRow } from "../../../../apps/server/src/space-do";
 
 type AgentPanelProps = {
 	actor: SpaceActor;
+	isBindingSynced: boolean;
 	spaceSlug: string;
 	activeSessionId: string | undefined;
+	workspacePanelOpen: boolean;
+	onToggleWorkspacePanel: () => void;
 	space:
 		| {
 				_id: Id<"spaces">;
@@ -44,9 +42,12 @@ type AgentPanelProps = {
 
 export function AgentPanel({
 	actor,
+	isBindingSynced,
 	spaceSlug,
 	activeSessionId,
 	space,
+	workspacePanelOpen,
+	onToggleWorkspacePanel,
 }: AgentPanelProps) {
 	const isSpaceMissing = space === null;
 	const [spaceCreating, setSpaceCreating] = useState(false);
@@ -78,25 +79,11 @@ export function AgentPanel({
 
 	const navigate = useNavigate();
 	const { sessions, isLoading: isSessionsLoading } = useSpaceSessions(actor);
-	const sandboxId = space?.sandboxId;
 	const sessionStorageKey = `space-session:${spaceSlug}`;
 	const [savedSessionId, setSavedSessionId] = useLocalStorage<string | null>(
 		sessionStorageKey,
 		null
 	);
-
-	const handleCopySandboxId = async () => {
-		if (!sandboxId) {
-			toast.error("Sandbox ID not available");
-			return;
-		}
-		try {
-			await navigator.clipboard.writeText(sandboxId);
-			toast.success("Copied sandbox ID");
-		} catch {
-			toast.error("Failed to copy sandbox ID");
-		}
-	};
 
 	// Persist the active session so we can restore it when returning to this space
 	useEffect(() => {
@@ -163,24 +150,21 @@ export function AgentPanel({
 							<PlusIcon className="size-4" />
 							<span className="sr-only">New session</span>
 						</Button>
-						<Button
-							disabled={!sandboxId}
-							onClick={handleCopySandboxId}
-							size="icon"
-							variant="ghost"
-						>
-							<CopyIcon className="size-4" />
-							<span className="sr-only">Copy sandbox ID</span>
-						</Button>
 						<SessionHistoryPopover
 							activeSessionId={activeSessionId}
 							sessions={sessions}
 							spaceSlug={spaceSlug}
 						/>
-						<SandboxStatusIndicator
-							error={space?.error}
-							status={space?.status}
-						/>
+						{!workspacePanelOpen && (
+							<Button
+								onClick={onToggleWorkspacePanel}
+								size="icon"
+								variant="ghost"
+							>
+								<PanelRightIcon className="size-4" />
+								<span className="sr-only">Open workspace panel</span>
+							</Button>
+						)}
 					</div>
 				</header>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -189,6 +173,7 @@ export function AgentPanel({
 					) : (
 						<SessionView
 							actor={actor}
+							isBindingSynced={isBindingSynced}
 							key={activeSessionId ?? spaceSlug}
 							sessionId={activeSessionId}
 							spaceSlug={spaceSlug}
@@ -197,43 +182,6 @@ export function AgentPanel({
 				</div>
 			</SidebarInset>
 		</div>
-	);
-}
-
-function SandboxStatusIndicator({
-	status,
-	error,
-}: {
-	status: string | undefined;
-	error: string | undefined;
-}) {
-	let dotClassName = "";
-	let tooltip = "";
-
-	if (status === "running") {
-		dotClassName = "bg-emerald-500";
-		tooltip = "Sandbox running";
-	} else if (status === "creating") {
-		dotClassName = "bg-amber-500";
-		tooltip = "Sandbox building";
-	} else if (status === "error") {
-		dotClassName = "bg-destructive";
-		tooltip = error ? `Sandbox error: ${error}` : "Sandbox error";
-	} else {
-		return null;
-	}
-
-	return (
-		<Tooltip>
-			<TooltipTrigger
-				aria-label={tooltip}
-				className="inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-accent"
-			>
-				<span className={cn("size-2.5 rounded-full", dotClassName)} />
-				<span className="sr-only">{tooltip}</span>
-			</TooltipTrigger>
-			<TooltipContent side="bottom">{tooltip}</TooltipContent>
-		</Tooltip>
 	);
 }
 

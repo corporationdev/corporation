@@ -5,7 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { SANDBOX_WORKDIR } from "./lib/sandbox";
+import { buildConvexPatch } from "./lib/patch";
 import { spaceStatusValidator } from "./schema";
 
 async function requireOwnedSpace(
@@ -32,6 +32,18 @@ type EnsureSpaceInput = {
 	snapshotId?: Id<"snapshots">;
 	name?: string;
 	firstMessage?: string;
+};
+
+type SpaceUpdatePatch = {
+	status?: Doc<"spaces">["status"];
+	snapshotId?: Id<"snapshots">;
+	sandboxId?: string;
+	agentUrl?: string;
+	error?: string;
+};
+
+type InternalSpaceUpdatePatch = SpaceUpdatePatch & {
+	name?: string;
 };
 
 async function requireReadySnapshot(
@@ -191,7 +203,6 @@ export const getBySlug = authedQuery({
 
 		return {
 			...space,
-			workdir: SANDBOX_WORKDIR,
 			project,
 		};
 	},
@@ -208,7 +219,6 @@ export const get = authedQuery({
 
 		return {
 			...space,
-			workdir: SANDBOX_WORKDIR,
 			project,
 		};
 	},
@@ -218,9 +228,10 @@ export const update = authedMutation({
 	args: {
 		id: v.id("spaces"),
 		status: v.optional(spaceStatusValidator),
-		sandboxId: v.optional(v.string()),
-		agentUrl: v.optional(v.string()),
-		error: v.optional(v.string()),
+		snapshotId: v.optional(v.id("snapshots")),
+		sandboxId: v.optional(v.union(v.string(), v.null())),
+		agentUrl: v.optional(v.union(v.string(), v.null())),
+		error: v.optional(v.union(v.string(), v.null())),
 	},
 	handler: async (ctx, args) => {
 		const space = await ctx.db.get(args.id);
@@ -229,12 +240,12 @@ export const update = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		const { id, ...fields } = args;
-		const patch = Object.fromEntries(
-			Object.entries(fields).filter(([, v]) => v !== undefined)
-		);
+		const patch = buildConvexPatch<SpaceUpdatePatch, typeof args>(args, {
+			assign: ["status", "snapshotId"],
+			clearable: ["sandboxId", "agentUrl", "error"],
+		});
 
-		await ctx.db.patch(id, patch);
+		await ctx.db.patch(args.id, patch);
 	},
 });
 
@@ -256,17 +267,22 @@ export const internalUpdate = internalMutation({
 	args: {
 		id: v.id("spaces"),
 		status: v.optional(spaceStatusValidator),
-		sandboxId: v.optional(v.string()),
-		agentUrl: v.optional(v.string()),
-		error: v.optional(v.string()),
+		snapshotId: v.optional(v.id("snapshots")),
+		sandboxId: v.optional(v.union(v.string(), v.null())),
+		agentUrl: v.optional(v.union(v.string(), v.null())),
+		error: v.optional(v.union(v.string(), v.null())),
 		name: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const { id, ...fields } = args;
-		const patch = Object.fromEntries(
-			Object.entries(fields).filter(([, val]) => val !== undefined)
+		const patch = buildConvexPatch<InternalSpaceUpdatePatch, typeof args>(
+			args,
+			{
+				assign: ["status", "snapshotId", "name"],
+				clearable: ["sandboxId", "agentUrl", "error"],
+			}
 		);
-		await ctx.db.patch(id, patch);
+
+		await ctx.db.patch(args.id, patch);
 	},
 });
 
@@ -357,6 +373,29 @@ export const ensure = authedMutation({
 	handler: async (ctx, args) => {
 		const slug = args.slug.trim();
 
+		const existing = await ctx.db
+			.query("spaces")
+			.withIndex("by_slug", (q) => q.eq("slug", slug))
+			.unique();
+		if (existing) {
+			const { project } = await requireOwnedSpace(ctx, existing);
+			if (args.projectId && args.projectId !== project._id) {
+				throw new ConvexError("Space slug already belongs to another project");
+			}
+
+			const snapshotId = args.snapshotId;
+			if (snapshotId) {
+				await requireReadySnapshot(ctx, project, snapshotId);
+			}
+
+			return await ensureSpaceRecord(ctx, {
+				slug,
+				project,
+				snapshotId,
+				firstMessage: args.firstMessage,
+			});
+		}
+
 		if (!args.projectId) {
 			throw new ConvexError("projectId is required when creating a space");
 		}
@@ -405,6 +444,64 @@ export const archive = authedMutation({
 				sandboxId: space.sandboxId,
 			});
 		}
+	},
+});
+
+export const startSandbox = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		if (space.status === "running" || space.status === "creating") {
+			return;
+		}
+		if (!(space.sandboxId || space.snapshotId)) {
+			throw new ConvexError("Sandbox cannot be started");
+		}
+
+		await ctx.db.patch(args.id, {
+			status: "creating",
+			updatedAt: Date.now(),
+		});
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
+			spaceId: args.id,
+		});
+	},
+});
+
+export const pauseSandbox = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		if (space.status === "paused") {
+			return;
+		}
+		if (space.status !== "running" || !space.sandboxId) {
+			throw new ConvexError("Sandbox is not running");
+		}
+
+		await ctx.db.patch(args.id, {
+			status: "paused",
+			updatedAt: Date.now(),
+		});
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.pauseForSpace, {
+			spaceId: args.id,
+		});
 	},
 });
 

@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import agentModelsData from "@/data/agent-models.json";
+import type { AgentSelectorOption } from "@/lib/agent-config-options";
 
 const STORAGE_KEY = "corporation:agent-model-selection";
 const STORAGE_VERSION = 1;
-
-const INITIAL_AGENT = "claude";
-const INITIAL_MODEL =
-	agentModelsData[INITIAL_AGENT as keyof typeof agentModelsData].defaultModel ??
-	"";
 
 type StoredSelection = {
 	v: number;
@@ -20,54 +15,53 @@ type AgentModelSelection = {
 	modelId: string;
 };
 
-function isKnownAgent(agent: string): agent is keyof typeof agentModelsData {
-	return agent in agentModelsData;
-}
-
-function getFallbackModelId(agent: keyof typeof agentModelsData) {
-	return (
-		agentModelsData[agent].defaultModel ??
-		agentModelsData[agent].models[0]?.id ??
-		INITIAL_MODEL
-	);
-}
-
 function normalizeSelection(
-	value: Partial<AgentModelSelection> | null | undefined
+	value: Partial<AgentModelSelection> | null | undefined,
+	agentOptions: AgentSelectorOption[]
 ): AgentModelSelection {
-	const agent =
-		typeof value?.agent === "string" && isKnownAgent(value.agent)
-			? value.agent
-			: INITIAL_AGENT;
-	const models = agentModelsData[agent].models;
+	if (agentOptions.length === 0) {
+		return { agent: "", modelId: "" };
+	}
+
+	const fallbackAgent = agentOptions[0];
+	const selectedAgent =
+		typeof value?.agent === "string"
+			? (agentOptions.find((agentOption) => agentOption.id === value.agent) ??
+				fallbackAgent)
+			: fallbackAgent;
+	const models = selectedAgent.models;
 	const modelId =
 		typeof value?.modelId === "string" &&
 		models.some((model) => model.id === value.modelId)
 			? value.modelId
-			: getFallbackModelId(agent);
+			: (selectedAgent.defaultModelId ?? models[0]?.id ?? "");
 
-	return { agent, modelId };
+	return { agent: selectedAgent.id, modelId };
 }
 
 function readSelection() {
 	if (typeof window === "undefined") {
-		return normalizeSelection(null);
+		return null;
 	}
 
 	try {
 		const raw = window.localStorage.getItem(STORAGE_KEY);
 		if (!raw) {
-			return normalizeSelection(null);
+			return null;
 		}
 
 		const parsed = JSON.parse(raw) as StoredSelection | AgentModelSelection;
-		return normalizeSelection(parsed);
+		return parsed;
 	} catch {
-		return normalizeSelection(null);
+		return null;
 	}
 }
 
 function writeSelection(selection: AgentModelSelection) {
+	if (!(selection.agent && selection.modelId)) {
+		return;
+	}
+
 	if (typeof window === "undefined") {
 		return;
 	}
@@ -86,13 +80,15 @@ function areSelectionsEqual(
 	return left.agent === right.agent && left.modelId === right.modelId;
 }
 
-export function usePersistedAgentModelSelection() {
+export function usePersistedAgentModelSelection(
+	agentOptions: AgentSelectorOption[]
+) {
 	const [selection, setSelection] = useState<AgentModelSelection>(() =>
-		readSelection()
+		normalizeSelection(readSelection(), agentOptions)
 	);
 
 	useEffect(() => {
-		const nextSelection = readSelection();
+		const nextSelection = normalizeSelection(readSelection(), agentOptions);
 		setSelection((currentSelection) =>
 			areSelectionsEqual(currentSelection, nextSelection)
 				? currentSelection
@@ -104,28 +100,40 @@ export function usePersistedAgentModelSelection() {
 				return;
 			}
 
-			setSelection(readSelection());
+			setSelection(normalizeSelection(readSelection(), agentOptions));
 		};
 
 		window.addEventListener("storage", handleStorage);
 		return () => window.removeEventListener("storage", handleStorage);
-	}, []);
+	}, [agentOptions]);
 
 	useEffect(() => {
 		writeSelection(selection);
 	}, [selection]);
 
-	const setAgent = useCallback((agent: string) => {
-		setSelection((currentSelection) =>
-			normalizeSelection({ agent, modelId: currentSelection.modelId })
-		);
-	}, []);
+	const setAgent = useCallback(
+		(agent: string) => {
+			setSelection((currentSelection) =>
+				normalizeSelection(
+					{ agent, modelId: currentSelection.modelId },
+					agentOptions
+				)
+			);
+		},
+		[agentOptions]
+	);
 
-	const setModelId = useCallback((modelId: string) => {
-		setSelection((currentSelection) =>
-			normalizeSelection({ agent: currentSelection.agent, modelId })
-		);
-	}, []);
+	const setModelId = useCallback(
+		(modelId: string) => {
+			setSelection((currentSelection) =>
+				normalizeSelection(
+					{ agent: currentSelection.agent, modelId },
+					agentOptions
+				)
+			);
+		},
+		[agentOptions]
+	);
 
 	return {
 		agent: selection.agent,

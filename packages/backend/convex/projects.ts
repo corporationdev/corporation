@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { scheduleInitialSnapshot } from "./snapshot";
@@ -14,6 +15,18 @@ function requireOwnedProject(
 		throw new ConvexError("Project not found");
 	}
 	return project;
+}
+
+async function getUserProject(
+	ctx: MutationCtx,
+	userId: string
+): Promise<Doc<"projects"> | null> {
+	return await ctx.db
+		.query("projects")
+		.withIndex("by_user_and_type", (q) =>
+			q.eq("userId", userId).eq("type", "user")
+		)
+		.unique();
 }
 
 export const list = authedQuery({
@@ -69,6 +82,24 @@ export const create = authedMutation({
 			if (existing) {
 				throw new ConvexError("Repository already connected to a project");
 			}
+		}
+
+		const userProject = await getUserProject(ctx, ctx.userId);
+		if (!userProject?.defaultSnapshotId) {
+			throw new ConvexError(
+				"You must create your personal workspace before creating a project"
+			);
+		}
+
+		const userSnapshot = await ctx.db.get(userProject.defaultSnapshotId);
+		if (
+			!userSnapshot ||
+			userSnapshot.status !== "ready" ||
+			!userSnapshot.externalSnapshotId
+		) {
+			throw new ConvexError(
+				"Your personal workspace snapshot is not ready yet"
+			);
 		}
 
 		const now = Date.now();
@@ -202,4 +233,15 @@ export const internalGetByGithubRepoId = internalQuery({
 			)
 			.collect();
 	},
+});
+
+export const internalGetUserProject = internalQuery({
+	args: { userId: v.string() },
+	handler: async (ctx, args) =>
+		await ctx.db
+			.query("projects")
+			.withIndex("by_user_and_type", (q) =>
+				q.eq("userId", args.userId).eq("type", "user")
+			)
+			.unique(),
 });

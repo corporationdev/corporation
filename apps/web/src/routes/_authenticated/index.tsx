@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { usePersistedAgentModelSelection } from "@/hooks/use-persisted-agent-model-selection";
+import { deriveAgentSelectorOptions } from "@/lib/agent-config-options";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 export const Route = createFileRoute("/_authenticated/")({
@@ -34,11 +35,16 @@ function AuthenticatedIndex() {
 	const setSpace = usePendingMessageStore((s) => s.setSpace);
 	const setMessage = usePendingMessageStore((s) => s.setMessage);
 	const projects = useQuery(api.projects.list);
+	const agentConfigs = useQuery(api.agentConfig.list);
+	const agentOptions = useMemo(
+		() => deriveAgentSelectorOptions(agentConfigs),
+		[agentConfigs]
+	);
 	const [selectedSnapshotId, setSelectedSnapshotId] =
 		useState<Id<"snapshots"> | null>(null);
 	const [input, setInput] = useState("");
 	const { agent, modelId, setAgent, setModelId } =
-		usePersistedAgentModelSelection();
+		usePersistedAgentModelSelection(agentOptions);
 	const [selectedProjectId, setSelectedProjectId] =
 		useLocalStorage<Id<"projects"> | null>("corporation:recent-project", null);
 
@@ -167,7 +173,9 @@ function AuthenticatedIndex() {
 	const isChatDisabled = !(
 		selectedProject &&
 		selectedSnapshotId &&
-		isSelectedSnapshotReady
+		isSelectedSnapshotReady &&
+		agent &&
+		modelId
 	);
 
 	return (
@@ -201,6 +209,8 @@ function AuthenticatedIndex() {
 								/>
 								<AgentModelPicker
 									agent={agent}
+									agentOptions={agentOptions}
+									isLoading={agentConfigs === undefined}
 									modelId={modelId}
 									onAgentChange={setAgent}
 									onModelIdChange={setModelId}

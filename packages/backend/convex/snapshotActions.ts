@@ -1,6 +1,7 @@
 "use node";
 
 import { Nango } from "@nangohq/node";
+import type { FunctionReturnType } from "convex/server";
 import { v } from "convex/values";
 import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
@@ -8,7 +9,6 @@ import { internalAction } from "./_generated/server";
 import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
-	BASE_TEMPLATE,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
 	SANDBOX_USER,
@@ -16,6 +16,7 @@ import {
 } from "./lib/sandbox";
 
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
+type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
 function formatSnapshotError(error: unknown): string {
 	const message =
@@ -43,6 +44,24 @@ export const buildInitialSnapshot = internalAction({
 			const project = await ctx.runQuery(internal.projects.internalGet, {
 				id: args.projectId,
 			});
+			const userProject = await ctx.runQuery(
+				internal.projects.internalGetUserProject,
+				{ userId: project.userId }
+			);
+			if (!userProject?.defaultSnapshotId) {
+				throw new Error(
+					"You must create your personal workspace before creating a project"
+				);
+			}
+			const sourceSnapshot = await ctx.runQuery(internal.snapshot.internalGet, {
+				id: userProject.defaultSnapshotId,
+			});
+			if (
+				sourceSnapshot.status !== "ready" ||
+				!sourceSnapshot.externalSnapshotId
+			) {
+				throw new Error("Your personal workspace snapshot is not ready yet");
+			}
 
 			if (
 				project.githubRepoId &&
@@ -64,14 +83,14 @@ export const buildInitialSnapshot = internalAction({
 				const safeDefaultBranch = quoteShellArg(project.defaultBranch);
 				const safeWorkdir = quoteShellArg(workdir);
 
-				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
 					network: { allowPublicTraffic: true },
 					envs: project.secrets ?? {},
 				});
 
 				await runRootCommand(
 					sandbox,
-					`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
+					`rm -rf ${safeWorkdir} && git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
 					{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
 				);
 				await runRootCommand(
@@ -79,16 +98,10 @@ export const buildInitialSnapshot = internalAction({
 					`chown -R ${SANDBOX_USER}:${SANDBOX_USER} ${safeWorkdir}`
 				);
 			} else {
-				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
 					network: { allowPublicTraffic: true },
 					envs: project.secrets ?? {},
 				});
-				const workdir = SANDBOX_WORKDIR;
-				const safeWorkdir = quoteShellArg(workdir);
-				await runRootCommand(
-					sandbox,
-					`mkdir -p ${safeWorkdir} && chown -R ${SANDBOX_USER}:${SANDBOX_USER} ${safeWorkdir}`
-				);
 			}
 
 			const snapshot = await sandbox.createSnapshot();
@@ -152,6 +165,76 @@ export const createFromSandbox = internalAction({
 			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
 				id: args.projectId,
 			});
+		}
+	},
+});
+
+export const saveSpaceState = internalAction({
+	args: {
+		spaceId: v.id("spaces"),
+		snapshotId: v.id("snapshots"),
+		setAsDefault: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		const space: Space = await ctx.runQuery(internal.spaces.internalGet, {
+			id: args.spaceId,
+		});
+
+		if (!space.sandboxId) {
+			throw new Error("Sandbox is not running");
+		}
+
+		const snapshotId = args.snapshotId;
+		let snapshotSaved = false;
+
+		try {
+			const sandbox = await Sandbox.connect(space.sandboxId);
+			const snapshot = await sandbox.createSnapshot();
+
+			await ctx.runMutation(internal.snapshot.completeSnapshot, {
+				snapshotId,
+				projectId: space.projectId,
+				status: "ready",
+				externalSnapshotId: snapshot.snapshotId,
+				setAsDefault: args.setAsDefault,
+			});
+			snapshotSaved = true;
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: space._id,
+				snapshotId,
+			});
+
+			try {
+				await Sandbox.betaPause(space.sandboxId);
+			} catch (error) {
+				await ctx.runMutation(internal.spaces.internalUpdate, {
+					id: space._id,
+					status: "running",
+				});
+				throw new Error(
+					`Snapshot saved but failed to pause sandbox: ${formatSnapshotError(error)}`
+				);
+			}
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: space._id,
+				status: "paused",
+			});
+
+			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
+				id: space.projectId,
+			});
+		} catch (error) {
+			if (!snapshotSaved) {
+				await ctx.runMutation(internal.snapshot.completeSnapshot, {
+					snapshotId,
+					status: "error",
+					error: formatSnapshotError(error),
+				});
+			}
+			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
+				id: space.projectId,
+			});
+			throw error;
 		}
 	},
 });
