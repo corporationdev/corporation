@@ -6,8 +6,12 @@ import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
 import type { InferResponseType } from "hono/client";
+import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TimelineEntry } from "@/components/chat/types";
+import type {
+	MessageTimelineEntry,
+	TimelineEntry,
+} from "@/components/chat/types";
 import { apiClient, getAuthHeaders } from "@/lib/api-client";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
@@ -89,6 +93,8 @@ export type SessionState = {
 	error: string | null;
 	agent: string | null;
 	modelId: string | null;
+	addOptimisticMessage: (text: string) => void;
+	clearOptimisticMessages: () => void;
 };
 
 export function useSessionState({
@@ -102,10 +108,30 @@ export function useSessionState({
 }): SessionState {
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const [events, setEvents] = useState<SessionEvent[]>([]);
+	const [optimisticMessages, setOptimisticMessages] = useState<
+		MessageTimelineEntry[]
+	>([]);
 	const [sessionStatus, setSessionStatus] = useState<string>("idle");
 	const [sessionError, setSessionError] = useState<string | null>(null);
 	const [sessionAgent, setSessionAgent] = useState<string | null>(null);
 	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
+
+	const addOptimisticMessage = useCallback((text: string) => {
+		const entry: MessageTimelineEntry = {
+			id: `optimistic-${nanoid()}`,
+			kind: "message",
+			time: new Date().toISOString(),
+			role: "user",
+			text,
+		};
+		setOptimisticMessages((prev) => [...prev, entry]);
+		setSessionStatus("running");
+	}, []);
+
+	const clearOptimisticMessages = useCallback(() => {
+		setOptimisticMessages([]);
+		setSessionStatus("idle");
+	}, []);
 
 	const addEvents = useCallback((newEvents: SessionEvent[]) => {
 		const unseen: SessionEvent[] = [];
@@ -126,6 +152,7 @@ export function useSessionState({
 		}
 		seenEventIdsRef.current = new Set();
 		setEvents([]);
+		setOptimisticMessages([]);
 		setSessionStatus("idle");
 		setSessionError(null);
 		setSessionAgent(null);
@@ -206,7 +233,24 @@ export function useSessionState({
 		};
 	}, [actor.connStatus, actor.connection, addEvents, sessionId, spaceSlug]);
 
-	const entries = useMemo(() => sessionEventsToEntries(events), [events]);
+	const entries = useMemo(() => {
+		const serverEntries = sessionEventsToEntries(events);
+		if (optimisticMessages.length === 0) {
+			return serverEntries;
+		}
+		const serverUserTexts = new Set(
+			serverEntries
+				.filter(
+					(e): e is MessageTimelineEntry =>
+						e.kind === "message" && e.role === "user"
+				)
+				.map((e) => e.text)
+		);
+		const pending = optimisticMessages.filter(
+			(m) => !serverUserTexts.has(m.text)
+		);
+		return pending.length > 0 ? [...serverEntries, ...pending] : serverEntries;
+	}, [events, optimisticMessages]);
 
 	return {
 		entries,
@@ -214,5 +258,7 @@ export function useSessionState({
 		error: sessionError,
 		agent: sessionAgent,
 		modelId: sessionModelId,
+		addOptimisticMessage,
+		clearOptimisticMessages,
 	};
 }

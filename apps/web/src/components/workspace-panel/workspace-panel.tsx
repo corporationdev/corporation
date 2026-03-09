@@ -80,7 +80,9 @@ export function WorkspacePanel({
 				{activeTab === "terminal" && (
 					<TerminalTab actor={actor} spaceSlug={spaceSlug} />
 				)}
-				{activeTab === "desktop" && <DesktopTab actor={actor} />}
+				{activeTab === "desktop" && (
+					<DesktopTab actor={actor} spaceSlug={spaceSlug} />
+				)}
 			</div>
 		</div>
 	);

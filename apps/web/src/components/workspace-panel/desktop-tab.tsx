@@ -3,11 +3,12 @@ import type { SpaceActor } from "@/lib/rivetkit";
 
 type DesktopTabProps = {
 	actor: SpaceActor;
+	spaceSlug: string;
 };
 
-export function DesktopTab({ actor }: DesktopTabProps) {
+export function DesktopTab({ actor, spaceSlug }: DesktopTabProps) {
 	const { data: streamUrl, error } = useQuery({
-		queryKey: ["desktop-stream", actor.connStatus],
+		queryKey: ["desktop-stream", spaceSlug, actor.connStatus],
 		queryFn: async () => {
 			const connection = actor.connection;
 			if (!connection) {
