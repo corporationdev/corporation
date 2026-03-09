@@ -2,10 +2,10 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { MonitorIcon, TerminalIcon } from "lucide-react";
 import { CreateSnapshotPopover } from "@/components/create-snapshot-popover";
+import { PtyTerminal } from "@/components/terminal/pty-terminal";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { DesktopTab } from "./desktop-tab";
-import { TerminalTab } from "./terminal-tab";
 
 const tabs = [
 	{ id: "terminal", label: "Terminal", icon: TerminalIcon },
@@ -78,7 +78,7 @@ export function WorkspacePanel({
 			</div>
 			<div className="min-h-0 flex-1">
 				{activeTab === "terminal" && (
-					<TerminalTab actor={actor} spaceSlug={spaceSlug} />
+					<PtyTerminal actor={actor} spaceSlug={spaceSlug} />
 				)}
 				{activeTab === "desktop" && (
 					<DesktopTab actor={actor} spaceSlug={spaceSlug} />

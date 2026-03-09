@@ -1,8 +1,9 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Loader2Icon, TerminalSquareIcon } from "lucide-react";
+import { DownloadIcon, Loader2Icon, TerminalSquareIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { PtyTerminal } from "@/components/terminal/pty-terminal";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -18,14 +19,80 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TerminalTab } from "@/components/workspace-panel/terminal-tab";
-import { useKeepAliveSandbox } from "@/hooks/use-keep-alive-sandbox";
-import { useActor } from "@/lib/rivetkit";
+import acpAgents from "@/data/acp-agents.json";
+import { useSpaceActor } from "@/hooks/use-space-actor";
 
 export const Route = createFileRoute("/_authenticated/settings/agents")({
 	component: AgentsPage,
 });
+
+// E2B sandboxes run linux-x86_64
+const SANDBOX_PLATFORM = "linux-x86_64" as const;
+
+// Sandbox-specific env overrides for agents that assume root or have
+// hardcoded paths incompatible with the E2B sandbox user.
+const SANDBOX_ENV_OVERRIDES: Record<string, Record<string, string>> = {};
+
+type AcpAgent = (typeof acpAgents)[number];
+
+/**
+ * Build a shell command to install/run an ACP agent in the sandbox.
+ * Prefers npx > uvx > binary download.
+ * Returns null if no compatible distribution exists.
+ */
+function getInstallCommand(agent: AcpAgent): string | null {
+	const dist = agent.distribution;
+	const overrides = SANDBOX_ENV_OVERRIDES[agent.id] ?? {};
+
+	// Prefer npx
+	if ("npx" in dist && dist.npx) {
+		const npx = dist.npx as {
+			package: string;
+			args?: string[];
+			env?: Record<string, string>;
+		};
+		const allEnv = { ...npx.env, ...overrides };
+		const envEntries = Object.entries(allEnv);
+		const envPrefix =
+			envEntries.length > 0
+				? `${envEntries.map(([k, v]) => `${k}=${v}`).join(" ")} `
+				: "";
+		const args = npx.args ? ` ${npx.args.join(" ")}` : "";
+		return `${envPrefix}npx -y ${npx.package}${args}`;
+	}
+
+	// Try uvx
+	if ("uvx" in dist && dist.uvx) {
+		const uvx = dist.uvx as { package: string; args?: string[] };
+		const args = uvx.args ? ` ${uvx.args.join(" ")}` : "";
+		return `uvx ${uvx.package}${args}`;
+	}
+
+	// Fall back to binary for linux-x86_64
+	if ("binary" in dist && dist.binary) {
+		const binary = dist.binary as Record<
+			string,
+			{ archive: string; cmd: string; args?: string[] }
+		>;
+		const platform = binary[SANDBOX_PLATFORM];
+		if (!platform) {
+			return null;
+		}
+
+		const args = platform.args ? ` ${platform.args.join(" ")}` : "";
+		const archiveUrl = platform.archive;
+		const isZip = archiveUrl.endsWith(".zip");
+		const extractCmd = isZip
+			? `curl -fsSL "${archiveUrl}" -o /tmp/agent.zip && unzip -o /tmp/agent.zip -d /tmp/agent && cd /tmp/agent && ${platform.cmd}${args}`
+			: `curl -fsSL "${archiveUrl}" | tar xz -C /tmp/agent --strip-components=0 && cd /tmp/agent && ${platform.cmd}${args}`;
+
+		return `mkdir -p /tmp/agent && ${extractCmd}`;
+	}
+
+	return null;
+}
 
 function getStatusLabel(status: string | undefined) {
 	switch (status) {
@@ -75,28 +142,22 @@ function AgentsPage() {
 	}, [configure]);
 
 	const spaceStatus = workspaceState?.space?.status;
-
-	const sandboxReady = !!(
-		dialogOpen &&
-		spaceStatus === "running" &&
-		workspaceState?.space?.sandboxId &&
-		workspaceState?.space?.agentUrl
+	const { actor, isConnected, isSandboxReady } = useSpaceActor(
+		workspaceState?.space
 	);
-	const readySpace = sandboxReady ? (workspaceState?.space ?? null) : null;
 
-	const actor = useActor({
-		name: "space",
-		key: readySpace?.slug ? [readySpace.slug] : ["agents"],
-		createWithInput: readySpace
-			? {
-					sandboxId: readySpace.sandboxId,
-					agentUrl: readySpace.agentUrl,
-					workdir: readySpace.workdir,
-				}
-			: undefined,
-		enabled: sandboxReady,
-	});
-	useKeepAliveSandbox(actor, sandboxReady);
+	const sendCommand = useCallback(
+		(command: string) => {
+			if (!actor.connection) {
+				return;
+			}
+			const bytes = Array.from(new TextEncoder().encode(`${command}\n`));
+			actor.connection.input(bytes).catch((e: unknown) => {
+				console.error("Failed to send install command", e);
+			});
+		},
+		[actor.connection]
+	);
 
 	const statusLabel = getStatusLabel(spaceStatus);
 	const statusDescription = getStatusDescription(spaceStatus);
@@ -169,56 +230,101 @@ function AgentsPage() {
 			</div>
 
 			<Dialog onOpenChange={setDialogOpen} open={dialogOpen}>
-				<DialogContent className="sm:max-w-5xl">
+				<DialogContent className="sm:max-w-7xl">
 					<DialogHeader>
 						<DialogTitle>Starting sandbox</DialogTitle>
 						<DialogDescription>{statusDescription}</DialogDescription>
 					</DialogHeader>
 
-					{sandboxReady && workspaceState.space ? (
-						<div className="h-[70vh] overflow-hidden border">
-							<TerminalTab
-								actor={actor}
-								spaceSlug={workspaceState.space.slug}
-							/>
-						</div>
-					) : (
-						<div className="flex min-h-56 flex-col justify-between gap-4 border p-4">
-							<div className="flex items-center gap-3">
-								<Loader2Icon className="size-4 animate-spin" />
-								<div>
-									<div className="font-medium text-sm">{statusLabel}</div>
-									<div className="text-muted-foreground text-xs/relaxed">
-										{statusDescription}
+					<div className="flex h-[70vh] gap-4">
+						<div className="min-w-0 flex-1 overflow-hidden border">
+							{dialogOpen && isSandboxReady && workspaceState.space ? (
+								<PtyTerminal
+									actor={actor}
+									spaceSlug={workspaceState.space.slug}
+								/>
+							) : (
+								<div className="flex h-full flex-col justify-between gap-4 p-4">
+									<div className="flex items-center gap-3">
+										<Loader2Icon className="size-4 animate-spin" />
+										<div>
+											<div className="font-medium text-sm">{statusLabel}</div>
+											<div className="text-muted-foreground text-xs/relaxed">
+												{statusDescription}
+											</div>
+										</div>
+									</div>
+
+									{statusError && (
+										<div className="text-destructive text-xs/relaxed">
+											{statusError}
+										</div>
+									)}
+
+									<div className="flex items-center justify-end gap-2">
+										{canRetry && (
+											<Button
+												disabled={configurePending}
+												onClick={() => startConfigure().catch(() => undefined)}
+												size="sm"
+												variant="outline"
+											>
+												Retry
+											</Button>
+										)}
+										{configurePending && (
+											<span className="text-muted-foreground text-xs">
+												Request submitted
+											</span>
+										)}
 									</div>
 								</div>
-							</div>
-
-							{statusError && (
-								<div className="text-destructive text-xs/relaxed">
-									{statusError}
-								</div>
 							)}
-
-							<div className="flex items-center justify-end gap-2">
-								{canRetry && (
-									<Button
-										disabled={configurePending}
-										onClick={() => startConfigure().catch(() => undefined)}
-										size="sm"
-										variant="outline"
-									>
-										Retry
-									</Button>
-								)}
-								{configurePending && (
-									<span className="text-muted-foreground text-xs">
-										Request submitted
-									</span>
-								)}
-							</div>
 						</div>
-					)}
+
+						<div className="w-56 shrink-0 rounded-lg border bg-muted/30">
+							<div className="px-3 py-2.5">
+								<h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+									ACP Agents
+								</h3>
+							</div>
+							<ScrollArea className="h-[calc(70vh-37px)]">
+								<div className="flex flex-col gap-0.5 px-2 pb-2">
+									{acpAgents.map((agent) => {
+										const command = getInstallCommand(agent);
+										return (
+											<div
+												className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted"
+												key={agent.id}
+											>
+												<img
+													alt={agent.name}
+													className="size-5 shrink-0 brightness-0 invert"
+													height={20}
+													src={agent.icon}
+													width={20}
+												/>
+												<span className="min-w-0 flex-1 truncate text-[13px]">
+													{agent.name}
+												</span>
+												{command && (
+													<button
+														className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-muted-foreground/20 disabled:opacity-50 group-hover:opacity-100"
+														disabled={!isConnected}
+														onClick={() => sendCommand(command)}
+														title={`Install ${agent.name}`}
+														type="button"
+													>
+														<DownloadIcon className="size-3.5" />
+													</button>
+												)}
+											</div>
+										);
+									})}
+								</div>
+							</ScrollArea>
+						</div>
+					</div>
 				</DialogContent>
 			</Dialog>
 		</>

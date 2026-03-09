@@ -2,20 +2,77 @@ import { FitAddon, Terminal as GhosttyTerminal, init } from "ghostty-web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpaceActor } from "@/lib/rivetkit";
 
-type TerminalTabProps = {
+type PtyTerminalProps = {
 	actor: SpaceActor;
 	spaceSlug: string;
 };
 
 type SpaceConnection = NonNullable<SpaceActor["connection"]>;
+
 let ghosttyInitPromise: Promise<void> | null = null;
+const URL_SCHEME_REGEX =
+	/(?:https?:\/\/|mailto:|ftp:\/\/|ssh:\/\/|git:\/\/|tel:|magnet:|gemini:\/\/|gopher:\/\/|news:)/i;
+const URL_FRAGMENT_START_REGEX = /^[A-Za-z0-9%/?#=&:+._~[\]-]/;
+const URL_FRAGMENT_END_REGEX = /[A-Za-z0-9%/?#=&:+._~[\]-]$/;
+const WHITESPACE_REGEX = /\s/;
 
 function ensureGhosttyReady() {
 	ghosttyInitPromise ??= init();
 	return ghosttyInitPromise;
 }
 
-export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
+function shouldJoinUrlLine(
+	currentLine: string,
+	nextLine: string,
+	inUrl: boolean
+) {
+	const current = currentLine.trimEnd();
+	const next = nextLine.trim();
+	if (!(current && next)) {
+		return false;
+	}
+
+	if (!(inUrl || URL_SCHEME_REGEX.test(current))) {
+		return false;
+	}
+
+	if (WHITESPACE_REGEX.test(current) || WHITESPACE_REGEX.test(next)) {
+		return false;
+	}
+
+	return (
+		URL_FRAGMENT_END_REGEX.test(current) && URL_FRAGMENT_START_REGEX.test(next)
+	);
+}
+
+function normalizeCopiedText(text: string) {
+	const lines = text.split("\n");
+	if (lines.length <= 1) {
+		return text;
+	}
+
+	const normalizedLines: string[] = [];
+	let currentLine = lines[0] ?? "";
+	let inUrl = URL_SCHEME_REGEX.test(currentLine);
+
+	for (let i = 1; i < lines.length; i++) {
+		const nextLine = lines[i] ?? "";
+		if (shouldJoinUrlLine(currentLine, nextLine, inUrl)) {
+			currentLine = `${currentLine.trimEnd()}${nextLine.trim()}`;
+			inUrl = true;
+			continue;
+		}
+
+		normalizedLines.push(currentLine);
+		currentLine = nextLine;
+		inUrl = URL_SCHEME_REGEX.test(currentLine);
+	}
+
+	normalizedLines.push(currentLine);
+	return normalizedLines.join("\n");
+}
+
+export function PtyTerminal({ actor, spaceSlug }: PtyTerminalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const terminalRef = useRef<GhosttyTerminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -62,7 +119,6 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 		[spaceSlug]
 	);
 
-	// Initialize ghostty-web
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) {
@@ -73,8 +129,22 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 		let terminal: GhosttyTerminal | null = null;
 		let fitAddon: FitAddon | null = null;
 		let observer: ResizeObserver | null = null;
+		const handleCopy = (event: ClipboardEvent) => {
+			const terminal = terminalRef.current;
+			if (!(terminal?.hasSelection() && event.clipboardData)) {
+				return;
+			}
+
+			event.preventDefault();
+			event.stopPropagation();
+			event.clipboardData.setData(
+				"text/plain",
+				normalizeCopiedText(terminal.getSelection())
+			);
+		};
 		const handleMouseDown = () => terminalRef.current?.focus();
 
+		container.addEventListener("copy", handleCopy, true);
 		container.addEventListener("mousedown", handleMouseDown);
 
 		ensureGhosttyReady()
@@ -123,6 +193,7 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 
 		return () => {
 			cancelled = true;
+			container.removeEventListener("copy", handleCopy, true);
 			container.removeEventListener("mousedown", handleMouseDown);
 			observer?.disconnect();
 			terminal?.dispose();
@@ -132,7 +203,6 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 		};
 	}, [spaceSlug]);
 
-	// Forward keyboard input and resize to PTY
 	useEffect(() => {
 		if (!terminalMounted) {
 			return;
@@ -175,7 +245,6 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 		};
 	}, [actor.connection, queueResize, spaceSlug, terminalMounted]);
 
-	// Fetch snapshot and mark ready on connect
 	useEffect(() => {
 		if (actor.connStatus !== "connected" || !actor.connection) {
 			terminalReadyRef.current = false;
@@ -222,7 +291,6 @@ export function TerminalTab({ actor, spaceSlug }: TerminalTabProps) {
 		});
 	}, [actor.connStatus, actor.connection, queueResize, spaceSlug]);
 
-	// Receive terminal output
 	actor.useEvent("terminal.output", (payload: unknown) => {
 		const event = payload as {
 			terminalId: string;
