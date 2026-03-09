@@ -29,6 +29,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 
 type CreateSnapshotPopoverProps = {
 	spaceId: Id<"spaces"> | undefined;
@@ -157,7 +158,19 @@ export function CreateSnapshotPopover({
 				<PopoverHeader>
 					<div className="flex items-start justify-between gap-3 px-3 pt-3">
 						<div>
-							<PopoverTitle>Sandbox</PopoverTitle>
+							<div className="flex items-center gap-1">
+								<PopoverTitle>Sandbox</PopoverTitle>
+								<TooltipIconButton
+									aria-label="Copy sandbox ID"
+									className="size-5 p-0.5 text-muted-foreground"
+									disabled={!sandboxId}
+									onClick={handleCopySandboxId}
+									side="top"
+									tooltip="Copy sandbox ID"
+								>
+									<CopyIcon className="size-3" />
+								</TooltipIconButton>
+							</div>
 							<PopoverDescription>{statusCopy.description}</PopoverDescription>
 						</div>
 						<div className="inline-flex items-center gap-1.5 border border-border px-2 py-1 font-medium text-[11px] uppercase tracking-[0.08em]">
@@ -202,16 +215,6 @@ export function CreateSnapshotPopover({
 						<ChevronDownIcon
 							className={`ml-auto transition-transform ${isSnapshotFormOpen ? "rotate-180" : ""}`}
 						/>
-					</Button>
-					<Button
-						className="justify-start"
-						disabled={!sandboxId}
-						onClick={handleCopySandboxId}
-						size="sm"
-						variant="ghost"
-					>
-						<CopyIcon />
-						Copy sandbox ID
 					</Button>
 					{isSnapshotFormOpen && (
 						<div className="mt-2 flex flex-col gap-3 border border-border bg-muted/20 p-3">

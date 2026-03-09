@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useActor } from "@/lib/rivetkit";
 
 const KEEP_ALIVE_INTERVAL_MS = 300_000;
@@ -6,7 +6,6 @@ const KEEP_ALIVE_INTERVAL_MS = 300_000;
 type SandboxBinding = {
 	sandboxId: string;
 	agentUrl: string;
-	workdir: string;
 };
 
 type SpaceActorSpace =
@@ -15,7 +14,6 @@ type SpaceActorSpace =
 			status?: string;
 			sandboxId?: string | null;
 			agentUrl?: string | null;
-			workdir?: string | null;
 	  }
 	| null
 	| undefined;
@@ -23,14 +21,13 @@ type SpaceActorSpace =
 type SpaceConnection = NonNullable<ReturnType<typeof useActor>["connection"]>;
 
 function getSandboxBinding(space: SpaceActorSpace): SandboxBinding | null {
-	if (!(space?.sandboxId && space.agentUrl && space.workdir)) {
+	if (!(space?.sandboxId && space.agentUrl)) {
 		return null;
 	}
 
 	return {
 		sandboxId: space.sandboxId,
 		agentUrl: space.agentUrl,
-		workdir: space.workdir,
 	};
 }
 
@@ -39,7 +36,7 @@ function getBindingSignature(binding: SandboxBinding | null): string {
 		return "__unbound__";
 	}
 
-	return `${binding.sandboxId}::${binding.agentUrl}::${binding.workdir}`;
+	return `${binding.sandboxId}::${binding.agentUrl}`;
 }
 
 export function useSpaceActor(
@@ -66,9 +63,20 @@ export function useSpaceActor(
 		connection: null,
 		signature: null,
 	});
+	const [syncedBinding, setSyncedBinding] = useState<{
+		connection: SpaceConnection | null;
+		signature: string | null;
+	}>({
+		connection: null,
+		signature: null,
+	});
 
 	const isConnected =
 		isEnabled && actor.connStatus === "connected" && !!actor.connection;
+	const isBindingSynced =
+		isConnected &&
+		syncedBinding.connection === actor.connection &&
+		syncedBinding.signature === bindingSignature;
 
 	useEffect(() => {
 		if (!(isConnected && actor.connection)) {
@@ -76,6 +84,10 @@ export function useSpaceActor(
 				connection: null,
 				signature: null,
 			};
+			setSyncedBinding({
+				connection: null,
+				signature: null,
+			});
 			return;
 		}
 
@@ -98,6 +110,10 @@ export function useSpaceActor(
 						connection,
 						signature: bindingSignature,
 					};
+					setSyncedBinding({
+						connection,
+						signature: bindingSignature,
+					});
 				}
 			})
 			.catch((error) => {
@@ -146,5 +162,6 @@ export function useSpaceActor(
 		actor,
 		isSandboxReady,
 		isConnected,
+		isBindingSynced,
 	};
 }

@@ -8,9 +8,9 @@ import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { actor } from "rivetkit";
 import { ingestAgentRunnerBatch } from "./agent-runner";
 import bundledMigrations from "./db/migrations";
-import { requireSandbox } from "./sandbox";
 import { type SessionRow, schema } from "./db/schema";
 import { getDesktopStreamUrl } from "./desktop";
+import { requireSandbox } from "./sandbox";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
@@ -20,11 +20,12 @@ import {
 	input as terminalInput,
 	resize as terminalResize,
 } from "./terminal";
-import type {
-	PersistedState,
-	SandboxBinding,
-	SpaceRuntimeContext,
-	SpaceVars,
+import {
+	type PersistedState,
+	SANDBOX_WORKDIR,
+	type SandboxBinding,
+	type SpaceRuntimeContext,
+	type SpaceVars,
 } from "./types";
 
 export type { SessionRow } from "./db/schema";
@@ -55,10 +56,14 @@ function sameBinding(
 	current: SandboxBinding | null,
 	next: SandboxBinding | null
 ): boolean {
+	if (current === null && next === null) {
+		return true;
+	}
+	if (current === null || next === null) {
+		return false;
+	}
 	return (
-		current?.sandboxId === (next?.sandboxId ?? null) &&
-		current?.agentUrl === (next?.agentUrl ?? null) &&
-		current?.workdir === (next?.workdir ?? null)
+		current.sandboxId === next.sandboxId && current.agentUrl === next.agentUrl
 	);
 }
 
@@ -68,7 +73,7 @@ function quoteShellArg(value: string) {
 
 function emptyAgentProbeResponse(status: "not_installed" | "error") {
 	const agents = acpAgents
-		.filter((agent) => agent.runtimeId)
+		.filter((agent) => agent.runtimeCommand)
 		.map((agent) => ({
 			id: agent.id,
 			name: agent.name,
@@ -99,9 +104,9 @@ async function getAgentProbeState(c: {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				ids: acpAgents
-					.filter((agent) => agent.runtimeId)
+					.filter((agent) => agent.runtimeCommand)
 					.map((agent) => agent.id),
-				cwd: binding.workdir,
+				cwd: SANDBOX_WORKDIR,
 			}),
 		});
 
@@ -123,15 +128,14 @@ async function syncSandboxBinding(
 	c: SpaceRuntimeContext,
 	binding: SandboxBinding | null
 ): Promise<boolean> {
-	const hasSameBinding = sameBinding(c.state.binding, binding);
-	if (hasSameBinding && (binding ? !!c.vars.sandbox : !c.vars.sandbox)) {
+	if (sameBinding(c.state.binding, binding)) {
 		return false;
 	}
 
 	await resetTerminal(c);
 
 	c.state.binding = binding;
-	c.vars.sandbox = await connectSandbox(c.state.binding?.sandboxId ?? null);
+	c.vars.sandbox = await connectSandbox(binding?.sandboxId ?? null);
 	c.vars.lastSandboxKeepAliveAt = 0;
 
 	if (c.vars.sandbox && c.conns.size > 0) {
@@ -186,10 +190,8 @@ export const space = actor({
 
 	actions: {
 		getAgentProbeState: (c) => getAgentProbeState(c),
-		syncSandboxBinding: (
-			c,
-			binding: SandboxBinding | null
-		) => syncSandboxBinding(c, binding),
+		syncSandboxBinding: (c, binding: SandboxBinding | null) =>
+			syncSandboxBinding(c, binding),
 		runCommand: async (
 			c,
 			command: string,

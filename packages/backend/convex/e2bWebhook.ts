@@ -96,9 +96,6 @@ export const handleWebhook = internalAction({
 		await ctx.runMutation(internal.spaces.internalUpdate, {
 			id: space._id,
 			status: nextStatus,
-			sandboxId: nextStatus === "killed" ? null : undefined,
-			agentUrl: nextStatus === "killed" ? null : undefined,
-			error: nextStatus === "killed" ? null : undefined,
 		});
 
 		return { status: "ok" as const };

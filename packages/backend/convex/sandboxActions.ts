@@ -150,8 +150,6 @@ export const pauseForSpace = internalAction({
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "killed",
-				agentUrl: null,
-				error: null,
 			});
 			return;
 		}

@@ -1,7 +1,7 @@
 import { createLogger } from "@corporation/logger";
 import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
 import { requireSandbox } from "./sandbox";
-import type { SpaceRuntimeContext } from "./types";
+import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_ID = "workspace";
@@ -119,7 +119,7 @@ async function ensureTerminal(
 	const normalizedCols = normalizeDimension(cols, DEFAULT_COLS);
 	const normalizedRows = normalizeDimension(rows, DEFAULT_ROWS);
 
-	await ensureTmuxSession(sandbox, ctx.state.binding?.workdir);
+	await ensureTmuxSession(sandbox, SANDBOX_WORKDIR);
 
 	const onData = (chunk: Uint8Array) => {
 		const payload: TerminalOutputPayload = {

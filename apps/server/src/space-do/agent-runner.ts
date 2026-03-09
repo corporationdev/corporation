@@ -11,7 +11,7 @@ import {
 	appendSessionEventFrames,
 	appendSessionStatusFrame,
 } from "./session-stream";
-import type { SpaceRuntimeContext } from "./types";
+import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
 
 const TRAILING_SLASH_RE = /\/$/;
 const AGENT_RUNNER_ACTION = "ingestAgentRunnerBatch";
@@ -45,7 +45,7 @@ async function launchAgentRunner(
 				agent: params.agent,
 				modelId: params.modelId,
 				prompt: params.prompt,
-				cwd: binding.workdir,
+				cwd: SANDBOX_WORKDIR,
 				callbackUrl: params.callbackUrl,
 				callbackToken: params.callbackToken,
 			},
