@@ -201,15 +201,15 @@ async function probeSingleAgent(
 	});
 	const authCheckedAt = Date.now();
 
-	if (!isAgentInstalled(entry.runtimeId)) {
+	if (!isAgentInstalled(entry.id)) {
 		return {
 			...base,
 			authCheckedAt,
 		};
 	}
 
-	const bridge = spawnStdioBridge(entry.runtimeId, () => undefined);
-	const probeSessionId = `probe-${entry.runtimeId}-${crypto.randomUUID()}`;
+	const bridge = spawnStdioBridge(entry.id, () => undefined);
+	const probeSessionId = `probe-${entry.id}-${crypto.randomUUID()}`;
 	let bridgeTornDown = false;
 	const closeBridge = (reason: string) => {
 		if (bridgeTornDown) {
@@ -217,7 +217,7 @@ async function probeSingleAgent(
 		}
 		bridgeTornDown = true;
 		teardownBridge(bridge, {
-			agent: entry.runtimeId,
+			agent: entry.id,
 			sessionId: probeSessionId,
 			reason,
 		});
@@ -226,9 +226,7 @@ async function probeSingleAgent(
 		if (!signal) {
 			return;
 		}
-		closeBridge(
-			getAbortError(signal, `Probe for ${entry.runtimeId} aborted`).message
-		);
+		closeBridge(getAbortError(signal, `Probe for ${entry.id} aborted`).message);
 	};
 
 	if (signal?.aborted) {
@@ -241,7 +239,7 @@ async function probeSingleAgent(
 		await sleepWithSignal(250, signal);
 		if (bridge.proc.exitCode !== null) {
 			throw new Error(
-				`Agent ${entry.runtimeId} exited immediately with code ${bridge.proc.exitCode}`
+				`Agent ${entry.id} exited immediately with code ${bridge.proc.exitCode}`
 			);
 		}
 
@@ -294,7 +292,7 @@ async function probeSingleAgent(
 		state.verifiedProbeByAgent.delete(entry.id);
 
 		if (signal?.aborted) {
-			throw getAbortError(signal, `Probe for ${entry.runtimeId} aborted`);
+			throw getAbortError(signal, `Probe for ${entry.id} aborted`);
 		}
 
 		if (isAuthRequiredError(error)) {
@@ -331,7 +329,7 @@ function getOrCreateProbePromise(
 	const promise = withTimeout(
 		(signal) => probeSingleAgent(entry, cwd, state, signal),
 		PROBE_TIMEOUT_MS,
-		`Probe for ${entry.runtimeId}`
+		`Probe for ${entry.id}`
 	).finally(() => {
 		if (state.inFlightProbeByAgent.get(entry.id) === promise) {
 			state.inFlightProbeByAgent.delete(entry.id);

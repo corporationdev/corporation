@@ -20,13 +20,12 @@ const ACP_RUNTIME_AGENTS = acpAgentManifest.filter(
 	(
 		agent
 	): agent is AcpAgentManifestEntry & {
-		runtimeId: string;
 		runtimeCommand: NonNullable<AcpAgentManifestEntry["runtimeCommand"]>;
-	} => Boolean(agent.runtimeId && agent.runtimeCommand)
+	} => Boolean(agent.runtimeCommand)
 );
 
 const RUNTIME_AGENT_COMMANDS = Object.fromEntries(
-	ACP_RUNTIME_AGENTS.map((agent) => [agent.runtimeId, agent.runtimeCommand])
+	ACP_RUNTIME_AGENTS.map((agent) => [agent.id, agent.runtimeCommand])
 ) as Record<string, NonNullable<AcpAgentManifestEntry["runtimeCommand"]>>;
 
 const RUNTIME_AGENTS_BY_MANIFEST_ID = Object.fromEntries(

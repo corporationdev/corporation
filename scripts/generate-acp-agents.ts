@@ -25,7 +25,6 @@ const UNSCOPED_PACKAGE_SPEC_RE = /^([^@]+)(?:@(.+))?$/;
 const WINDOWS_SUFFIX_RE = /\.exe$/i;
 
 type ManualAgentConfig = {
-	runtimeId?: string;
 	nativeInstallCommand?: string | null;
 	runtimeCommandOverride?: {
 		command: string;
@@ -45,7 +44,6 @@ type GeneratedRuntimeCommand = {
 
 type GeneratedAgent = RegistryAgent & {
 	icon: string | null;
-	runtimeId: string;
 	nativeInstallCommand: string | null;
 	acpInstallCommand: string | null;
 	runtimeCommand: GeneratedRuntimeCommand | null;
@@ -55,7 +53,6 @@ type GeneratedAgent = RegistryAgent & {
 
 const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 	"claude-acp": {
-		runtimeId: "claude",
 		nativeInstallCommand:
 			'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code',
 		acpInstallStrategy: "distribution",
@@ -63,19 +60,16 @@ const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 		installSource: "https://docs.anthropic.com/en/docs/claude-code/setup",
 	},
 	"codex-acp": {
-		runtimeId: "codex",
 		nativeInstallCommand:
 			'npm install -g --prefix "$HOME/.local" @openai/codex',
 		acpInstallStrategy: "distribution",
 		installSource: "https://github.com/openai/codex",
 	},
 	opencode: {
-		runtimeId: "opencode",
 		acpInstallStrategy: "native",
 		installSource: "https://opencode.ai/docs",
 	},
 	cursor: {
-		runtimeId: "cursor",
 		acpInstallStrategy: "native",
 		installSource: "https://docs.cursor.com/en/cli/overview",
 	},
@@ -100,7 +94,6 @@ const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 		installSource: "https://github.com/github/copilot-cli",
 	},
 	"amp-acp": {
-		runtimeId: "amp",
 		nativeInstallCommand: "curl -fsSL https://ampcode.com/install.sh | bash",
 		acpInstallStrategy: "distribution",
 		installSource: "https://ampcode.com",
@@ -120,7 +113,6 @@ const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 			"https://www.augmentcode.com/guides/getting-started/installation",
 	},
 	"pi-acp": {
-		runtimeId: "pi",
 		nativeInstallCommand:
 			'npm install -g --prefix "$HOME/.local" @mariozechner/pi-coding-agent',
 		acpInstallStrategy: "distribution",
@@ -490,7 +482,6 @@ function toGeneratedAgent(agent: RegistryAgent): GeneratedAgent {
 	return {
 		...agent,
 		icon: agent.icon ?? null,
-		runtimeId: manual.runtimeId ?? agent.id,
 		nativeInstallCommand,
 		acpInstallCommand,
 		runtimeCommand,

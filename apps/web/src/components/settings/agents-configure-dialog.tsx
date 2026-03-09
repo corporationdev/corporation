@@ -5,8 +5,8 @@ import acpAgents, {
 import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
 import { useMutation, useQuery } from "convex/react";
 import {
-	ChevronDownIcon,
 	CheckIcon,
+	ChevronDownIcon,
 	DownloadIcon,
 	Loader2Icon,
 	RefreshCwIcon,
@@ -172,7 +172,6 @@ export function AgentsConfigureDialog({
 				toast.error(error.message);
 			},
 		});
-	const [, setIsConfiguring] = useState(false);
 	const [configureError, setConfigureError] = useState<string | null>(null);
 	const [installingAgentId, setInstallingAgentId] = useState<string | null>(
 		null
@@ -180,7 +179,6 @@ export function AgentsConfigureDialog({
 	const hasRequestedConfigureRef = useRef(false);
 
 	const startConfigure = useCallback(async () => {
-		setIsConfiguring(true);
 		setConfigureError(null);
 		try {
 			await configure({});
@@ -188,8 +186,6 @@ export function AgentsConfigureDialog({
 			setConfigureError(
 				error instanceof Error ? error.message : "Failed to configure agents"
 			);
-		} finally {
-			setIsConfiguring(false);
 		}
 	}, [configure]);
 
@@ -328,9 +324,6 @@ export function AgentsConfigureDialog({
 													}`}
 												/>
 											</Button>
-											{isAgentProbeLoading ? (
-												<Loader2Icon className="size-3 animate-spin text-muted-foreground" />
-											) : null}
 										</div>
 									</div>
 								</div>

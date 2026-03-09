@@ -1,11 +1,13 @@
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useLocalStorage } from "@uidotdev/usehooks";
-import { MonitorIcon, TerminalIcon } from "lucide-react";
+import { MonitorIcon, PanelRightIcon, TerminalIcon } from "lucide-react";
 import { CreateSnapshotPopover } from "@/components/create-snapshot-popover";
 import { PtyTerminal } from "@/components/terminal/pty-terminal";
+import { Button } from "@/components/ui/button";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { DesktopTab } from "./desktop-tab";
+import { SandboxPausedState } from "./sandbox-paused-state";
 
 const tabs = [
 	{ id: "terminal", label: "Terminal", icon: TerminalIcon },
@@ -26,9 +28,11 @@ function getWorkspaceTabStorageKey(spaceSlug: string) {
 
 type WorkspacePanelProps = {
 	actor: SpaceActor;
+	onClose: () => void;
 	space:
 		| {
 				_id: Id<"spaces">;
+				status?: "creating" | "running" | "paused" | "killed" | "error";
 				sandboxId?: string | null;
 		  }
 		| null
@@ -38,6 +42,7 @@ type WorkspacePanelProps = {
 
 export function WorkspacePanel({
 	actor,
+	onClose,
 	space,
 	spaceSlug,
 }: WorkspacePanelProps) {
@@ -47,6 +52,16 @@ export function WorkspacePanel({
 		defaultTab
 	);
 	const activeTab = isTabId(storedActiveTab) ? storedActiveTab : defaultTab;
+	const isWorkspaceAvailable =
+		space?.status === "running" && !!space?.sandboxId;
+	const workspaceFallbackStatus =
+		space === undefined ? "loading" : (space?.status ?? "paused");
+	const workspaceFallback = (
+		<SandboxPausedState
+			spaceSlug={spaceSlug}
+			status={workspaceFallbackStatus}
+		/>
+	);
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
@@ -69,24 +84,35 @@ export function WorkspacePanel({
 						</button>
 					))}
 				</div>
-				<div className="pr-1">
+				<div className="flex items-center gap-1 pr-1">
 					<CreateSnapshotPopover
 						sandboxId={space?.sandboxId ?? undefined}
 						spaceId={space?._id}
+						status={space?.status}
 					/>
+					<Button onClick={onClose} size="icon" variant="ghost">
+						<PanelRightIcon className="size-4" />
+						<span className="sr-only">Close workspace panel</span>
+					</Button>
 				</div>
 			</div>
 			<div className="min-h-0 flex-1">
-				{activeTab === "terminal" && (
-					<PtyTerminal actor={actor} spaceSlug={spaceSlug} />
-				)}
-				{activeTab === "desktop" && (
-					<DesktopTab
-						actor={actor}
-						sandboxId={space?.sandboxId}
-						spaceSlug={spaceSlug}
-					/>
-				)}
+				{activeTab === "terminal" &&
+					(isWorkspaceAvailable ? (
+						<PtyTerminal actor={actor} spaceSlug={spaceSlug} />
+					) : (
+						workspaceFallback
+					))}
+				{activeTab === "desktop" &&
+					(isWorkspaceAvailable ? (
+						<DesktopTab
+							actor={actor}
+							sandboxId={space?.sandboxId}
+							spaceSlug={spaceSlug}
+						/>
+					) : (
+						workspaceFallback
+					))}
 			</div>
 		</div>
 	);

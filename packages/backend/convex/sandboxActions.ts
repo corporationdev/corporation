@@ -137,6 +137,42 @@ export const archiveSandbox = internalAction({
 	},
 });
 
+export const pauseForSpace = internalAction({
+	args: {
+		spaceId: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.runQuery(internal.spaces.internalGet, {
+			id: args.spaceId,
+		});
+
+		if (!space.sandboxId) {
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: args.spaceId,
+				status: "killed",
+				agentUrl: null,
+				error: null,
+			});
+			return;
+		}
+
+		try {
+			await Sandbox.betaPause(space.sandboxId);
+		} catch (error) {
+			console.error("Failed to pause sandbox in E2B", {
+				spaceId: args.spaceId,
+				sandboxId: space.sandboxId,
+				error,
+			});
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: args.spaceId,
+				status: "running",
+			});
+			throw error;
+		}
+	},
+});
+
 export const deleteSandbox = internalAction({
 	args: {
 		sandboxId: v.string(),
@@ -172,6 +208,7 @@ export const provisionForSpace = internalAction({
 				status: "running",
 				sandboxId: sandbox.sandboxId,
 				agentUrl,
+				error: null,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {

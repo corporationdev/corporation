@@ -90,7 +90,6 @@
     "setup": "bun scripts/setup.ts",
     "dev:sandbox-runtime": "bun scripts/dev-sandbox-runtime.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
-    "generate:models": "bun scripts/generate-agent-models.ts",
     "generate:agents": "bun scripts/generate-acp-agents.ts"
   },
   "devDependencies": {

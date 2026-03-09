@@ -13,7 +13,6 @@
         "package": "@zed-industries/claude-agent-acp@0.21.0"
       }
     },
-    "runtimeId": "claude",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code",
     "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0'",
     "runtimeCommand": {
@@ -63,7 +62,6 @@
         "package": "@zed-industries/codex-acp@0.9.5"
       }
     },
-    "runtimeId": "codex",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @openai/codex",
     "acpInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\"",
     "runtimeCommand": {
@@ -111,7 +109,6 @@
         }
       }
     },
-    "runtimeId": "opencode",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/opencode/1.2.24\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/opencode\"\nln -sf \"$install_dir/opencode\" \"$HOME/.local/bin/opencode\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -164,7 +161,6 @@
         }
       }
     },
-    "runtimeId": "cursor",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/cursor/0.1.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://anysphere-binaries.s3.amazonaws.com/lab/2026.03.05-2bf2031/linux/x64/agent-cli-package.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/dist-package/cursor-agent\"\nln -sf \"$install_dir/dist-package/cursor-agent\" \"$HOME/.local/bin/cursor-agent\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -189,7 +185,6 @@
         "args": ["--experimental-acp"]
       }
     },
-    "runtimeId": "gemini",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @google/gemini-cli",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -214,7 +209,6 @@
         "args": ["--acp"]
       }
     },
-    "runtimeId": "github-copilot-cli",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @github/copilot",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -257,7 +251,6 @@
         }
       }
     },
-    "runtimeId": "amp",
     "nativeInstallCommand": "curl -fsSL https://ampcode.com/install.sh | bash",
     "acpInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/acp/amp-acp/0.7.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/tao12345666333/amp-acp/releases/download/v0.7.0/amp-acp-linux-x86_64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/amp-acp\"",
     "runtimeCommand": {
@@ -281,7 +274,6 @@
         "package": "pi-acp@0.0.22"
       }
     },
-    "runtimeId": "pi",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent",
     "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22'",
     "runtimeCommand": {
@@ -309,7 +301,6 @@
         }
       }
     },
-    "runtimeId": "factory-droid",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.70.0'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -341,7 +332,6 @@
         }
       }
     },
-    "runtimeId": "auggie",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @augmentcode/auggie",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -368,7 +358,6 @@
         "package": "@autohandai/autohand-acp@0.2.1"
       }
     },
-    "runtimeId": "autohand",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp@0.2.1'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -393,7 +382,6 @@
         "args": ["--acp"]
       }
     },
-    "runtimeId": "cline",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline@2.6.1'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -418,7 +406,6 @@
         "args": ["--acp"]
       }
     },
-    "runtimeId": "codebuddy-code",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code@2.56.1'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -457,7 +444,6 @@
         }
       }
     },
-    "runtimeId": "corust-agent",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/corust-agent/0.3.7\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/corust-agent-acp\"\nln -sf \"$install_dir/corust-agent-acp\" \"$HOME/.local/bin/corust-agent-acp\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -482,7 +468,6 @@
         "args": ["acp"]
       }
     },
-    "runtimeId": "crow-cli",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'crow-cli'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -506,7 +491,6 @@
         "args": ["acp"]
       }
     },
-    "runtimeId": "dimcode",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode@0.0.16'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -531,7 +515,6 @@
         "args": ["-x"]
       }
     },
-    "runtimeId": "fast-agent",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'fast-agent-acp==0.5.9'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -579,7 +562,6 @@
         }
       }
     },
-    "runtimeId": "goose",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/goose/1.27.2\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/block/goose/releases/download/v1.27.2/goose-x86_64-unknown-linux-gnu.tar.bz2' -o \"$tmp_dir/archive\"\ntar -xjf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/goose\"\nln -sf \"$install_dir/goose\" \"$HOME/.local/bin/goose\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -604,7 +586,6 @@
         "args": ["--acp=true"]
       }
     },
-    "runtimeId": "junie",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie@888.180.0'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -656,7 +637,6 @@
         "args": ["acp"]
       }
     },
-    "runtimeId": "kilo",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kilo/7.0.40\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kilo\"\nln -sf \"$install_dir/kilo\" \"$HOME/.local/bin/kilo\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -699,7 +679,6 @@
         }
       }
     },
-    "runtimeId": "kimi",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kimi/1.18.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kimi\"\nln -sf \"$install_dir/kimi\" \"$HOME/.local/bin/kimi\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -724,7 +703,6 @@
         "args": ["acp"]
       }
     },
-    "runtimeId": "minion-code",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code@0.1.39'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -771,7 +749,6 @@
         }
       }
     },
-    "runtimeId": "mistral-vibe",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/mistral-vibe/2.4.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-linux-x86_64-2.4.0.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/vibe-acp\"\nln -sf \"$install_dir/vibe-acp\" \"$HOME/.local/bin/vibe-acp\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -796,7 +773,6 @@
         "args": ["acp"]
       }
     },
-    "runtimeId": "nova",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova@1.0.74'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -820,7 +796,6 @@
         "args": ["--acp"]
       }
     },
-    "runtimeId": "qoder",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli@0.1.30'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -845,7 +820,6 @@
         "args": ["--acp", "--experimental-skills"]
       }
     },
-    "runtimeId": "qwen-code",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code@0.12.0'",
     "acpInstallCommand": null,
     "runtimeCommand": {
@@ -893,7 +867,6 @@
         }
       }
     },
-    "runtimeId": "stakpak",
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/stakpak/0.3.66\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-linux-x86_64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/stakpak\"\nln -sf \"$install_dir/stakpak\" \"$HOME/.local/bin/stakpak\"",
     "acpInstallCommand": null,
     "runtimeCommand": {

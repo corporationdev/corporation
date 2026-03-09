@@ -376,6 +376,29 @@ export const ensure = authedMutation({
 	handler: async (ctx, args) => {
 		const slug = args.slug.trim();
 
+		const existing = await ctx.db
+			.query("spaces")
+			.withIndex("by_slug", (q) => q.eq("slug", slug))
+			.unique();
+		if (existing) {
+			const { project } = await requireOwnedSpace(ctx, existing);
+			if (args.projectId && args.projectId !== project._id) {
+				throw new ConvexError("Space slug already belongs to another project");
+			}
+
+			const snapshotId = args.snapshotId;
+			if (snapshotId) {
+				await requireReadySnapshot(ctx, project, snapshotId);
+			}
+
+			return await ensureSpaceRecord(ctx, {
+				slug,
+				project,
+				snapshotId,
+				firstMessage: args.firstMessage,
+			});
+		}
+
 		if (!args.projectId) {
 			throw new ConvexError("projectId is required when creating a space");
 		}
@@ -424,6 +447,64 @@ export const archive = authedMutation({
 				sandboxId: space.sandboxId,
 			});
 		}
+	},
+});
+
+export const startSandbox = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		if (space.status === "running" || space.status === "creating") {
+			return;
+		}
+		if (!(space.sandboxId || space.snapshotId)) {
+			throw new ConvexError("Sandbox cannot be started");
+		}
+
+		await ctx.db.patch(args.id, {
+			status: "creating",
+			updatedAt: Date.now(),
+		});
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
+			spaceId: args.id,
+		});
+	},
+});
+
+export const pauseSandbox = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+		await requireOwnedSpace(ctx, space);
+
+		if (space.status === "paused") {
+			return;
+		}
+		if (space.status !== "running" || !space.sandboxId) {
+			throw new ConvexError("Sandbox is not running");
+		}
+
+		await ctx.db.patch(args.id, {
+			status: "paused",
+			updatedAt: Date.now(),
+		});
+
+		await ctx.scheduler.runAfter(0, internal.sandboxActions.pauseForSpace, {
+			spaceId: args.id,
+		});
 	},
 });
 

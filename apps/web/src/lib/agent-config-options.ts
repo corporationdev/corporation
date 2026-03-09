@@ -1,8 +1,16 @@
+import acpAgents from "@corporation/config/acp-agent-manifest";
 import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
 
 type DerivedAgentModel = {
 	id: string;
 	name: string;
+};
+
+export type AgentSelectorOption = {
+	id: string;
+	label: string;
+	models: DerivedAgentModel[];
+	defaultModelId: string | null;
 };
 
 type DerivedAgentModels = {
@@ -87,4 +95,45 @@ export function deriveAgentModels(
 		models: dedupedModels,
 		defaultModelId: defaultModelId ?? dedupedModels[0]?.id ?? null,
 	};
+}
+
+const MANIFEST_AGENT_BY_ID = new Map(
+	acpAgents.map((agent) => [agent.id, agent])
+);
+
+export function deriveAgentSelectorOptions(
+	agentConfigs:
+		| Array<{
+				agentId: string;
+				configOptions: AgentProbeAgent["configOptions"];
+		  }>
+		| null
+		| undefined
+): AgentSelectorOption[] {
+	if (!agentConfigs) {
+		return [];
+	}
+
+	const selectorOptions: AgentSelectorOption[] = [];
+
+	for (const agentConfig of agentConfigs) {
+		const manifestAgent = MANIFEST_AGENT_BY_ID.get(agentConfig.agentId);
+		if (!manifestAgent) {
+			continue;
+		}
+
+		const derivedModels = deriveAgentModels(agentConfig.configOptions);
+		if (derivedModels.models.length === 0 || !derivedModels.defaultModelId) {
+			continue;
+		}
+
+		selectorOptions.push({
+			id: manifestAgent.id,
+			label: manifestAgent.name,
+			models: derivedModels.models,
+			defaultModelId: derivedModels.defaultModelId,
+		});
+	}
+
+	return selectorOptions;
 }
