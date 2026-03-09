@@ -49,18 +49,11 @@ export const agentProbeStatusSchema = z.enum([
 ]);
 export type AgentProbeStatus = z.infer<typeof agentProbeStatusSchema>;
 
-export const agentProbeModelSchema = z.object({
-	id: z.string().min(1),
-	name: z.string().min(1),
-});
-export type AgentProbeModel = z.infer<typeof agentProbeModelSchema>;
-
 export const agentProbeAgentSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
 	status: agentProbeStatusSchema,
-	models: z.array(agentProbeModelSchema),
-	defaultModelId: z.string().nullable().optional(),
+	configOptions: z.array(z.any()).nullable().optional(),
 	verifiedAt: z.number().nullable().optional(),
 	authCheckedAt: z.number().nullable().optional(),
 	error: z.string().nullable().optional(),

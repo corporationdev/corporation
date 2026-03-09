@@ -8,7 +8,6 @@ import type {
 import { isAgentInstalled, runtimeAgentEntries } from "./agents";
 import { ACP_PROTOCOL_VERSION } from "./helpers";
 import { log } from "./logging";
-import type { AcpAgentRequestResult } from "./schemas";
 import { spawnStdioBridge, stdioRequest, teardownBridge } from "./stdio-bridge";
 
 const PROBE_TIMEOUT_MS = 15_000;
@@ -26,11 +25,6 @@ type ProbeState = {
 	inFlightProbeByAgent: Map<string, Promise<AgentProbeAgent>>;
 };
 
-type ProbeModelsResult = {
-	models: AgentProbeAgent["models"];
-	defaultModelId: string | null;
-};
-
 function buildProbeAgentBase(params: {
 	id: string;
 	name: string;
@@ -39,16 +33,11 @@ function buildProbeAgentBase(params: {
 		id: params.id,
 		name: params.name,
 		status: "not_installed",
-		models: [],
-		defaultModelId: null,
+		configOptions: null,
 		verifiedAt: null,
 		authCheckedAt: null,
 		error: null,
 	};
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 function getAcpErrorCode(error: unknown): number | null {
@@ -82,105 +71,6 @@ export function isAuthRequiredError(error: unknown): boolean {
 		message.includes("unauthorized") ||
 		message.includes("unauthenticated")
 	);
-}
-
-function flattenConfigOptionValues(
-	options: unknown
-): Array<{ value: string; name: string }> {
-	if (!Array.isArray(options)) {
-		return [];
-	}
-
-	const values: Array<{ value: string; name: string }> = [];
-	for (const option of options) {
-		if (!isObject(option)) {
-			continue;
-		}
-
-		if (Array.isArray(option.options)) {
-			values.push(...flattenConfigOptionValues(option.options));
-			continue;
-		}
-
-		if (typeof option.value === "string" && typeof option.name === "string") {
-			values.push({ value: option.value, name: option.name });
-		}
-	}
-
-	return values;
-}
-
-function dedupeProbeModels(models: AgentProbeAgent["models"]) {
-	const deduped: AgentProbeAgent["models"] = [];
-	const seen = new Set<string>();
-
-	for (const model of models) {
-		if (seen.has(model.id)) {
-			continue;
-		}
-		seen.add(model.id);
-		deduped.push(model);
-	}
-
-	return deduped;
-}
-
-function normalizeConfigOptionModels(
-	configOptions: AcpAgentRequestResult<
-		typeof AGENT_METHODS.session_new
-	>["configOptions"]
-): ProbeModelsResult {
-	const configModels: AgentProbeAgent["models"] = [];
-	let defaultModelId: string | null = null;
-
-	if (!Array.isArray(configOptions)) {
-		return {
-			models: [],
-			defaultModelId,
-		};
-	}
-
-	for (const option of configOptions) {
-		if (!isObject(option) || option.category !== "model") {
-			continue;
-		}
-
-		if (defaultModelId === null && typeof option.currentValue === "string") {
-			defaultModelId = option.currentValue;
-		}
-		for (const model of flattenConfigOptionValues(option.options)) {
-			configModels.push({
-				id: model.value,
-				name: model.name,
-			});
-		}
-	}
-
-	return {
-		models: dedupeProbeModels(configModels),
-		defaultModelId,
-	};
-}
-
-function normalizeProbeModels(
-	sessionResult: AcpAgentRequestResult<typeof AGENT_METHODS.session_new>
-): ProbeModelsResult {
-	const resultModels: AgentProbeAgent["models"] =
-		sessionResult.models?.availableModels.map((model) => ({
-			id: model.modelId,
-			name: model.name,
-		})) ?? [];
-	const configModels = normalizeConfigOptionModels(sessionResult.configOptions);
-
-	return {
-		models: dedupeProbeModels([...resultModels, ...configModels.models]),
-		defaultModelId:
-			sessionResult.models?.currentModelId ??
-			configModels.defaultModelId ??
-			resultModels[0]?.id ??
-			configModels.models[0]?.id ??
-			null,
-	};
 }
 
 function getAbortError(signal: AbortSignal, fallback: string): Error {
@@ -273,15 +163,15 @@ async function runVerificationPrompt(params: {
 	entry: RuntimeAgentEntry;
 	bridge: ReturnType<typeof spawnStdioBridge>;
 	agentSessionId: string;
-	defaultModelId: string | null;
+	currentModelId: string | null;
 	signal?: AbortSignal;
 	state: ProbeState;
 }): Promise<void> {
-	const { entry, bridge, agentSessionId, defaultModelId, signal, state } =
+	const { entry, bridge, agentSessionId, currentModelId, signal, state } =
 		params;
 
-	if (defaultModelId) {
-		await setProbeModelOrThrow(bridge, agentSessionId, defaultModelId);
+	if (currentModelId) {
+		await setProbeModelOrThrow(bridge, agentSessionId, currentModelId);
 	}
 
 	await stdioRequest(
@@ -371,15 +261,14 @@ async function probeSingleAgent(
 			{ cwd, mcpServers: [] },
 			{ timeoutMs: PROBE_TIMEOUT_MS, signal }
 		);
-		const normalizedModels = normalizeProbeModels(sessionResult);
+		const configOptions = sessionResult.configOptions ?? [];
 		const cached = state.verifiedProbeByAgent.get(entry.id);
 
 		if (cached) {
 			return {
 				...base,
 				status: "verified",
-				models: normalizedModels.models,
-				defaultModelId: normalizedModels.defaultModelId,
+				configOptions,
 				verifiedAt: cached.verifiedAt,
 				authCheckedAt,
 			};
@@ -389,7 +278,7 @@ async function probeSingleAgent(
 			entry,
 			bridge,
 			agentSessionId: sessionResult.sessionId,
-			defaultModelId: normalizedModels.defaultModelId,
+			currentModelId: sessionResult.models?.currentModelId ?? null,
 			signal,
 			state,
 		});
@@ -397,8 +286,7 @@ async function probeSingleAgent(
 		return {
 			...base,
 			status: "verified",
-			models: normalizedModels.models,
-			defaultModelId: normalizedModels.defaultModelId,
+			configOptions,
 			verifiedAt: state.verifiedProbeByAgent.get(entry.id)?.verifiedAt ?? null,
 			authCheckedAt,
 		};

@@ -96,7 +96,13 @@ async function resolveSandbox(
 				sandboxId: space.sandboxId,
 				error,
 			});
-			throw error;
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: space._id,
+				status: "creating",
+				sandboxId: null,
+				agentUrl: null,
+				error: null,
+			});
 		}
 	}
 

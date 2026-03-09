@@ -35,6 +35,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentProbeState } from "@/hooks/use-agent-probe-state";
 import { useSpaceActor } from "@/hooks/use-space-actor";
+import { deriveAgentModels } from "@/lib/agent-config-options";
+import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 
 export const Route = createFileRoute("/_authenticated/settings/agents")({
 	component: AgentsPage,
@@ -99,9 +101,10 @@ function AgentListItem({
 	onInstall: (agent: AcpAgentManifestEntry) => void;
 	probe?: AgentProbeAgent;
 }) {
+	const derivedModels = deriveAgentModels(probe?.configOptions);
 	const modelsLabel =
-		probe && probe.models.length > 0
-			? probe.models.map((model) => model.name).join(", ")
+		derivedModels.models.length > 0
+			? derivedModels.models.map((model) => model.name).join(", ")
 			: null;
 	const statusLabel = getAgentProbeStatusLabel(probe?.status, isChecking);
 	const showInstallButton =
@@ -163,6 +166,16 @@ function AgentListItem({
 function AgentsPage() {
 	const workspaceState = useQuery(api.userWorkspace.getWorkspaceState);
 	const configure = useMutation(api.userWorkspace.configure);
+	const { mutate: saveUserSpace, isPending: isSaving } =
+		useConvexTanstackMutation(api.userWorkspace.save, {
+			onSuccess: () => {
+				toast.success("Workspace saved");
+				setDialogOpen(false);
+			},
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		});
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [isConfiguring, setIsConfiguring] = useState(false);
 	const [configureError, setConfigureError] = useState<string | null>(null);
@@ -247,6 +260,26 @@ function AgentsPage() {
 			toast.error("Failed to copy sandbox ID");
 		}
 	}, [workspaceState?.space?.sandboxId]);
+	const handleSave = useCallback(() => {
+		if (!agent?._id) {
+			toast.error("Sandbox is not ready");
+			return;
+		}
+
+		const agentsToSave = (agentProbeData?.agents ?? [])
+			.filter(
+				(probe): probe is typeof probe & { configOptions: unknown[] } =>
+					probe.status === "verified" && Array.isArray(probe.configOptions)
+			)
+			.map((probe) => ({
+				id: probe.id,
+				configOptions: probe.configOptions,
+			}));
+
+		saveUserSpace({
+			agents: agentsToSave,
+		});
+	}, [agent?._id, agentProbeData?.agents, saveUserSpace]);
 
 	const statusLabel = getStatusLabel(spaceStatus);
 	const statusDescription = getStatusDescription(spaceStatus);
@@ -444,6 +477,29 @@ function AgentsPage() {
 								</div>
 							</ScrollArea>
 						</div>
+					</div>
+					<div className="flex justify-end gap-2">
+						<Button
+							onClick={() => setDialogOpen(false)}
+							size="sm"
+							variant="outline"
+						>
+							Close
+						</Button>
+						<Button
+							disabled={!(isSandboxReady && isConnected) || isSaving}
+							onClick={handleSave}
+							size="sm"
+						>
+							{isSaving ? (
+								<>
+									<Loader2Icon className="size-4 animate-spin" />
+									Saving
+								</>
+							) : (
+								"Save"
+							)}
+						</Button>
 					</div>
 				</DialogContent>
 			</Dialog>

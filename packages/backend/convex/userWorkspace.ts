@@ -1,5 +1,6 @@
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { nanoid } from "nanoid";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
@@ -8,6 +9,8 @@ import { ensureSpaceRecord } from "./spaces";
 
 const USER_PROJECT_NAME = "Home";
 const USER_SPACE_NAME = "Personal Workspace";
+
+const ISO_MILLIS_SUFFIX = /\.\d{3}Z$/;
 
 async function getUserProject(
 	ctx: QueryCtx,
@@ -118,6 +121,7 @@ export const configure = authedMutation({
 	handler: async (ctx) => {
 		const project = await ensureUserProject(ctx, ctx.userId);
 		const withSnapshot = await ensureBaseSnapshot(ctx, project);
+		const existingSpace = await getSpaceForProject(ctx, withSnapshot._id);
 
 		const snapshotId = withSnapshot.defaultSnapshotId;
 		if (!snapshotId) {
@@ -125,10 +129,57 @@ export const configure = authedMutation({
 		}
 
 		return await ensureSpaceRecord(ctx, {
-			slug: nanoid(),
+			slug: existingSpace?.slug ?? nanoid(),
 			project: withSnapshot,
 			snapshotId,
 			name: USER_SPACE_NAME,
+		});
+	},
+});
+
+export const save = authedMutation({
+	args: {
+		agents: v.array(
+			v.object({
+				id: v.string(),
+				configOptions: v.array(v.any()),
+			})
+		),
+	},
+	handler: async (ctx, args) => {
+		const project = await getUserProject(ctx, ctx.userId);
+		if (!project) {
+			throw new ConvexError("Personal workspace not found");
+		}
+
+		const space = await getSpaceForProject(ctx, project._id);
+		if (!space) {
+			throw new ConvexError("Personal workspace not found");
+		}
+		if (!space.sandboxId) {
+			throw new ConvexError("Sandbox is not running");
+		}
+
+		await ctx.runMutation(internal.agentConfig.internalSaveProbeResults, {
+			userId: ctx.userId,
+			spaceId: space._id,
+			agents: args.agents,
+		});
+
+		const now = Date.now();
+		const snapshotId = await ctx.db.insert("snapshots", {
+			projectId: project._id,
+			label: `snapshot-${new Date(now).toISOString().replace(ISO_MILLIS_SUFFIX, "Z")}`,
+			status: "building",
+			startedAt: now,
+		});
+
+		await ctx.db.patch(project._id, { updatedAt: now });
+
+		await ctx.scheduler.runAfter(0, internal.snapshotActions.saveSpaceState, {
+			spaceId: space._id,
+			snapshotId,
+			setAsDefault: true,
 		});
 	},
 });

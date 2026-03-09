@@ -1,6 +1,7 @@
 "use node";
 
 import { Nango } from "@nangohq/node";
+import type { FunctionReturnType } from "convex/server";
 import { v } from "convex/values";
 import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
@@ -16,6 +17,7 @@ import {
 } from "./lib/sandbox";
 
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
+type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
 function formatSnapshotError(error: unknown): string {
 	const message =
@@ -152,6 +154,76 @@ export const createFromSandbox = internalAction({
 			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
 				id: args.projectId,
 			});
+		}
+	},
+});
+
+export const saveSpaceState = internalAction({
+	args: {
+		spaceId: v.id("spaces"),
+		snapshotId: v.id("snapshots"),
+		setAsDefault: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		const space: Space = await ctx.runQuery(internal.spaces.internalGet, {
+			id: args.spaceId,
+		});
+
+		if (!space.sandboxId) {
+			throw new Error("Sandbox is not running");
+		}
+
+		const snapshotId = args.snapshotId;
+		let snapshotSaved = false;
+
+		try {
+			const sandbox = await Sandbox.connect(space.sandboxId);
+			const snapshot = await sandbox.createSnapshot();
+
+			await ctx.runMutation(internal.snapshot.completeSnapshot, {
+				snapshotId,
+				projectId: space.projectId,
+				status: "ready",
+				externalSnapshotId: snapshot.snapshotId,
+				setAsDefault: args.setAsDefault,
+			});
+			snapshotSaved = true;
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: space._id,
+				snapshotId,
+			});
+
+			try {
+				await Sandbox.betaPause(space.sandboxId);
+			} catch (error) {
+				await ctx.runMutation(internal.spaces.internalUpdate, {
+					id: space._id,
+					status: "running",
+				});
+				throw new Error(
+					`Snapshot saved but failed to pause sandbox: ${formatSnapshotError(error)}`
+				);
+			}
+			await ctx.runMutation(internal.spaces.internalUpdate, {
+				id: space._id,
+				status: "paused",
+			});
+
+			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
+				id: space.projectId,
+			});
+		} catch (error) {
+			if (!snapshotSaved) {
+				await ctx.runMutation(internal.snapshot.completeSnapshot, {
+					snapshotId,
+					status: "error",
+					error: formatSnapshotError(error),
+				});
+			}
+			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
+				id: space.projectId,
+			});
+			throw error;
 		}
 	},
 });

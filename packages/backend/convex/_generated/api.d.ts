@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as agentConfig from "../agentConfig.js";
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
 import type * as functions from "../functions.js";
@@ -18,6 +19,7 @@ import type * as lib_codexAuth from "../lib/codexAuth.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_git from "../lib/git.js";
 import type * as lib_nango from "../lib/nango.js";
+import type * as lib_patch from "../lib/patch.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
@@ -38,6 +40,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentConfig: typeof agentConfig;
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
   functions: typeof functions;
@@ -48,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   "lib/crypto": typeof lib_crypto;
   "lib/git": typeof lib_git;
   "lib/nango": typeof lib_nango;
+  "lib/patch": typeof lib_patch;
   "lib/sandbox": typeof lib_sandbox;
   "lib/validSecrets": typeof lib_validSecrets;
   nangoWebhook: typeof nangoWebhook;
