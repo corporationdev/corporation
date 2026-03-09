@@ -26,18 +26,34 @@ function getActorInput(space: SpaceActorSpace) {
 	};
 }
 
-export function useSpaceActor(space: SpaceActorSpace) {
+function getActorKey(
+	space: SpaceActorSpace,
+	actorInput: ReturnType<typeof getActorInput>,
+	enabled: boolean
+) {
+	if (!(enabled && space?.slug && actorInput?.sandboxId)) {
+		return ["__disconnected__"];
+	}
+
+	return [space.slug, actorInput.sandboxId];
+}
+
+export function useSpaceActor(
+	space: SpaceActorSpace,
+	options?: { enabled?: boolean }
+) {
 	const actorInput = useMemo(() => getActorInput(space), [space]);
+	const isSandboxReady = space?.status === "running" && !!actorInput;
+	const isEnabled = (options?.enabled ?? true) && isSandboxReady;
 	const actor = useActor({
 		name: "space",
-		key: [space?.slug ?? "__disconnected__"],
+		key: getActorKey(space, actorInput, isEnabled),
 		createWithInput: actorInput ?? undefined,
-		enabled: !!actorInput,
+		enabled: isEnabled,
 	});
 
-	const isSandboxReady = !!actorInput;
 	const isConnected =
-		isSandboxReady && actor.connStatus === "connected" && !!actor.connection;
+		isEnabled && actor.connStatus === "connected" && !!actor.connection;
 
 	useEffect(() => {
 		if (!(isConnected && actor.connection)) {

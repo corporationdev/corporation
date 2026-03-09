@@ -143,7 +143,8 @@ function AgentsPage() {
 
 	const spaceStatus = workspaceState?.space?.status;
 	const { actor, isConnected, isSandboxReady } = useSpaceActor(
-		workspaceState?.space
+		workspaceState?.space,
+		{ enabled: dialogOpen }
 	);
 
 	const sendCommand = useCallback(
