@@ -71,8 +71,8 @@ function getAgentProbeStatusLabel(
 	isChecking: boolean
 ) {
 	switch (status) {
-		case "ready":
-			return "Available";
+		case "verified":
+			return "Configured";
 		case "requires_auth":
 			return "Needs auth";
 		case "error":
@@ -121,7 +121,7 @@ function AgentListItem({
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
 					<span className="min-w-0 truncate text-[13px]">{agent.name}</span>
-					{probe?.status === "ready" ? (
+					{probe?.status === "verified" ? (
 						<CheckIcon className="size-3.5 shrink-0 text-emerald-500" />
 					) : null}
 				</div>

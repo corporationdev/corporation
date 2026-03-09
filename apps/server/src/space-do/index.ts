@@ -38,6 +38,8 @@ function emptyAgentProbeResponse(status: "not_installed" | "error") {
 			status,
 			models: [],
 			defaultModelId: null,
+			verifiedAt: null,
+			authCheckedAt: Date.now(),
 			error: status === "error" ? "Unable to reach sandbox runtime" : null,
 		}));
 

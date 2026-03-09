@@ -38,12 +38,11 @@ export type PromptRequestBody = z.infer<typeof promptRequestBodySchema>;
 export const agentProbeRequestBodySchema = z.object({
 	ids: z.array(z.string().min(1)).optional(),
 	cwd: z.string().min(1).optional(),
-	force: z.boolean().optional(),
 });
 export type AgentProbeRequestBody = z.infer<typeof agentProbeRequestBodySchema>;
 
 export const agentProbeStatusSchema = z.enum([
-	"ready",
+	"verified",
 	"requires_auth",
 	"not_installed",
 	"error",
@@ -62,6 +61,8 @@ export const agentProbeAgentSchema = z.object({
 	status: agentProbeStatusSchema,
 	models: z.array(agentProbeModelSchema),
 	defaultModelId: z.string().nullable().optional(),
+	verifiedAt: z.number().nullable().optional(),
+	authCheckedAt: z.number().nullable().optional(),
 	error: z.string().nullable().optional(),
 });
 export type AgentProbeAgent = z.infer<typeof agentProbeAgentSchema>;
