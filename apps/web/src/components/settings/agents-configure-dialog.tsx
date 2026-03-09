@@ -239,10 +239,7 @@ export function AgentsConfigureDialog({
 						manifestAgent.nativeInstallCommand,
 						"hash -r",
 					].join("\n");
-					const bytes = Array.from(
-						new TextEncoder().encode(`${terminalInstallCommand}\n`)
-					);
-					await actor.connection.input(bytes);
+					await actor.connection.runCommand(terminalInstallCommand, true);
 				}
 				if (manifestAgent.acpInstallCommand) {
 					await actor.connection.runCommand(

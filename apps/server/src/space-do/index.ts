@@ -20,12 +20,11 @@ import {
 	input as terminalInput,
 	resize as terminalResize,
 } from "./terminal";
-import {
-	type PersistedState,
-	SANDBOX_WORKDIR,
-	type SandboxBinding,
-	type SpaceRuntimeContext,
-	type SpaceVars,
+import type {
+	PersistedState,
+	SandboxBinding,
+	SpaceRuntimeContext,
+	SpaceVars,
 } from "./types";
 
 export type { SessionRow } from "./db/schema";
@@ -106,7 +105,6 @@ async function getAgentProbeState(c: {
 				ids: acpAgents
 					.filter((agent) => agent.runtimeCommand)
 					.map((agent) => agent.id),
-				cwd: SANDBOX_WORKDIR,
 			}),
 		});
 
@@ -132,10 +130,12 @@ async function syncSandboxBinding(
 		return false;
 	}
 
+	const sandbox = await connectSandbox(binding?.sandboxId ?? null);
+
 	await resetTerminal(c);
 
 	c.state.binding = binding;
-	c.vars.sandbox = await connectSandbox(binding?.sandboxId ?? null);
+	c.vars.sandbox = sandbox;
 	c.vars.lastSandboxKeepAliveAt = 0;
 
 	if (c.vars.sandbox && c.conns.size > 0) {

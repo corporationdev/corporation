@@ -54,7 +54,10 @@ export const internalSaveProbeResults = internalMutation({
 			existingByAgentId.set(row.agentId, row);
 		}
 
-		const incomingIds = new Set(args.agents.map((a) => a.id));
+		const dedupedAgents = Array.from(
+			new Map(args.agents.map((agent) => [agent.id, agent])).values()
+		);
+		const incomingIds = new Set(dedupedAgents.map((agent) => agent.id));
 
 		for (const [agentId, row] of existingByAgentId) {
 			if (!incomingIds.has(agentId)) {
@@ -62,7 +65,7 @@ export const internalSaveProbeResults = internalMutation({
 			}
 		}
 
-		for (const agent of args.agents) {
+		for (const agent of dedupedAgents) {
 			const existing = existingByAgentId.get(agent.id);
 
 			if (existing) {

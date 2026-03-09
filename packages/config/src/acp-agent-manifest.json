@@ -280,7 +280,7 @@
       "command": "$HOME/.local/share/corporation/acp/npm/pi-acp/bin/pi-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
     "installSource": "https://github.com/badlogic/pi-mono/tree/master/packages/coding-agent"
   },
   {

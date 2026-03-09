@@ -13,6 +13,7 @@ import { spawnStdioBridge, stdioRequest, teardownBridge } from "./stdio-bridge";
 const PROBE_TIMEOUT_MS = 15_000;
 const PROBE_CONCURRENCY = 9;
 const ACP_ERROR_CODE_REGEX = /acp error \((-?\d+)\):/i;
+const PROBE_CWD = "/workspace";
 
 type RuntimeAgentEntry = ReturnType<typeof runtimeAgentEntries>[number];
 
@@ -141,13 +142,22 @@ function isUnsupportedMethodError(error: unknown): boolean {
 async function setProbeModelOrThrow(
 	bridge: ReturnType<typeof spawnStdioBridge>,
 	agentSessionId: string,
-	modelId: string
+	modelId: string,
+	options?: {
+		signal?: AbortSignal;
+		timeoutMs?: number;
+	}
 ): Promise<void> {
 	try {
-		await stdioRequest(bridge, AGENT_METHODS.session_set_model, {
-			sessionId: agentSessionId,
-			modelId,
-		});
+		await stdioRequest(
+			bridge,
+			AGENT_METHODS.session_set_model,
+			{
+				sessionId: agentSessionId,
+				modelId,
+			},
+			options
+		);
 	} catch (error) {
 		if (isUnsupportedMethodError(error)) {
 			log("warn", "session/set_model not supported by agent during probe", {
@@ -171,7 +181,10 @@ async function runVerificationPrompt(params: {
 		params;
 
 	if (currentModelId) {
-		await setProbeModelOrThrow(bridge, agentSessionId, currentModelId);
+		await setProbeModelOrThrow(bridge, agentSessionId, currentModelId, {
+			timeoutMs: PROBE_TIMEOUT_MS,
+			signal,
+		});
 	}
 
 	await stdioRequest(
@@ -191,7 +204,6 @@ async function runVerificationPrompt(params: {
 
 async function probeSingleAgent(
 	entry: RuntimeAgentEntry,
-	cwd: string,
 	state: ProbeState,
 	signal?: AbortSignal
 ): Promise<AgentProbeAgent> {
@@ -256,7 +268,7 @@ async function probeSingleAgent(
 		const sessionResult = await stdioRequest<"session/new">(
 			bridge,
 			"session/new",
-			{ cwd, mcpServers: [] },
+			{ cwd: PROBE_CWD, mcpServers: [] },
 			{ timeoutMs: PROBE_TIMEOUT_MS, signal }
 		);
 		const configOptions = sessionResult.configOptions ?? [];
@@ -318,7 +330,6 @@ async function probeSingleAgent(
 
 function getOrCreateProbePromise(
 	entry: RuntimeAgentEntry,
-	cwd: string,
 	state: ProbeState
 ): Promise<AgentProbeAgent> {
 	const existing = state.inFlightProbeByAgent.get(entry.id);
@@ -327,7 +338,7 @@ function getOrCreateProbePromise(
 	}
 
 	const promise = withTimeout(
-		(signal) => probeSingleAgent(entry, cwd, state, signal),
+		(signal) => probeSingleAgent(entry, state, signal),
 		PROBE_TIMEOUT_MS,
 		`Probe for ${entry.id}`
 	).finally(() => {
@@ -345,7 +356,6 @@ export async function probeAgents(
 	state: ProbeState
 ): Promise<AgentProbeResponse> {
 	const entries = runtimeAgentEntries(body.ids);
-	const cwd = body.cwd ?? process.cwd();
 	const results = new Array<AgentProbeAgent>(entries.length);
 	let nextIndex = 0;
 
@@ -362,7 +372,7 @@ export async function probeAgents(
 				return;
 			}
 
-			results[index] = await getOrCreateProbePromise(entry, cwd, state).catch(
+			results[index] = await getOrCreateProbePromise(entry, state).catch(
 				(error) => ({
 					...buildProbeAgentBase({
 						id: entry.id,
@@ -384,7 +394,7 @@ export async function probeAgents(
 
 	log("info", "Completed agent probe batch", {
 		count: results.length,
-		cwd,
+		cwd: PROBE_CWD,
 	});
 
 	return {

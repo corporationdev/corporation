@@ -1,14 +1,11 @@
+import type { Sandbox } from "@e2b/desktop";
 import { requireSandbox } from "./sandbox";
 import type { SpaceRuntimeContext } from "./types";
 
 const DISPLAY = ":0";
 
-function tryGetExistingStreamUrl(c: SpaceRuntimeContext): string | null {
+function tryGetExistingStreamUrl(sandbox: Sandbox): string | null {
 	try {
-		const sandbox = c.vars.sandbox;
-		if (!sandbox) {
-			return null;
-		}
 		const url = sandbox.stream.getUrl();
 		return typeof url === "string" && url.length > 0 ? url : null;
 	} catch {
@@ -50,14 +47,14 @@ export async function getDesktopStreamUrl(
 
 	// If the stream is already running, reuse it. Avoid stop/start churn,
 	// which can invalidate the previously issued stream URL.
-	const existingUrl = tryGetExistingStreamUrl(c);
+	const existingUrl = tryGetExistingStreamUrl(sandbox);
 	if (existingUrl) {
 		return existingUrl;
 	}
 
 	try {
 		await sandbox.stream.start();
-		const url = tryGetExistingStreamUrl(c);
+		const url = tryGetExistingStreamUrl(sandbox);
 		if (url) {
 			return url;
 		}
@@ -72,7 +69,7 @@ export async function getDesktopStreamUrl(
 		// May not be running — that's fine
 	}
 	await sandbox.stream.start();
-	const url = tryGetExistingStreamUrl(c);
+	const url = tryGetExistingStreamUrl(sandbox);
 	if (!url) {
 		throw new Error("Desktop stream unavailable");
 	}

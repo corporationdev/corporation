@@ -37,7 +37,6 @@ export type PromptRequestBody = z.infer<typeof promptRequestBodySchema>;
 
 export const agentProbeRequestBodySchema = z.object({
 	ids: z.array(z.string().min(1)).optional(),
-	cwd: z.string().min(1).optional(),
 });
 export type AgentProbeRequestBody = z.infer<typeof agentProbeRequestBodySchema>;
 
