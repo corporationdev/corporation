@@ -11,7 +11,7 @@ import { log } from "./logging";
 import type { AcpAgentRequestResult } from "./schemas";
 import { spawnStdioBridge, stdioRequest, teardownBridge } from "./stdio-bridge";
 
-const PROBE_TIMEOUT_MS = 15000;
+const PROBE_TIMEOUT_MS = 15_000;
 const PROBE_CONCURRENCY = 9;
 
 type ProbeModelsResult = {
