@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { nanoid } from "nanoid";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
@@ -7,10 +8,6 @@ import { ensureSpaceRecord } from "./spaces";
 
 const USER_PROJECT_NAME = "Home";
 const USER_SPACE_NAME = "Personal Workspace";
-
-function getUserSpaceSlug(userId: string): string {
-	return `user-space-${userId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
-}
 
 async function getUserProject(
 	ctx: QueryCtx,
@@ -128,7 +125,7 @@ export const configure = authedMutation({
 		}
 
 		return await ensureSpaceRecord(ctx, {
-			slug: getUserSpaceSlug(ctx.userId),
+			slug: nanoid(),
 			project: withSnapshot,
 			snapshotId,
 			name: USER_SPACE_NAME,

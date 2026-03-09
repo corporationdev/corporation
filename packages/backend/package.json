@@ -16,6 +16,7 @@
     "convex": "catalog:",
     "convex-helpers": "catalog:",
     "dotenv": "catalog:",
+    "nanoid": "catalog:",
     "svix": "catalog:",
     "zod": "catalog:",
     "@ai-sdk/anthropic": "catalog:",

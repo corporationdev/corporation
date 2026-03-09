@@ -72,7 +72,7 @@ function getAgentProbeStatusLabel(
 ) {
 	switch (status) {
 		case "ready":
-			return "Configured";
+			return "Available";
 		case "requires_auth":
 			return "Needs auth";
 		case "error":

@@ -13,6 +13,7 @@ import { spawnStdioBridge, stdioRequest, teardownBridge } from "./stdio-bridge";
 
 const PROBE_TIMEOUT_MS = 15_000;
 const PROBE_CONCURRENCY = 9;
+const ACP_ERROR_CODE_REGEX = /acp error \((-?\d+)\):/i;
 
 type ProbeModelsResult = {
 	models: AgentProbeAgent["models"];
@@ -37,7 +38,22 @@ function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
+function getAcpErrorCode(error: unknown): number | null {
+	const message = error instanceof Error ? error.message : String(error);
+	const match = ACP_ERROR_CODE_REGEX.exec(message);
+	const code = match?.[1];
+	if (!code) {
+		return null;
+	}
+
+	return Number.parseInt(code, 10);
+}
+
 function isAuthRequiredError(error: unknown): boolean {
+	if (getAcpErrorCode(error) === -32_000) {
+		return true;
+	}
+
 	const message = (error instanceof Error ? error.message : String(error))
 		.toLowerCase()
 		.trim();
