@@ -6,14 +6,6 @@ import { log } from "./logging";
 
 const SANDBOX_HOME_DIR = process.env.HOME || "/home/user";
 
-function stringEnv(): Record<string, string | undefined> {
-	return Object.fromEntries(
-		Object.entries(process.env).filter(
-			(entry): entry is [string, string] => typeof entry[1] === "string"
-		)
-	);
-}
-
 function expandHome(path: string) {
 	if (path.startsWith("$HOME/")) {
 		return `${SANDBOX_HOME_DIR}/${path.slice("$HOME/".length)}`;
@@ -51,21 +43,6 @@ export function agentCommand(agent: string): string[] {
 		expandHome(runtime.command),
 		...(runtime.args ?? []).map((arg: string) => expandHome(arg)),
 	];
-}
-
-export function agentEnv(agent: string): Record<string, string> {
-	const env = stringEnv();
-	const runtime = RUNTIME_AGENT_COMMANDS[agent];
-	const basePath = env.PATH ?? process.env.PATH ?? "";
-	env.PATH = `${SANDBOX_HOME_DIR}/.local/bin:${basePath}`;
-
-	if (runtime?.env) {
-		for (const [key, value] of Object.entries(runtime.env)) {
-			env[key] = value;
-		}
-	}
-
-	return env as Record<string, string>;
 }
 
 export function runtimeAgentEntry(id: string) {

@@ -12,7 +12,7 @@ import type { AcpAgentRequestResult } from "./schemas";
 import { spawnStdioBridge, stdioRequest, teardownBridge } from "./stdio-bridge";
 
 const PROBE_TIMEOUT_MS = 8000;
-const PROBE_CONCURRENCY = 2;
+const PROBE_CONCURRENCY = 9;
 
 type ProbeModelsResult = {
 	models: AgentProbeAgent["models"];
@@ -146,32 +146,70 @@ function normalizeProbeModels(
 	return normalizeConfigOptionModels(sessionResult.configOptions);
 }
 
+function getAbortError(signal: AbortSignal, fallback: string): Error {
+	const reason = signal.reason;
+	if (reason instanceof Error) {
+		return reason;
+	}
+	if (typeof reason === "string" && reason.length > 0) {
+		return new Error(reason);
+	}
+	return new Error(fallback);
+}
+
+async function sleepWithSignal(
+	durationMs: number,
+	signal?: AbortSignal
+): Promise<void> {
+	if (!signal) {
+		await new Promise((resolve) => setTimeout(resolve, durationMs));
+		return;
+	}
+
+	await new Promise<void>((resolve, reject) => {
+		const onAbort = () => {
+			cleanup();
+			reject(getAbortError(signal, "Probe startup aborted"));
+		};
+		const timer = setTimeout(() => {
+			cleanup();
+			resolve();
+		}, durationMs);
+		const cleanup = () => {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", onAbort);
+		};
+
+		if (signal.aborted) {
+			onAbort();
+			return;
+		}
+
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
+}
+
 async function withTimeout<T>(
-	promise: Promise<T>,
+	run: (signal: AbortSignal) => Promise<T>,
 	timeoutMs: number,
 	label: string
 ): Promise<T> {
-	let timer: ReturnType<typeof setTimeout> | null = null;
+	const controller = new AbortController();
+	const timer = setTimeout(() => {
+		controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`));
+	}, timeoutMs);
 
 	try {
-		return await Promise.race([
-			promise,
-			new Promise<T>((_, reject) => {
-				timer = setTimeout(() => {
-					reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-				}, timeoutMs);
-			}),
-		]);
+		return await run(controller.signal);
 	} finally {
-		if (timer) {
-			clearTimeout(timer);
-		}
+		clearTimeout(timer);
 	}
 }
 
 async function probeSingleAgent(
 	entry: ReturnType<typeof runtimeAgentEntries>[number],
-	cwd: string
+	cwd: string,
+	signal?: AbortSignal
 ): Promise<AgentProbeAgent> {
 	const base = buildProbeAgentBase({
 		id: entry.id,
@@ -183,9 +221,35 @@ async function probeSingleAgent(
 
 	const bridge = spawnStdioBridge(entry.runtimeId, () => undefined);
 	const sessionId = `probe-${entry.runtimeId}-${crypto.randomUUID()}`;
+	let bridgeTornDown = false;
+	const closeBridge = (reason: string) => {
+		if (bridgeTornDown) {
+			return;
+		}
+		bridgeTornDown = true;
+		teardownBridge(bridge, {
+			agent: entry.runtimeId,
+			sessionId,
+			reason,
+		});
+	};
+	const onAbort = () => {
+		if (!signal) {
+			return;
+		}
+		closeBridge(
+			getAbortError(signal, `Probe for ${entry.runtimeId} aborted`).message
+		);
+	};
+
+	if (signal?.aborted) {
+		onAbort();
+	} else {
+		signal?.addEventListener("abort", onAbort, { once: true });
+	}
 
 	try {
-		await new Promise((resolve) => setTimeout(resolve, 250));
+		await sleepWithSignal(250, signal);
 		if (bridge.proc.exitCode !== null) {
 			throw new Error(
 				`Agent ${entry.runtimeId} exited immediately with code ${bridge.proc.exitCode}`
@@ -199,7 +263,7 @@ async function probeSingleAgent(
 				protocolVersion: ACP_PROTOCOL_VERSION,
 				clientInfo: { name: "sandbox-runtime", version: "v1" },
 			},
-			PROBE_TIMEOUT_MS
+			{ timeoutMs: PROBE_TIMEOUT_MS, signal }
 		);
 
 		const sessionResult = await stdioRequest<"session/new">(
@@ -209,7 +273,7 @@ async function probeSingleAgent(
 				cwd,
 				mcpServers: buildDesktopMcpServers(),
 			},
-			PROBE_TIMEOUT_MS
+			{ timeoutMs: PROBE_TIMEOUT_MS, signal }
 		);
 		const normalizedModels = normalizeProbeModels(sessionResult);
 
@@ -220,6 +284,10 @@ async function probeSingleAgent(
 			defaultModelId: normalizedModels.defaultModelId,
 		};
 	} catch (error) {
+		if (signal?.aborted) {
+			throw getAbortError(signal, `Probe for ${entry.runtimeId} aborted`);
+		}
+
 		if (isAuthRequiredError(error)) {
 			return {
 				...base,
@@ -234,11 +302,8 @@ async function probeSingleAgent(
 			error: error instanceof Error ? error.message : String(error),
 		};
 	} finally {
-		teardownBridge(bridge, {
-			agent: entry.runtimeId,
-			sessionId,
-			reason: "agent probe completed",
-		});
+		signal?.removeEventListener("abort", onAbort);
+		closeBridge("agent probe completed");
 	}
 }
 
@@ -263,7 +328,7 @@ export async function probeAgents(
 				return;
 			}
 			results[index] = await withTimeout(
-				probeSingleAgent(entry, cwd),
+				(signal) => probeSingleAgent(entry, cwd, signal),
 				PROBE_TIMEOUT_MS,
 				`Probe for ${entry.runtimeId}`
 			).catch((error) => ({

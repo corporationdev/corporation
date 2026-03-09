@@ -164,14 +164,14 @@ function AgentsPage() {
 	const workspaceState = useQuery(api.userWorkspace.getWorkspaceState);
 	const configure = useMutation(api.userWorkspace.configure);
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const [configurePending, setConfigurePending] = useState(false);
+	const [isConfiguring, setIsConfiguring] = useState(false);
 	const [configureError, setConfigureError] = useState<string | null>(null);
 	const [installingAgentId, setInstallingAgentId] = useState<string | null>(
 		null
 	);
 
 	const startConfigure = useCallback(async () => {
-		setConfigurePending(true);
+		setIsConfiguring(true);
 		setConfigureError(null);
 		try {
 			await configure({});
@@ -180,11 +180,12 @@ function AgentsPage() {
 				error instanceof Error ? error.message : "Failed to configure"
 			);
 		} finally {
-			setConfigurePending(false);
+			setIsConfiguring(false);
 		}
 	}, [configure]);
 
-	const spaceStatus = workspaceState?.space?.status;
+	const agent = workspaceState?.space;
+	const spaceStatus = agent?.status;
 	const { actor, isConnected, isSandboxReady } = useSpaceActor(
 		workspaceState?.space,
 		{ enabled: dialogOpen }
@@ -245,9 +246,9 @@ function AgentsPage() {
 
 	const statusLabel = getStatusLabel(spaceStatus);
 	const statusDescription = getStatusDescription(spaceStatus);
-	const statusError = configureError ?? workspaceState?.space?.error ?? null;
+	const statusError = configureError ?? agent?.error ?? null;
 	const canRetry = spaceStatus === "error";
-	const sandboxId = workspaceState?.space?.sandboxId;
+	const sandboxId = agent?.sandboxId;
 
 	const statusTone = useMemo(() => {
 		if (spaceStatus === "error") {
@@ -298,9 +299,12 @@ function AgentsPage() {
 								<CardDescription>{statusDescription}</CardDescription>
 							</div>
 							<Button
+								disabled={isConfiguring}
 								onClick={() => {
 									setDialogOpen(true);
-									startConfigure().catch(() => undefined);
+									if (agent?.status !== "running" && !isConfiguring) {
+										startConfigure().catch(() => undefined);
+									}
 								}}
 								size="sm"
 							>
@@ -347,11 +351,8 @@ function AgentsPage() {
 
 					<div className="flex h-[70vh] gap-4">
 						<div className="min-w-0 flex-1 overflow-hidden border">
-							{dialogOpen && isSandboxReady && workspaceState.space ? (
-								<PtyTerminal
-									actor={actor}
-									spaceSlug={workspaceState.space.slug}
-								/>
+							{dialogOpen && isSandboxReady && agent ? (
+								<PtyTerminal actor={actor} spaceSlug={agent.slug} />
 							) : (
 								<div className="flex h-full flex-col justify-between gap-4 p-4">
 									<div className="flex items-center gap-3">
@@ -373,7 +374,7 @@ function AgentsPage() {
 									<div className="flex items-center justify-end gap-2">
 										{canRetry && (
 											<Button
-												disabled={configurePending}
+												disabled={isConfiguring}
 												onClick={() => startConfigure().catch(() => undefined)}
 												size="sm"
 												variant="outline"
@@ -381,7 +382,7 @@ function AgentsPage() {
 												Retry
 											</Button>
 										)}
-										{configurePending && (
+										{isConfiguring && (
 											<span className="text-muted-foreground text-xs">
 												Request submitted
 											</span>

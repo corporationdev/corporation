@@ -10,17 +10,17 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@zed-industries/claude-agent-acp@0.20.2"
+        "package": "@zed-industries/claude-agent-acp"
       }
     },
     "runtimeId": "claude",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.20.2'",
+    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp'",
     "runtimeCommand": {
       "command": "$HOME/.local/share/corporation/acp/npm/claude-acp/bin/claude-agent-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.20.2') >/tmp/corporation-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/corporation-acp-claude-acp.log\\n\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp') >/tmp/corporation-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/corporation-acp-claude-acp.log\\n\"",
     "installSource": "https://docs.anthropic.com/en/docs/claude-code/setup"
   },
   {
@@ -60,7 +60,7 @@
         }
       },
       "npx": {
-        "package": "@zed-industries/codex-acp@0.9.5"
+        "package": "@zed-industries/codex-acp"
       }
     },
     "runtimeId": "codex",
@@ -185,7 +185,7 @@
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "@google/gemini-cli@0.32.1",
+        "package": "@google/gemini-cli",
         "args": ["--experimental-acp"]
       }
     },
@@ -210,7 +210,7 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@github/copilot@1.0.2",
+        "package": "@github/copilot",
         "args": ["--acp"]
       }
     },
@@ -278,7 +278,7 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@augmentcode/auggie@0.18.1",
+        "package": "@augmentcode/auggie",
         "args": ["--acp"],
         "env": {
           "AUGMENT_DISABLE_AUTO_UPDATE": "1"
@@ -309,17 +309,17 @@
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "@autohandai/autohand-acp@0.2.1"
+        "package": "@autohandai/autohand-acp"
       }
     },
     "runtimeId": "autohand",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp@0.2.1'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/autohand-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp@0.2.1'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp'",
     "installSource": "https://github.com/autohandai/autohand-acp"
   },
   {
@@ -333,18 +333,18 @@
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "cline@2.6.1",
+        "package": "cline",
         "args": ["--acp"]
       }
     },
     "runtimeId": "cline",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline@2.6.1'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/cline",
       "args": ["--acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline@2.6.1'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline'",
     "installSource": "https://github.com/cline/cline"
   },
   {
@@ -358,18 +358,18 @@
     "license": "Proprietary",
     "distribution": {
       "npx": {
-        "package": "@tencent-ai/codebuddy-code@2.56.0",
+        "package": "@tencent-ai/codebuddy-code",
         "args": ["--acp"]
       }
     },
     "runtimeId": "codebuddy-code",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code@2.56.0'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/codebuddy-code",
       "args": ["--acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code@2.56.0'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code'",
     "installSource": "https://www.codebuddy.cn/cli/"
   },
   {
@@ -442,18 +442,18 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "dimcode@0.0.15",
+        "package": "dimcode",
         "args": ["acp"]
       }
     },
     "runtimeId": "dimcode",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode@0.0.15'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/dimcode",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode@0.0.15'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode'",
     "installSource": null
   },
   {
@@ -466,7 +466,7 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "droid@0.70.0",
+        "package": "droid",
         "args": ["exec", "--output-format", "acp"],
         "env": {
           "DROID_DISABLE_AUTO_UPDATE": "true",
@@ -475,7 +475,7 @@
       }
     },
     "runtimeId": "factory-droid",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.70.0'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/droid",
@@ -485,7 +485,7 @@
         "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
       }
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.70.0'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid'",
     "installSource": null
   },
   {
@@ -547,18 +547,18 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@jetbrains/junie@888.173.0",
+        "package": "@jetbrains/junie",
         "args": ["--acp=true"]
       }
     },
     "runtimeId": "junie",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie@888.173.0'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/junie",
       "args": ["--acp=true"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie@888.173.0'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie'",
     "installSource": "https://github.com/JetBrains/junie"
   },
   {
@@ -599,7 +599,7 @@
         }
       },
       "npx": {
-        "package": "@kilocode/cli@7.0.40",
+        "package": "@kilocode/cli",
         "args": ["acp"]
       }
     },
@@ -667,18 +667,18 @@
     "license": "AGPL-3.0",
     "distribution": {
       "uvx": {
-        "package": "minion-code@0.1.39",
+        "package": "minion-code",
         "args": ["acp"]
       }
     },
     "runtimeId": "minion-code",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code@0.1.39'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/minion-code",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code@0.1.39'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code'",
     "installSource": "https://github.com/femto/minion-code"
   },
   {
@@ -739,18 +739,18 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@compass-ai/nova@1.0.70",
+        "package": "@compass-ai/nova",
         "args": ["acp"]
       }
     },
     "runtimeId": "nova",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova@1.0.70'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/nova",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova@1.0.70'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova'",
     "installSource": "https://github.com/Compass-Agentic-Platform/nova"
   },
   {
@@ -764,17 +764,17 @@
     "license": "MIT",
     "distribution": {
       "npx": {
-        "package": "pi-acp@0.0.22"
+        "package": "pi-acp"
       }
     },
     "runtimeId": "pi",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22'",
+    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp'",
     "runtimeCommand": {
       "command": "$HOME/.local/share/corporation/acp/npm/pi-acp/bin/pi-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
     "installSource": "https://github.com/badlogic/pi-mono/tree/master/packages/coding-agent"
   },
   {
@@ -787,18 +787,18 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@qoder-ai/qodercli@0.1.29",
+        "package": "@qoder-ai/qodercli",
         "args": ["--acp"]
       }
     },
     "runtimeId": "qoder",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli@0.1.29'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/qodercli",
       "args": ["--acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli@0.1.29'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli'",
     "installSource": null
   },
   {
@@ -812,18 +812,18 @@
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "@qwen-code/qwen-code@0.11.1",
+        "package": "@qwen-code/qwen-code",
         "args": ["--acp", "--experimental-skills"]
       }
     },
     "runtimeId": "qwen-code",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code@0.11.1'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/qwen-code",
       "args": ["--acp", "--experimental-skills"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code@0.11.1'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code'",
     "installSource": "https://github.com/QwenLM/qwen-code"
   },
   {

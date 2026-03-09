@@ -60,6 +60,10 @@ export async function ensureSpaceRecord(
 		.unique();
 
 	if (existing) {
+		if (existing.projectId !== args.project._id) {
+			throw new ConvexError("Space slug already belongs to another project");
+		}
+
 		const patch =
 			existing.status !== "running" &&
 			args.snapshotId !== undefined &&

@@ -16,12 +16,12 @@ async function getUserProject(
 	ctx: QueryCtx,
 	userId: string
 ): Promise<Doc<"projects"> | null> {
-	const projects = await ctx.db
+	return await ctx.db
 		.query("projects")
-		.withIndex("by_user", (q) => q.eq("userId", userId))
-		.collect();
-
-	return projects.find((project) => project.type === "user") ?? null;
+		.withIndex("by_user_and_type", (q) =>
+			q.eq("userId", userId).eq("type", "user")
+		)
+		.unique();
 }
 
 async function getSpaceForProject(
