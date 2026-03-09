@@ -109,6 +109,7 @@ export async function startAgentRunner(
 	appendSessionStatusFrame(ctx, {
 		sessionId: params.sessionId,
 		status: "running",
+		error: null,
 		reason: "run_started",
 	});
 
@@ -133,14 +134,13 @@ export async function startAgentRunner(
 				status: "error",
 				runId: null,
 				callbackToken: null,
-				error: {
-					message: error instanceof Error ? error.message : String(error),
-				},
+				error: error instanceof Error ? error.message : String(error),
 			})
 			.where(eq(sessions.id, params.sessionId));
 		appendSessionStatusFrame(ctx, {
 			sessionId: params.sessionId,
 			status: "error",
+			error: error instanceof Error ? error.message : String(error),
 			reason: "run_launch_failed",
 		});
 		throw error;
@@ -244,6 +244,7 @@ export async function ingestAgentRunnerBatch(
 		appendSessionStatusFrame(ctx, {
 			sessionId: session.id,
 			status: "idle",
+			error: null,
 			reason: "run_completed",
 		});
 		return;
@@ -257,13 +258,14 @@ export async function ingestAgentRunnerBatch(
 				runId: null,
 				callbackToken: null,
 				pid: null,
-				error: parsed.error,
+				error: parsed.error.message,
 			})
 			.where(eq(sessions.id, session.id));
 		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
 		appendSessionStatusFrame(ctx, {
 			sessionId: session.id,
 			status: "error",
+			error: parsed.error.message,
 			reason: "run_failed",
 		});
 		log.error(

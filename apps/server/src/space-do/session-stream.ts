@@ -50,6 +50,21 @@ function normalizeAfterOffset(afterOffset?: number): number {
 	return Math.max(-1, Math.trunc(afterOffset ?? -1));
 }
 
+function getSessionErrorMessage(error: unknown): string | null {
+	if (typeof error === "string") {
+		return error;
+	}
+	if (
+		error &&
+		typeof error === "object" &&
+		"message" in error &&
+		typeof error.message === "string"
+	) {
+		return error.message;
+	}
+	return null;
+}
+
 function mapFrameRowToFrame(row: {
 	offset: number;
 	data: unknown;
@@ -73,6 +88,7 @@ function mapFrameRowToFrame(row: {
 			kind: "status_changed",
 			offset: row.offset,
 			status: data.status,
+			error: data.error,
 			reason: data.reason,
 		};
 	}
@@ -190,6 +206,7 @@ export async function getSessionStreamState(
 	const [session] = await ctx.vars.db
 		.select({
 			status: sessions.status,
+			error: sessions.error,
 			agent: sessions.agent,
 			modelId: sessions.modelId,
 			lastOffset: sessions.lastStreamOffset,
@@ -201,6 +218,7 @@ export async function getSessionStreamState(
 		return {
 			sessionId,
 			status: "idle",
+			error: null,
 			agent: null,
 			modelId: null,
 			lastOffset: 0,
@@ -210,6 +228,7 @@ export async function getSessionStreamState(
 	return {
 		sessionId,
 		status: session.status,
+		error: getSessionErrorMessage(session.error),
 		agent: session.agent ?? null,
 		modelId: session.modelId ?? null,
 		lastOffset: session.lastOffset,
@@ -316,6 +335,7 @@ export function appendSessionStatusFrame(
 	input: {
 		sessionId: string;
 		status: SessionStatus;
+		error?: string | null;
 		reason?: string;
 		createdAt?: number;
 	}
@@ -337,6 +357,7 @@ export function appendSessionStatusFrame(
 		const data: SessionStreamFrameData = {
 			kind: "status_changed",
 			status: input.status,
+			error: input.error,
 			reason: input.reason,
 		};
 

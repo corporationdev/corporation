@@ -19,6 +19,9 @@ import type { PersistedState, SpaceVars } from "./types";
 
 export type { SessionRow } from "./db/schema";
 
+const SANDBOX_TIMEOUT_MS = 900_000;
+const SANDBOX_KEEP_ALIVE_THROTTLE_MS = 240_000;
+
 export const space = actor({
 	createState: (
 		c,
@@ -59,6 +62,7 @@ export const space = actor({
 			terminalHandles: new Map(),
 			sessionStreamWaiters: new Map(),
 			agentRunnerSequenceBySessionId: new Map(),
+			lastSandboxKeepAliveAt: 0,
 		};
 
 		return vars;
@@ -94,5 +98,17 @@ export const space = actor({
 		input: (c, data: number[]) => terminalInput(c, data),
 		resize: (c, cols: number, rows: number) => terminalResize(c, cols, rows),
 		getDesktopStreamUrl: (c) => getDesktopStreamUrl(c),
+		keepAliveSandbox: async (c): Promise<void> => {
+			const now = Date.now();
+			if (
+				now - c.vars.lastSandboxKeepAliveAt <
+				SANDBOX_KEEP_ALIVE_THROTTLE_MS
+			) {
+				return;
+			}
+
+			await c.vars.sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
+			c.vars.lastSandboxKeepAliveAt = now;
+		},
 	},
 });

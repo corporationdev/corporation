@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/resizable";
 import { WorkspacePanel } from "@/components/workspace-panel/workspace-panel";
 import { useAutoStartSandbox } from "@/hooks/use-auto-start-sandbox";
+import { useKeepAliveSandbox } from "@/hooks/use-keep-alive-sandbox";
 import { useActor } from "@/lib/rivetkit";
 
 export function SpaceLayout() {
@@ -33,6 +34,7 @@ export function SpaceLayout() {
 			: undefined,
 		enabled: sandboxReady,
 	});
+	useKeepAliveSandbox(actor, sandboxReady);
 
 	return (
 		<ResizablePanelGroup orientation="horizontal">
@@ -46,7 +48,7 @@ export function SpaceLayout() {
 			</ResizablePanel>
 			<ResizableHandle />
 			<ResizablePanel>
-				<WorkspacePanel actor={actor} spaceSlug={spaceSlug} />
+				<WorkspacePanel actor={actor} space={space} spaceSlug={spaceSlug} />
 			</ResizablePanel>
 		</ResizablePanelGroup>
 	);

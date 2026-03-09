@@ -191,6 +191,7 @@ export async function cancelSession(
 	appendSessionStatusFrame(ctx, {
 		sessionId,
 		status: "idle",
+		error: null,
 		reason: "run_cancelled",
 	});
 

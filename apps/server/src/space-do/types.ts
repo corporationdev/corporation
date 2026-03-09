@@ -16,6 +16,7 @@ export type SpaceVars = {
 	terminalHandles: Map<string, CommandHandle>;
 	sessionStreamWaiters: Map<string, Set<() => void>>;
 	agentRunnerSequenceBySessionId: Map<string, number>;
+	lastSandboxKeepAliveAt: number;
 };
 
 export type ConnectionSender = {

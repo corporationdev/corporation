@@ -1,5 +1,7 @@
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { MonitorIcon, TerminalIcon } from "lucide-react";
+import { CreateSnapshotPopover } from "@/components/create-snapshot-popover";
 import type { SpaceActor } from "@/lib/rivetkit";
 import { cn } from "@/lib/utils";
 import { DesktopTab } from "./desktop-tab";
@@ -24,10 +26,21 @@ function getWorkspaceTabStorageKey(spaceSlug: string) {
 
 type WorkspacePanelProps = {
 	actor: SpaceActor;
+	space:
+		| {
+				_id: Id<"spaces">;
+				sandboxId?: string;
+		  }
+		| null
+		| undefined;
 	spaceSlug: string;
 };
 
-export function WorkspacePanel({ actor, spaceSlug }: WorkspacePanelProps) {
+export function WorkspacePanel({
+	actor,
+	space,
+	spaceSlug,
+}: WorkspacePanelProps) {
 	const storageKey = getWorkspaceTabStorageKey(spaceSlug);
 	const [storedActiveTab, setActiveTab] = useLocalStorage<TabId>(
 		storageKey,
@@ -37,29 +50,39 @@ export function WorkspacePanel({ actor, spaceSlug }: WorkspacePanelProps) {
 
 	return (
 		<div className="flex h-full flex-col overflow-hidden">
-			<div className="flex h-12 shrink-0 items-center border-b px-1">
-				{tabs.map((tab) => (
-					<button
-						className={cn(
-							"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors",
-							activeTab === tab.id
-								? "bg-accent font-medium text-foreground"
-								: "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-						)}
-						key={tab.id}
-						onClick={() => setActiveTab(tab.id)}
-						type="button"
-					>
-						<tab.icon className="size-3.5" />
-						{tab.label}
-					</button>
-				))}
+			<div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-1">
+				<div className="flex items-center">
+					{tabs.map((tab) => (
+						<button
+							className={cn(
+								"inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors",
+								activeTab === tab.id
+									? "bg-accent font-medium text-foreground"
+									: "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+							)}
+							key={tab.id}
+							onClick={() => setActiveTab(tab.id)}
+							type="button"
+						>
+							<tab.icon className="size-3.5" />
+							{tab.label}
+						</button>
+					))}
+				</div>
+				<div className="pr-1">
+					<CreateSnapshotPopover
+						sandboxId={space?.sandboxId}
+						spaceId={space?._id}
+					/>
+				</div>
 			</div>
 			<div className="min-h-0 flex-1">
 				{activeTab === "terminal" && (
 					<TerminalTab actor={actor} spaceSlug={spaceSlug} />
 				)}
-				{activeTab === "desktop" && <DesktopTab actor={actor} />}
+				{activeTab === "desktop" && (
+					<DesktopTab actor={actor} spaceSlug={spaceSlug} />
+				)}
 			</div>
 		</div>
 	);

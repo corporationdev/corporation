@@ -1,6 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
+import { AlertTriangleIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -107,6 +108,7 @@ export const ConnectedSessionView: FC<{
 	const agent = agentOverride ?? sessionState.agent ?? INITIAL_AGENT;
 	const modelId = modelIdOverride ?? sessionState.modelId ?? INITIAL_MODEL;
 	const isRunning = sessionState.status === "running";
+	const hasError = sessionState.status === "error" && !!sessionState.error;
 
 	const pendingRef = useRef<{
 		text: string;
@@ -127,8 +129,9 @@ export const ConnectedSessionView: FC<{
 			};
 			setAgentOverride(pending.agent);
 			setModelIdOverride(pending.modelId);
+			sessionState.addOptimisticMessage(pending.text);
 		}
-	}, [consumeMessage]);
+	}, [consumeMessage, sessionState.addOptimisticMessage]);
 
 	// Send pending message once actor is connected and space has agentUrl
 	useEffect(() => {
@@ -175,6 +178,7 @@ export const ConnectedSessionView: FC<{
 		}
 
 		setMessage("");
+		sessionState.addOptimisticMessage(text);
 
 		try {
 			await ensureSpace({ slug: spaceSlug });
@@ -190,6 +194,7 @@ export const ConnectedSessionView: FC<{
 			}
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
+			sessionState.clearOptimisticMessages();
 			setMessage((current) => (current ? current : text));
 			toast.error("Failed to send message");
 		}
@@ -203,6 +208,8 @@ export const ConnectedSessionView: FC<{
 		modelId,
 		space?._id,
 		touchSpace,
+		sessionState.addOptimisticMessage,
+		sessionState.clearOptimisticMessages,
 	]);
 
 	const handleStop = useCallback(async () => {
@@ -221,11 +228,11 @@ export const ConnectedSessionView: FC<{
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [sessionState.entries]);
+	}, [sessionState.entries, sessionState.error]);
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col bg-background">
-			{sessionState.entries.length === 0 ? (
+			{sessionState.entries.length === 0 && !hasError ? (
 				<div className="flex flex-1 flex-col items-center justify-center px-4">
 					<h1 className="font-semibold text-2xl">Ready to Chat</h1>
 					<p className="mt-1 text-muted-foreground">
@@ -239,6 +246,19 @@ export const ConnectedSessionView: FC<{
 						isThinking={isRunning}
 						messagesEndRef={messagesEndRef}
 					/>
+					{hasError && (
+						<div className="mx-auto w-full max-w-[44rem] px-2 py-2">
+							<div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
+								<AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
+								<div className="min-w-0">
+									<div className="font-medium">Run failed</div>
+									<p className="break-words text-destructive/90">
+										{sessionState.error}
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
 				</div>
 			)}
 			<ChatInput
