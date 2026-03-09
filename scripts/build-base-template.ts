@@ -15,8 +15,6 @@ const repoRoot = resolve(import.meta.dirname, "..");
 
 config({ path: resolve(repoRoot, "apps/server/.env") });
 
-const TEMPLATE_CPU_COUNT = 4;
-const TEMPLATE_MEMORY_MB = 8192;
 const SANDBOX_USER = "user";
 const SANDBOX_WORKDIR = "/workspace";
 
@@ -86,8 +84,6 @@ console.log("Building base template…");
 
 const result = await Template.build(template, "corporation-base", {
 	apiKey,
-	cpuCount: TEMPLATE_CPU_COUNT,
-	memoryMB: TEMPLATE_MEMORY_MB,
 	onBuildLogs: defaultBuildLogger(),
 });
 
