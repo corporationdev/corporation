@@ -20,7 +20,7 @@ export function SpaceLayout() {
 
 	useAutoStartSandbox(spaceSlug, space?.status);
 
-	const { actor } = useSpaceActor(space);
+	const { actor } = useSpaceActor(spaceSlug, space);
 
 	return (
 		<ResizablePanelGroup orientation="horizontal">

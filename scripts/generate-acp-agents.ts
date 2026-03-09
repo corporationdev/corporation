@@ -183,6 +183,9 @@ const PINNED_ORDER = [
 	"cursor",
 	"gemini",
 	"github-copilot-cli",
+	"amp-acp",
+	"pi-acp",
+	"factory-droid",
 ];
 
 function packageSpecSchema(value: string) {

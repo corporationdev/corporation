@@ -1,10 +1,15 @@
+import { requireSandbox } from "./sandbox";
 import type { SpaceRuntimeContext } from "./types";
 
 const DISPLAY = ":0";
 
 function tryGetExistingStreamUrl(c: SpaceRuntimeContext): string | null {
 	try {
-		const url = c.vars.sandbox.stream.getUrl();
+		const sandbox = c.vars.sandbox;
+		if (!sandbox) {
+			return null;
+		}
+		const url = sandbox.stream.getUrl();
 		return typeof url === "string" && url.length > 0 ? url : null;
 	} catch {
 		return null;
@@ -14,7 +19,7 @@ function tryGetExistingStreamUrl(c: SpaceRuntimeContext): string | null {
 export async function getDesktopStreamUrl(
 	c: SpaceRuntimeContext
 ): Promise<string> {
-	const { sandbox } = c.vars;
+	const sandbox = requireSandbox(c);
 
 	// Start Xvfb if not already running (connect() doesn't start the desktop)
 	try {

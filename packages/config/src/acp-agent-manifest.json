@@ -4,23 +4,23 @@
     "name": "Claude Agent",
     "description": "ACP wrapper for Anthropic's Claude",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/claude-acp.svg",
-    "version": "0.20.2",
+    "version": "0.21.0",
     "repository": "https://github.com/zed-industries/claude-agent-acp",
     "authors": ["Anthropic"],
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@zed-industries/claude-agent-acp"
+        "package": "@zed-industries/claude-agent-acp@0.21.0"
       }
     },
     "runtimeId": "claude",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp'",
+    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0'",
     "runtimeCommand": {
       "command": "$HOME/.local/share/corporation/acp/npm/claude-acp/bin/claude-agent-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp') >/tmp/corporation-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/corporation-acp-claude-acp.log\\n\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0') >/tmp/corporation-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/corporation-acp-claude-acp.log\\n\"",
     "installSource": "https://docs.anthropic.com/en/docs/claude-code/setup"
   },
   {
@@ -60,7 +60,7 @@
         }
       },
       "npx": {
-        "package": "@zed-industries/codex-acp"
+        "package": "@zed-industries/codex-acp@0.9.5"
       }
     },
     "runtimeId": "codex",
@@ -78,47 +78,47 @@
     "name": "OpenCode",
     "description": "The open source coding agent",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/opencode.svg",
-    "version": "1.2.22",
+    "version": "1.2.24",
     "repository": "https://github.com/anomalyco/opencode",
     "authors": ["Anomaly"],
     "license": "MIT",
     "distribution": {
       "binary": {
         "darwin-aarch64": {
-          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.22/opencode-darwin-arm64.zip",
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-darwin-arm64.zip",
           "cmd": "./opencode",
           "args": ["acp"]
         },
         "darwin-x86_64": {
-          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.22/opencode-darwin-x64.zip",
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-darwin-x64.zip",
           "cmd": "./opencode",
           "args": ["acp"]
         },
         "linux-aarch64": {
-          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.22/opencode-linux-arm64.tar.gz",
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-linux-arm64.tar.gz",
           "cmd": "./opencode",
           "args": ["acp"]
         },
         "linux-x86_64": {
-          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.22/opencode-linux-x64.tar.gz",
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-linux-x64.tar.gz",
           "cmd": "./opencode",
           "args": ["acp"]
         },
         "windows-x86_64": {
-          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.22/opencode-windows-x64.zip",
+          "archive": "https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-windows-x64.zip",
           "cmd": "./opencode.exe",
           "args": ["acp"]
         }
       }
     },
     "runtimeId": "opencode",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/opencode/1.2.22\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/anomalyco/opencode/releases/download/v1.2.22/opencode-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/opencode\"\nln -sf \"$install_dir/opencode\" \"$HOME/.local/bin/opencode\"",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/opencode/1.2.24\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/opencode\"\nln -sf \"$install_dir/opencode\" \"$HOME/.local/bin/opencode\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/opencode",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/opencode/1.2.22\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/anomalyco/opencode/releases/download/v1.2.22/opencode-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/opencode\"\nln -sf \"$install_dir/opencode\" \"$HOME/.local/bin/opencode\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/opencode/1.2.24\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/opencode\"\nln -sf \"$install_dir/opencode\" \"$HOME/.local/bin/opencode\"",
     "installSource": "https://opencode.ai/docs"
   },
   {
@@ -185,7 +185,7 @@
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "@google/gemini-cli",
+        "package": "@google/gemini-cli@0.32.1",
         "args": ["--experimental-acp"]
       }
     },
@@ -210,7 +210,7 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@github/copilot",
+        "package": "@github/copilot@1.0.2",
         "args": ["--acp"]
       }
     },
@@ -268,6 +268,62 @@
     "installSource": "https://ampcode.com"
   },
   {
+    "id": "pi-acp",
+    "name": "pi ACP",
+    "description": "ACP adapter for pi coding agent",
+    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/pi-acp.svg",
+    "version": "0.0.22",
+    "repository": "https://github.com/svkozak/pi-acp",
+    "authors": ["Sergii Kozak <svkozak@gmail.com>"],
+    "license": "MIT",
+    "distribution": {
+      "npx": {
+        "package": "pi-acp@0.0.22"
+      }
+    },
+    "runtimeId": "pi",
+    "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent",
+    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22'",
+    "runtimeCommand": {
+      "command": "$HOME/.local/share/corporation/acp/npm/pi-acp/bin/pi-acp",
+      "args": []
+    },
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
+    "installSource": "https://github.com/badlogic/pi-mono/tree/master/packages/coding-agent"
+  },
+  {
+    "id": "factory-droid",
+    "name": "Factory Droid",
+    "description": "Factory Droid - AI coding agent powered by Factory AI",
+    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/factory-droid.svg",
+    "version": "0.70.0",
+    "authors": ["Factory AI"],
+    "license": "proprietary",
+    "distribution": {
+      "npx": {
+        "package": "droid@0.70.0",
+        "args": ["exec", "--output-format", "acp"],
+        "env": {
+          "DROID_DISABLE_AUTO_UPDATE": "true",
+          "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
+        }
+      }
+    },
+    "runtimeId": "factory-droid",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.70.0'",
+    "acpInstallCommand": null,
+    "runtimeCommand": {
+      "command": "$HOME/.local/bin/droid",
+      "args": ["exec", "--output-format", "acp"],
+      "env": {
+        "DROID_DISABLE_AUTO_UPDATE": "true",
+        "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
+      }
+    },
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.70.0'",
+    "installSource": null
+  },
+  {
     "id": "auggie",
     "name": "Auggie CLI",
     "description": "Augment Code's powerful software agent, backed by industry-leading context engine",
@@ -278,7 +334,7 @@
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@augmentcode/auggie",
+        "package": "@augmentcode/auggie@0.18.1",
         "args": ["--acp"],
         "env": {
           "AUGMENT_DISABLE_AUTO_UPDATE": "1"
@@ -309,17 +365,17 @@
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "@autohandai/autohand-acp"
+        "package": "@autohandai/autohand-acp@0.2.1"
       }
     },
     "runtimeId": "autohand",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp@0.2.1'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/autohand-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp@0.2.1'",
     "installSource": "https://github.com/autohandai/autohand-acp"
   },
   {
@@ -333,18 +389,18 @@
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "cline",
+        "package": "cline@2.6.1",
         "args": ["--acp"]
       }
     },
     "runtimeId": "cline",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline@2.6.1'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/cline",
       "args": ["--acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline@2.6.1'",
     "installSource": "https://github.com/cline/cline"
   },
   {
@@ -352,24 +408,24 @@
     "name": "Codebuddy Code",
     "description": "Tencent Cloud's official intelligent coding tool",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/codebuddy-code.svg",
-    "version": "2.56.0",
+    "version": "2.56.1",
     "repository": "https://www.codebuddy.cn/cli/",
     "authors": ["Tencent Cloud"],
     "license": "Proprietary",
     "distribution": {
       "npx": {
-        "package": "@tencent-ai/codebuddy-code",
+        "package": "@tencent-ai/codebuddy-code@2.56.1",
         "args": ["--acp"]
       }
     },
     "runtimeId": "codebuddy-code",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code@2.56.1'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/codebuddy-code",
       "args": ["--acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code@2.56.1'",
     "installSource": "https://www.codebuddy.cn/cli/"
   },
   {
@@ -385,6 +441,10 @@
       "binary": {
         "darwin-aarch64": {
           "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-darwin-arm64.tar.gz",
+          "cmd": "./corust-agent-acp"
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-darwin-x64.tar.gz",
           "cmd": "./corust-agent-acp"
         },
         "linux-x86_64": {
@@ -412,7 +472,7 @@
     "name": "crow-cli",
     "description": "Minimal ACP Native Coding Agent",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/crow-cli.svg",
-    "version": "0.1.12",
+    "version": "0.1.14",
     "repository": "https://github.com/crow-cli/crow-cli",
     "authors": ["Thomas Wood"],
     "license": "Apache-2.0",
@@ -437,56 +497,49 @@
     "name": "DimCode",
     "description": "A coding agent that puts leading models at your command.",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/dimcode.svg",
-    "version": "0.0.15",
+    "version": "0.0.16",
     "authors": ["ArcShips"],
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "dimcode",
+        "package": "dimcode@0.0.16",
         "args": ["acp"]
       }
     },
     "runtimeId": "dimcode",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode@0.0.16'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/dimcode",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode@0.0.16'",
     "installSource": null
   },
   {
-    "id": "factory-droid",
-    "name": "Factory Droid",
-    "description": "Factory Droid - AI coding agent powered by Factory AI",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/factory-droid.svg",
-    "version": "0.70.0",
-    "authors": ["Factory AI"],
-    "license": "proprietary",
+    "id": "fast-agent",
+    "name": "fast-agent",
+    "description": "Code and build agents with comprehensive multi-provider support",
+    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/fast-agent.svg",
+    "version": "0.5.9",
+    "repository": "https://github.com/evalstate/fast-agent",
+    "authors": ["enquiries@fast-agent.ai"],
+    "license": "Apache 2.0",
     "distribution": {
-      "npx": {
-        "package": "droid",
-        "args": ["exec", "--output-format", "acp"],
-        "env": {
-          "DROID_DISABLE_AUTO_UPDATE": "true",
-          "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
-        }
+      "uvx": {
+        "package": "fast-agent-acp==0.5.9",
+        "args": ["-x"]
       }
     },
-    "runtimeId": "factory-droid",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid'",
+    "runtimeId": "fast-agent",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'fast-agent-acp==0.5.9'",
     "acpInstallCommand": null,
     "runtimeCommand": {
-      "command": "$HOME/.local/bin/droid",
-      "args": ["exec", "--output-format", "acp"],
-      "env": {
-        "DROID_DISABLE_AUTO_UPDATE": "true",
-        "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
-      }
+      "command": "$HOME/.local/bin/fast-agent-acp==0.5.9",
+      "args": ["-x"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid'",
-    "installSource": null
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'fast-agent-acp==0.5.9'",
+    "installSource": "https://github.com/evalstate/fast-agent"
   },
   {
     "id": "goose",
@@ -541,24 +594,24 @@
     "name": "Junie",
     "description": "AI Coding Agent by JetBrains",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/junie.svg",
-    "version": "888.173.0",
+    "version": "888.180.0",
     "repository": "https://github.com/JetBrains/junie",
     "authors": ["JetBrains"],
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@jetbrains/junie",
+        "package": "@jetbrains/junie@888.180.0",
         "args": ["--acp=true"]
       }
     },
     "runtimeId": "junie",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie@888.180.0'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/junie",
       "args": ["--acp=true"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie@888.180.0'",
     "installSource": "https://github.com/JetBrains/junie"
   },
   {
@@ -599,7 +652,7 @@
         }
       },
       "npx": {
-        "package": "@kilocode/cli",
+        "package": "@kilocode/cli@7.0.40",
         "args": ["acp"]
       }
     },
@@ -618,42 +671,42 @@
     "name": "Kimi CLI",
     "description": "Moonshot AI's coding assistant",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/kimi.svg",
-    "version": "1.17.0",
+    "version": "1.18.0",
     "repository": "https://github.com/MoonshotAI/kimi-cli",
     "authors": ["Moonshot AI"],
     "license": "MIT",
     "distribution": {
       "binary": {
         "darwin-aarch64": {
-          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.17.0/kimi-1.17.0-aarch64-apple-darwin.tar.gz",
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-aarch64-apple-darwin.tar.gz",
           "cmd": "./kimi",
           "args": ["acp"]
         },
         "linux-aarch64": {
-          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.17.0/kimi-1.17.0-aarch64-unknown-linux-gnu.tar.gz",
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-aarch64-unknown-linux-gnu.tar.gz",
           "cmd": "./kimi",
           "args": ["acp"]
         },
         "linux-x86_64": {
-          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.17.0/kimi-1.17.0-x86_64-unknown-linux-gnu.tar.gz",
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-x86_64-unknown-linux-gnu.tar.gz",
           "cmd": "./kimi",
           "args": ["acp"]
         },
         "windows-x86_64": {
-          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.17.0/kimi-1.17.0-x86_64-pc-windows-msvc.zip",
+          "archive": "https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-x86_64-pc-windows-msvc.zip",
           "cmd": "./kimi.exe",
           "args": ["acp"]
         }
       }
     },
     "runtimeId": "kimi",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kimi/1.17.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/MoonshotAI/kimi-cli/releases/download/1.17.0/kimi-1.17.0-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kimi\"\nln -sf \"$install_dir/kimi\" \"$HOME/.local/bin/kimi\"",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kimi/1.18.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kimi\"\nln -sf \"$install_dir/kimi\" \"$HOME/.local/bin/kimi\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/kimi",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kimi/1.17.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/MoonshotAI/kimi-cli/releases/download/1.17.0/kimi-1.17.0-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kimi\"\nln -sf \"$install_dir/kimi\" \"$HOME/.local/bin/kimi\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kimi/1.18.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kimi\"\nln -sf \"$install_dir/kimi\" \"$HOME/.local/bin/kimi\"",
     "installSource": "https://github.com/MoonshotAI/kimi-cli"
   },
   {
@@ -667,18 +720,18 @@
     "license": "AGPL-3.0",
     "distribution": {
       "uvx": {
-        "package": "minion-code",
+        "package": "minion-code@0.1.39",
         "args": ["acp"]
       }
     },
     "runtimeId": "minion-code",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code@0.1.39'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/minion-code",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code@0.1.39'",
     "installSource": "https://github.com/femto/minion-code"
   },
   {
@@ -686,46 +739,46 @@
     "name": "Mistral Vibe",
     "description": "Mistral's open-source coding assistant",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/mistral-vibe.svg",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "repository": "https://github.com/mistralai/mistral-vibe",
     "authors": ["Mistral AI"],
     "license": "Apache-2.0",
     "distribution": {
       "binary": {
         "darwin-aarch64": {
-          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-darwin-aarch64-2.3.0.zip",
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-darwin-aarch64-2.4.0.zip",
           "cmd": "./vibe-acp"
         },
         "darwin-x86_64": {
-          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-darwin-x86_64-2.3.0.zip",
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-darwin-x86_64-2.4.0.zip",
           "cmd": "./vibe-acp"
         },
         "linux-aarch64": {
-          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-linux-aarch64-2.3.0.zip",
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-linux-aarch64-2.4.0.zip",
           "cmd": "./vibe-acp"
         },
         "linux-x86_64": {
-          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-linux-x86_64-2.3.0.zip",
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-linux-x86_64-2.4.0.zip",
           "cmd": "./vibe-acp"
         },
         "windows-aarch64": {
-          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-windows-aarch64-2.3.0.zip",
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-windows-aarch64-2.4.0.zip",
           "cmd": "./vibe-acp.exe"
         },
         "windows-x86_64": {
-          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-windows-x86_64-2.3.0.zip",
+          "archive": "https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-windows-x86_64-2.4.0.zip",
           "cmd": "./vibe-acp.exe"
         }
       }
     },
     "runtimeId": "mistral-vibe",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/mistral-vibe/2.3.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-linux-x86_64-2.3.0.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/vibe-acp\"\nln -sf \"$install_dir/vibe-acp\" \"$HOME/.local/bin/vibe-acp\"",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/mistral-vibe/2.4.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-linux-x86_64-2.4.0.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/vibe-acp\"\nln -sf \"$install_dir/vibe-acp\" \"$HOME/.local/bin/vibe-acp\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/vibe-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/mistral-vibe/2.3.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/mistralai/mistral-vibe/releases/download/v2.3.0/vibe-acp-linux-x86_64-2.3.0.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/vibe-acp\"\nln -sf \"$install_dir/vibe-acp\" \"$HOME/.local/bin/vibe-acp\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/mistral-vibe/2.4.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-linux-x86_64-2.4.0.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/vibe-acp\"\nln -sf \"$install_dir/vibe-acp\" \"$HOME/.local/bin/vibe-acp\"",
     "installSource": "https://github.com/mistralai/mistral-vibe"
   },
   {
@@ -733,72 +786,48 @@
     "name": "Nova",
     "description": "Nova by Compass AI - a fully-fledged software engineer at your command",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/nova.svg",
-    "version": "1.0.70",
+    "version": "1.0.74",
     "repository": "https://github.com/Compass-Agentic-Platform/nova",
     "authors": ["Compass AI"],
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@compass-ai/nova",
+        "package": "@compass-ai/nova@1.0.74",
         "args": ["acp"]
       }
     },
     "runtimeId": "nova",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova@1.0.74'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/nova",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova@1.0.74'",
     "installSource": "https://github.com/Compass-Agentic-Platform/nova"
-  },
-  {
-    "id": "pi-acp",
-    "name": "pi ACP",
-    "description": "ACP adapter for pi coding agent",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/pi-acp.svg",
-    "version": "0.0.22",
-    "repository": "https://github.com/svkozak/pi-acp",
-    "authors": ["Sergii Kozak <svkozak@gmail.com>"],
-    "license": "MIT",
-    "distribution": {
-      "npx": {
-        "package": "pi-acp"
-      }
-    },
-    "runtimeId": "pi",
-    "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp'",
-    "runtimeCommand": {
-      "command": "$HOME/.local/share/corporation/acp/npm/pi-acp/bin/pi-acp",
-      "args": []
-    },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
-    "installSource": "https://github.com/badlogic/pi-mono/tree/master/packages/coding-agent"
   },
   {
     "id": "qoder",
     "name": "Qoder CLI",
     "description": "AI coding assistant with agentic capabilities",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/qoder.svg",
-    "version": "0.1.29",
+    "version": "0.1.30",
     "authors": ["Qoder AI"],
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@qoder-ai/qodercli",
+        "package": "@qoder-ai/qodercli@0.1.30",
         "args": ["--acp"]
       }
     },
     "runtimeId": "qoder",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli@0.1.30'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/qodercli",
       "args": ["--acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli@0.1.30'",
     "installSource": null
   },
   {
@@ -806,24 +835,24 @@
     "name": "Qwen Code",
     "description": "Alibaba's Qwen coding assistant",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/qwen-code.svg",
-    "version": "0.11.1",
+    "version": "0.12.0",
     "repository": "https://github.com/QwenLM/qwen-code",
     "authors": ["Alibaba Qwen Team"],
     "license": "Apache-2.0",
     "distribution": {
       "npx": {
-        "package": "@qwen-code/qwen-code",
+        "package": "@qwen-code/qwen-code@0.12.0",
         "args": ["--acp", "--experimental-skills"]
       }
     },
     "runtimeId": "qwen-code",
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code@0.12.0'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/qwen-code",
       "args": ["--acp", "--experimental-skills"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code'",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code@0.12.0'",
     "installSource": "https://github.com/QwenLM/qwen-code"
   },
   {

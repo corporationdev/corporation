@@ -8,22 +8,59 @@ import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { actor } from "rivetkit";
 import { ingestAgentRunnerBatch } from "./agent-runner";
 import bundledMigrations from "./db/migrations";
+import { requireSandbox } from "./sandbox";
 import { type SessionRow, schema } from "./db/schema";
 import { getDesktopStreamUrl } from "./desktop";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
+	broadcastTerminalSnapshot,
 	getTerminalSnapshot,
+	resetTerminal,
 	input as terminalInput,
 	resize as terminalResize,
 } from "./terminal";
-import type { PersistedState, SpaceVars } from "./types";
+import type {
+	PersistedState,
+	SandboxBinding,
+	SpaceRuntimeContext,
+	SpaceVars,
+} from "./types";
 
 export type { SessionRow } from "./db/schema";
 
 const SANDBOX_TIMEOUT_MS = 900_000;
 const SANDBOX_KEEP_ALIVE_THROTTLE_MS = 240_000;
 const SANDBOX_USER = "user";
+
+function createEmptyState(): PersistedState {
+	return {
+		binding: null,
+	};
+}
+
+async function connectSandbox(
+	sandboxId: string | null
+): Promise<Sandbox | null> {
+	if (!sandboxId) {
+		return null;
+	}
+
+	return await Sandbox.connect(sandboxId, {
+		apiKey: env.E2B_API_KEY,
+	});
+}
+
+function sameBinding(
+	current: SandboxBinding | null,
+	next: SandboxBinding | null
+): boolean {
+	return (
+		current?.sandboxId === (next?.sandboxId ?? null) &&
+		current?.agentUrl === (next?.agentUrl ?? null) &&
+		current?.workdir === (next?.workdir ?? null)
+	);
+}
 
 function quoteShellArg(value: string) {
 	return `'${value.replaceAll("'", "'\\''")}'`;
@@ -51,19 +88,20 @@ function emptyAgentProbeResponse(status: "not_installed" | "error") {
 async function getAgentProbeState(c: {
 	state: PersistedState;
 }): Promise<AgentProbeResponse> {
-	if (!(c.state.agentUrl && c.state.workdir)) {
+	const binding = c.state.binding;
+	if (!binding) {
 		return emptyAgentProbeResponse("not_installed");
 	}
 
 	try {
-		const response = await fetch(`${c.state.agentUrl}/v1/agents/probe`, {
+		const response = await fetch(`${binding.agentUrl}/v1/agents/probe`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				ids: acpAgents
 					.filter((agent) => agent.runtimeId)
 					.map((agent) => agent.id),
-				cwd: c.state.workdir,
+				cwd: binding.workdir,
 			}),
 		});
 
@@ -81,26 +119,34 @@ async function getAgentProbeState(c: {
 	}
 }
 
-export const space = actor({
-	createState: (
-		c,
-		input: {
-			agentUrl: string;
-			sandboxId: string;
-			workdir: string;
-		}
-	): PersistedState => {
-		const spaceSlug = c.key[0];
-		if (!spaceSlug) {
-			throw new Error("Actor key must contain a spaceSlug");
-		}
+async function syncSandboxBinding(
+	c: SpaceRuntimeContext,
+	binding: SandboxBinding | null
+): Promise<boolean> {
+	const hasSameBinding = sameBinding(c.state.binding, binding);
+	if (hasSameBinding && (binding ? !!c.vars.sandbox : !c.vars.sandbox)) {
+		return false;
+	}
 
-		return {
-			agentUrl: input.agentUrl,
-			sandboxId: input.sandboxId,
-			workdir: input.workdir,
-		};
-	},
+	await resetTerminal(c);
+
+	c.state.binding = binding;
+	c.vars.sandbox = await connectSandbox(c.state.binding?.sandboxId ?? null);
+	c.vars.lastSandboxKeepAliveAt = 0;
+
+	if (c.vars.sandbox && c.conns.size > 0) {
+		try {
+			await broadcastTerminalSnapshot(c);
+		} catch (error) {
+			console.error("Failed to broadcast terminal snapshot after sync", error);
+		}
+	}
+
+	return true;
+}
+
+export const space = actor({
+	createState: () => createEmptyState(),
 
 	createVars: async (c, driverCtx: DriverContext): Promise<SpaceVars> => {
 		const db = drizzle(driverCtx.state.storage, { schema });
@@ -111,9 +157,16 @@ export const space = actor({
 			throw new Error("Missing E2B_API_KEY env var");
 		}
 
-		const sandbox = await Sandbox.connect(c.state.sandboxId, {
-			apiKey: env.E2B_API_KEY,
-		});
+		let sandbox: Sandbox | null = null;
+		try {
+			sandbox = await connectSandbox(c.state.binding?.sandboxId ?? null);
+		} catch (error) {
+			console.warn("Failed to connect sandbox for space actor", {
+				actorId: c.actorId,
+				sandboxId: c.state.binding?.sandboxId ?? null,
+				error,
+			});
+		}
 
 		const vars: SpaceVars = {
 			db,
@@ -133,6 +186,10 @@ export const space = actor({
 
 	actions: {
 		getAgentProbeState: (c) => getAgentProbeState(c),
+		syncSandboxBinding: (
+			c,
+			binding: SandboxBinding | null
+		) => syncSandboxBinding(c, binding),
 		runCommand: async (
 			c,
 			command: string,
@@ -147,7 +204,7 @@ export const space = actor({
 				? `nohup bash -lc ${quoteShellArg(command)} >/tmp/corporation-run-command-${logId}.log 2>&1 </dev/null &`
 				: command;
 
-			await c.vars.sandbox.commands.run(nextCommand, { user: SANDBOX_USER });
+			await requireSandbox(c).commands.run(nextCommand, { user: SANDBOX_USER });
 			console.info("Ran sandbox command");
 		},
 		listSessions: (c): Promise<SessionRow[]> => listSessions(c),
@@ -184,7 +241,12 @@ export const space = actor({
 				return;
 			}
 
-			await c.vars.sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
+			const sandbox = c.vars.sandbox;
+			if (!sandbox) {
+				return;
+			}
+
+			await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
 			c.vars.lastSandboxKeepAliveAt = now;
 		},
 	},

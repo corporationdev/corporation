@@ -1,21 +1,29 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useActor } from "@/lib/rivetkit";
 
 const KEEP_ALIVE_INTERVAL_MS = 300_000;
+
+type SandboxBinding = {
+	sandboxId: string;
+	agentUrl: string;
+	workdir: string;
+};
 
 type SpaceActorSpace =
 	| {
 			slug: string;
 			status?: string;
-			sandboxId?: string;
-			agentUrl?: string;
-			workdir?: string;
+			sandboxId?: string | null;
+			agentUrl?: string | null;
+			workdir?: string | null;
 	  }
 	| null
 	| undefined;
 
-function getActorInput(space: SpaceActorSpace) {
-	if (!(space?.slug && space.sandboxId && space.agentUrl && space.workdir)) {
+type SpaceConnection = NonNullable<ReturnType<typeof useActor>["connection"]>;
+
+function getSandboxBinding(space: SpaceActorSpace): SandboxBinding | null {
+	if (!(space?.sandboxId && space.agentUrl && space.workdir)) {
 		return null;
 	}
 
@@ -26,30 +34,37 @@ function getActorInput(space: SpaceActorSpace) {
 	};
 }
 
-function getActorKey(
-	space: SpaceActorSpace,
-	actorInput: ReturnType<typeof getActorInput>,
-	enabled: boolean
-) {
-	if (!(enabled && space?.slug && actorInput?.sandboxId)) {
-		return ["__disconnected__"];
+function getBindingSignature(binding: SandboxBinding | null): string {
+	if (!binding) {
+		return "__unbound__";
 	}
 
-	return [space.slug, actorInput.sandboxId];
+	return `${binding.sandboxId}::${binding.agentUrl}::${binding.workdir}`;
 }
 
 export function useSpaceActor(
+	spaceSlug: string | undefined,
 	space: SpaceActorSpace,
 	options?: { enabled?: boolean }
 ) {
-	const actorInput = useMemo(() => getActorInput(space), [space]);
-	const isSandboxReady = space?.status === "running" && !!actorInput;
-	const isEnabled = (options?.enabled ?? true) && isSandboxReady;
+	const binding = useMemo(() => getSandboxBinding(space), [space]);
+	const bindingSignature = useMemo(
+		() => getBindingSignature(binding),
+		[binding]
+	);
+	const isSandboxReady = space?.status === "running" && !!binding;
+	const isEnabled = (options?.enabled ?? true) && !!spaceSlug;
 	const actor = useActor({
 		name: "space",
-		key: getActorKey(space, actorInput, isEnabled),
-		createWithInput: actorInput ?? undefined,
+		key: spaceSlug ? [spaceSlug] : ["__disconnected__"],
 		enabled: isEnabled,
+	});
+	const lastSyncedRef = useRef<{
+		connection: SpaceConnection | null;
+		signature: string | null;
+	}>({
+		connection: null,
+		signature: null,
 	});
 
 	const isConnected =
@@ -57,6 +72,50 @@ export function useSpaceActor(
 
 	useEffect(() => {
 		if (!(isConnected && actor.connection)) {
+			lastSyncedRef.current = {
+				connection: null,
+				signature: null,
+			};
+			return;
+		}
+
+		const connection = actor.connection;
+		const lastSynced = lastSyncedRef.current;
+		if (
+			lastSynced.connection === connection &&
+			lastSynced.signature === bindingSignature
+		) {
+			return;
+		}
+
+		let cancelled = false;
+
+		connection
+			.syncSandboxBinding(binding)
+			.then(() => {
+				if (!cancelled) {
+					lastSyncedRef.current = {
+						connection,
+						signature: bindingSignature,
+					};
+				}
+			})
+			.catch((error) => {
+				if (!cancelled) {
+					console.error("Failed to sync sandbox binding", {
+						error,
+						spaceSlug,
+					});
+				}
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [actor.connection, binding, bindingSignature, isConnected, spaceSlug]);
+
+	useEffect(() => {
+		if (!(isConnected && actor.connection && isSandboxReady)) {
 			return;
 		}
 
@@ -81,7 +140,7 @@ export function useSpaceActor(
 			cancelled = true;
 			window.clearInterval(intervalId);
 		};
-	}, [actor.connection, isConnected]);
+	}, [actor.connection, isConnected, isSandboxReady]);
 
 	return {
 		actor,

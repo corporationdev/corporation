@@ -15,7 +15,7 @@ export function useAgentProbeState({
 		actor.connection ? "connected" : "disconnected",
 	];
 
-	const { data, error, isLoading } = useQuery<AgentProbeResponse>({
+	const { data, error, isFetching, isLoading } = useQuery<AgentProbeResponse>({
 		queryKey: probeQueryKey,
 		queryFn: async () => {
 			if (!actor.connection) {
@@ -34,7 +34,7 @@ export function useAgentProbeState({
 				: error
 					? "Failed to load agent status"
 					: null,
-		isLoading,
+		isLoading: isLoading || isFetching,
 		refresh: (force = true) => {
 			if (force) {
 				queryClient.invalidateQueries({

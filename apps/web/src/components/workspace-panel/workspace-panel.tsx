@@ -29,7 +29,7 @@ type WorkspacePanelProps = {
 	space:
 		| {
 				_id: Id<"spaces">;
-				sandboxId?: string;
+				sandboxId?: string | null;
 		  }
 		| null
 		| undefined;
@@ -71,7 +71,7 @@ export function WorkspacePanel({
 				</div>
 				<div className="pr-1">
 					<CreateSnapshotPopover
-						sandboxId={space?.sandboxId}
+						sandboxId={space?.sandboxId ?? undefined}
 						spaceId={space?._id}
 					/>
 				</div>
@@ -81,7 +81,11 @@ export function WorkspacePanel({
 					<PtyTerminal actor={actor} spaceSlug={spaceSlug} />
 				)}
 				{activeTab === "desktop" && (
-					<DesktopTab actor={actor} spaceSlug={spaceSlug} />
+					<DesktopTab
+						actor={actor}
+						sandboxId={space?.sandboxId}
+						spaceSlug={spaceSlug}
+					/>
 				)}
 			</div>
 		</div>

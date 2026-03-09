@@ -196,7 +196,11 @@ export async function cancelSession(
 	});
 
 	if (runId) {
-		const client = hc<SandboxRuntimeApp>(ctx.state.agentUrl);
+		const binding = ctx.state.binding;
+		if (!binding) {
+			return;
+		}
+		const client = hc<SandboxRuntimeApp>(binding.agentUrl);
 		client.v1.prompt[":turnId"]
 			.$delete(
 				{ param: { turnId: runId } },

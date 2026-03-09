@@ -9,7 +9,6 @@ import { internalAction } from "./_generated/server";
 import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
-	BASE_TEMPLATE,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
 	SANDBOX_USER,
@@ -45,6 +44,24 @@ export const buildInitialSnapshot = internalAction({
 			const project = await ctx.runQuery(internal.projects.internalGet, {
 				id: args.projectId,
 			});
+			const userProject = await ctx.runQuery(
+				internal.projects.internalGetUserProject,
+				{ userId: project.userId }
+			);
+			if (!userProject?.defaultSnapshotId) {
+				throw new Error(
+					"You must create your personal workspace before creating a project"
+				);
+			}
+			const sourceSnapshot = await ctx.runQuery(internal.snapshot.internalGet, {
+				id: userProject.defaultSnapshotId,
+			});
+			if (
+				sourceSnapshot.status !== "ready" ||
+				!sourceSnapshot.externalSnapshotId
+			) {
+				throw new Error("Your personal workspace snapshot is not ready yet");
+			}
 
 			if (
 				project.githubRepoId &&
@@ -66,14 +83,14 @@ export const buildInitialSnapshot = internalAction({
 				const safeDefaultBranch = quoteShellArg(project.defaultBranch);
 				const safeWorkdir = quoteShellArg(workdir);
 
-				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
 					network: { allowPublicTraffic: true },
 					envs: project.secrets ?? {},
 				});
 
 				await runRootCommand(
 					sandbox,
-					`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
+					`rm -rf ${safeWorkdir} && git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
 					{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
 				);
 				await runRootCommand(
@@ -81,16 +98,10 @@ export const buildInitialSnapshot = internalAction({
 					`chown -R ${SANDBOX_USER}:${SANDBOX_USER} ${safeWorkdir}`
 				);
 			} else {
-				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
+				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
 					network: { allowPublicTraffic: true },
 					envs: project.secrets ?? {},
 				});
-				const workdir = SANDBOX_WORKDIR;
-				const safeWorkdir = quoteShellArg(workdir);
-				await runRootCommand(
-					sandbox,
-					`mkdir -p ${safeWorkdir} && chown -R ${SANDBOX_USER}:${SANDBOX_USER} ${safeWorkdir}`
-				);
 			}
 
 			const snapshot = await sandbox.createSnapshot();

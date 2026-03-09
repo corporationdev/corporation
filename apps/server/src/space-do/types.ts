@@ -2,17 +2,21 @@ import type { Sandbox } from "@e2b/desktop";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import type { CommandHandle } from "e2b";
 
-export type PersistedState = {
+export type SandboxBinding = {
 	agentUrl: string;
 	sandboxId: string;
 	workdir: string;
+};
+
+export type PersistedState = {
+	binding: SandboxBinding | null;
 };
 
 export type SpaceDatabase = ReturnType<typeof drizzle>;
 
 export type SpaceVars = {
 	db: SpaceDatabase;
-	sandbox: Sandbox;
+	sandbox: Sandbox | null;
 	terminalHandles: Map<string, CommandHandle>;
 	sessionStreamWaiters: Map<string, Set<() => void>>;
 	agentRunnerSequenceBySessionId: Map<string, number>;
