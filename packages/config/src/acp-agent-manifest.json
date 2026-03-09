@@ -518,7 +518,7 @@
     "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'fast-agent-acp==0.5.9'",
     "acpInstallCommand": null,
     "runtimeCommand": {
-      "command": "$HOME/.local/bin/fast-agent-acp==0.5.9",
+      "command": "$HOME/.local/bin/fast-agent-acp",
       "args": ["-x"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'fast-agent-acp==0.5.9'",
