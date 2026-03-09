@@ -7,6 +7,7 @@ export const SANDBOX_AGENT_PORT = 5799;
 export const BASE_TEMPLATE = "corporation-base";
 export const SANDBOX_USER = "user";
 export const SANDBOX_HOME_DIR = `/home/${SANDBOX_USER}`;
+export const SANDBOX_WORKDIR = "/workspace";
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
@@ -25,17 +26,6 @@ type RunRootCommandOptions = Omit<
 	"user"
 >;
 type RunWorkspaceCommandOptions = RunRootCommandOptions;
-
-export function getSandboxWorkdir(project: {
-	name: string;
-	githubOwner?: string;
-	githubName?: string;
-}): string {
-	if (project.githubOwner && project.githubName) {
-		return `/workspace/${project.githubOwner}-${project.githubName}`;
-	}
-	return `/workspace/${project.name}`;
-}
 
 function truncateOutput(
 	output: string,

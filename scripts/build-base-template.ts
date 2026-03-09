@@ -18,6 +18,7 @@ config({ path: resolve(repoRoot, "apps/server/.env") });
 const TEMPLATE_CPU_COUNT = 4;
 const TEMPLATE_MEMORY_MB = 8192;
 const SANDBOX_USER = "user";
+const SANDBOX_WORKDIR = "/workspace";
 
 const apiKey = process.env.E2B_API_KEY;
 if (!apiKey) {
@@ -70,13 +71,16 @@ const template = Template({ fileContextPath: repoRoot })
 	.runCmd(
 		"curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh"
 	)
+	.runCmd(
+		`mkdir -p ${SANDBOX_WORKDIR} && chown ${SANDBOX_USER}:${SANDBOX_USER} ${SANDBOX_WORKDIR}`
+	)
 	// Install sandbox-runtime JS bundle
 	.copy(
 		"apps/sandbox-runtime/dist/sandbox-runtime.js",
 		"/usr/local/bin/sandbox-runtime.js"
 	)
 	.setUser(SANDBOX_USER)
-	.setWorkdir(`/home/${SANDBOX_USER}`);
+	.setWorkdir(SANDBOX_WORKDIR);
 
 console.log("Building base template…");
 

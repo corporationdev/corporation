@@ -80,14 +80,8 @@ async function ensureTmuxSession(
 
 	let cwdFlag = "";
 	if (cwd) {
-		try {
-			await runTerminalCommand(sandbox, `test -d ${quoteShellArg(cwd)}`);
-			cwdFlag = ` -c ${quoteShellArg(cwd)}`;
-		} catch (error) {
-			if (!(error instanceof CommandExitError)) {
-				throw error;
-			}
-		}
+		await runTerminalCommand(sandbox, `test -d ${quoteShellArg(cwd)}`);
+		cwdFlag = ` -c ${quoteShellArg(cwd)}`;
 	}
 
 	try {

@@ -2,7 +2,7 @@ import { ConvexError } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { BASE_TEMPLATE, getSandboxWorkdir } from "./lib/sandbox";
+import { BASE_TEMPLATE, SANDBOX_WORKDIR } from "./lib/sandbox";
 import { ensureSpaceRecord } from "./spaces";
 
 const USER_PROJECT_NAME = "Home";
@@ -109,7 +109,7 @@ export const getWorkspaceState = authedQuery({
 			space: space
 				? {
 						...space,
-						workdir: getSandboxWorkdir(project),
+						workdir: SANDBOX_WORKDIR,
 					}
 				: null,
 		};

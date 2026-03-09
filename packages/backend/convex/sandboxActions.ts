@@ -6,13 +6,10 @@ import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { CODEX_AUTH_SECRET_NAME } from "./lib/codexAuth";
 import {
-	runRootCommand,
 	runWorkspaceCommand,
 	SANDBOX_AGENT_PORT,
-	SANDBOX_HOME_DIR,
-	SANDBOX_USER,
+	SANDBOX_WORKDIR,
 } from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
@@ -26,14 +23,13 @@ const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
 const AGENT_STARTUP_TIMEOUT_MS = 30_000;
 const AGENT_POLL_INTERVAL_MS = 500;
 const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
-const CODEX_AUTH_DIR = `${SANDBOX_HOME_DIR}/.codex`;
-const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`;
 
 async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
 	// Start agent as a background process
 	await runWorkspaceCommand(
 		sandbox,
-		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`
+		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`,
+		{ cwd: SANDBOX_WORKDIR }
 	);
 
 	// Poll until healthy
@@ -80,58 +76,6 @@ async function createSandbox(
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
 	});
-}
-
-async function getUserCodexAuthJson(
-	ctx: ActionCtx,
-	userId: string
-): Promise<string | null> {
-	const secret = await ctx.runQuery(internal.secrets.getByUserAndName, {
-		userId,
-		name: CODEX_AUTH_SECRET_NAME,
-	});
-
-	if (!secret) {
-		return null;
-	}
-
-	const [decrypted] = await ctx.runAction(
-		internal.secretActions.decryptSecretValues,
-		{
-			userId,
-			secrets: [
-				{
-					name: secret.name,
-					encryptedKey: secret.encryptedKey,
-					iv: secret.iv,
-				},
-			],
-		}
-	);
-	return decrypted?.value ?? null;
-}
-
-async function syncCodexAuthToAgent(args: {
-	sandbox: Sandbox;
-	authJson: string | null;
-}) {
-	await runWorkspaceCommand(args.sandbox, `mkdir -p ${CODEX_AUTH_DIR}`);
-	if (args.authJson === null) {
-		await runWorkspaceCommand(args.sandbox, `rm -f ${CODEX_AUTH_PATH}`);
-		return;
-	}
-
-	JSON.parse(args.authJson);
-	await args.sandbox.files.writeFiles([
-		{
-			path: CODEX_AUTH_PATH,
-			data: args.authJson,
-		},
-	]);
-	await runRootCommand(
-		args.sandbox,
-		`chown ${SANDBOX_USER}:${SANDBOX_USER} ${CODEX_AUTH_PATH}`
-	);
 }
 
 async function resolveSandbox(
@@ -206,20 +150,12 @@ export const provisionForSpace = internalAction({
 				id: args.spaceId,
 			});
 
-			const codexAuthJson = await getUserCodexAuthJson(
-				ctx,
-				space.project.userId
-			);
 			const sandbox = await resolveSandbox(
 				ctx,
 				space,
 				space.project.secrets ?? {}
 			);
 			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
-			await syncCodexAuthToAgent({
-				sandbox,
-				authJson: codexAuthJson,
-			});
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,

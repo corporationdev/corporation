@@ -216,6 +216,26 @@ function shellQuote(value: string) {
 	return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+function shellDoubleQuote(value: string) {
+	return `"${value
+		.replaceAll("\\", "\\\\")
+		.replaceAll('"', '\\"')
+		.replaceAll("`", "\\`")}"`;
+}
+
+function shellPathQuote(value: string) {
+	if (value.startsWith(SANDBOX_HOME)) {
+		const suffix = value
+			.slice(SANDBOX_HOME.length)
+			.replaceAll("\\", "\\\\")
+			.replaceAll('"', '\\"')
+			.replaceAll("$", "\\$")
+			.replaceAll("`", "\\`");
+		return `"${SANDBOX_HOME}${suffix}"`;
+	}
+	return shellDoubleQuote(value);
+}
+
 function joinCommands(commands: Array<string | null | undefined>) {
 	return commands.filter(Boolean).join("\n");
 }
@@ -255,7 +275,7 @@ function buildBinaryInstallCommand(params: {
 	return joinCommands([
 		`mkdir -p "${USER_BIN_DIR}"`,
 		'tmp_dir="$(mktemp -d)"',
-		`install_dir=${shellQuote(params.installDir)}`,
+		`install_dir=${shellPathQuote(params.installDir)}`,
 		'cleanup() { rm -rf "$tmp_dir"; }',
 		"trap cleanup EXIT",
 		'rm -rf "$install_dir"',
@@ -309,7 +329,7 @@ function buildBinaryDistributionInstall(
 function buildNpmInstallCommand(packageSpec: string, prefixDir: string) {
 	return joinCommands([
 		`mkdir -p "${prefixDir}" "${USER_BIN_DIR}"`,
-		`npm install -g --prefix ${shellQuote(prefixDir)} ${shellQuote(packageSpec)}`,
+		`npm install -g --prefix ${shellPathQuote(prefixDir)} ${shellQuote(packageSpec)}`,
 	]);
 }
 

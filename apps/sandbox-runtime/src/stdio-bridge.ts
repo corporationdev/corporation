@@ -205,24 +205,6 @@ export function teardownBridge(
 	}
 
 	try {
-		const stdout = bridge.proc.stdout;
-		if (stdout && typeof stdout === "object") {
-			stdout.cancel();
-		}
-	} catch {
-		// stdout already closed
-	}
-
-	try {
-		const stderr = bridge.proc.stderr;
-		if (stderr && typeof stderr === "object") {
-			stderr.cancel();
-		}
-	} catch {
-		// stderr already closed
-	}
-
-	try {
 		bridge.proc.kill();
 	} catch {
 		// process may already be gone

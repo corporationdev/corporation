@@ -9,10 +9,10 @@ import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
 	BASE_TEMPLATE,
-	getSandboxWorkdir,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
 	SANDBOX_USER,
+	SANDBOX_WORKDIR,
 } from "./lib/sandbox";
 
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
@@ -58,7 +58,7 @@ export const buildInitialSnapshot = internalAction({
 				const nango = new Nango({ secretKey: nangoSecretKey });
 				const githubToken = await getGitHubToken(nango, project.userId);
 
-				const workdir = getSandboxWorkdir(project);
+				const workdir = SANDBOX_WORKDIR;
 				const repoUrl = `https://x-access-token:${githubToken}@github.com/${project.githubOwner}/${project.githubName}.git`;
 				const safeRepoUrl = quoteShellArg(repoUrl);
 				const safeDefaultBranch = quoteShellArg(project.defaultBranch);
@@ -83,7 +83,7 @@ export const buildInitialSnapshot = internalAction({
 					network: { allowPublicTraffic: true },
 					envs: project.secrets ?? {},
 				});
-				const workdir = getSandboxWorkdir(project);
+				const workdir = SANDBOX_WORKDIR;
 				const safeWorkdir = quoteShellArg(workdir);
 				await runRootCommand(
 					sandbox,

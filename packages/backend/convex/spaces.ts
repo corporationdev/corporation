@@ -5,7 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { getSandboxWorkdir } from "./lib/sandbox";
+import { SANDBOX_WORKDIR } from "./lib/sandbox";
 import { spaceStatusValidator } from "./schema";
 
 async function requireOwnedSpace(
@@ -187,7 +187,7 @@ export const getBySlug = authedQuery({
 
 		return {
 			...space,
-			workdir: getSandboxWorkdir(project),
+			workdir: SANDBOX_WORKDIR,
 			project,
 		};
 	},
@@ -204,7 +204,7 @@ export const get = authedQuery({
 
 		return {
 			...space,
-			workdir: getSandboxWorkdir(project),
+			workdir: SANDBOX_WORKDIR,
 			project,
 		};
 	},

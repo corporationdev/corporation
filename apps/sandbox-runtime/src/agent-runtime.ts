@@ -2,25 +2,25 @@ import crypto from "node:crypto";
 import { AGENT_METHODS, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import type {
 	AcpEnvelope,
+	AgentProbeRequestBody,
+	AgentProbeResponse,
 	PromptRequestBody,
 	SessionEvent,
 } from "@corporation/contracts/sandbox-do";
 import { turnRunnerCallbackPayloadSchema } from "@corporation/contracts/sandbox-do";
+import { probeAgents } from "./agent-probe";
 import {
 	ACP_PROTOCOL_VERSION,
 	CALLBACK_MAX_ATTEMPTS,
 	CALLBACK_TIMEOUT_MS,
 	EVENT_BATCH_MAX_DELAY_MS,
 	EVENT_BATCH_MAX_SIZE,
-	extractAuthMethods,
 	formatError,
 	pickPermissionOption,
 	postJsonWithRetry,
-	selectAuthMethod,
 } from "./helpers";
 import { log } from "./logging";
 import {
-	type AcpAgentRequestResult,
 	sessionCancelEnvelopeSchema,
 	sessionRequestPermissionEnvelopeSchema,
 	sessionRequestPermissionResponseEnvelopeSchema,
@@ -87,8 +87,15 @@ function isUnsupportedMethodError(error: unknown): boolean {
 	return msg.includes("(-32601)");
 }
 
-function shouldSkipRpcAuth(agent: string, methodId: string): boolean {
-	return agent === "claude" && methodId === "claude-login";
+function buildDesktopMcpServers() {
+	return [
+		{
+			name: "desktop",
+			command: "bun",
+			args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
+			env: [],
+		},
+	];
 }
 
 async function setModelOrThrow(
@@ -109,41 +116,6 @@ async function setModelOrThrow(
 			return;
 		}
 		throw error;
-	}
-}
-
-async function performAuth(
-	bridge: StdioBridge,
-	agent: string,
-	initResult: AcpAgentRequestResult<typeof AGENT_METHODS.initialize>
-): Promise<void> {
-	const authMethods = extractAuthMethods(initResult);
-	if (authMethods.length === 0) {
-		return;
-	}
-	const selectedAuth = selectAuthMethod(authMethods);
-	if (selectedAuth) {
-		if (shouldSkipRpcAuth(agent, selectedAuth.methodId)) {
-			log("info", "Skipping ACP authenticate; agent uses env-based auth", {
-				agent,
-				methodId: selectedAuth.methodId,
-				envVar: selectedAuth.envVar,
-			});
-			return;
-		}
-		await stdioRequest(bridge, AGENT_METHODS.authenticate, {
-			methodId: selectedAuth.methodId,
-		});
-		log("info", "ACP authentication succeeded", {
-			agent,
-			methodId: selectedAuth.methodId,
-			envVar: selectedAuth.envVar,
-		});
-	} else {
-		log("info", "ACP auth methods advertised but no env-backed match", {
-			agent,
-			authMethodIds: authMethods.map((method) => method.id),
-		});
 	}
 }
 
@@ -387,6 +359,10 @@ export class AgentRuntime {
 		return null;
 	}
 
+	probeAgents(body: AgentProbeRequestBody): Promise<AgentProbeResponse> {
+		return probeAgents(body);
+	}
+
 	async executeTurn({
 		turnId,
 		sessionId,
@@ -540,7 +516,6 @@ export class AgentRuntime {
 			agent,
 			initResult: JSON.stringify(initResult),
 		});
-		await performAuth(bridge, agent, initResult);
 
 		const supportsLoad = initResult.agentCapabilities?.loadSession === true;
 		const previousAgentSessionId = this.previousAgentSessionIds.get(sessionId);
@@ -576,14 +551,7 @@ export class AgentRuntime {
 		}
 
 		if (!agentSessionId) {
-			const mcpServers = [
-				{
-					name: "desktop",
-					command: "bun",
-					args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
-					env: [],
-				},
-			];
+			const mcpServers = buildDesktopMcpServers();
 			log("info", "Sending session/new with mcpServers", {
 				sessionId,
 				cwd,
