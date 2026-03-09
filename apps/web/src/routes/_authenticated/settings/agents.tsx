@@ -209,15 +209,19 @@ function AgentsPage() {
 			setInstallingAgentId(agent.id);
 			try {
 				if (agent.nativeInstallCommand) {
+					const terminalInstallCommand = [
+						'export PATH="$HOME/.local/bin:$PATH"',
+						agent.nativeInstallCommand,
+						"hash -r",
+					].join("\n");
 					const bytes = Array.from(
-						new TextEncoder().encode(`${agent.nativeInstallCommand}\n`)
+						new TextEncoder().encode(`${terminalInstallCommand}\n`)
 					);
 					await actor.connection.input(bytes);
 				}
 				if (agent.acpInstallCommand) {
 					await actor.connection.runCommand(agent.acpInstallCommand, true);
 				}
-				toast.success(`Installing ${agent.name}`);
 				window.setTimeout(() => {
 					refreshAgentProbe();
 				}, 1000);

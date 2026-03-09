@@ -11,24 +11,13 @@ import { log } from "./logging";
 import type { AcpAgentRequestResult } from "./schemas";
 import { spawnStdioBridge, stdioRequest, teardownBridge } from "./stdio-bridge";
 
-const PROBE_TIMEOUT_MS = 8000;
+const PROBE_TIMEOUT_MS = 15000;
 const PROBE_CONCURRENCY = 9;
 
 type ProbeModelsResult = {
 	models: AgentProbeAgent["models"];
 	defaultModelId: string | null;
 };
-
-function buildDesktopMcpServers() {
-	return [
-		{
-			name: "desktop",
-			command: "bun",
-			args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
-			env: [],
-		},
-	];
-}
 
 function buildProbeAgentBase(params: {
 	id: string;
@@ -57,6 +46,10 @@ function isAuthRequiredError(error: unknown): boolean {
 		message.includes("authentication required") ||
 		message.includes("requires authentication") ||
 		message.includes("requires auth") ||
+		message.includes("api key must be set") ||
+		message.includes("missing api key") ||
+		message.includes("api key is required") ||
+		message.includes("no api key") ||
 		message.includes("unauthorized") ||
 		message.includes("unauthenticated")
 	);
@@ -269,10 +262,7 @@ async function probeSingleAgent(
 		const sessionResult = await stdioRequest<"session/new">(
 			bridge,
 			"session/new",
-			{
-				cwd,
-				mcpServers: buildDesktopMcpServers(),
-			},
+			{ cwd, mcpServers: [] },
 			{ timeoutMs: PROBE_TIMEOUT_MS, signal }
 		);
 		const normalizedModels = normalizeProbeModels(sessionResult);
