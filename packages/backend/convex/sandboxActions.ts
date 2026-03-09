@@ -7,8 +7,13 @@ import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { CODEX_AUTH_SECRET_NAME } from "./lib/codexAuth";
-import { runRootCommand, SANDBOX_AGENT_PORT } from "./lib/sandbox";
-import { ENV_SECRET_NAMES } from "./lib/validSecrets";
+import {
+	runRootCommand,
+	runWorkspaceCommand,
+	SANDBOX_AGENT_PORT,
+	SANDBOX_HOME_DIR,
+	SANDBOX_USER,
+} from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -21,10 +26,13 @@ const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
 const AGENT_STARTUP_TIMEOUT_MS = 30_000;
 const AGENT_POLL_INTERVAL_MS = 500;
 const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
+const CODEX_AUTH_DIR = `${SANDBOX_HOME_DIR}/.codex`;
+const CODEX_AUTH_PATH = `${CODEX_AUTH_DIR}/auth.json`;
 
 async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
 	// Start agent as a background process
-	await sandbox.commands.run(
+	await runWorkspaceCommand(
+		sandbox,
 		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`
 	);
 
@@ -64,48 +72,14 @@ async function ensureAgentReadyAndGetUrl(sandbox: Sandbox): Promise<string> {
 
 async function createSandbox(
 	snapshotId: string,
-	aiEnvs: Record<string, string>
+	projectEnvs: Record<string, string>
 ): Promise<Sandbox> {
 	return await Sandbox.betaCreate(snapshotId, {
-		envs: {
-			...aiEnvs,
-			CODEX_HOME: "/root/.codex",
-		},
+		envs: projectEnvs,
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
 	});
-}
-
-async function getUserAiEnvs(
-	ctx: ActionCtx,
-	userId: string
-): Promise<Record<string, string>> {
-	const encryptedKeys = await ctx.runQuery(internal.secrets.getByUser, {
-		userId,
-	});
-	const decrypted = await ctx.runAction(
-		internal.secretActions.decryptSecretValues,
-		{
-			userId,
-			secrets: encryptedKeys
-				.filter((secret) => ENV_SECRET_NAMES.has(secret.name))
-				.map((secret) => ({
-					name: secret.name,
-					encryptedKey: secret.encryptedKey,
-					iv: secret.iv,
-				})),
-		}
-	);
-
-	return Object.fromEntries(
-		decrypted
-			.filter(
-				(entry): entry is { name: string; value: string } =>
-					typeof entry.name === "string"
-			)
-			.map((entry) => [entry.name, entry.value])
-	);
 }
 
 async function getUserCodexAuthJson(
@@ -141,25 +115,29 @@ async function syncCodexAuthToAgent(args: {
 	sandbox: Sandbox;
 	authJson: string | null;
 }) {
-	await runRootCommand(args.sandbox, "mkdir -p /root/.codex");
+	await runWorkspaceCommand(args.sandbox, `mkdir -p ${CODEX_AUTH_DIR}`);
 	if (args.authJson === null) {
-		await runRootCommand(args.sandbox, "rm -f /root/.codex/auth.json");
+		await runWorkspaceCommand(args.sandbox, `rm -f ${CODEX_AUTH_PATH}`);
 		return;
 	}
 
 	JSON.parse(args.authJson);
 	await args.sandbox.files.writeFiles([
 		{
-			path: "/root/.codex/auth.json",
+			path: CODEX_AUTH_PATH,
 			data: args.authJson,
 		},
 	]);
+	await runRootCommand(
+		args.sandbox,
+		`chown ${SANDBOX_USER}:${SANDBOX_USER} ${CODEX_AUTH_PATH}`
+	);
 }
 
 async function resolveSandbox(
 	ctx: ActionCtx,
 	space: Space,
-	aiEnvs: Record<string, string>
+	projectEnvs: Record<string, string>
 ): Promise<Sandbox> {
 	if (space.sandboxId) {
 		try {
@@ -189,7 +167,7 @@ async function resolveSandbox(
 		status: "creating" as const,
 	});
 
-	return await createSandbox(snapshot.externalSnapshotId, aiEnvs);
+	return await createSandbox(snapshot.externalSnapshotId, projectEnvs);
 }
 
 export const archiveSandbox = internalAction({
@@ -228,12 +206,15 @@ export const provisionForSpace = internalAction({
 				id: args.spaceId,
 			});
 
-			const aiEnvs = await getUserAiEnvs(ctx, space.project.userId);
 			const codexAuthJson = await getUserCodexAuthJson(
 				ctx,
 				space.project.userId
 			);
-			const sandbox = await resolveSandbox(ctx, space, aiEnvs);
+			const sandbox = await resolveSandbox(
+				ctx,
+				space,
+				space.project.secrets ?? {}
+			);
 			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
 			await syncCodexAuthToAgent({
 				sandbox,

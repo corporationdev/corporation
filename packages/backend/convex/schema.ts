@@ -15,10 +15,16 @@ export const spaceStatusValidator = v.union(
 	v.literal("error")
 );
 
+export const projectTypeValidator = v.union(
+	v.literal("user"),
+	v.literal("workspace")
+);
+
 export default defineSchema(
 	{
 		projects: defineTable({
 			userId: v.string(),
+			type: projectTypeValidator,
 			name: v.string(),
 			githubRepoId: v.optional(v.number()),
 			githubOwner: v.optional(v.string()),

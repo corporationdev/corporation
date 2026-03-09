@@ -8,6 +8,7 @@ const AGENT_NPX_PACKAGES: Record<string, string> = {
 	pi: "pi-acp",
 	cursor: "@blowmage/cursor-agent-acp",
 };
+const SANDBOX_HOME_DIR = process.env.HOME || "/home/user";
 
 function stringEnv(): Record<string, string | undefined> {
 	return Object.fromEntries(
@@ -56,7 +57,7 @@ export function agentEnv(agent: string): Record<string, string> {
 const AGENT_CONFIGS: Record<string, { path: string; content: string }[]> = {
 	claude: [
 		{
-			path: "/root/.claude/settings.json",
+			path: `${SANDBOX_HOME_DIR}/.claude/settings.json`,
 			content: JSON.stringify(claudeCodeSettings),
 		},
 	],

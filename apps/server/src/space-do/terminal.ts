@@ -8,6 +8,7 @@ const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 30;
 const PTY_TIMEOUT_MS = 0;
 const TMUX_HISTORY_LIMIT = 2000;
+const SANDBOX_USER = "user";
 const ENCODER = new TextEncoder();
 
 type TerminalOutputPayload = {
@@ -20,8 +21,8 @@ function quoteShellArg(value: string): string {
 	return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-function runRootCommand(sandbox: Sandbox, command: string) {
-	return sandbox.commands.run(command, { user: "root" });
+function runTerminalCommand(sandbox: Sandbox, command: string) {
+	return sandbox.commands.run(command, { user: SANDBOX_USER });
 }
 
 function toBytes(value: string): number[] {
@@ -50,7 +51,7 @@ function isProcessNotFoundError(error: unknown): boolean {
 
 async function hasTmuxSession(sandbox: Sandbox): Promise<boolean> {
 	try {
-		await runRootCommand(
+		await runTerminalCommand(
 			sandbox,
 			`tmux has-session -t ${quoteShellArg(TERMINAL_ID)}`
 		);
@@ -70,7 +71,7 @@ async function ensureTmuxSession(
 	const safeName = quoteShellArg(TERMINAL_ID);
 
 	if (await hasTmuxSession(sandbox)) {
-		await runRootCommand(
+		await runTerminalCommand(
 			sandbox,
 			`tmux set-option -t ${safeName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeName} mouse off \\; set-option -t ${safeName} status off`
 		);
@@ -80,7 +81,7 @@ async function ensureTmuxSession(
 	let cwdFlag = "";
 	if (cwd) {
 		try {
-			await runRootCommand(sandbox, `test -d ${quoteShellArg(cwd)}`);
+			await runTerminalCommand(sandbox, `test -d ${quoteShellArg(cwd)}`);
 			cwdFlag = ` -c ${quoteShellArg(cwd)}`;
 		} catch (error) {
 			if (!(error instanceof CommandExitError)) {
@@ -90,7 +91,7 @@ async function ensureTmuxSession(
 	}
 
 	try {
-		await runRootCommand(
+		await runTerminalCommand(
 			sandbox,
 			`tmux new-session -d -s ${safeName}${cwdFlag}`
 		);
@@ -103,7 +104,7 @@ async function ensureTmuxSession(
 		}
 	}
 
-	await runRootCommand(
+	await runTerminalCommand(
 		sandbox,
 		`tmux set-option -t ${safeName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeName} mouse off \\; set-option -t ${safeName} status off`
 	);
@@ -138,7 +139,7 @@ async function ensureTerminal(
 		rows: normalizedRows,
 		onData,
 		timeoutMs: PTY_TIMEOUT_MS,
-		user: "root",
+		user: SANDBOX_USER,
 	});
 
 	const attachCmd = `exec tmux attach-session -t ${quoteShellArg(TERMINAL_ID)}\n`;
@@ -185,21 +186,21 @@ async function recreateHandle(
 
 export async function getTerminalSnapshot(
 	ctx: SpaceRuntimeContext
-): Promise<void> {
+): Promise<boolean> {
 	await ensureTerminal(ctx);
 
 	if (!ctx.conn) {
-		return;
+		return false;
 	}
 	const connection = ctx.conns.get(ctx.conn.id);
 	if (!connection) {
-		return;
+		return false;
 	}
 
 	try {
-		const result = await runRootCommand(
+		const result = await runTerminalCommand(
 			ctx.vars.sandbox,
-			`tmux capture-pane -p -e -t ${quoteShellArg(TERMINAL_ID)} -S -`
+			`tmux capture-pane -p -e -J -t ${quoteShellArg(TERMINAL_ID)} -S -`
 		);
 		if (result.stdout) {
 			// Trim trailing empty lines so the cursor doesn't start at the bottom
@@ -210,12 +211,15 @@ export async function getTerminalSnapshot(
 				data: toBytes(trimmed),
 			};
 			connection.send("terminal.output", payload);
+			return true;
 		}
 	} catch (error) {
 		if (!(error instanceof CommandExitError)) {
 			throw error;
 		}
 	}
+
+	return false;
 }
 
 export async function input(

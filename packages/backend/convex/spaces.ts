@@ -26,6 +26,14 @@ async function requireOwnedSpace(
 	return { space, project };
 }
 
+type EnsureSpaceInput = {
+	slug: string;
+	project: Doc<"projects">;
+	snapshotId?: Id<"snapshots">;
+	name?: string;
+	firstMessage?: string;
+};
+
 async function requireReadySnapshot(
 	ctx: MutationCtx,
 	project: Doc<"projects">,
@@ -41,13 +49,76 @@ async function requireReadySnapshot(
 	return snapshot;
 }
 
+export async function ensureSpaceRecord(
+	ctx: MutationCtx,
+	args: EnsureSpaceInput
+): Promise<Id<"spaces">> {
+	const slug = args.slug.trim();
+	const existing = await ctx.db
+		.query("spaces")
+		.withIndex("by_slug", (q) => q.eq("slug", slug))
+		.unique();
+
+	if (existing) {
+		const patch =
+			existing.status !== "running" &&
+			args.snapshotId !== undefined &&
+			existing.snapshotId !== args.snapshotId
+				? {
+						snapshotId: args.snapshotId,
+						updatedAt: Date.now(),
+					}
+				: null;
+		if (patch) {
+			await ctx.db.patch(existing._id, patch);
+		}
+
+		if (existing.status !== "running") {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.sandboxActions.provisionForSpace,
+				{
+					spaceId: existing._id,
+				}
+			);
+		}
+		return existing._id;
+	}
+
+	const now = Date.now();
+	const spaceId = await ctx.db.insert("spaces", {
+		slug,
+		projectId: args.project._id,
+		snapshotId: args.snapshotId,
+		name: args.name ?? "New Space",
+		status: "creating",
+		createdAt: now,
+		updatedAt: now,
+	});
+
+	await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
+		spaceId,
+	});
+
+	if (args.firstMessage) {
+		await ctx.scheduler.runAfter(0, internal.spaces.requestAutoRename, {
+			spaceId,
+			firstMessage: args.firstMessage,
+		});
+	}
+
+	return spaceId;
+}
+
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const projects = await ctx.db
-			.query("projects")
-			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-			.collect();
+		const projects = (
+			await ctx.db
+				.query("projects")
+				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+				.collect()
+		).filter((project) => project.type === "workspace");
 
 		const spaces = (
 			await asyncMap(projects, (project) =>
@@ -66,10 +137,12 @@ export const list = authedQuery({
 export const listByProject = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const projects = await ctx.db
-			.query("projects")
-			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-			.collect();
+		const projects = (
+			await ctx.db
+				.query("projects")
+				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+				.collect()
+		).filter((project) => project.type === "workspace");
 
 		const spacesByProject = new Map<Id<"projects">, Doc<"spaces">[]>();
 		const projectSpaces = await asyncMap(projects, async (project) => ({
@@ -280,23 +353,6 @@ export const ensure = authedMutation({
 	handler: async (ctx, args) => {
 		const slug = args.slug.trim();
 
-		// Look up by slug — may already exist from a prior call
-		const existing = await ctx.db
-			.query("spaces")
-			.withIndex("by_slug", (q) => q.eq("slug", slug))
-			.unique();
-		if (existing) {
-			await requireOwnedSpace(ctx, existing);
-			if (existing.status !== "running") {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.sandboxActions.provisionForSpace,
-					{ spaceId: existing._id }
-				);
-			}
-			return existing._id;
-		}
-
 		if (!args.projectId) {
 			throw new ConvexError("projectId is required when creating a space");
 		}
@@ -307,36 +363,20 @@ export const ensure = authedMutation({
 		if (!project || project.userId !== ctx.userId) {
 			throw new ConvexError("Project not found");
 		}
-		const snapshotId = args.snapshotId ?? project.defaultSnapshotId;
+
+		const snapshotId =
+			args.snapshotId ?? project.defaultSnapshotId ?? undefined;
 		if (!snapshotId) {
 			throw new ConvexError("Project does not have a default snapshot");
 		}
 		await requireReadySnapshot(ctx, project, snapshotId);
 
-		const now = Date.now();
-
-		const spaceId = await ctx.db.insert("spaces", {
+		return await ensureSpaceRecord(ctx, {
 			slug,
-			projectId,
+			project,
 			snapshotId,
-			name: "New Space",
-			status: "creating",
-			createdAt: now,
-			updatedAt: now,
+			firstMessage: args.firstMessage,
 		});
-
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
-			spaceId,
-		});
-
-		if (args.firstMessage) {
-			await ctx.scheduler.runAfter(0, internal.spaces.requestAutoRename, {
-				spaceId,
-				firstMessage: args.firstMessage,
-			});
-		}
-
-		return spaceId;
 	},
 });
 

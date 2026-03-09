@@ -17,6 +17,7 @@ config({ path: resolve(repoRoot, "apps/server/.env") });
 
 const TEMPLATE_CPU_COUNT = 4;
 const TEMPLATE_MEMORY_MB = 8192;
+const SANDBOX_USER = "user";
 
 const apiKey = process.env.E2B_API_KEY;
 if (!apiKey) {
@@ -76,7 +77,7 @@ const template = Template({ fileContextPath: repoRoot })
 	)
 	.runCmd("npm install -g --force yarn pnpm")
 	.runCmd(
-		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
+		"export BUN_INSTALL=/usr/local && curl -fsSL https://bun.sh/install | bash && (test -x /usr/local/bin/bunx || ln -sf /usr/local/bin/bun /usr/local/bin/bunx)"
 	)
 	// Install sandbox-runtime JS bundle
 	.copy(
@@ -94,7 +95,9 @@ const template = Template({ fileContextPath: repoRoot })
 	// Install amp-acp native binary
 	.runCmd(
 		'set -euo pipefail; curl -fsSL "https://github.com/tao12345666333/amp-acp/releases/download/v0.7.0/amp-acp-linux-x86_64.tar.gz" -o /tmp/amp-acp.tar.gz; tar -xzf /tmp/amp-acp.tar.gz -C /usr/local/bin amp-acp; chmod +x /usr/local/bin/amp-acp; rm -f /tmp/amp-acp.tar.gz'
-	);
+	)
+	.setUser(SANDBOX_USER)
+	.setWorkdir(`/home/${SANDBOX_USER}`);
 
 console.log("Building base template…");
 
