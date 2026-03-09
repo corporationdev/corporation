@@ -129,8 +129,9 @@ export const ConnectedSessionView: FC<{
 			};
 			setAgentOverride(pending.agent);
 			setModelIdOverride(pending.modelId);
+			sessionState.addOptimisticMessage(pending.text);
 		}
-	}, [consumeMessage]);
+	}, [consumeMessage, sessionState.addOptimisticMessage]);
 
 	// Send pending message once actor is connected and space has agentUrl
 	useEffect(() => {
@@ -177,6 +178,7 @@ export const ConnectedSessionView: FC<{
 		}
 
 		setMessage("");
+		sessionState.addOptimisticMessage(text);
 
 		try {
 			await ensureSpace({ slug: spaceSlug });
@@ -192,6 +194,7 @@ export const ConnectedSessionView: FC<{
 			}
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
+			sessionState.clearOptimisticMessages();
 			setMessage((current) => (current ? current : text));
 			toast.error("Failed to send message");
 		}
@@ -205,6 +208,8 @@ export const ConnectedSessionView: FC<{
 		modelId,
 		space?._id,
 		touchSpace,
+		sessionState.addOptimisticMessage,
+		sessionState.clearOptimisticMessages,
 	]);
 
 	const handleStop = useCallback(async () => {
