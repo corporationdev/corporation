@@ -4,6 +4,10 @@ import type { Sandbox } from "e2b";
 import { quoteShellArg } from "./git";
 
 export const SANDBOX_AGENT_PORT = 5799;
+export const BASE_TEMPLATE = "corporation-base";
+export const SANDBOX_USER = "user";
+export const SANDBOX_HOME_DIR = `/home/${SANDBOX_USER}`;
+export const SANDBOX_WORKDIR = "/workspace";
 const SERVER_STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_POLL_INTERVAL_MS = 500;
 
@@ -21,17 +25,7 @@ type RunRootCommandOptions = Omit<
 	NonNullable<Parameters<Sandbox["commands"]["run"]>[1]>,
 	"user"
 >;
-
-export function getSandboxWorkdir(project: {
-	name: string;
-	githubOwner?: string;
-	githubName?: string;
-}): string {
-	if (project.githubOwner && project.githubName) {
-		return `/workspace/${project.githubOwner}-${project.githubName}`;
-	}
-	return `/workspace/${project.name}`;
-}
+type RunWorkspaceCommandOptions = RunRootCommandOptions;
 
 function truncateOutput(
 	output: string,
@@ -81,6 +75,32 @@ export async function runRootCommand(
 	}
 }
 
+export async function runWorkspaceCommand(
+	sandbox: Sandbox,
+	command: string,
+	options: RunWorkspaceCommandOptions = {}
+) {
+	try {
+		return await sandbox.commands.run(command, {
+			...options,
+			user: SANDBOX_USER,
+		});
+	} catch (error) {
+		if (isCommandExitError(error)) {
+			const cwdMessage = options.cwd ? ` (cwd: ${options.cwd})` : "";
+			throw new Error(
+				[
+					`Sandbox command failed${cwdMessage}: ${command}`,
+					`Exit code: ${error.exitCode}`,
+					`stderr: ${truncateOutput(error.stderr)}`,
+					`stdout: ${truncateOutput(error.stdout)}`,
+				].join("\n")
+			);
+		}
+		throw error;
+	}
+}
+
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -102,7 +122,7 @@ export async function bootServer(
 	appendLog?.(`Starting ${sessionName} (tmux session)...\n`);
 
 	const cwdFlag = workdir ? `-c ${quoteShellArg(workdir)} ` : "";
-	await runRootCommand(
+	await runWorkspaceCommand(
 		sandbox,
 		`tmux new-session -d -s ${sessionName} ${cwdFlag}${quoteShellArg(command)} \\; set-option -t ${sessionName} mouse on \\; set-option -t ${sessionName} status off`
 	);
@@ -140,7 +160,8 @@ export async function bootServer(
 
 export async function killDevServer(sandbox: Sandbox): Promise<void> {
 	try {
-		await sandbox.commands.run(
+		await runWorkspaceCommand(
+			sandbox,
 			`tmux kill-session -t ${DEV_SERVER_SESSION_NAME}`
 		);
 	} catch (error) {
@@ -153,7 +174,8 @@ export async function killDevServer(sandbox: Sandbox): Promise<void> {
 
 export async function hasDevServerSession(sandbox: Sandbox): Promise<boolean> {
 	try {
-		await sandbox.commands.run(
+		await runWorkspaceCommand(
+			sandbox,
 			`tmux has-session -t ${DEV_SERVER_SESSION_NAME}`
 		);
 		return true;

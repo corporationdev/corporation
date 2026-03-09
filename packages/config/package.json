@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./acp-agent-manifest": "./src/acp-agent-manifest.ts",
     "./tsconfig.base.json": "./tsconfig.base.json",
     "./runtime": "./src/runtime.ts",
     "./stage": "./src/stage.ts"

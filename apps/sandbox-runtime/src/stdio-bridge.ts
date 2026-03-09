@@ -5,7 +5,7 @@ import {
 	type AcpEnvelope,
 	acpEnvelopeSchema,
 } from "@corporation/contracts/sandbox-do";
-import { agentCommand, agentEnv, writeAgentConfigs } from "./agents";
+import { agentCommand, writeAgentConfigs } from "./agents";
 import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
 import { log } from "./logging";
 import {
@@ -30,6 +30,11 @@ export type StdioBridge = {
 		}
 	>;
 	proc: ReturnType<typeof Bun.spawn>;
+};
+
+type StdioRequestOptions = {
+	signal?: AbortSignal;
+	timeoutMs?: number;
 };
 
 function processLinesFromStream(
@@ -148,7 +153,7 @@ export function spawnStdioBridge(
 	writeAgentConfigs(agent);
 
 	const proc = Bun.spawn(cmd, {
-		env: { ...agentEnv(agent), IS_SANDBOX: "1" },
+		env: { ...process.env, IS_SANDBOX: "1" },
 		stdin: "pipe",
 		stdout: "pipe",
 		stderr: "pipe",
@@ -205,24 +210,6 @@ export function teardownBridge(
 	}
 
 	try {
-		const stdout = bridge.proc.stdout;
-		if (stdout && typeof stdout === "object") {
-			stdout.cancel();
-		}
-	} catch {
-		// stdout already closed
-	}
-
-	try {
-		const stderr = bridge.proc.stderr;
-		if (stderr && typeof stderr === "object") {
-			stderr.cancel();
-		}
-	} catch {
-		// stderr already closed
-	}
-
-	try {
 		bridge.proc.kill();
 	} catch {
 		// process may already be gone
@@ -239,20 +226,38 @@ export function stdioWrite(bridge: StdioBridge, envelope: AcpEnvelope): void {
 	}
 }
 
+function getAbortError(signal: AbortSignal, fallback: string): Error {
+	const reason = signal.reason;
+	if (reason instanceof Error) {
+		return reason;
+	}
+	if (typeof reason === "string" && reason.length > 0) {
+		return new Error(reason);
+	}
+	return new Error(fallback);
+}
+
 export async function stdioRequest<M extends AcpAgentRequestMethod>(
 	bridge: StdioBridge,
 	method: M,
 	params: AcpAgentRequestParams<M>,
-	timeoutMs?: number
+	options?: number | StdioRequestOptions
 ): Promise<AcpAgentRequestResult<M>>;
 export async function stdioRequest<M extends string>(
 	bridge: StdioBridge,
 	method: M,
 	params: M extends AcpAgentRequestMethod ? AcpAgentRequestParams<M> : unknown,
-	timeoutMs: number = ACP_REQUEST_TIMEOUT_MS
+	options: number | StdioRequestOptions = ACP_REQUEST_TIMEOUT_MS
 ): Promise<
 	M extends AcpAgentRequestMethod ? AcpAgentRequestResult<M> : unknown
 > {
+	const { signal, timeoutMs } =
+		typeof options === "number"
+			? { signal: undefined, timeoutMs: options }
+			: {
+					signal: options.signal,
+					timeoutMs: options.timeoutMs ?? ACP_REQUEST_TIMEOUT_MS,
+				};
 	const id = `${method}-${crypto.randomUUID()}`;
 	const methodSchemas = getAcpAgentRequestMethodSchemas(method);
 	const parsedParams = methodSchemas
@@ -265,19 +270,46 @@ export async function stdioRequest<M extends string>(
 		params: parsedParams,
 	} satisfies AcpEnvelope;
 
+	if (signal?.aborted) {
+		throw getAbortError(signal, `ACP request aborted: ${method} (${id})`);
+	}
+
 	const responsePromise = new Promise<AcpEnvelope>((resolve, reject) => {
+		const onAbort = () => {
+			if (!signal) {
+				return;
+			}
+			const pending = bridge.pendingResolvers.get(id);
+			if (!pending) {
+				return;
+			}
+			bridge.pendingResolvers.delete(id);
+			clearTimeout(pending.timer);
+			reject(getAbortError(signal, `ACP request aborted: ${method} (${id})`));
+		};
+		if (signal) {
+			signal.addEventListener("abort", onAbort, { once: true });
+		}
+
 		const timer = setTimeout(() => {
 			const pending = bridge.pendingResolvers.get(id);
 			if (!pending) {
 				return;
 			}
 			bridge.pendingResolvers.delete(id);
+			signal?.removeEventListener("abort", onAbort);
 			reject(new Error(`ACP request timed out: ${method} (${id})`));
 		}, timeoutMs);
 
 		bridge.pendingResolvers.set(id, {
-			resolve,
-			reject,
+			resolve: (envelope) => {
+				signal?.removeEventListener("abort", onAbort);
+				resolve(envelope);
+			},
+			reject: (error) => {
+				signal?.removeEventListener("abort", onAbort);
+				reject(error);
+			},
 			timer,
 		});
 	});

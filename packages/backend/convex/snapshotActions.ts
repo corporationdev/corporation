@@ -8,12 +8,13 @@ import { internalAction } from "./_generated/server";
 import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
-	getSandboxWorkdir,
+	BASE_TEMPLATE,
 	REPO_SYNC_TIMEOUT_MS,
 	runRootCommand,
+	SANDBOX_USER,
+	SANDBOX_WORKDIR,
 } from "./lib/sandbox";
 
-const BASE_TEMPLATE = "corporation-base";
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
 
 function formatSnapshotError(error: unknown): string {
@@ -57,7 +58,7 @@ export const buildInitialSnapshot = internalAction({
 				const nango = new Nango({ secretKey: nangoSecretKey });
 				const githubToken = await getGitHubToken(nango, project.userId);
 
-				const workdir = getSandboxWorkdir(project);
+				const workdir = SANDBOX_WORKDIR;
 				const repoUrl = `https://x-access-token:${githubToken}@github.com/${project.githubOwner}/${project.githubName}.git`;
 				const safeRepoUrl = quoteShellArg(repoUrl);
 				const safeDefaultBranch = quoteShellArg(project.defaultBranch);
@@ -73,13 +74,21 @@ export const buildInitialSnapshot = internalAction({
 					`git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
 					{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
 				);
+				await runRootCommand(
+					sandbox,
+					`chown -R ${SANDBOX_USER}:${SANDBOX_USER} ${safeWorkdir}`
+				);
 			} else {
 				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
 					network: { allowPublicTraffic: true },
 					envs: project.secrets ?? {},
 				});
-				const workdir = getSandboxWorkdir(project);
-				await runRootCommand(sandbox, `mkdir -p ${quoteShellArg(workdir)}`);
+				const workdir = SANDBOX_WORKDIR;
+				const safeWorkdir = quoteShellArg(workdir);
+				await runRootCommand(
+					sandbox,
+					`mkdir -p ${safeWorkdir} && chown -R ${SANDBOX_USER}:${SANDBOX_USER} ${safeWorkdir}`
+				);
 			}
 
 			const snapshot = await sandbox.createSnapshot();

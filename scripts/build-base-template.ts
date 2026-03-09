@@ -1,5 +1,5 @@
-// Build the E2B base template with Node 22, common package managers,
-// sandbox-runtime, and preinstalled coding agents.
+// Build the E2B base template with the minimal runtime/tooling needed for
+// sandbox-runtime, terminal sessions, repo cloning, and computer-use flows.
 //
 // Usage:
 //   bun scripts/build-base-template.ts
@@ -17,6 +17,8 @@ config({ path: resolve(repoRoot, "apps/server/.env") });
 
 const TEMPLATE_CPU_COUNT = 4;
 const TEMPLATE_MEMORY_MB = 8192;
+const SANDBOX_USER = "user";
+const SANDBOX_WORKDIR = "/workspace";
 
 const apiKey = process.env.E2B_API_KEY;
 if (!apiKey) {
@@ -59,42 +61,26 @@ const template = Template({ fileContextPath: repoRoot })
 		"ca-certificates",
 		"git",
 		"ripgrep",
-		"zip",
-		"unzip",
-		"zsh",
 		"curl",
 		"tmux",
 		"imagemagick",
 	])
-	// TODO: move cloudflared to dynamic installation once we add that capability
 	.runCmd(
-		'set -euo pipefail; ARCH=$(dpkg --print-architecture); curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH.deb" -o /tmp/cloudflared.deb; dpkg -i /tmp/cloudflared.deb; rm -f /tmp/cloudflared.deb; cloudflared --version'
+		"export BUN_INSTALL=/usr/local && curl -fsSL https://bun.sh/install | bash && (test -x /usr/local/bin/bunx || ln -sf /usr/local/bin/bun /usr/local/bin/bunx)"
 	)
 	.runCmd(
-		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell variable interpolation, not JS templates
-		'set -euo pipefail; OP_VERSION=2.31.0; ARCH=$(dpkg --print-architecture); case "$ARCH" in amd64) OP_ARCH=amd64 ;; arm64) OP_ARCH=arm64 ;; *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; esac; curl -fsSL "https://cache.agilebits.com/dist/1P/op2/pkg/v${OP_VERSION}/op_linux_${OP_ARCH}_v${OP_VERSION}.zip" -o /tmp/op.zip; unzip -q /tmp/op.zip -d /tmp; install -m 0755 /tmp/op /usr/local/bin/op; rm -f /tmp/op /tmp/op.zip; op --version'
+		"curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh"
 	)
-	.runCmd("npm install -g --force yarn pnpm")
 	.runCmd(
-		"curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx"
+		`mkdir -p ${SANDBOX_WORKDIR} && chown ${SANDBOX_USER}:${SANDBOX_USER} ${SANDBOX_WORKDIR}`
 	)
 	// Install sandbox-runtime JS bundle
 	.copy(
 		"apps/sandbox-runtime/dist/sandbox-runtime.js",
 		"/usr/local/bin/sandbox-runtime.js"
 	)
-	// Pre-cache ACP agent npm packages so npx doesn't download at runtime
-	.runCmd(
-		"set -euo pipefail; npm install -g @zed-industries/claude-code-acp @zed-industries/codex-acp pi-acp @blowmage/cursor-agent-acp"
-	)
-	// Install opencode native binary
-	.runCmd(
-		'set -euo pipefail; curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v1.2.20/opencode-linux-x64.tar.gz" -o /tmp/opencode.tar.gz; tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin opencode; chmod +x /usr/local/bin/opencode; rm -f /tmp/opencode.tar.gz; opencode --version'
-	)
-	// Install amp-acp native binary
-	.runCmd(
-		'set -euo pipefail; curl -fsSL "https://github.com/tao12345666333/amp-acp/releases/download/v0.7.0/amp-acp-linux-x86_64.tar.gz" -o /tmp/amp-acp.tar.gz; tar -xzf /tmp/amp-acp.tar.gz -C /usr/local/bin amp-acp; chmod +x /usr/local/bin/amp-acp; rm -f /tmp/amp-acp.tar.gz'
-	);
+	.setUser(SANDBOX_USER)
+	.setWorkdir(SANDBOX_WORKDIR);
 
 console.log("Building base template…");
 

@@ -1,5 +1,12 @@
-import type { PromptRequestBody } from "@corporation/contracts/sandbox-do";
-import { promptRequestBodySchema } from "@corporation/contracts/sandbox-do";
+import type {
+	AgentProbeRequestBody,
+	AgentProbeResponse,
+	PromptRequestBody,
+} from "@corporation/contracts/sandbox-do";
+import {
+	agentProbeRequestBodySchema,
+	promptRequestBodySchema,
+} from "@corporation/contracts/sandbox-do";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { log } from "./logging";
@@ -7,6 +14,7 @@ import { log } from "./logging";
 export type AppRuntime = {
 	cancelTurn(turnId: string): boolean;
 	executeTurn(body: PromptRequestBody): Promise<void>;
+	probeAgents(body: AgentProbeRequestBody): Promise<AgentProbeResponse>;
 	reserveTurn(body: PromptRequestBody): { error: string } | null;
 };
 
@@ -35,6 +43,14 @@ export function createApp(runtime: AppRuntime) {
 
 			return c.json({ accepted: true as const }, 202);
 		})
+		.post(
+			"/v1/agents/probe",
+			zValidator("json", agentProbeRequestBodySchema),
+			async (c) => {
+				const body = c.req.valid("json");
+				return c.json(await runtime.probeAgents(body));
+			}
+		)
 		.delete("/v1/prompt/:turnId", (c) => {
 			const turnId = c.req.param("turnId");
 

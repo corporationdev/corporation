@@ -1,3 +1,5 @@
+import acpAgents from "@corporation/config/acp-agent-manifest";
+import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
 import { env } from "@corporation/env/server";
 import { Sandbox } from "@e2b/desktop";
 import type { DriverContext } from "@rivetkit/cloudflare-workers";
@@ -21,6 +23,62 @@ export type { SessionRow } from "./db/schema";
 
 const SANDBOX_TIMEOUT_MS = 900_000;
 const SANDBOX_KEEP_ALIVE_THROTTLE_MS = 240_000;
+const SANDBOX_USER = "user";
+
+function quoteShellArg(value: string) {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function emptyAgentProbeResponse(status: "not_installed" | "error") {
+	const agents = acpAgents
+		.filter((agent) => agent.runtimeId)
+		.map((agent) => ({
+			id: agent.id,
+			name: agent.name,
+			status,
+			models: [],
+			defaultModelId: null,
+			error: status === "error" ? "Unable to reach sandbox runtime" : null,
+		}));
+
+	return {
+		probedAt: Date.now(),
+		agents,
+	} satisfies AgentProbeResponse;
+}
+
+async function getAgentProbeState(c: {
+	state: PersistedState;
+}): Promise<AgentProbeResponse> {
+	if (!(c.state.agentUrl && c.state.workdir)) {
+		return emptyAgentProbeResponse("not_installed");
+	}
+
+	try {
+		const response = await fetch(`${c.state.agentUrl}/v1/agents/probe`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				ids: acpAgents
+					.filter((agent) => agent.runtimeId)
+					.map((agent) => agent.id),
+				cwd: c.state.workdir,
+			}),
+		});
+
+		if (!response.ok) {
+			const text = await response.text().catch(() => "");
+			throw new Error(
+				`sandbox-runtime agent probe failed (${response.status}): ${text}`
+			);
+		}
+
+		return (await response.json()) as AgentProbeResponse;
+	} catch (error) {
+		console.error("Failed to fetch agent probe state", error);
+		return emptyAgentProbeResponse("error");
+	}
+}
 
 export const space = actor({
 	createState: (
@@ -73,6 +131,24 @@ export const space = actor({
 	},
 
 	actions: {
+		getAgentProbeState: (c) => getAgentProbeState(c),
+		runCommand: async (
+			c,
+			command: string,
+			background = false
+		): Promise<void> => {
+			if (!command.trim()) {
+				throw new Error("Command cannot be empty");
+			}
+
+			const logId = crypto.randomUUID();
+			const nextCommand = background
+				? `nohup bash -lc ${quoteShellArg(command)} >/tmp/corporation-run-command-${logId}.log 2>&1 </dev/null &`
+				: command;
+
+			await c.vars.sandbox.commands.run(nextCommand, { user: SANDBOX_USER });
+			console.info("Ran sandbox command");
+		},
 		listSessions: (c): Promise<SessionRow[]> => listSessions(c),
 		sendMessage: (
 			c,

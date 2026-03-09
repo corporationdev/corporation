@@ -61,6 +61,9 @@ const bundlePath = resolve(sandboxRuntimeDir, "dist/sandbox-runtime.js");
 const setupPath = resolve(sandboxRuntimeDir, "setup.sh");
 const remoteBundlePath = "/usr/local/bin/sandbox-runtime.js";
 const remoteSetupPath = "/usr/local/bin/sandbox-runtime-setup.sh";
+const runtimeLogPath = "/tmp/sandbox-runtime.log";
+const runtimeStderrPath = "/tmp/sandbox-runtime.stderr.log";
+const runtimeSessionName = "sandbox-agent";
 
 const entrypoint = resolve(sandboxRuntimeDir, "src/index.ts");
 const buildCmd = [
@@ -109,6 +112,46 @@ function stopTailing() {
 	}
 }
 
+async function waitForRuntimeHealth(): Promise<void> {
+	const deadline = Date.now() + 15_000;
+	let lastError: unknown = null;
+
+	while (Date.now() < deadline) {
+		try {
+			await sandbox.commands.run("curl -sf http://localhost:5799/v1/health", {
+				timeoutMs: 3000,
+			});
+			return;
+		} catch (error) {
+			lastError = error;
+			await new Promise((resolve) => setTimeout(resolve, 250));
+		}
+	}
+
+	const tmuxSession = await sandbox.commands
+		.run(`tmux has-session -t ${runtimeSessionName}`, { timeoutMs: 3000 })
+		.then(() => "tmux session exists")
+		.catch(() => "tmux session missing");
+	const stderrOutput = await sandbox.commands
+		.run(`cat ${runtimeStderrPath}`, { timeoutMs: 3000 })
+		.then((result) => result.stdout.trim())
+		.catch(() => "");
+
+	const reason =
+		lastError instanceof Error
+			? lastError.message
+			: String(lastError ?? "unknown");
+	throw new Error(
+		[
+			`sandbox-runtime did not become healthy: ${reason}`,
+			tmuxSession,
+			stderrOutput ? `stderr: ${stderrOutput}` : null,
+		]
+			.filter(Boolean)
+			.join("\n")
+	);
+}
+
 async function buildAndSync() {
 	if (syncing) {
 		pendingSync = true;
@@ -130,9 +173,15 @@ async function buildAndSync() {
 		}
 
 		// Stop running process
-		await sandbox.commands.run(" fuser -k 5799/tcp 2>/dev/null; true", {
+		await sandbox.commands.run("fuser -k 5799/tcp 2>/dev/null; true", {
 			timeoutMs: 5000,
 		});
+		await sandbox.commands.run(
+			`tmux kill-session -t ${runtimeSessionName} || true`,
+			{
+				timeoutMs: 5000,
+			}
+		);
 
 		// Upload bundle + setup script
 		const [bundleData, setupData] = await Promise.all([
@@ -150,13 +199,17 @@ async function buildAndSync() {
 		});
 
 		// Truncate log and restart
-		await sandbox.commands.run(": > /tmp/sandbox-runtime.log", {
-			timeoutMs: 3000,
-		});
 		await sandbox.commands.run(
-			`tmux new-session -d -s sandbox-agent "bun ${remoteBundlePath} --host 0.0.0.0 --port 5799"`,
+			`: > ${runtimeLogPath}; : > ${runtimeStderrPath}`,
+			{
+				timeoutMs: 3000,
+			}
+		);
+		await sandbox.commands.run(
+			`tmux new-session -d -s ${runtimeSessionName} "bun ${remoteBundlePath} --host 0.0.0.0 --port 5799 >> ${runtimeLogPath} 2>> ${runtimeStderrPath}"`,
 			{ timeoutMs: 5000 }
 		);
+		await waitForRuntimeHealth();
 
 		const elapsed = Date.now() - start;
 		console.log(`[synced] ${elapsed}ms`);

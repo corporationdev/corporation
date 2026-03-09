@@ -1,21 +1,9 @@
-import type { InitializeResponse } from "@agentclientprotocol/sdk";
-
 export const ACP_PROTOCOL_VERSION = 1;
 export const ACP_REQUEST_TIMEOUT_MS = 10 * 60_000;
 export const CALLBACK_TIMEOUT_MS = 10_000;
 export const CALLBACK_MAX_ATTEMPTS = 8;
 export const EVENT_BATCH_MAX_SIZE = 10;
 export const EVENT_BATCH_MAX_DELAY_MS = 5;
-
-export const AUTH_METHOD_ENV_CANDIDATES: Record<string, string[]> = {
-	"anthropic-api-key": ["ANTHROPIC_API_KEY"],
-	"claude-login": ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
-	"codex-api-key": ["CODEX_API_KEY"],
-	"openai-api-key": ["OPENAI_API_KEY"],
-	"opencode-api-key": ["OPENCODE_API_KEY"],
-};
-
-export type AuthMethod = { id: string };
 
 export function formatError(error: unknown): {
 	name: string;
@@ -56,34 +44,6 @@ export function pickPermissionOption(
 			typeof (o as Record<string, unknown>).optionId === "string"
 	) as { kind: string; optionId: string } | undefined;
 	return allowOnce ?? null;
-}
-
-export function extractAuthMethods(
-	initResult: InitializeResponse
-): AuthMethod[] {
-	const authMethods = initResult.authMethods ?? [];
-	if (!Array.isArray(authMethods)) {
-		return [];
-	}
-
-	return authMethods
-		.filter((method) => method && typeof method.id === "string")
-		.map((method) => ({ id: method.id }));
-}
-
-export function selectAuthMethod(
-	authMethods: AuthMethod[],
-	env: Record<string, string | undefined> = process.env
-): { methodId: string; envVar: string } | null {
-	for (const method of authMethods) {
-		const envCandidates = AUTH_METHOD_ENV_CANDIDATES[method.id] ?? [];
-		for (const envVar of envCandidates) {
-			if (typeof env[envVar] === "string" && env[envVar]) {
-				return { methodId: method.id, envVar };
-			}
-		}
-	}
-	return null;
 }
 
 async function waitForRetry(delayMs: number): Promise<number> {

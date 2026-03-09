@@ -35,6 +35,43 @@ export const promptRequestBodySchema = z.object({
 });
 export type PromptRequestBody = z.infer<typeof promptRequestBodySchema>;
 
+export const agentProbeRequestBodySchema = z.object({
+	ids: z.array(z.string().min(1)).optional(),
+	cwd: z.string().min(1).optional(),
+	force: z.boolean().optional(),
+});
+export type AgentProbeRequestBody = z.infer<typeof agentProbeRequestBodySchema>;
+
+export const agentProbeStatusSchema = z.enum([
+	"ready",
+	"requires_auth",
+	"not_installed",
+	"error",
+]);
+export type AgentProbeStatus = z.infer<typeof agentProbeStatusSchema>;
+
+export const agentProbeModelSchema = z.object({
+	id: z.string().min(1),
+	name: z.string().min(1),
+});
+export type AgentProbeModel = z.infer<typeof agentProbeModelSchema>;
+
+export const agentProbeAgentSchema = z.object({
+	id: z.string().min(1),
+	name: z.string().min(1),
+	status: agentProbeStatusSchema,
+	models: z.array(agentProbeModelSchema),
+	defaultModelId: z.string().nullable().optional(),
+	error: z.string().nullable().optional(),
+});
+export type AgentProbeAgent = z.infer<typeof agentProbeAgentSchema>;
+
+export const agentProbeResponseSchema = z.object({
+	probedAt: z.number(),
+	agents: z.array(agentProbeAgentSchema),
+});
+export type AgentProbeResponse = z.infer<typeof agentProbeResponseSchema>;
+
 const turnRunnerErrorSchema = z.object({
 	name: z.string().min(1),
 	message: z.string().min(1),

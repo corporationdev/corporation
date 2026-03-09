@@ -15,10 +15,16 @@ export const spaceStatusValidator = v.union(
 	v.literal("error")
 );
 
+export const projectTypeValidator = v.union(
+	v.literal("user"),
+	v.literal("workspace")
+);
+
 export default defineSchema(
 	{
 		projects: defineTable({
 			userId: v.string(),
+			type: projectTypeValidator,
 			name: v.string(),
 			githubRepoId: v.optional(v.number()),
 			githubOwner: v.optional(v.string()),
@@ -30,6 +36,7 @@ export default defineSchema(
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
+			.index("by_user_and_type", ["userId", "type"])
 			.index("by_user_and_github_repo", ["userId", "githubRepoId"])
 			.index("by_github_repo", ["githubRepoId"]),
 

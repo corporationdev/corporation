@@ -19,10 +19,12 @@ function requireOwnedProject(
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) =>
-		await ctx.db
-			.query("projects")
-			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-			.collect(),
+		(
+			await ctx.db
+				.query("projects")
+				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+				.collect()
+		).filter((project) => project.type === "workspace"),
 });
 
 export const get = authedQuery({
@@ -73,6 +75,7 @@ export const create = authedMutation({
 
 		const projectId = await ctx.db.insert("projects", {
 			userId: ctx.userId,
+			type: "workspace",
 			name: args.name,
 			githubRepoId: args.githubRepoId,
 			githubOwner: args.githubOwner,

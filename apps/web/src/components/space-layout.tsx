@@ -9,8 +9,7 @@ import {
 } from "@/components/ui/resizable";
 import { WorkspacePanel } from "@/components/workspace-panel/workspace-panel";
 import { useAutoStartSandbox } from "@/hooks/use-auto-start-sandbox";
-import { useKeepAliveSandbox } from "@/hooks/use-keep-alive-sandbox";
-import { useActor } from "@/lib/rivetkit";
+import { useSpaceActor } from "@/hooks/use-space-actor";
 
 export function SpaceLayout() {
 	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });
@@ -18,23 +17,10 @@ export function SpaceLayout() {
 	const activeSessionId: string | undefined = match.search.session;
 
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
-	const sandboxReady = !!space?.sandboxId && !!space?.agentUrl;
 
 	useAutoStartSandbox(spaceSlug, space?.status);
 
-	const actor = useActor({
-		name: "space",
-		key: [spaceSlug],
-		createWithInput: sandboxReady
-			? {
-					sandboxId: space.sandboxId,
-					agentUrl: space.agentUrl,
-					workdir: space.workdir,
-				}
-			: undefined,
-		enabled: sandboxReady,
-	});
-	useKeepAliveSandbox(actor, sandboxReady);
+	const { actor } = useSpaceActor(space);
 
 	return (
 		<ResizablePanelGroup orientation="horizontal">

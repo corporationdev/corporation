@@ -6,9 +6,11 @@ import { CommandExitError, Sandbox } from "e2b";
 import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import { CODEX_AUTH_SECRET_NAME } from "./lib/codexAuth";
-import { runRootCommand, SANDBOX_AGENT_PORT } from "./lib/sandbox";
-import { ENV_SECRET_NAMES } from "./lib/validSecrets";
+import {
+	runWorkspaceCommand,
+	SANDBOX_AGENT_PORT,
+	SANDBOX_WORKDIR,
+} from "./lib/sandbox";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
@@ -24,8 +26,10 @@ const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
 
 async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
 	// Start agent as a background process
-	await sandbox.commands.run(
-		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`
+	await runWorkspaceCommand(
+		sandbox,
+		`nohup bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} > ${AGENT_LOG_FILE} 2>&1 &`,
+		{ cwd: SANDBOX_WORKDIR }
 	);
 
 	// Poll until healthy
@@ -64,102 +68,20 @@ async function ensureAgentReadyAndGetUrl(sandbox: Sandbox): Promise<string> {
 
 async function createSandbox(
 	snapshotId: string,
-	aiEnvs: Record<string, string>
+	projectEnvs: Record<string, string>
 ): Promise<Sandbox> {
 	return await Sandbox.betaCreate(snapshotId, {
-		envs: {
-			...aiEnvs,
-			CODEX_HOME: "/root/.codex",
-		},
+		envs: projectEnvs,
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
 	});
 }
 
-async function getUserAiEnvs(
-	ctx: ActionCtx,
-	userId: string
-): Promise<Record<string, string>> {
-	const encryptedKeys = await ctx.runQuery(internal.secrets.getByUser, {
-		userId,
-	});
-	const decrypted = await ctx.runAction(
-		internal.secretActions.decryptSecretValues,
-		{
-			userId,
-			secrets: encryptedKeys
-				.filter((secret) => ENV_SECRET_NAMES.has(secret.name))
-				.map((secret) => ({
-					name: secret.name,
-					encryptedKey: secret.encryptedKey,
-					iv: secret.iv,
-				})),
-		}
-	);
-
-	return Object.fromEntries(
-		decrypted
-			.filter(
-				(entry): entry is { name: string; value: string } =>
-					typeof entry.name === "string"
-			)
-			.map((entry) => [entry.name, entry.value])
-	);
-}
-
-async function getUserCodexAuthJson(
-	ctx: ActionCtx,
-	userId: string
-): Promise<string | null> {
-	const secret = await ctx.runQuery(internal.secrets.getByUserAndName, {
-		userId,
-		name: CODEX_AUTH_SECRET_NAME,
-	});
-
-	if (!secret) {
-		return null;
-	}
-
-	const [decrypted] = await ctx.runAction(
-		internal.secretActions.decryptSecretValues,
-		{
-			userId,
-			secrets: [
-				{
-					name: secret.name,
-					encryptedKey: secret.encryptedKey,
-					iv: secret.iv,
-				},
-			],
-		}
-	);
-	return decrypted?.value ?? null;
-}
-
-async function syncCodexAuthToAgent(args: {
-	sandbox: Sandbox;
-	authJson: string | null;
-}) {
-	await runRootCommand(args.sandbox, "mkdir -p /root/.codex");
-	if (args.authJson === null) {
-		await runRootCommand(args.sandbox, "rm -f /root/.codex/auth.json");
-		return;
-	}
-
-	JSON.parse(args.authJson);
-	await args.sandbox.files.writeFiles([
-		{
-			path: "/root/.codex/auth.json",
-			data: args.authJson,
-		},
-	]);
-}
-
 async function resolveSandbox(
 	ctx: ActionCtx,
 	space: Space,
-	aiEnvs: Record<string, string>
+	projectEnvs: Record<string, string>
 ): Promise<Sandbox> {
 	if (space.sandboxId) {
 		try {
@@ -189,7 +111,7 @@ async function resolveSandbox(
 		status: "creating" as const,
 	});
 
-	return await createSandbox(snapshot.externalSnapshotId, aiEnvs);
+	return await createSandbox(snapshot.externalSnapshotId, projectEnvs);
 }
 
 export const archiveSandbox = internalAction({
@@ -228,17 +150,12 @@ export const provisionForSpace = internalAction({
 				id: args.spaceId,
 			});
 
-			const aiEnvs = await getUserAiEnvs(ctx, space.project.userId);
-			const codexAuthJson = await getUserCodexAuthJson(
+			const sandbox = await resolveSandbox(
 				ctx,
-				space.project.userId
+				space,
+				space.project.secrets ?? {}
 			);
-			const sandbox = await resolveSandbox(ctx, space, aiEnvs);
 			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
-			await syncCodexAuthToAgent({
-				sandbox,
-				authJson: codexAuthJson,
-			});
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,

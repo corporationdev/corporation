@@ -1,62 +1,85 @@
 import fs from "node:fs";
+import type { AcpAgentManifestEntry } from "@corporation/config/acp-agent-manifest";
+import acpAgentManifest from "@corporation/config/acp-agent-manifest";
 import claudeCodeSettings from "./agent-configs/claude-code-settings.json";
 import { log } from "./logging";
 
-const AGENT_NPX_PACKAGES: Record<string, string> = {
-	claude: "@zed-industries/claude-code-acp",
-	codex: "@zed-industries/codex-acp",
-	pi: "pi-acp",
-	cursor: "@blowmage/cursor-agent-acp",
-};
+const SANDBOX_HOME_DIR = process.env.HOME || "/home/user";
 
-function stringEnv(): Record<string, string | undefined> {
-	return Object.fromEntries(
-		Object.entries(process.env).filter(
-			(entry): entry is [string, string] => typeof entry[1] === "string"
-		)
-	);
+function expandHome(path: string) {
+	if (path.startsWith("$HOME/")) {
+		return `${SANDBOX_HOME_DIR}/${path.slice("$HOME/".length)}`;
+	}
+	if (path === "$HOME") {
+		return SANDBOX_HOME_DIR;
+	}
+	return path;
 }
+
+const ACP_RUNTIME_AGENTS = acpAgentManifest.filter(
+	(
+		agent
+	): agent is AcpAgentManifestEntry & {
+		runtimeId: string;
+		runtimeCommand: NonNullable<AcpAgentManifestEntry["runtimeCommand"]>;
+	} => Boolean(agent.runtimeId && agent.runtimeCommand)
+);
+
+const RUNTIME_AGENT_COMMANDS = Object.fromEntries(
+	ACP_RUNTIME_AGENTS.map((agent) => [agent.runtimeId, agent.runtimeCommand])
+) as Record<string, NonNullable<AcpAgentManifestEntry["runtimeCommand"]>>;
+
+const RUNTIME_AGENTS_BY_MANIFEST_ID = Object.fromEntries(
+	ACP_RUNTIME_AGENTS.map((agent) => [agent.id, agent])
+) as Record<string, (typeof ACP_RUNTIME_AGENTS)[number]>;
 
 export function agentCommand(agent: string): string[] {
-	if (agent === "opencode") {
-		return ["opencode", "acp"];
-	}
-	if (agent === "amp") {
-		return ["amp-acp"];
-	}
-
-	const pkg = AGENT_NPX_PACKAGES[agent];
-	if (!pkg) {
+	const runtime = RUNTIME_AGENT_COMMANDS[agent];
+	if (!runtime) {
 		throw new Error(`Unknown agent: ${agent}`);
 	}
-	return ["npx", "-y", pkg];
+
+	return [
+		expandHome(runtime.command),
+		...(runtime.args ?? []).map((arg: string) => expandHome(arg)),
+	];
 }
 
-export function agentEnv(agent: string): Record<string, string> {
-	const env = stringEnv();
+export function runtimeAgentEntry(id: string) {
+	return RUNTIME_AGENTS_BY_MANIFEST_ID[id] ?? null;
+}
 
-	if (agent !== "claude") {
-		return env as Record<string, string>;
+export function runtimeAgentEntries(ids?: string[]) {
+	if (!ids || ids.length === 0) {
+		return ACP_RUNTIME_AGENTS;
 	}
 
-	// Claude Code ACP consumes credentials from the process environment.
-	// If an OAuth token is available, prefer it and omit the API key.
-	if (env.CLAUDE_CODE_OAUTH_TOKEN) {
-		env.ANTHROPIC_API_KEY = undefined;
+	return ids
+		.map((id) => runtimeAgentEntry(id))
+		.filter(
+			(agent): agent is (typeof ACP_RUNTIME_AGENTS)[number] => agent !== null
+		);
+}
+
+export function isAgentInstalled(agent: string): boolean {
+	const [command] = agentCommand(agent);
+	if (!command) {
+		return false;
 	}
 
-	return Object.fromEntries(
-		Object.entries(env).filter(
-			(entry): entry is [string, string] => typeof entry[1] === "string"
-		)
-	);
+	try {
+		fs.accessSync(command, fs.constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** Map of agent name -> array of { path, content } config files to write before spawning. */
 const AGENT_CONFIGS: Record<string, { path: string; content: string }[]> = {
 	claude: [
 		{
-			path: "/root/.claude/settings.json",
+			path: `${SANDBOX_HOME_DIR}/.claude/settings.json`,
 			content: JSON.stringify(claudeCodeSettings),
 		},
 	],
