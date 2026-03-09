@@ -67,6 +67,9 @@ const template = Template({ fileContextPath: repoRoot })
 	.runCmd(
 		"export BUN_INSTALL=/usr/local && curl -fsSL https://bun.sh/install | bash && (test -x /usr/local/bin/bunx || ln -sf /usr/local/bin/bun /usr/local/bin/bunx)"
 	)
+	.runCmd(
+		"curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh"
+	)
 	// Install sandbox-runtime JS bundle
 	.copy(
 		"apps/sandbox-runtime/dist/sandbox-runtime.js",

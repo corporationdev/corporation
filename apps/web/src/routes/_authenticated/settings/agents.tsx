@@ -1,4 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import acpAgents from "@corporation/config/acp-agent-manifest";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { DownloadIcon, Loader2Icon, TerminalSquareIcon } from "lucide-react";
@@ -21,78 +22,11 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import acpAgents from "@/data/acp-agents.json";
 import { useSpaceActor } from "@/hooks/use-space-actor";
 
 export const Route = createFileRoute("/_authenticated/settings/agents")({
 	component: AgentsPage,
 });
-
-// E2B sandboxes run linux-x86_64
-const SANDBOX_PLATFORM = "linux-x86_64" as const;
-
-// Sandbox-specific env overrides for agents that assume root or have
-// hardcoded paths incompatible with the E2B sandbox user.
-const SANDBOX_ENV_OVERRIDES: Record<string, Record<string, string>> = {};
-
-type AcpAgent = (typeof acpAgents)[number];
-
-/**
- * Build a shell command to install/run an ACP agent in the sandbox.
- * Prefers npx > uvx > binary download.
- * Returns null if no compatible distribution exists.
- */
-function getInstallCommand(agent: AcpAgent): string | null {
-	const dist = agent.distribution;
-	const overrides = SANDBOX_ENV_OVERRIDES[agent.id] ?? {};
-
-	// Prefer npx
-	if ("npx" in dist && dist.npx) {
-		const npx = dist.npx as {
-			package: string;
-			args?: string[];
-			env?: Record<string, string>;
-		};
-		const allEnv = { ...npx.env, ...overrides };
-		const envEntries = Object.entries(allEnv);
-		const envPrefix =
-			envEntries.length > 0
-				? `${envEntries.map(([k, v]) => `${k}=${v}`).join(" ")} `
-				: "";
-		const args = npx.args ? ` ${npx.args.join(" ")}` : "";
-		return `${envPrefix}npx -y ${npx.package}${args}`;
-	}
-
-	// Try uvx
-	if ("uvx" in dist && dist.uvx) {
-		const uvx = dist.uvx as { package: string; args?: string[] };
-		const args = uvx.args ? ` ${uvx.args.join(" ")}` : "";
-		return `uvx ${uvx.package}${args}`;
-	}
-
-	// Fall back to binary for linux-x86_64
-	if ("binary" in dist && dist.binary) {
-		const binary = dist.binary as Record<
-			string,
-			{ archive: string; cmd: string; args?: string[] }
-		>;
-		const platform = binary[SANDBOX_PLATFORM];
-		if (!platform) {
-			return null;
-		}
-
-		const args = platform.args ? ` ${platform.args.join(" ")}` : "";
-		const archiveUrl = platform.archive;
-		const isZip = archiveUrl.endsWith(".zip");
-		const extractCmd = isZip
-			? `curl -fsSL "${archiveUrl}" -o /tmp/agent.zip && unzip -o /tmp/agent.zip -d /tmp/agent && cd /tmp/agent && ${platform.cmd}${args}`
-			: `curl -fsSL "${archiveUrl}" | tar xz -C /tmp/agent --strip-components=0 && cd /tmp/agent && ${platform.cmd}${args}`;
-
-		return `mkdir -p /tmp/agent && ${extractCmd}`;
-	}
-
-	return null;
-}
 
 function getStatusLabel(status: string | undefined) {
 	switch (status) {
@@ -292,7 +226,6 @@ function AgentsPage() {
 							<ScrollArea className="h-[calc(70vh-37px)]">
 								<div className="flex flex-col gap-0.5 px-2 pb-2">
 									{acpAgents.map((agent) => {
-										const command = getInstallCommand(agent);
 										return (
 											<div
 												className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted"
@@ -308,11 +241,11 @@ function AgentsPage() {
 												<span className="min-w-0 flex-1 truncate text-[13px]">
 													{agent.name}
 												</span>
-												{command && (
+												{agent.installCommand && (
 													<button
 														className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-muted-foreground/20 disabled:opacity-50 group-hover:opacity-100"
 														disabled={!isConnected}
-														onClick={() => sendCommand(command)}
+														onClick={() => sendCommand(agent.installCommand)}
 														title={`Install ${agent.name}`}
 														type="button"
 													>

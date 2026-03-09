@@ -12,6 +12,7 @@
     "@base-ui/react": "^1.2.0",
     "@convex-dev/better-auth": "catalog:",
     "@corporation/backend": "workspace:*",
+    "@corporation/config": "workspace:*",
     "@corporation/contracts": "workspace:*",
     "@corporation/env": "workspace:*",
     "@durable-streams/client": "^0.2.1",
@@ -45,7 +46,6 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
-    "@corporation/config": "workspace:*",
     "@corporation/server": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-router-devtools": "catalog:",

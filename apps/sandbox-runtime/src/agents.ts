@@ -1,13 +1,9 @@
 import fs from "node:fs";
+import type { AcpAgentManifestEntry } from "@corporation/config/acp-agent-manifest";
+import acpAgentManifest from "@corporation/config/acp-agent-manifest";
 import claudeCodeSettings from "./agent-configs/claude-code-settings.json";
 import { log } from "./logging";
 
-const AGENT_NPX_PACKAGES: Record<string, string> = {
-	claude: "@zed-industries/claude-code-acp",
-	codex: "@zed-industries/codex-acp",
-	pi: "pi-acp",
-	cursor: "@blowmage/cursor-agent-acp",
-};
 const SANDBOX_HOME_DIR = process.env.HOME || "/home/user";
 
 function stringEnv(): Record<string, string | undefined> {
@@ -18,23 +14,45 @@ function stringEnv(): Record<string, string | undefined> {
 	);
 }
 
-export function agentCommand(agent: string): string[] {
-	if (agent === "opencode") {
-		return ["opencode", "acp"];
+function expandHome(path: string) {
+	if (path.startsWith("$HOME/")) {
+		return `${SANDBOX_HOME_DIR}/${path.slice("$HOME/".length)}`;
 	}
-	if (agent === "amp") {
-		return ["amp-acp"];
+	if (path === "$HOME") {
+		return SANDBOX_HOME_DIR;
 	}
+	return path;
+}
 
-	const pkg = AGENT_NPX_PACKAGES[agent];
-	if (!pkg) {
+const RUNTIME_AGENT_COMMANDS = Object.fromEntries(
+	acpAgentManifest
+		.filter((agent) => agent.runtimeId && agent.runtimeCommand)
+		.map((agent) => [agent.runtimeId, agent.runtimeCommand])
+) as Record<string, NonNullable<AcpAgentManifestEntry["runtimeCommand"]>>;
+
+export function agentCommand(agent: string): string[] {
+	const runtime = RUNTIME_AGENT_COMMANDS[agent];
+	if (!runtime) {
 		throw new Error(`Unknown agent: ${agent}`);
 	}
-	return ["npx", "-y", pkg];
+
+	return [
+		expandHome(runtime.command),
+		...(runtime.args ?? []).map((arg: string) => expandHome(arg)),
+	];
 }
 
 export function agentEnv(agent: string): Record<string, string> {
 	const env = stringEnv();
+	const runtime = RUNTIME_AGENT_COMMANDS[agent];
+	const basePath = env.PATH ?? process.env.PATH ?? "";
+	env.PATH = `${SANDBOX_HOME_DIR}/.local/bin:${basePath}`;
+
+	if (runtime?.env) {
+		for (const [key, value] of Object.entries(runtime.env)) {
+			env[key] = value;
+		}
+	}
 
 	if (agent !== "claude") {
 		return env as Record<string, string>;
