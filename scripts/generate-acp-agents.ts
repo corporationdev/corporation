@@ -67,12 +67,14 @@ const AUTH_CONFIG: Record<string, AuthConfig> = {
 
 // ── Registry schema ──────────────────────────────────────────────────
 
-const registryAgentSchema = z.object({
-	id: z.string(),
-	name: z.string(),
-	description: z.string(),
-	icon: z.string().optional(),
-});
+const registryAgentSchema = z
+	.object({
+		id: z.string(),
+		name: z.string(),
+		description: z.string(),
+		icon: z.string().optional(),
+	})
+	.passthrough();
 
 const registrySchema = z.object({
 	agents: z.array(registryAgentSchema),
@@ -80,10 +82,9 @@ const registrySchema = z.object({
 
 // ── Output schema ────────────────────────────────────────────────────
 
-type AcpAgent = {
-	id: string;
-	name: string;
-	description: string;
+type RegistryAgent = z.infer<typeof registryAgentSchema>;
+
+type AcpAgent = RegistryAgent & {
 	icon: string | null;
 	auth: AuthConfig | null;
 };
@@ -109,9 +110,7 @@ async function main() {
 
 	const agents: AcpAgent[] = data.agents
 		.map((agent) => ({
-			id: agent.id,
-			name: agent.name,
-			description: agent.description,
+			...agent,
 			icon: agent.icon ?? null,
 			auth: AUTH_CONFIG[agent.id] ?? null,
 		}))
