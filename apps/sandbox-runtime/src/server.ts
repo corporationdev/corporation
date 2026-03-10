@@ -3,6 +3,7 @@
 import { AgentRuntime } from "./agent-runtime";
 import { createApp } from "./app";
 import { log } from "./logging";
+import { ensureLocalProxyStarted, installLocalProxyEnv } from "./proxy";
 
 // ---------------------------------------------------------------------------
 // HTTP server
@@ -31,6 +32,9 @@ function parseArgs(): { host: string; port: number } {
 }
 
 const { host, port } = parseArgs();
+
+await ensureLocalProxyStarted();
+installLocalProxyEnv();
 
 const runtime = new AgentRuntime();
 const app = createApp(runtime);

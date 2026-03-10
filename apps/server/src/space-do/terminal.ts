@@ -1,5 +1,6 @@
 import { createLogger } from "@corporation/logger";
 import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
+import { buildLocalProxyEnv } from "sandbox-runtime/proxy-config";
 import { requireSandbox } from "./sandbox";
 import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
 
@@ -24,6 +25,21 @@ function quoteShellArg(value: string): string {
 
 function runTerminalCommand(sandbox: Sandbox, command: string) {
 	return sandbox.commands.run(command, { user: SANDBOX_USER });
+}
+
+function buildShellExportCommand(): string {
+	const proxyEnv = buildLocalProxyEnv();
+	return Object.entries(proxyEnv)
+		.map(([key, value]) => `export ${key}=${quoteShellArg(value)}`)
+		.join("; ");
+}
+
+async function setTmuxProxyEnvironment(sandbox: Sandbox, sessionName: string) {
+	const envCommands = Object.entries(buildLocalProxyEnv()).map(
+		([key, value]) =>
+			`tmux set-environment -t ${quoteShellArg(sessionName)} ${quoteShellArg(key)} ${quoteShellArg(value)}`
+	);
+	await runTerminalCommand(sandbox, envCommands.join(" && "));
 }
 
 function toBytes(value: string): number[] {
@@ -72,6 +88,7 @@ async function ensureTmuxSession(
 	const safeName = quoteShellArg(TERMINAL_ID);
 
 	if (await hasTmuxSession(sandbox)) {
+		await setTmuxProxyEnvironment(sandbox, TERMINAL_ID);
 		await runTerminalCommand(
 			sandbox,
 			`tmux set-option -t ${safeName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeName} mouse off \\; set-option -t ${safeName} status off`
@@ -86,9 +103,10 @@ async function ensureTmuxSession(
 	}
 
 	try {
+		const shellCommand = `${buildShellExportCommand()}; exec bash -l`;
 		await runTerminalCommand(
 			sandbox,
-			`tmux new-session -d -s ${safeName}${cwdFlag}`
+			`tmux new-session -d -s ${safeName}${cwdFlag} ${quoteShellArg(shellCommand)}`
 		);
 	} catch (error) {
 		if (!(error instanceof CommandExitError)) {
@@ -99,6 +117,7 @@ async function ensureTmuxSession(
 		}
 	}
 
+	await setTmuxProxyEnvironment(sandbox, TERMINAL_ID);
 	await runTerminalCommand(
 		sandbox,
 		`tmux set-option -t ${safeName} history-limit ${TMUX_HISTORY_LIMIT} \\; set-option -t ${safeName} mouse off \\; set-option -t ${safeName} status off`

@@ -58,6 +58,9 @@ const template = Template({ fileContextPath: repoRoot })
 	.aptInstall([
 		"ca-certificates",
 		"git",
+		"python3",
+		"python3-pip",
+		"python3-venv",
 		"ripgrep",
 		"curl",
 		"tmux",
@@ -68,6 +71,9 @@ const template = Template({ fileContextPath: repoRoot })
 	)
 	.runCmd(
 		"curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh"
+	)
+	.runCmd(
+		"python3 -m venv /opt/mitmproxy && /opt/mitmproxy/bin/pip install --upgrade pip && /opt/mitmproxy/bin/pip install mitmproxy && ln -sf /opt/mitmproxy/bin/mitmdump /usr/local/bin/mitmdump"
 	)
 	.runCmd(
 		`mkdir -p ${SANDBOX_WORKDIR} && chown ${SANDBOX_USER}:${SANDBOX_USER} ${SANDBOX_WORKDIR}`

@@ -74,6 +74,10 @@
   "type": "module",
   "scripts": {
     "dev": "turbo dev",
+    "test": "turbo test",
+    "test:sandbox-runtime": "turbo -F sandbox-runtime test:local",
+    "test:sandbox-runtime:local": "turbo -F sandbox-runtime test:local",
+    "test:sandbox-runtime:sandbox": "turbo -F sandbox-runtime test:sandbox",
     "secrets:inject": "bun scripts/secrets-inject.ts",
     "build": "turbo build",
     "check-types": "turbo check-types",

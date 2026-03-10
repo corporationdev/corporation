@@ -84,7 +84,31 @@ corporation/
 
 - `bun run dev`: Start all applications in development mode
 - `bun run build`: Build all applications
+- `bun run test`: Run package test suites through Turborepo
+- `bun run test:sandbox-runtime`: Run sandbox-runtime tests locally
+- `bun run test:sandbox-runtime:local`: Run sandbox-runtime tests locally
+- `bun run test:sandbox-runtime:sandbox`: Run sandbox-runtime tests in a real E2B sandbox
 - `bun run dev:web`: Start only the web application
 - `bun run dev:setup`: Setup and configure your Convex project
 - `bun run check-types`: Check TypeScript types across all apps
 - `bun run check`: Run Biome formatting and linting
+
+## Sandbox Runtime Tests
+
+The `apps/sandbox-runtime` package supports two test targets:
+
+- Local: `bun run test:sandbox-runtime` or `bun run test:sandbox-runtime:local`
+- Real sandbox: `bun run test:sandbox-runtime:sandbox`
+
+Turbo does not manage Python tool installation for us, so local proxy tests fail fast if `mitmdump` is not already on your `PATH`. Install it once on your machine with one of:
+
+```bash
+uv tool install mitmproxy
+pipx install mitmproxy
+```
+
+Sandbox proxy tests require `E2B_API_KEY` and a sandbox template with `mitmproxy` installed, such as the template built by:
+
+```bash
+bun run rebuild:template
+```
