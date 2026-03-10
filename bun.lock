@@ -31,6 +31,8 @@
       },
       "devDependencies": {
         "bun-types": "latest",
+        "dotenv": "catalog:",
+        "e2b": "catalog:",
         "typescript": "catalog:",
       },
     },

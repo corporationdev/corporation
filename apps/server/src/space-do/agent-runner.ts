@@ -82,9 +82,9 @@ export async function startAgentRunner(
 
 	const turnId = nanoid();
 	const callbackToken = crypto.randomUUID();
-	const baseUrl = env.SERVER_PUBLIC_URL;
+	const baseUrl = env.SERVER_URL;
 	if (!baseUrl) {
-		throw new Error("Missing SERVER_PUBLIC_URL env var");
+		throw new Error("Missing SERVER_URL env var");
 	}
 	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${AGENT_RUNNER_ACTION}`;
 

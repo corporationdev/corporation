@@ -1,9 +1,13 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { resolveRuntimeContext } from "@corporation/config/runtime";
-import { getStageKind } from "@corporation/config/stage";
+import { getStageServerHostname } from "@corporation/config/server-url";
+import { deriveEnvTier } from "@corporation/config/stage";
 import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
 	KVNamespace,
+	Tunnel,
 	Vite,
 	Worker,
 } from "alchemy/cloudflare";
@@ -11,15 +15,22 @@ import { CloudflareStateStore } from "alchemy/state";
 import { config } from "dotenv";
 
 // In local dev, load from .env files. In CI, env vars are already set.
-config({ path: "../../apps/server/.env", override: false });
-config({ path: "../../apps/web/.env", override: false });
+config({ path: resolve(import.meta.dirname, ".env"), override: false });
+config({
+	path: resolve(import.meta.dirname, "../../apps/server/.env"),
+	override: false,
+});
+config({
+	path: resolve(import.meta.dirname, "../../apps/web/.env"),
+	override: false,
+});
 const stage = process.env.STAGE?.trim();
 if (!stage) {
 	throw new Error(
 		"Missing STAGE for infra runtime. Run `bun secrets:inject` first."
 	);
 }
-const stageKind = getStageKind(stage);
+const envTier = deriveEnvTier(stage);
 const allowMissingPreviewConvex =
 	process.env.ALLOW_MISSING_PREVIEW_CONVEX === "1";
 const runtime = resolveRuntimeContext(stage, {
@@ -39,26 +50,54 @@ const actorDO = DurableObjectNamespace("actor-do", {
 });
 
 const actorKV = await KVNamespace("actor-kv");
-const tunnelRegex = /https:\/\/([^\s]+)\.trycloudflare\.com/;
-const createSilentQuickTunnel = async (localUrl: string) => ({
-	localUrl,
-	tunnelUrl: await app.spawn("tunnel", {
-		cmd: `cloudflared tunnel --url ${localUrl}`,
+const serverHostname =
+	envTier === "dev" ? getStageServerHostname(stage) : undefined;
+const serverTunnel =
+	envTier === "dev"
+		? await Tunnel("agent-server-tunnel", {
+				apiToken: alchemy.secret(process.env.CLOUDFLARE_API_TOKEN),
+				name: `agent-server-${stage}`,
+				adopt: true,
+				ingress: [
+					{
+						hostname: serverHostname,
+						service: "http://localhost:3000",
+					},
+					{
+						service: "http_status:404",
+					},
+				],
+			})
+		: undefined;
+
+function getCloudflaredPath(): string {
+	const candidates = [
+		"/opt/homebrew/bin/cloudflared",
+		"/usr/local/bin/cloudflared",
+	];
+
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+
+	throw new Error(
+		"Missing cloudflared binary. Install it locally so the dev tunnel can run."
+	);
+}
+
+if (serverTunnel && app.local) {
+	const cloudflaredPath = getCloudflaredPath();
+	await app.spawn("agent-server-tunnel", {
+		cmd: `${cloudflaredPath} tunnel run --token $TUNNEL_TOKEN`,
+		env: {
+			TUNNEL_TOKEN: serverTunnel.token.unencrypted,
+		},
 		processName: "cloudflared",
 		quiet: true,
-		extract: (line) => {
-			const match = line.match(tunnelRegex);
-			if (match) {
-				return `https://${match[1]}.trycloudflare.com`;
-			}
-		},
-	}),
-});
-
-const devCallbackTunnel =
-	stageKind === "dev" || stageKind === "sandbox"
-		? await createSilentQuickTunnel("http://localhost:3000")
-		: undefined;
+	});
+}
 
 export const server = await Worker("agent-server", {
 	cwd: "../../apps/server",
@@ -70,11 +109,6 @@ export const server = await Worker("agent-server", {
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
 		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
 		...runtime.serverBindings,
-		// In dev/sandbox, use a Quick Tunnel URL so sandbox runners can reach the
-		// callback endpoint from inside E2B.
-		SERVER_PUBLIC_URL: devCallbackTunnel
-			? `${devCallbackTunnel.tunnelUrl}/api`
-			: runtime.serverBindings.SERVER_PUBLIC_URL,
 		ACTOR_DO: actorDO,
 		ACTOR_KV: actorKV,
 	},
@@ -84,16 +118,16 @@ export const server = await Worker("agent-server", {
 });
 
 console.log(`Agent server -> ${server.url}`);
-if (devCallbackTunnel) {
-	console.log(`Agent callback tunnel -> ${devCallbackTunnel.tunnelUrl}`);
+if (serverHostname) {
+	console.log(`Agent server tunnel -> https://${serverHostname}`);
 }
 
 // Resolve custom domain for deployed stages
 function getWebDomain(): string | undefined {
-	if (stageKind === "production") {
+	if (envTier === "prod") {
 		return "app.corporation.dev";
 	}
-	if (stageKind === "preview") {
+	if (envTier === "preview") {
 		return `${stage}.corporation.dev`;
 	}
 	return undefined;
