@@ -160,7 +160,7 @@ async function waitForRuntimeHealth(): Promise<void> {
 
 	while (Date.now() < deadline) {
 		try {
-			await sandbox.commands.run("curl -sf http://localhost:5799/v1/health", {
+			await sandbox.commands.run("curl -sf http://localhost:5799/health", {
 				timeoutMs: 3000,
 			});
 			return;

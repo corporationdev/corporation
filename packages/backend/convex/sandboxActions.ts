@@ -20,7 +20,7 @@ type ActionCtx = GenericActionCtx<DataModel>;
 
 const SANDBOX_TIMEOUT_MS = 900_000;
 
-const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
+const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/health`;
 
 const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
 const AGENT_STDERR_LOG_FILE = "/tmp/sandbox-agent.stderr.log";

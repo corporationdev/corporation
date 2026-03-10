@@ -20,7 +20,7 @@ export type AppRuntime = {
 };
 
 export function createApp(runtime: AppRuntime) {
-	const app = new Hono().get("/v1/health", (c) => {
+	const app = new Hono().get("/health", (c) => {
 		return c.json({ status: "ok" as const });
 	});
 
