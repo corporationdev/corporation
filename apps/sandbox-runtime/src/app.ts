@@ -9,6 +9,7 @@ import {
 } from "@corporation/contracts/sandbox-do";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { runtimeAuthMiddleware } from "./auth";
 import { log } from "./logging";
 
 export type AppRuntime = {
@@ -19,10 +20,13 @@ export type AppRuntime = {
 };
 
 export function createApp(runtime: AppRuntime) {
-	return new Hono()
-		.get("/v1/health", (c) => {
-			return c.json({ status: "ok" as const });
-		})
+	const app = new Hono().get("/v1/health", (c) => {
+		return c.json({ status: "ok" as const });
+	});
+
+	app.use("/v1/*", runtimeAuthMiddleware);
+
+	return app
 		.post("/v1/prompt", zValidator("json", promptRequestBodySchema), (c) => {
 			const body = c.req.valid("json");
 

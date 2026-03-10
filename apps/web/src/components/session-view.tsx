@@ -18,7 +18,7 @@ import { ChatMessages } from "@/components/chat/chat-messages";
 import { usePersistedAgentModelSelection } from "@/hooks/use-persisted-agent-model-selection";
 import { useSessionState } from "@/hooks/use-session-state";
 import { deriveAgentSelectorOptions } from "@/lib/agent-config-options";
-import type { SpaceActor } from "@/lib/rivetkit";
+import { getAuthedSpaceActorHandle, type SpaceActor } from "@/lib/rivetkit";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 export const SessionView: FC<{
@@ -169,8 +169,7 @@ export const ConnectedSessionView: FC<{
 			return;
 		}
 		const pending = pendingSend;
-		const conn = actor.connection;
-		if (!(pending && conn)) {
+		if (!pending) {
 			return;
 		}
 
@@ -178,8 +177,15 @@ export const ConnectedSessionView: FC<{
 		if (space?._id) {
 			touchSpace({ id: space._id }).catch(() => undefined);
 		}
-		conn
-			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
+		getAuthedSpaceActorHandle(spaceSlug)
+			.then((handle) =>
+				handle.sendMessage(
+					sessionId,
+					pending.text,
+					pending.agent,
+					pending.modelId
+				)
+			)
 			.catch((error: unknown) => {
 				console.error("Failed to flush pending message", error);
 				sessionState.clearOptimisticMessages();
@@ -187,12 +193,12 @@ export const ConnectedSessionView: FC<{
 				toast.error("Failed to send message");
 			});
 	}, [
-		actor.connection,
 		canFlushPendingSend,
 		pendingSend,
 		sessionState.clearOptimisticMessages,
 		sessionId,
 		space?._id,
+		spaceSlug,
 		touchSpace,
 	]);
 
@@ -209,11 +215,11 @@ export const ConnectedSessionView: FC<{
 		try {
 			if (
 				actor.connStatus === "connected" &&
-				actor.connection &&
 				space?.status === "running" &&
 				isBindingSynced
 			) {
-				await actor.connection.sendMessage(sessionId, text, agent, modelId);
+				const handle = await getAuthedSpaceActorHandle(spaceSlug);
+				await handle.sendMessage(sessionId, text, agent, modelId);
 				if (space?._id) {
 					touchSpace({ id: space._id }).catch(() => undefined);
 				}
@@ -235,7 +241,6 @@ export const ConnectedSessionView: FC<{
 	}, [
 		message,
 		actor.connStatus,
-		actor.connection,
 		ensureSpace,
 		isBindingSynced,
 		sessionId,
@@ -251,16 +256,13 @@ export const ConnectedSessionView: FC<{
 
 	const handleStop = useCallback(async () => {
 		try {
-			const conn = actor.connection;
-			if (!conn) {
-				return;
-			}
-			await conn.cancelSession(sessionId);
+			const handle = await getAuthedSpaceActorHandle(spaceSlug);
+			await handle.cancelSession(sessionId);
 		} catch (error) {
 			console.error("Failed to cancel session", { error, sessionId });
 			toast.error("Failed to stop session");
 		}
-	}, [actor.connection, sessionId]);
+	}, [sessionId, spaceSlug]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {

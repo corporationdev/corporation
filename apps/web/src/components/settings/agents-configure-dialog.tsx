@@ -222,6 +222,7 @@ export function AgentsConfigureDialog({
 		refresh: refreshAgentProbe,
 	} = useAgentProbeState({
 		actor,
+		spaceSlug: agent?.slug ?? "",
 		enabled: open && isSandboxReady && isConnected,
 	});
 

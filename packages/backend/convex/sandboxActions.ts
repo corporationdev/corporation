@@ -25,7 +25,19 @@ const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/v1/health`;
 const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
 const AGENT_STDERR_LOG_FILE = "/tmp/sandbox-agent.stderr.log";
 
-async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
+function quoteShellEnv(value: string) {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function bootAgentAndGetUrl(
+	sandbox: Sandbox,
+	space: Space
+): Promise<string> {
+	const convexSiteUrl = process.env.CONVEX_SITE_URL;
+	if (!convexSiteUrl) {
+		throw new Error("Missing CONVEX_SITE_URL env var");
+	}
+
 	await runWorkspaceCommand(
 		sandbox,
 		`tmux kill-session -t ${SANDBOX_AGENT_SESSION_NAME} || true`,
@@ -47,7 +59,7 @@ async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
 	try {
 		await bootServer(sandbox, {
 			sessionName: SANDBOX_AGENT_SESSION_NAME,
-			command: `bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
+			command: `CORPORATION_CONVEX_SITE_URL=${quoteShellEnv(convexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${quoteShellEnv(space.project.userId)} bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
 			healthUrl: AGENT_HEALTH_URL,
 			workdir: SANDBOX_WORKDIR,
 		});
@@ -58,12 +70,15 @@ async function bootAgentAndGetUrl(sandbox: Sandbox): Promise<string> {
 	}
 }
 
-async function ensureAgentReadyAndGetUrl(sandbox: Sandbox): Promise<string> {
+async function ensureAgentReadyAndGetUrl(
+	sandbox: Sandbox,
+	space: Space
+): Promise<string> {
 	try {
 		await sandbox.commands.run(`curl -sf --max-time 2 ${AGENT_HEALTH_URL}`);
 	} catch (error) {
 		if (error instanceof CommandExitError) {
-			return await bootAgentAndGetUrl(sandbox);
+			return await bootAgentAndGetUrl(sandbox, space);
 		}
 		throw error;
 	}
@@ -199,7 +214,7 @@ export const provisionForSpace = internalAction({
 				space,
 				space.project.secrets ?? {}
 			);
-			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox);
+			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox, space);
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,

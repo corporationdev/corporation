@@ -23,7 +23,7 @@ const TOKEN_REFRESH_BUFFER_MS = 30_000;
 let cachedToken: string | null = null;
 let cachedTokenExp: number | null = null;
 
-async function getToken(): Promise<string> {
+export async function getAuthToken(): Promise<string> {
 	if (cachedToken && cachedTokenExp && Date.now() < cachedTokenExp) {
 		return cachedToken;
 	}
@@ -53,7 +53,7 @@ export function clearTokenCache() {
 }
 
 export async function getAuthHeaders() {
-	const token = await getToken();
+	const token = await getAuthToken();
 	return {
 		Authorization: `Bearer ${token}`,
 	};
