@@ -10,8 +10,7 @@ import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
 	REPO_SYNC_TIMEOUT_MS,
-	runRootCommand,
-	SANDBOX_USER,
+	runWorkspaceCommand,
 	SANDBOX_WORKDIR,
 } from "./lib/sandbox";
 
@@ -88,14 +87,10 @@ export const buildInitialSnapshot = internalAction({
 					envs: project.secrets ?? {},
 				});
 
-				await runRootCommand(
+				await runWorkspaceCommand(
 					sandbox,
-					`rm -rf ${safeWorkdir} && git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
-					{ timeoutMs: REPO_SYNC_TIMEOUT_MS }
-				);
-				await runRootCommand(
-					sandbox,
-					`chown -R ${SANDBOX_USER}:${SANDBOX_USER} ${safeWorkdir}`
+					`mkdir -p ${safeWorkdir} && find ${safeWorkdir} -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
+					{ cwd: "/", timeoutMs: REPO_SYNC_TIMEOUT_MS }
 				);
 			} else {
 				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {

@@ -62,12 +62,16 @@ const template = Template({ fileContextPath: repoRoot })
 		"curl",
 		"tmux",
 		"imagemagick",
+		"python3-venv",
 	])
 	.runCmd(
 		"export BUN_INSTALL=/usr/local && curl -fsSL https://bun.sh/install | bash && (test -x /usr/local/bin/bunx || ln -sf /usr/local/bin/bun /usr/local/bin/bunx)"
 	)
 	.runCmd(
 		"curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh"
+	)
+	.runCmd(
+		"python3 -m venv /opt/mitmproxy && /opt/mitmproxy/bin/pip install --upgrade pip && /opt/mitmproxy/bin/pip install mitmproxy && ln -sf /opt/mitmproxy/bin/mitmdump /usr/local/bin/mitmdump"
 	)
 	.runCmd(
 		`mkdir -p ${SANDBOX_WORKDIR} && chown ${SANDBOX_USER}:${SANDBOX_USER} ${SANDBOX_WORKDIR}`
