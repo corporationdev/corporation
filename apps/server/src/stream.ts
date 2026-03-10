@@ -12,6 +12,15 @@ function getRivetClient(reqUrl: string) {
 	});
 }
 
+function getBearerToken(authHeader: string | undefined): string | null {
+	if (!authHeader?.startsWith("Bearer ")) {
+		return null;
+	}
+
+	const token = authHeader.slice("Bearer ".length).trim();
+	return token || null;
+}
+
 function parseOffset(raw: string | undefined): number {
 	if (raw === undefined || raw === "-1") {
 		return -1;
@@ -39,6 +48,17 @@ type StreamReadResult = {
 };
 
 type SpaceActor = ReturnType<ReturnType<typeof getRivetClient>["space"]["get"]>;
+
+function getSpaceActor(opts: {
+	reqUrl: string;
+	spaceSlug: string;
+	authToken: string;
+}): SpaceActor {
+	const client = getRivetClient(opts.reqUrl);
+	return client.space.get([opts.spaceSlug], {
+		params: { authToken: opts.authToken },
+	});
+}
 
 function createSSEStream(opts: {
 	spaceActor: SpaceActor;
@@ -121,11 +141,17 @@ export const streamApp = new Hono<{
 	.use(authMiddleware)
 	.get("/:spaceSlug/sessions/:sessionId/state", async (c) => {
 		const { spaceSlug, sessionId } = c.req.param();
-		const client = getRivetClient(c.req.url);
+		const authToken = getBearerToken(c.req.header("authorization"));
+		if (!authToken) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
+		const spaceActor = getSpaceActor({
+			reqUrl: c.req.url,
+			spaceSlug,
+			authToken,
+		});
 		try {
-			const state = await client.space
-				.get([spaceSlug])
-				.getSessionStreamState(sessionId);
+			const state = await spaceActor.getSessionStreamState(sessionId);
 			return c.json(state);
 		} catch (error) {
 			console.error("session-stream.state-failed", {
@@ -138,27 +164,33 @@ export const streamApp = new Hono<{
 	})
 	.get("/:spaceSlug/sessions/:sessionId/stream", async (c) => {
 		const { spaceSlug, sessionId } = c.req.param();
+		const authToken = getBearerToken(c.req.header("authorization"));
+		if (!authToken) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
 		const offsetRaw = c.req.query("offset");
 		const parsedOffset = parseOffset(offsetRaw);
 		if (!Number.isFinite(parsedOffset)) {
 			return c.json({ error: "Invalid offset query parameter" }, 400);
 		}
 
-		const client = getRivetClient(c.req.url);
+		const spaceActor = getSpaceActor({
+			reqUrl: c.req.url,
+			spaceSlug,
+			authToken,
+		});
 		const limit = parseLimit(c.req.query("limit"));
 		const timeoutMs = parseLimit(c.req.query("timeoutMs"));
 
 		try {
 			let offset = parsedOffset;
 			if (offset === Number.MAX_SAFE_INTEGER) {
-				const state = await client.space
-					.get([spaceSlug])
-					.getSessionStreamState(sessionId);
+				const state = await spaceActor.getSessionStreamState(sessionId);
 				offset = state.lastOffset;
 			}
 
 			const stream = createSSEStream({
-				spaceActor: client.space.get([spaceSlug]),
+				spaceActor,
 				sessionId,
 				initialOffset: offset,
 				limit,

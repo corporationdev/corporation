@@ -1,6 +1,7 @@
 import type { Sandbox } from "@e2b/desktop";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import type { CommandHandle } from "e2b";
+import type { JWTPayload } from "../auth";
 
 export const SANDBOX_WORKDIR = "/workspace";
 
@@ -14,6 +15,15 @@ export type PersistedState = {
 };
 
 export type SpaceDatabase = ReturnType<typeof drizzle>;
+
+export type SpaceConnectionState = {
+	authToken: string;
+	jwtPayload: JWTPayload;
+};
+
+export type SpaceConnectionParams = {
+	authToken: string;
+};
 
 export type SpaceVars = {
 	db: SpaceDatabase;
@@ -36,5 +46,5 @@ export type SpaceRuntimeContext = {
 	conns: Map<string, ConnectionSender>;
 	waitUntil: (promise: Promise<void>) => void;
 	broadcast: (eventName: string, ...args: unknown[]) => void;
-	conn?: { id: string };
+	conn?: { id: string; state: SpaceConnectionState };
 };

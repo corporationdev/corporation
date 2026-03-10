@@ -1,29 +1,30 @@
 import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SpaceActor } from "@/lib/rivetkit";
+import { getAuthedSpaceActorHandle, type SpaceActor } from "@/lib/rivetkit";
 
 export function useAgentProbeState({
 	actor,
+	spaceSlug,
 	enabled,
 }: {
 	actor: SpaceActor;
+	spaceSlug: string;
 	enabled: boolean;
 }) {
 	const queryClient = useQueryClient();
 	const probeQueryKey = [
 		"agentProbeState",
-		actor.connection ? "connected" : "disconnected",
+		spaceSlug,
+		actor.connStatus === "connected" ? "connected" : "disconnected",
 	];
 
 	const { data, error, isFetching, isLoading } = useQuery<AgentProbeResponse>({
 		queryKey: probeQueryKey,
 		queryFn: async () => {
-			if (!actor.connection) {
-				throw new Error("No connection");
-			}
-			return await actor.connection.getAgentProbeState();
+			const handle = await getAuthedSpaceActorHandle(spaceSlug);
+			return await handle.getAgentProbeState();
 		},
-		enabled: enabled && !!actor.connection,
+		enabled: enabled && actor.connStatus === "connected",
 	});
 
 	return {

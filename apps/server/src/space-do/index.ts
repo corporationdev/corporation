@@ -6,32 +6,46 @@ import type { DriverContext } from "@rivetkit/cloudflare-workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { actor } from "rivetkit";
+import {
+	createActorAuthState,
+	createRuntimeAuthHeaders,
+	requireActorAuth,
+} from "./actor-auth";
 import { ingestAgentRunnerBatch } from "./agent-runner";
 import bundledMigrations from "./db/migrations";
 import { type SessionRow, schema } from "./db/schema";
 import { getDesktopStreamUrl } from "./desktop";
 import { requireSandbox } from "./sandbox";
+import { keepAliveSandbox } from "./sandbox-keep-alive";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
 	broadcastTerminalSnapshot,
 	getTerminalSnapshot,
 	resetTerminal,
+	runCommandInTerminal,
 	input as terminalInput,
 	resize as terminalResize,
 } from "./terminal";
 import type {
 	PersistedState,
 	SandboxBinding,
+	SpaceConnectionParams,
 	SpaceRuntimeContext,
 	SpaceVars,
 } from "./types";
 
 export type { SessionRow } from "./db/schema";
 
-const SANDBOX_TIMEOUT_MS = 900_000;
-const SANDBOX_KEEP_ALIVE_THROTTLE_MS = 240_000;
 const SANDBOX_USER = "user";
+const KEEP_ALIVE_ACTIONS = new Set([
+	"getDesktopStreamUrl",
+	"ingestAgentRunnerBatch",
+	"input",
+	"keepAliveSandbox",
+	"runCommand",
+	"sendMessage",
+]);
 
 function createEmptyState(): PersistedState {
 	return {
@@ -89,18 +103,22 @@ function emptyAgentProbeResponse(status: "not_installed" | "error") {
 	} satisfies AgentProbeResponse;
 }
 
-async function getAgentProbeState(c: {
-	state: PersistedState;
-}): Promise<AgentProbeResponse> {
+async function getAgentProbeState(
+	c: Pick<SpaceRuntimeContext, "state" | "conn">
+): Promise<AgentProbeResponse> {
 	const binding = c.state.binding;
 	if (!binding) {
 		return emptyAgentProbeResponse("not_installed");
 	}
+	const { authToken } = requireActorAuth(c);
 
 	try {
 		const response = await fetch(`${binding.agentUrl}/v1/agents/probe`, {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: {
+				"content-type": "application/json",
+				...createRuntimeAuthHeaders(authToken),
+			},
 			body: JSON.stringify({
 				ids: acpAgents
 					.filter((agent) => agent.runtimeCommand)
@@ -120,6 +138,10 @@ async function getAgentProbeState(c: {
 		console.error("Failed to fetch agent probe state", error);
 		return emptyAgentProbeResponse("error");
 	}
+}
+
+function asSpaceRuntimeContext(c: unknown): SpaceRuntimeContext {
+	return c as SpaceRuntimeContext;
 }
 
 async function syncSandboxBinding(
@@ -148,9 +170,11 @@ async function syncSandboxBinding(
 
 	return true;
 }
-
 export const space = actor({
 	createState: () => createEmptyState(),
+	createConnState: async (_c, params: SpaceConnectionParams) => {
+		return await createActorAuthState(params);
+	},
 
 	createVars: async (c, driverCtx: DriverContext): Promise<SpaceVars> => {
 		const db = drizzle(driverCtx.state.storage, { schema });
@@ -184,44 +208,56 @@ export const space = actor({
 		return vars;
 	},
 
-	onBeforeActionResponse: (_c, _name, _args, output) => {
+	onBeforeActionResponse: async (c, name, _args, output) => {
+		if (KEEP_ALIVE_ACTIONS.has(name)) {
+			await keepAliveSandbox(asSpaceRuntimeContext(c));
+		}
+
 		return output;
 	},
-
 	actions: {
 		getAgentProbeState: (c) => getAgentProbeState(c),
 		syncSandboxBinding: (c, binding: SandboxBinding | null) =>
-			syncSandboxBinding(c, binding),
+			syncSandboxBinding(asSpaceRuntimeContext(c), binding),
 		runCommand: async (
 			c,
 			command: string,
 			background = false
 		): Promise<void> => {
+			const ctx = asSpaceRuntimeContext(c);
 			if (!command.trim()) {
 				throw new Error("Command cannot be empty");
 			}
 
-			const logId = crypto.randomUUID();
-			const nextCommand = background
-				? `nohup bash -lc ${quoteShellArg(command)} >/tmp/corporation-run-command-${logId}.log 2>&1 </dev/null &`
-				: command;
+			if (!background) {
+				await runCommandInTerminal(ctx, command);
+				return;
+			}
 
-			await requireSandbox(c).commands.run(nextCommand, { user: SANDBOX_USER });
+			const logId = crypto.randomUUID();
+			const nextCommand = `nohup bash -lc ${quoteShellArg(command)} >/tmp/corporation-run-command-${logId}.log 2>&1 </dev/null &`;
+
+			await requireSandbox(ctx).commands.run(nextCommand, {
+				user: SANDBOX_USER,
+			});
 			console.info("Ran sandbox command");
 		},
-		listSessions: (c): Promise<SessionRow[]> => listSessions(c),
+		listSessions: (c): Promise<SessionRow[]> =>
+			listSessions(asSpaceRuntimeContext(c)),
 		sendMessage: (
 			c,
 			sessionId: string,
 			content: string,
 			agent: string,
 			modelId: string
-		) => sendMessage(c, sessionId, content, agent, modelId),
+		) =>
+			sendMessage(asSpaceRuntimeContext(c), sessionId, content, agent, modelId),
 		ingestAgentRunnerBatch: (c, payload: unknown) =>
-			ingestAgentRunnerBatch(c, payload),
-		cancelSession: (c, sessionId: string) => cancelSession(c, sessionId),
+			ingestAgentRunnerBatch(asSpaceRuntimeContext(c), payload),
+		cancelSession: (c, sessionId: string) =>
+			cancelSession(asSpaceRuntimeContext(c), sessionId),
 		getSessionStreamState: (c, sessionId: string) =>
-			getSessionStreamState(c, sessionId),
+			getSessionStreamState(asSpaceRuntimeContext(c), sessionId),
 		readSessionStream: (
 			c,
 			sessionId: string,
@@ -229,27 +265,19 @@ export const space = actor({
 			limit?: number,
 			live?: boolean,
 			timeoutMs?: number
-		) => readSessionStream(c, sessionId, afterOffset, limit, live, timeoutMs),
-		getTerminalSnapshot: (c) => getTerminalSnapshot(c),
-		input: (c, data: number[]) => terminalInput(c, data),
-		resize: (c, cols: number, rows: number) => terminalResize(c, cols, rows),
-		getDesktopStreamUrl: (c) => getDesktopStreamUrl(c),
-		keepAliveSandbox: async (c): Promise<void> => {
-			const now = Date.now();
-			if (
-				now - c.vars.lastSandboxKeepAliveAt <
-				SANDBOX_KEEP_ALIVE_THROTTLE_MS
-			) {
-				return;
-			}
-
-			const sandbox = c.vars.sandbox;
-			if (!sandbox) {
-				return;
-			}
-
-			await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
-			c.vars.lastSandboxKeepAliveAt = now;
-		},
+		) =>
+			readSessionStream(
+				asSpaceRuntimeContext(c),
+				sessionId,
+				afterOffset,
+				limit,
+				live,
+				timeoutMs
+			),
+		getTerminalSnapshot: (c) => getTerminalSnapshot(asSpaceRuntimeContext(c)),
+		input: (c, data: number[]) => terminalInput(asSpaceRuntimeContext(c), data),
+		resize: (c, cols: number, rows: number) =>
+			terminalResize(asSpaceRuntimeContext(c), cols, rows),
+		getDesktopStreamUrl: (c) => getDesktopStreamUrl(asSpaceRuntimeContext(c)),
 	},
 });

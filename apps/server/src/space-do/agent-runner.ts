@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { hc } from "hono/client";
 import { nanoid } from "nanoid";
 import type { SandboxRuntimeApp } from "sandbox-runtime/client";
+import { createRuntimeAuthHeaders } from "./actor-auth";
 import { sessions } from "./db/schema";
 import { normalizeSessionEvent } from "./session-event-normalizer";
 import {
@@ -29,6 +30,7 @@ async function launchAgentRunner(
 		prompt: TextPromptPart[];
 		callbackUrl: string;
 		callbackToken: string;
+		authToken: string;
 	}
 ): Promise<void> {
 	const binding = ctx.state.binding;
@@ -50,7 +52,10 @@ async function launchAgentRunner(
 				callbackToken: params.callbackToken,
 			},
 		},
-		{ init: { signal: AbortSignal.timeout(15_000) } }
+		{
+			headers: createRuntimeAuthHeaders(params.authToken),
+			init: { signal: AbortSignal.timeout(15_000) },
+		}
 	);
 
 	if (!response.ok) {
@@ -68,6 +73,7 @@ export async function startAgentRunner(
 		prompt: TextPromptPart[];
 		agent: string;
 		modelId: string;
+		authToken: string;
 	}
 ): Promise<void> {
 	if (!ctx.state.binding) {
@@ -131,6 +137,7 @@ export async function startAgentRunner(
 			prompt: params.prompt,
 			callbackUrl,
 			callbackToken,
+			authToken: params.authToken,
 		});
 	} catch (error) {
 		log.error(

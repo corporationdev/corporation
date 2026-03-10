@@ -297,6 +297,18 @@ export async function input(
 	}
 }
 
+export async function runCommandInTerminal(
+	ctx: SpaceRuntimeContext,
+	command: string
+): Promise<void> {
+	if (!command.trim()) {
+		throw new Error("Command cannot be empty");
+	}
+
+	const normalizedCommand = command.endsWith("\n") ? command : `${command}\n`;
+	await input(ctx, toBytes(normalizedCommand));
+}
+
 export async function resize(
 	ctx: SpaceRuntimeContext,
 	cols: number,

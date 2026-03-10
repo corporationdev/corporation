@@ -64,7 +64,8 @@ export async function postJsonWithRetry(
 	url: string,
 	body: unknown,
 	timeoutMs: number,
-	maxAttempts: number
+	maxAttempts: number,
+	headers?: Record<string, string>
 ): Promise<void> {
 	let attempt = 0;
 	let delayMs = 250;
@@ -74,7 +75,10 @@ export async function postJsonWithRetry(
 		try {
 			const response = await fetch(url, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					...(headers ?? {}),
+				},
 				body: JSON.stringify(body),
 				signal: AbortSignal.timeout(timeoutMs),
 			});

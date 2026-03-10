@@ -1,7 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getAuthToken } from "@/lib/api-client";
 import { useActor } from "@/lib/rivetkit";
-
-const KEEP_ALIVE_INTERVAL_MS = 300_000;
 
 type SandboxBinding = {
 	sandboxId: string;
@@ -51,10 +51,17 @@ export function useSpaceActor(
 	);
 	const isSandboxReady = space?.status === "running" && !!binding;
 	const isEnabled = (options?.enabled ?? true) && !!spaceSlug;
+	const { data: authToken } = useQuery({
+		queryKey: ["rivet-auth-token"],
+		queryFn: getAuthToken,
+		enabled: isEnabled,
+		retry: false,
+	});
 	const actor = useActor({
 		name: "space",
 		key: spaceSlug ? [spaceSlug] : ["__disconnected__"],
-		enabled: isEnabled,
+		params: authToken ? { authToken } : undefined,
+		enabled: isEnabled && !!authToken,
 	});
 	const lastSyncedRef = useRef<{
 		connection: SpaceConnection | null;
@@ -72,7 +79,10 @@ export function useSpaceActor(
 	});
 
 	const isConnected =
-		isEnabled && actor.connStatus === "connected" && !!actor.connection;
+		isEnabled &&
+		!!authToken &&
+		actor.connStatus === "connected" &&
+		!!actor.connection;
 	const isBindingSynced =
 		isConnected &&
 		syncedBinding.connection === actor.connection &&
@@ -129,34 +139,6 @@ export function useSpaceActor(
 			cancelled = true;
 		};
 	}, [actor.connection, binding, bindingSignature, isConnected, spaceSlug]);
-
-	useEffect(() => {
-		if (!(isConnected && actor.connection && isSandboxReady)) {
-			return;
-		}
-
-		let cancelled = false;
-
-		const ping = async () => {
-			try {
-				await actor.connection?.keepAliveSandbox();
-			} catch (error) {
-				if (!cancelled) {
-					console.error("Failed to keep sandbox alive", error);
-				}
-			}
-		};
-
-		ping();
-		const intervalId = window.setInterval(() => {
-			ping();
-		}, KEEP_ALIVE_INTERVAL_MS);
-
-		return () => {
-			cancelled = true;
-			window.clearInterval(intervalId);
-		};
-	}, [actor.connection, isConnected, isSandboxReady]);
 
 	return {
 		actor,

@@ -6,6 +6,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { hc } from "hono/client";
 import type { SandboxRuntimeApp } from "sandbox-runtime/client";
 import { z } from "zod";
+import { createRuntimeAuthHeaders, requireActorAuth } from "./actor-auth";
 import { startAgentRunner } from "./agent-runner";
 import { type SessionRow, sessions } from "./db/schema";
 import { appendSessionStatusFrame } from "./session-stream";
@@ -129,6 +130,7 @@ export async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
+	const { authToken } = requireActorAuth(ctx);
 	await ensureSession(ctx, sessionId, agent, modelId);
 
 	// Auto-generate session title on first message of this session
@@ -156,6 +158,7 @@ export async function sendMessage(
 		prompt,
 		agent,
 		modelId,
+		authToken,
 	});
 }
 
@@ -163,6 +166,7 @@ export async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
 ): Promise<void> {
+	const { authToken } = requireActorAuth(ctx);
 	const sessionRows = await ctx.vars.db
 		.select({
 			id: sessions.id,
@@ -204,7 +208,10 @@ export async function cancelSession(
 		client.v1.prompt[":turnId"]
 			.$delete(
 				{ param: { turnId: runId } },
-				{ init: { signal: AbortSignal.timeout(5000) } }
+				{
+					headers: createRuntimeAuthHeaders(authToken),
+					init: { signal: AbortSignal.timeout(5000) },
+				}
 			)
 			.catch((error) => {
 				log.warn(

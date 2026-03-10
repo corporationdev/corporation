@@ -82,6 +82,10 @@ let pendingSync = false;
 let logTailTimer: ReturnType<typeof setInterval> | null = null;
 let logOffset = 0;
 
+function shellEscape(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function startTailing() {
 	logOffset = 0;
 	logTailTimer = setInterval(async () => {
@@ -112,13 +116,55 @@ function stopTailing() {
 	}
 }
 
+async function getSandboxOwnerId(): Promise<string> {
+	if (process.env.CORPORATION_SANDBOX_OWNER_ID?.trim()) {
+		return process.env.CORPORATION_SANDBOX_OWNER_ID.trim();
+	}
+
+	const result = await sandbox.commands.run(
+		"printenv CORPORATION_SANDBOX_OWNER_ID",
+		{ timeoutMs: 5000 }
+	);
+	const ownerId = result.stdout.trim();
+	if (!ownerId) {
+		throw new Error(
+			[
+				"Unable to determine CORPORATION_SANDBOX_OWNER_ID for sandbox-runtime dev sync.",
+				"Provision a fresh sandbox after the auth changes, or set CORPORATION_SANDBOX_OWNER_ID locally before running `bun dev:sandbox-runtime`.",
+			].join("\n")
+		);
+	}
+	return ownerId;
+}
+
+async function getSandboxConvexSiteUrl(): Promise<string> {
+	if (process.env.CORPORATION_CONVEX_SITE_URL?.trim()) {
+		return process.env.CORPORATION_CONVEX_SITE_URL.trim();
+	}
+
+	const result = await sandbox.commands.run(
+		"printenv CORPORATION_CONVEX_SITE_URL",
+		{ timeoutMs: 5000 }
+	);
+	const value = result.stdout.trim();
+	if (!value) {
+		throw new Error(
+			[
+				"Unable to determine CORPORATION_CONVEX_SITE_URL for sandbox-runtime dev sync.",
+				"Provision a fresh sandbox after the auth changes, or set CORPORATION_CONVEX_SITE_URL locally before running `bun dev:sandbox-runtime`.",
+			].join("\n")
+		);
+	}
+	return value;
+}
+
 async function waitForRuntimeHealth(): Promise<void> {
 	const deadline = Date.now() + 15_000;
 	let lastError: unknown = null;
 
 	while (Date.now() < deadline) {
 		try {
-			await sandbox.commands.run("curl -sf http://localhost:5799/v1/health", {
+			await sandbox.commands.run("curl -sf http://localhost:5799/health", {
 				timeoutMs: 3000,
 			});
 			return;
@@ -162,6 +208,8 @@ async function buildAndSync() {
 
 	try {
 		const start = Date.now();
+		const ownerUserId = await getSandboxOwnerId();
+		const runtimeConvexSiteUrl = await getSandboxConvexSiteUrl();
 
 		await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
 
@@ -206,7 +254,7 @@ async function buildAndSync() {
 			}
 		);
 		await sandbox.commands.run(
-			`tmux new-session -d -s ${runtimeSessionName} "bun ${remoteBundlePath} --host 0.0.0.0 --port 5799 >> ${runtimeLogPath} 2>> ${runtimeStderrPath}"`,
+			`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_CONVEX_SITE_URL=${shellEscape(runtimeConvexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${shellEscape(ownerUserId)} bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}"`,
 			{ timeoutMs: 5000 }
 		);
 		await waitForRuntimeHealth();
