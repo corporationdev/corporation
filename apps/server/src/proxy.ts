@@ -91,6 +91,7 @@ function decodeBase64(value: string): ArrayBuffer {
 export const proxyApp = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 	.use(authMiddleware)
 	.post("/", async (c) => {
+		console.log("/proxy❤️❤️");
 		const parsedBody = parseProxyBody(await c.req.json().catch(() => null));
 		console.log("parsed body ❤️❤️❤️", { parsedBody });
 		if (!parsedBody) {

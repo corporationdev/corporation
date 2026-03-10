@@ -81,6 +81,9 @@ let syncing = false;
 let pendingSync = false;
 let logTailTimer: ReturnType<typeof setInterval> | null = null;
 let logOffset = 0;
+let proxyLogTailTimer: ReturnType<typeof setInterval> | null = null;
+let proxyLogOffset = 0;
+const proxyLogPath = "/tmp/corporation-mitmproxy.log";
 
 function shellEscape(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`;
@@ -107,12 +110,37 @@ function startTailing() {
 			// sandbox might be busy
 		}
 	}, 1000);
+
+	proxyLogOffset = 0;
+	proxyLogTailTimer = setInterval(async () => {
+		try {
+			const result = await sandbox.commands.run(
+				`wc -c < ${proxyLogPath} 2>/dev/null || echo 0`,
+				{ timeoutMs: 3000 }
+			);
+			const size = Number.parseInt(result.stdout.trim(), 10);
+			if (size > proxyLogOffset) {
+				const chunk = await sandbox.commands.run(
+					`tail -c +${proxyLogOffset + 1} ${proxyLogPath}`,
+					{ timeoutMs: 3000 }
+				);
+				process.stdout.write(chunk.stdout);
+				proxyLogOffset = size;
+			}
+		} catch {
+			// sandbox might be busy
+		}
+	}, 1000);
 }
 
 function stopTailing() {
 	if (logTailTimer) {
 		clearInterval(logTailTimer);
 		logTailTimer = null;
+	}
+	if (proxyLogTailTimer) {
+		clearInterval(proxyLogTailTimer);
+		proxyLogTailTimer = null;
 	}
 }
 

@@ -4,8 +4,23 @@ import json
 import os
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 from mitmproxy import http
+
+
+LOG_FILE_PATH = "/tmp/corporation-mitmproxy.log"
+
+
+def log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    line = f"[{ts}] {msg}"
+    print(line, flush=True)
+    try:
+        with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\\n")
+    except OSError:
+        pass
 
 
 WORKER_URL = os.environ.get("CORPORATION_PROXY_WORKER_URL", "").strip()
@@ -15,6 +30,7 @@ WORKER_FORWARD_HOSTS = {
     for host in os.environ.get("CORPORATION_PROXY_WORKER_FORWARD_HOSTS", "").split(",")
     if host.strip()
 }
+
 
 
 def should_forward(flow: http.HTTPFlow) -> bool:
@@ -71,9 +87,11 @@ class CorporationProxyAddon:
             return
 
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        req = build_worker_request(flow)
+        log(f"proxying {flow.request.method} {flow.request.pretty_url} -> {req.full_url}")
 
         try:
-            with opener.open(build_worker_request(flow), timeout=30) as response:
+            with opener.open(req, timeout=30) as response:
                 body = response.read()
                 flow.response = http.Response.make(
                     response.status,
