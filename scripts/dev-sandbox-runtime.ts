@@ -112,6 +112,48 @@ function stopTailing() {
 	}
 }
 
+async function getSandboxOwnerId(): Promise<string> {
+	if (process.env.CORPORATION_SANDBOX_OWNER_ID?.trim()) {
+		return process.env.CORPORATION_SANDBOX_OWNER_ID.trim();
+	}
+
+	const result = await sandbox.commands.run(
+		"printenv CORPORATION_SANDBOX_OWNER_ID",
+		{ timeoutMs: 5000 }
+	);
+	const ownerId = result.stdout.trim();
+	if (!ownerId) {
+		throw new Error(
+			[
+				"Unable to determine CORPORATION_SANDBOX_OWNER_ID for sandbox-runtime dev sync.",
+				"Provision a fresh sandbox after the auth changes, or set CORPORATION_SANDBOX_OWNER_ID locally before running `bun dev:sandbox-runtime`.",
+			].join("\n")
+		);
+	}
+	return ownerId;
+}
+
+async function getSandboxConvexSiteUrl(): Promise<string> {
+	if (process.env.CORPORATION_CONVEX_SITE_URL?.trim()) {
+		return process.env.CORPORATION_CONVEX_SITE_URL.trim();
+	}
+
+	const result = await sandbox.commands.run(
+		"printenv CORPORATION_CONVEX_SITE_URL",
+		{ timeoutMs: 5000 }
+	);
+	const value = result.stdout.trim();
+	if (!value) {
+		throw new Error(
+			[
+				"Unable to determine CORPORATION_CONVEX_SITE_URL for sandbox-runtime dev sync.",
+				"Provision a fresh sandbox after the auth changes, or set CORPORATION_CONVEX_SITE_URL locally before running `bun dev:sandbox-runtime`.",
+			].join("\n")
+		);
+	}
+	return value;
+}
+
 async function waitForRuntimeHealth(): Promise<void> {
 	const deadline = Date.now() + 15_000;
 	let lastError: unknown = null;
@@ -162,6 +204,8 @@ async function buildAndSync() {
 
 	try {
 		const start = Date.now();
+		const ownerUserId = await getSandboxOwnerId();
+		const runtimeConvexSiteUrl = await getSandboxConvexSiteUrl();
 
 		await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
 
@@ -206,7 +250,7 @@ async function buildAndSync() {
 			}
 		);
 		await sandbox.commands.run(
-			`tmux new-session -d -s ${runtimeSessionName} "bun ${remoteBundlePath} --host 0.0.0.0 --port 5799 >> ${runtimeLogPath} 2>> ${runtimeStderrPath}"`,
+			`tmux new-session -d -s ${runtimeSessionName} "CORPORATION_CONVEX_SITE_URL='${runtimeConvexSiteUrl}' CORPORATION_SANDBOX_OWNER_ID='${ownerUserId}' bun ${remoteBundlePath} --host 0.0.0.0 --port 5799 >> ${runtimeLogPath} 2>> ${runtimeStderrPath}"`,
 			{ timeoutMs: 5000 }
 		);
 		await waitForRuntimeHealth();

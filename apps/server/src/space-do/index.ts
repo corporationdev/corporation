@@ -16,12 +16,14 @@ import bundledMigrations from "./db/migrations";
 import { type SessionRow, schema } from "./db/schema";
 import { getDesktopStreamUrl } from "./desktop";
 import { requireSandbox } from "./sandbox";
+import { keepAliveSandbox } from "./sandbox-keep-alive";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
 	broadcastTerminalSnapshot,
 	getTerminalSnapshot,
 	resetTerminal,
+	runCommandInTerminal,
 	input as terminalInput,
 	resize as terminalResize,
 } from "./terminal";
@@ -35,9 +37,15 @@ import type {
 
 export type { SessionRow } from "./db/schema";
 
-const SANDBOX_TIMEOUT_MS = 900_000;
-const SANDBOX_KEEP_ALIVE_THROTTLE_MS = 240_000;
 const SANDBOX_USER = "user";
+const KEEP_ALIVE_ACTIONS = new Set([
+	"getDesktopStreamUrl",
+	"ingestAgentRunnerBatch",
+	"input",
+	"keepAliveSandbox",
+	"runCommand",
+	"sendMessage",
+]);
 
 function createEmptyState(): PersistedState {
 	return {
@@ -200,7 +208,11 @@ export const space = actor({
 		return vars;
 	},
 
-	onBeforeActionResponse: (_c, _name, _args, output) => {
+	onBeforeActionResponse: async (c, name, _args, output) => {
+		if (KEEP_ALIVE_ACTIONS.has(name)) {
+			await keepAliveSandbox(asSpaceRuntimeContext(c));
+		}
+
 		return output;
 	},
 	actions: {
@@ -217,10 +229,13 @@ export const space = actor({
 				throw new Error("Command cannot be empty");
 			}
 
+			if (!background) {
+				await runCommandInTerminal(ctx, command);
+				return;
+			}
+
 			const logId = crypto.randomUUID();
-			const nextCommand = background
-				? `nohup bash -lc ${quoteShellArg(command)} >/tmp/corporation-run-command-${logId}.log 2>&1 </dev/null &`
-				: command;
+			const nextCommand = `nohup bash -lc ${quoteShellArg(command)} >/tmp/corporation-run-command-${logId}.log 2>&1 </dev/null &`;
 
 			await requireSandbox(ctx).commands.run(nextCommand, {
 				user: SANDBOX_USER,
@@ -264,23 +279,6 @@ export const space = actor({
 		resize: (c, cols: number, rows: number) =>
 			terminalResize(asSpaceRuntimeContext(c), cols, rows),
 		getDesktopStreamUrl: (c) => getDesktopStreamUrl(asSpaceRuntimeContext(c)),
-		keepAliveSandbox: async (c): Promise<void> => {
-			const ctx = asSpaceRuntimeContext(c);
-			const now = Date.now();
-			if (
-				now - ctx.vars.lastSandboxKeepAliveAt <
-				SANDBOX_KEEP_ALIVE_THROTTLE_MS
-			) {
-				return;
-			}
-
-			const sandbox = ctx.vars.sandbox;
-			if (!sandbox) {
-				return;
-			}
-
-			await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
-			ctx.vars.lastSandboxKeepAliveAt = now;
-		},
+		keepAliveSandbox: async (): Promise<void> => {},
 	},
 });

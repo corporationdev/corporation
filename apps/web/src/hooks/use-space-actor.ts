@@ -3,8 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getAuthToken } from "@/lib/api-client";
 import { useActor } from "@/lib/rivetkit";
 
-const KEEP_ALIVE_INTERVAL_MS = 300_000;
-
 type SandboxBinding = {
 	sandboxId: string;
 	agentUrl: string;
@@ -141,34 +139,6 @@ export function useSpaceActor(
 			cancelled = true;
 		};
 	}, [actor.connection, binding, bindingSignature, isConnected, spaceSlug]);
-
-	useEffect(() => {
-		if (!(isConnected && actor.connection && isSandboxReady)) {
-			return;
-		}
-
-		let cancelled = false;
-
-		const ping = async () => {
-			try {
-				await actor.connection?.keepAliveSandbox();
-			} catch (error) {
-				if (!cancelled) {
-					console.error("Failed to keep sandbox alive", error);
-				}
-			}
-		};
-
-		ping();
-		const intervalId = window.setInterval(() => {
-			ping();
-		}, KEEP_ALIVE_INTERVAL_MS);
-
-		return () => {
-			cancelled = true;
-			window.clearInterval(intervalId);
-		};
-	}, [actor.connection, isConnected, isSandboxReady]);
 
 	return {
 		actor,

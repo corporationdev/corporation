@@ -87,10 +87,20 @@ async function ensureAgentReadyAndGetUrl(
 
 async function createSandbox(
 	snapshotId: string,
-	projectEnvs: Record<string, string>
+	projectEnvs: Record<string, string>,
+	space: Space
 ): Promise<Sandbox> {
+	const convexSiteUrl = process.env.CONVEX_SITE_URL;
+	if (!convexSiteUrl) {
+		throw new Error("Missing CONVEX_SITE_URL env var");
+	}
+
 	return await Sandbox.betaCreate(snapshotId, {
-		envs: projectEnvs,
+		envs: {
+			...projectEnvs,
+			CORPORATION_CONVEX_SITE_URL: convexSiteUrl,
+			CORPORATION_SANDBOX_OWNER_ID: space.project.userId,
+		},
 		network: { allowPublicTraffic: true },
 		autoPause: true,
 		timeoutMs: SANDBOX_TIMEOUT_MS,
@@ -136,7 +146,7 @@ async function resolveSandbox(
 		status: "creating" as const,
 	});
 
-	return await createSandbox(snapshot.externalSnapshotId, projectEnvs);
+	return await createSandbox(snapshot.externalSnapshotId, projectEnvs, space);
 }
 
 export const archiveSandbox = internalAction({

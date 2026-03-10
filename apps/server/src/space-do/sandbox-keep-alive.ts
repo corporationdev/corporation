@@ -16,6 +16,10 @@ export async function keepAliveSandbox(
 		return;
 	}
 
+	if (!(await sandbox.isRunning().catch(() => false))) {
+		return;
+	}
+
 	await sandbox.setTimeout(SANDBOX_TIMEOUT_MS);
 	ctx.vars.lastSandboxKeepAliveAt = now;
 }
