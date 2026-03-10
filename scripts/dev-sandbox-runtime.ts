@@ -82,6 +82,10 @@ let pendingSync = false;
 let logTailTimer: ReturnType<typeof setInterval> | null = null;
 let logOffset = 0;
 
+function shellEscape(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function startTailing() {
 	logOffset = 0;
 	logTailTimer = setInterval(async () => {
@@ -250,7 +254,7 @@ async function buildAndSync() {
 			}
 		);
 		await sandbox.commands.run(
-			`tmux new-session -d -s ${runtimeSessionName} "CORPORATION_CONVEX_SITE_URL='${runtimeConvexSiteUrl}' CORPORATION_SANDBOX_OWNER_ID='${ownerUserId}' bun ${remoteBundlePath} --host 0.0.0.0 --port 5799 >> ${runtimeLogPath} 2>> ${runtimeStderrPath}"`,
+			`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_CONVEX_SITE_URL=${shellEscape(runtimeConvexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${shellEscape(ownerUserId)} bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}"`,
 			{ timeoutMs: 5000 }
 		);
 		await waitForRuntimeHealth();
