@@ -8,6 +8,7 @@ import {
 import { agentCommand, writeAgentConfigs } from "./agents";
 import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
 import { log } from "./logging";
+import { buildLocalProxyEnv } from "./proxy-config";
 import {
 	type AcpAgentRequestMethod,
 	type AcpAgentRequestParams,
@@ -153,7 +154,11 @@ export function spawnStdioBridge(
 	writeAgentConfigs(agent);
 
 	const proc = Bun.spawn(cmd, {
-		env: { ...process.env, IS_SANDBOX: "1" },
+		env: {
+			...process.env,
+			...buildLocalProxyEnv(),
+			IS_SANDBOX: "1",
+		},
 		stdin: "pipe",
 		stdout: "pipe",
 		stderr: "pipe",

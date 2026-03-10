@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
+import { LOCAL_PROXY_LOG_PATH, LOCAL_PROXY_STDERR_PATH } from "../src/proxy";
+import { buildLocalProxyEnv, getLocalProxyConfig } from "../src/proxy-config";
 
 const packageDir = resolve(import.meta.dir, "..");
 const repoRoot = resolve(packageDir, "../..");
@@ -29,6 +31,17 @@ const runtimeLogPath = "/tmp/sandbox-runtime.integration.log";
 const runtimeStderrPath = "/tmp/sandbox-runtime.integration.stderr.log";
 
 const describeIf = apiKey ? describe : describe.skip;
+const proxyConfig = getLocalProxyConfig();
+
+function shellEscape(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function buildEnvPrefix(env: Record<string, string>): string {
+	return Object.entries(env)
+		.map(([key, value]) => `${key}=${shellEscape(value)}`)
+		.join(" ");
+}
 
 async function waitForRuntimeHealth(sandbox: Sandbox): Promise<void> {
 	const deadline = Date.now() + 30_000;
@@ -123,7 +136,7 @@ describeIf("sandbox-runtime proxy integration", () => {
 		}
 	});
 
-	test("starts mitmdump and generates a CA cert", async () => {
+	test("starts the sandbox proxy and proxies HTTPS traffic", async () => {
 		const currentSandbox = sandbox;
 		if (!currentSandbox) {
 			throw new Error("sandbox not initialized");
@@ -138,38 +151,25 @@ describeIf("sandbox-runtime proxy integration", () => {
 		expect(processResult.stdout).toContain("mitmdump");
 
 		const certResult = await currentSandbox.commands.run(
-			"test -f /tmp/corporation-mitmproxy/mitmproxy-ca-cert.pem && echo ok",
+			`test -f ${shellEscape(proxyConfig.caCertPath)} && echo ok`,
 			{ timeoutMs: 5000 }
 		);
 		expect(certResult.stdout.trim()).toBe("ok");
-	});
-
-	test("proxies HTTPS traffic for curl", async () => {
-		const currentSandbox = sandbox;
-		if (!currentSandbox) {
-			throw new Error("sandbox not initialized");
-		}
 
 		const result = await currentSandbox.commands.run(
-			[
-				"HTTP_PROXY=http://127.0.0.1:8877",
-				"HTTPS_PROXY=http://127.0.0.1:8877",
-				"NO_PROXY=localhost,127.0.0.1,::1",
-				"CURL_CA_BUNDLE=/tmp/corporation-mitmproxy/mitmproxy-ca-cert.pem",
-				"curl -sS -o /tmp/proxy-test.html -w '%{http_code}' https://example.com",
-			].join(" "),
+			`${buildEnvPrefix(buildLocalProxyEnv())} curl -sS -o /tmp/proxy-test.html -w '%{http_code}' https://example.com`,
 			{ timeoutMs: 20_000 }
 		);
 
 		if (result.stdout.trim() !== "200") {
 			const proxyLog = await currentSandbox.commands
-				.run("tail -n 50 /tmp/corporation-mitmproxy.log", {
+				.run(`tail -n 50 ${shellEscape(LOCAL_PROXY_LOG_PATH)}`, {
 					timeoutMs: 5000,
 				})
 				.then((output) => output.stdout.trim())
 				.catch(() => "");
 			const proxyStderr = await currentSandbox.commands
-				.run("tail -n 50 /tmp/corporation-mitmproxy.stderr.log", {
+				.run(`tail -n 50 ${shellEscape(LOCAL_PROXY_STDERR_PATH)}`, {
 					timeoutMs: 5000,
 				})
 				.then((output) => output.stdout.trim())

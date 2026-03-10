@@ -155,9 +155,28 @@ function formatTime(timestamp: number): string {
 
 function SnapshotList({ project }: { project: Project }) {
 	const updateProject = useMutation(api.projects.update);
+	const { mutate: rebuildFromRepo, isPending: isRebuilding } =
+		useConvexTanstackMutation(api.snapshot.buildInitialSnapshot, {
+			onSuccess: () => {
+				toast.success("Project snapshot rebuild started");
+			},
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		});
 
 	return (
 		<div className="flex flex-col gap-2">
+			<div className="flex justify-end">
+				<Button
+					disabled={isRebuilding}
+					onClick={() => rebuildFromRepo({ projectId: project._id })}
+					size="sm"
+					variant="outline"
+				>
+					{isRebuilding ? "Rebuilding..." : "Rebuild Project Snapshot"}
+				</Button>
+			</div>
 			{project.snapshots.map((snapshot) => {
 				const isDefault = snapshot._id === project.defaultSnapshotId;
 				const statusDot =
@@ -217,7 +236,17 @@ function SnapshotList({ project }: { project: Project }) {
 }
 
 function SettingsTab({ project }: { project: Project }) {
-	const updateProject = useMutation(api.projects.update);
+	const { mutate: updateSecrets, isPending } = useConvexTanstackMutation(
+		api.projects.updateSecrets,
+		{
+			onSuccess: () => {
+				toast.success("Environment variables updated");
+			},
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		}
+	);
 
 	const form = useForm({
 		defaultValues: {
@@ -226,12 +255,11 @@ function SettingsTab({ project }: { project: Project }) {
 		validators: {
 			onSubmit: projectConfigSchema,
 		},
-		onSubmit: async ({ value }) => {
-			await updateProject({
+		onSubmit: ({ value }) => {
+			updateSecrets({
 				id: project._id,
 				secrets: buildSecrets(value.secrets),
 			});
-			toast.success("Settings saved");
 		},
 	});
 
@@ -245,13 +273,9 @@ function SettingsTab({ project }: { project: Project }) {
 		>
 			<ProjectConfigForm form={form} />
 			<div className="flex justify-end">
-				<form.Subscribe selector={(state) => state.isSubmitting}>
-					{(isSubmitting) => (
-						<Button disabled={isSubmitting} type="submit">
-							{isSubmitting ? "Saving..." : "Save Changes"}
-						</Button>
-					)}
-				</form.Subscribe>
+				<Button disabled={isPending} type="submit">
+					{isPending ? "Saving..." : "Save Changes"}
+				</Button>
 			</div>
 		</form>
 	);

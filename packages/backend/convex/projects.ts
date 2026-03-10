@@ -5,7 +5,7 @@ import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
-import { scheduleInitialSnapshot } from "./snapshot";
+import { scheduleInitialSnapshot, scheduleRebuildWithEnvs } from "./snapshot";
 
 function requireOwnedProject(
 	userId: string,
@@ -155,6 +155,34 @@ export const update = authedMutation({
 		);
 
 		await ctx.db.patch(id, patch);
+	},
+});
+
+export const updateSecrets = authedMutation({
+	args: {
+		id: v.id("projects"),
+		secrets: v.record(v.string(), v.string()),
+	},
+	handler: async (ctx, args) => {
+		const project = await ctx.db.get(args.id);
+		if (!project) {
+			throw new ConvexError("Project not found");
+		}
+		requireOwnedProject(ctx.userId, project);
+
+		await ctx.db.patch(args.id, {
+			secrets: args.secrets,
+			updatedAt: Date.now(),
+		});
+
+		const updatedProject = await ctx.db.get(args.id);
+		if (!updatedProject) {
+			throw new ConvexError("Project not found");
+		}
+
+		await scheduleRebuildWithEnvs(ctx, updatedProject, {
+			secrets: args.secrets,
+		});
 	},
 });
 

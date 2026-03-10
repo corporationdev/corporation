@@ -33,16 +33,32 @@ function requireEnv(name: string): string {
 	return value;
 }
 
-const convexSiteUrl = requireEnv("CORPORATION_CONVEX_SITE_URL");
-const ownerUserId = requireEnv("CORPORATION_SANDBOX_OWNER_ID");
+function getRuntimeAuthConfig(): {
+	convexSiteUrl: string;
+	ownerUserId: string;
+} | null {
+	try {
+		return {
+			convexSiteUrl: requireEnv("CORPORATION_CONVEX_SITE_URL"),
+			ownerUserId: requireEnv("CORPORATION_SANDBOX_OWNER_ID"),
+		};
+	} catch {
+		return null;
+	}
+}
 
 export const runtimeAuthMiddleware = bearerAuth({
 	verifyToken: async (token) => {
+		const authConfig = getRuntimeAuthConfig();
+		if (!authConfig) {
+			return false;
+		}
+
 		try {
-			const jwks = getJWKS(convexSiteUrl);
+			const jwks = getJWKS(authConfig.convexSiteUrl);
 			const { payload } = await jwtVerify(token, jwks);
 			const result = runtimeJwtPayloadSchema.safeParse(payload);
-			if (!result.success || result.data.sub !== ownerUserId) {
+			if (!result.success || result.data.sub !== authConfig.ownerUserId) {
 				return false;
 			}
 			rememberVerifiedAuthToken(token, result.data);

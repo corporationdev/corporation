@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { githubApp } from "./github";
 import { integrationsApp } from "./integrations";
+import { proxyApp } from "./proxy";
 import { streamApp } from "./stream";
 
 const apiApp = new Hono<{ Bindings: Env }>()
@@ -22,6 +23,7 @@ const apiApp = new Hono<{ Bindings: Env }>()
 	.get("/health", (c) => c.text("OK"))
 	.route("/integrations", integrationsApp)
 	.route("/github", githubApp)
+	.route("/proxy", proxyApp)
 	.route("/spaces", streamApp);
 
 const app = new Hono<{ Bindings: Env }>().route("/api", apiApp);

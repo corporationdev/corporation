@@ -74,6 +74,7 @@
   "type": "module",
   "scripts": {
     "dev": "turbo dev",
+    "test": "turbo test",
     "secrets:inject": "bun scripts/secrets-inject.ts",
     "build": "turbo build",
     "check-types": "turbo check-types",

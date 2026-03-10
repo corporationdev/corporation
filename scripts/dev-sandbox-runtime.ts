@@ -158,6 +158,19 @@ async function getSandboxConvexSiteUrl(): Promise<string> {
 	return value;
 }
 
+async function getSandboxServerUrl(): Promise<string | null> {
+	if (process.env.SERVER_URL?.trim()) {
+		return process.env.SERVER_URL.trim();
+	}
+
+	const result = await sandbox.commands
+		.run("printenv SERVER_URL", { timeoutMs: 5000 })
+		.then((output) => output.stdout.trim())
+		.catch(() => "");
+
+	return result || null;
+}
+
 async function waitForRuntimeHealth(): Promise<void> {
 	const deadline = Date.now() + 15_000;
 	let lastError: unknown = null;
@@ -210,6 +223,7 @@ async function buildAndSync() {
 		const start = Date.now();
 		const ownerUserId = await getSandboxOwnerId();
 		const runtimeConvexSiteUrl = await getSandboxConvexSiteUrl();
+		const runtimeServerUrl = await getSandboxServerUrl();
 
 		await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
 
@@ -254,7 +268,7 @@ async function buildAndSync() {
 			}
 		);
 		await sandbox.commands.run(
-			`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_CONVEX_SITE_URL=${shellEscape(runtimeConvexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${shellEscape(ownerUserId)} bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}"`,
+			`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "${runtimeServerUrl ? `SERVER_URL=${shellEscape(runtimeServerUrl)} ` : ""}CORPORATION_CONVEX_SITE_URL=${shellEscape(runtimeConvexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${shellEscape(ownerUserId)} bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}"`,
 			{ timeoutMs: 5000 }
 		);
 		await waitForRuntimeHealth();
