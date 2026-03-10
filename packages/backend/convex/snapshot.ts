@@ -109,6 +109,7 @@ export async function scheduleInitialSnapshot(
 export const buildInitialSnapshot = authedMutation({
 	args: {
 		projectId: v.id("projects"),
+		setAsDefault: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const project = await ctx.db.get(args.projectId);
@@ -116,9 +117,42 @@ export const buildInitialSnapshot = authedMutation({
 			throw new ConvexError("Project not found");
 		}
 
-		await scheduleInitialSnapshot(ctx, project);
+		await scheduleInitialSnapshot(ctx, project, {
+			setAsDefault: args.setAsDefault ?? false,
+		});
 	},
 });
+
+export async function scheduleRebuildWithEnvs(
+	ctx: MutationCtx,
+	project: Doc<"projects">,
+	options: { secrets: Record<string, string>; setAsDefault: boolean }
+): Promise<Id<"snapshots">> {
+	if (!project.defaultSnapshotId) {
+		throw new ConvexError("Project has no default snapshot to rebuild from");
+	}
+
+	const sourceSnapshot = await ctx.db.get(project.defaultSnapshotId);
+	if (
+		!sourceSnapshot ||
+		sourceSnapshot.status !== "ready" ||
+		!sourceSnapshot.externalSnapshotId
+	) {
+		throw new ConvexError("Default snapshot is not ready");
+	}
+
+	const snapshotId = await createSnapshotRecord(ctx, project);
+
+	await ctx.scheduler.runAfter(0, internal.snapshotActions.rebuildWithEnvs, {
+		projectId: project._id,
+		snapshotId,
+		sourceExternalSnapshotId: sourceSnapshot.externalSnapshotId,
+		envs: options.secrets,
+		setAsDefault: options.setAsDefault,
+	});
+
+	return snapshotId;
+}
 
 export const createFromSpace = authedMutation({
 	args: {

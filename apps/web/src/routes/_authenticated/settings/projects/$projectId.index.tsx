@@ -155,9 +155,33 @@ function formatTime(timestamp: number): string {
 
 function SnapshotList({ project }: { project: Project }) {
 	const updateProject = useMutation(api.projects.update);
+	const { mutate: rebuildFromRepo, isPending: isRebuilding } =
+		useConvexTanstackMutation(api.snapshot.buildInitialSnapshot, {
+			onSuccess: () => {
+				toast.success("Rebuilding snapshot from repo");
+			},
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		});
 
 	return (
 		<div className="flex flex-col gap-2">
+			<div className="flex justify-end">
+				<Button
+					disabled={isRebuilding}
+					onClick={() =>
+						rebuildFromRepo({
+							projectId: project._id,
+							setAsDefault: true,
+						})
+					}
+					size="sm"
+					variant="outline"
+				>
+					{isRebuilding ? "Rebuilding..." : "Rebuild from Repo"}
+				</Button>
+			</div>
 			{project.snapshots.map((snapshot) => {
 				const isDefault = snapshot._id === project.defaultSnapshotId;
 				const statusDot =
@@ -217,7 +241,18 @@ function SnapshotList({ project }: { project: Project }) {
 }
 
 function SettingsTab({ project }: { project: Project }) {
-	const updateProject = useMutation(api.projects.update);
+	const { mutate: updateSecrets, isPending } = useConvexTanstackMutation(
+		api.projects.updateSecrets,
+		{
+			onSuccess: () => {
+				toast.success("Settings saved — snapshot is building");
+			},
+			onError: (error) => {
+				toast.error(error.message);
+			},
+		}
+	);
+	const [setAsDefault, setSetAsDefault] = useState(true);
 
 	const form = useForm({
 		defaultValues: {
@@ -226,12 +261,12 @@ function SettingsTab({ project }: { project: Project }) {
 		validators: {
 			onSubmit: projectConfigSchema,
 		},
-		onSubmit: async ({ value }) => {
-			await updateProject({
+		onSubmit: ({ value }) => {
+			updateSecrets({
 				id: project._id,
 				secrets: buildSecrets(value.secrets),
+				setAsDefault,
 			});
-			toast.success("Settings saved");
 		},
 	});
 
@@ -244,14 +279,18 @@ function SettingsTab({ project }: { project: Project }) {
 			}}
 		>
 			<ProjectConfigForm form={form} />
-			<div className="flex justify-end">
-				<form.Subscribe selector={(state) => state.isSubmitting}>
-					{(isSubmitting) => (
-						<Button disabled={isSubmitting} type="submit">
-							{isSubmitting ? "Saving..." : "Save Changes"}
-						</Button>
-					)}
-				</form.Subscribe>
+			<div className="flex items-center justify-between">
+				<label className="flex items-center gap-2 text-sm">
+					<input
+						checked={setAsDefault}
+						onChange={(e) => setSetAsDefault(e.target.checked)}
+						type="checkbox"
+					/>
+					Make new snapshot the default
+				</label>
+				<Button disabled={isPending} type="submit">
+					{isPending ? "Saving..." : "Save Changes"}
+				</Button>
 			</div>
 		</form>
 	);

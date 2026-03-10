@@ -10,7 +10,7 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "test": "bun test ./test/proxy.integration.test.ts --timeout 300000"
+    "test": "bun test ./test --timeout 300000"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "catalog:",

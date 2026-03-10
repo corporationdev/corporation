@@ -164,6 +164,54 @@ export const createFromSandbox = internalAction({
 	},
 });
 
+export const rebuildWithEnvs = internalAction({
+	args: {
+		projectId: v.id("projects"),
+		snapshotId: v.id("snapshots"),
+		sourceExternalSnapshotId: v.string(),
+		envs: v.record(v.string(), v.string()),
+		setAsDefault: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		let sandbox: Sandbox | null = null;
+
+		try {
+			sandbox = await Sandbox.betaCreate(args.sourceExternalSnapshotId, {
+				network: { allowPublicTraffic: true },
+				envs: args.envs,
+			});
+
+			const snapshot = await sandbox.createSnapshot();
+
+			await ctx.runMutation(internal.snapshot.completeSnapshot, {
+				snapshotId: args.snapshotId,
+				projectId: args.projectId,
+				status: "ready",
+				externalSnapshotId: snapshot.snapshotId,
+				setAsDefault: args.setAsDefault,
+			});
+		} catch (error) {
+			await ctx.runMutation(internal.snapshot.completeSnapshot, {
+				snapshotId: args.snapshotId,
+				status: "error",
+				error: formatSnapshotError(error),
+			});
+			throw error;
+		} finally {
+			if (sandbox) {
+				try {
+					await sandbox.kill();
+				} catch {
+					// Best-effort cleanup
+				}
+			}
+			await ctx.runMutation(internal.projects.completeSnapshotBuild, {
+				id: args.projectId,
+			});
+		}
+	},
+});
+
 export const saveSpaceState = internalAction({
 	args: {
 		spaceId: v.id("spaces"),
