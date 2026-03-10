@@ -158,7 +158,7 @@ function SnapshotList({ project }: { project: Project }) {
 	const { mutate: rebuildFromRepo, isPending: isRebuilding } =
 		useConvexTanstackMutation(api.snapshot.buildInitialSnapshot, {
 			onSuccess: () => {
-				toast.success("Rebuilding snapshot from repo");
+				toast.success("Project snapshot rebuild started");
 			},
 			onError: (error) => {
 				toast.error(error.message);
@@ -170,16 +170,11 @@ function SnapshotList({ project }: { project: Project }) {
 			<div className="flex justify-end">
 				<Button
 					disabled={isRebuilding}
-					onClick={() =>
-						rebuildFromRepo({
-							projectId: project._id,
-							setAsDefault: true,
-						})
-					}
+					onClick={() => rebuildFromRepo({ projectId: project._id })}
 					size="sm"
 					variant="outline"
 				>
-					{isRebuilding ? "Rebuilding..." : "Rebuild from Repo"}
+					{isRebuilding ? "Rebuilding..." : "Rebuild Project Snapshot"}
 				</Button>
 			</div>
 			{project.snapshots.map((snapshot) => {
@@ -245,14 +240,13 @@ function SettingsTab({ project }: { project: Project }) {
 		api.projects.updateSecrets,
 		{
 			onSuccess: () => {
-				toast.success("Settings saved — snapshot is building");
+				toast.success("Environment variables updated");
 			},
 			onError: (error) => {
 				toast.error(error.message);
 			},
 		}
 	);
-	const [setAsDefault, setSetAsDefault] = useState(true);
 
 	const form = useForm({
 		defaultValues: {
@@ -265,7 +259,6 @@ function SettingsTab({ project }: { project: Project }) {
 			updateSecrets({
 				id: project._id,
 				secrets: buildSecrets(value.secrets),
-				setAsDefault,
 			});
 		},
 	});
@@ -279,15 +272,7 @@ function SettingsTab({ project }: { project: Project }) {
 			}}
 		>
 			<ProjectConfigForm form={form} />
-			<div className="flex items-center justify-between">
-				<label className="flex items-center gap-2 text-sm">
-					<input
-						checked={setAsDefault}
-						onChange={(e) => setSetAsDefault(e.target.checked)}
-						type="checkbox"
-					/>
-					Make new snapshot the default
-				</label>
+			<div className="flex justify-end">
 				<Button disabled={isPending} type="submit">
 					{isPending ? "Saving..." : "Save Changes"}
 				</Button>

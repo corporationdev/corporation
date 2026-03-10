@@ -6,7 +6,7 @@ import net from "node:net";
 import { resolve } from "node:path";
 import { log } from "./logging";
 import { LOCAL_PROXY_ADDON_SCRIPT } from "./proxy-addon";
-import { buildLocalProxyEnv, getLocalProxyConfig } from "./proxy-config";
+import { getLocalProxyConfig } from "./proxy-config";
 
 const SYSTEM_CA_CERT_PATH = "/etc/ssl/certs/ca-certificates.crt";
 const SYSTEM_CA_CERT_DIR = "/etc/ssl/certs";
@@ -87,6 +87,7 @@ async function writeProxyAddon(): Promise<void> {
 		resolve(proxyConfig.stateDir, LOCAL_PROXY_ADDON_FILENAME),
 		LOCAL_PROXY_ADDON_SCRIPT
 	);
+	await writeFile(proxyConfig.workerTokenPath, "");
 }
 
 async function startLocalProxy(): Promise<void> {
@@ -106,7 +107,7 @@ async function startLocalProxy(): Promise<void> {
 		env: {
 			...process.env,
 			CORPORATION_PROXY_WORKER_URL: proxyConfig.workerUrl ?? "",
-			CORPORATION_PROXY_WORKER_TOKEN: proxyConfig.workerToken ?? "",
+			CORPORATION_PROXY_WORKER_TOKEN_PATH: proxyConfig.workerTokenPath,
 			CORPORATION_PROXY_WORKER_FORWARD_HOSTS:
 				proxyConfig.workerForwardHosts.join(","),
 		},
@@ -136,5 +137,4 @@ export async function ensureLocalProxyStarted(): Promise<void> {
 	await proxyStartPromise;
 }
 
-export { buildLocalProxyEnv, getLocalProxyConfig };
 export { LOCAL_PROXY_LOG_PATH, LOCAL_PROXY_STDERR_PATH };

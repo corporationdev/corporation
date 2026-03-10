@@ -1,7 +1,9 @@
 const DEFAULT_LOCAL_PROXY_HOST = "127.0.0.1";
 const DEFAULT_LOCAL_PROXY_PORT = 8877;
 const DEFAULT_LOCAL_PROXY_STATE_DIR = "/tmp/corporation-mitmproxy";
+const DEFAULT_LOCAL_PROXY_WORKER_TOKEN_FILENAME = "worker-token.txt";
 const DEFAULT_NO_PROXY_ENTRIES = ["localhost", "127.0.0.1", "::1"];
+const TRAILING_SLASH_RE = /\/$/;
 const DEFAULT_ENABLED_INTEGRATIONS = ["github"];
 
 const WORKER_FORWARD_HOSTS_BY_INTEGRATION: Record<string, string[]> = {
@@ -48,6 +50,10 @@ function getLocalProxyStateDir(baseEnv: ProxyEnvSource): string {
 	return baseEnv.CORPORATION_PROXY_STATE_DIR || DEFAULT_LOCAL_PROXY_STATE_DIR;
 }
 
+function getWorkerTokenPath(stateDir: string): string {
+	return `${stateDir}/${DEFAULT_LOCAL_PROXY_WORKER_TOKEN_FILENAME}`;
+}
+
 function getEnabledIntegrations(baseEnv: ProxyEnvSource): string[] {
 	const configured = splitCsv(
 		baseEnv.CORPORATION_PROXY_ENABLED_INTEGRATIONS
@@ -67,14 +73,30 @@ function getWorkerForwardHosts(baseEnv: ProxyEnvSource): string[] {
 	return Array.from(hosts);
 }
 
-function getWorkerUrl(baseEnv: ProxyEnvSource): string | null {
-	const value = baseEnv.CORPORATION_PROXY_WORKER_URL?.trim();
-	return value ? value : null;
+function buildWorkerUrlFromServerUrl(serverUrl: string): string | null {
+	try {
+		const url = new URL(serverUrl);
+		const normalizedPath = url.pathname.replace(TRAILING_SLASH_RE, "");
+		url.pathname = normalizedPath.endsWith("/api")
+			? `${normalizedPath}/proxy`
+			: `${normalizedPath}/api/proxy`;
+		url.search = "";
+		url.hash = "";
+		return url.toString();
+	} catch {
+		return null;
+	}
 }
 
-function getWorkerToken(baseEnv: ProxyEnvSource): string | null {
-	const value = baseEnv.CORPORATION_PROXY_WORKER_TOKEN?.trim();
-	return value ? value : null;
+function getWorkerUrl(baseEnv: ProxyEnvSource): string | null {
+	const explicitValue = baseEnv.CORPORATION_PROXY_WORKER_URL?.trim();
+	if (explicitValue) {
+		return explicitValue;
+	}
+
+	const serverUrl =
+		baseEnv.SERVER_URL?.trim() || baseEnv.CORPORATION_SERVER_URL?.trim();
+	return serverUrl ? buildWorkerUrlFromServerUrl(serverUrl) : null;
 }
 
 export function getLocalProxyConfig(baseEnv: ProxyEnvSource = process.env): {
@@ -84,7 +106,7 @@ export function getLocalProxyConfig(baseEnv: ProxyEnvSource = process.env): {
 	caCertPath: string;
 	url: string;
 	workerUrl: string | null;
-	workerToken: string | null;
+	workerTokenPath: string;
 	workerForwardHosts: string[];
 } {
 	const host = getLocalProxyHost(baseEnv);
@@ -98,7 +120,7 @@ export function getLocalProxyConfig(baseEnv: ProxyEnvSource = process.env): {
 		caCertPath: `${stateDir}/mitmproxy-ca-cert.pem`,
 		url: `http://${host}:${port}`,
 		workerUrl: getWorkerUrl(baseEnv),
-		workerToken: getWorkerToken(baseEnv),
+		workerTokenPath: getWorkerTokenPath(stateDir),
 		workerForwardHosts: getWorkerForwardHosts(baseEnv),
 	};
 }
@@ -123,4 +145,8 @@ export function buildLocalProxyEnv(
 	};
 }
 
-export { DEFAULT_ENABLED_INTEGRATIONS, DEFAULT_LOCAL_PROXY_STATE_DIR };
+export {
+	DEFAULT_ENABLED_INTEGRATIONS,
+	DEFAULT_LOCAL_PROXY_STATE_DIR,
+	DEFAULT_LOCAL_PROXY_WORKER_TOKEN_FILENAME,
+};

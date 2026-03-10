@@ -5,12 +5,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
-import {
-	buildLocalProxyEnv,
-	getLocalProxyConfig,
-	LOCAL_PROXY_LOG_PATH,
-	LOCAL_PROXY_STDERR_PATH,
-} from "../src/proxy";
+import { LOCAL_PROXY_LOG_PATH, LOCAL_PROXY_STDERR_PATH } from "../src/proxy";
+import { buildLocalProxyEnv, getLocalProxyConfig } from "../src/proxy-config";
 
 const packageDir = resolve(import.meta.dir, "..");
 const repoRoot = resolve(packageDir, "../..");

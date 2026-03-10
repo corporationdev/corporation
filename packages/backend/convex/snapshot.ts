@@ -109,7 +109,6 @@ export async function scheduleInitialSnapshot(
 export const buildInitialSnapshot = authedMutation({
 	args: {
 		projectId: v.id("projects"),
-		setAsDefault: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const project = await ctx.db.get(args.projectId);
@@ -118,7 +117,7 @@ export const buildInitialSnapshot = authedMutation({
 		}
 
 		await scheduleInitialSnapshot(ctx, project, {
-			setAsDefault: args.setAsDefault ?? false,
+			setAsDefault: true,
 		});
 	},
 });

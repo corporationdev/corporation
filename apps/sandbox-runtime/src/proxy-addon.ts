@@ -1,4 +1,4 @@
-export const LOCAL_PROXY_ADDON_SCRIPT = String.raw`
+export const LOCAL_PROXY_ADDON_SCRIPT = `
 import base64
 import json
 import os
@@ -9,7 +9,7 @@ from mitmproxy import http
 
 
 WORKER_URL = os.environ.get("CORPORATION_PROXY_WORKER_URL", "").strip()
-WORKER_TOKEN = os.environ.get("CORPORATION_PROXY_WORKER_TOKEN", "").strip()
+WORKER_TOKEN_PATH = os.environ.get("CORPORATION_PROXY_WORKER_TOKEN_PATH", "").strip()
 WORKER_FORWARD_HOSTS = {
     host.strip().lower()
     for host in os.environ.get("CORPORATION_PROXY_WORKER_FORWARD_HOSTS", "").split(",")
@@ -31,6 +31,17 @@ def build_response_headers(headers) -> dict[str, str]:
     return {str(key): str(value) for key, value in headers.items()}
 
 
+def get_worker_token() -> str:
+    if not WORKER_TOKEN_PATH:
+        return ""
+
+    try:
+        with open(WORKER_TOKEN_PATH, "r", encoding="utf-8") as token_file:
+            return token_file.read().strip()
+    except OSError:
+        return ""
+
+
 def build_worker_request(flow: http.HTTPFlow) -> urllib.request.Request:
     payload: dict[str, object] = {
         "url": flow.request.pretty_url,
@@ -42,8 +53,9 @@ def build_worker_request(flow: http.HTTPFlow) -> urllib.request.Request:
         payload["bodyBase64"] = base64.b64encode(flow.request.raw_content).decode("ascii")
 
     headers = {"content-type": "application/json"}
-    if WORKER_TOKEN:
-        headers["authorization"] = f"Bearer {WORKER_TOKEN}"
+    worker_token = get_worker_token()
+    if worker_token:
+        headers["authorization"] = f"Bearer {worker_token}"
 
     return urllib.request.Request(
         WORKER_URL,

@@ -162,7 +162,6 @@ export const updateSecrets = authedMutation({
 	args: {
 		id: v.id("projects"),
 		secrets: v.record(v.string(), v.string()),
-		setAsDefault: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const project = await ctx.db.get(args.id);
@@ -183,7 +182,7 @@ export const updateSecrets = authedMutation({
 
 		await scheduleRebuildWithEnvs(ctx, updatedProject, {
 			secrets: args.secrets,
-			setAsDefault: args.setAsDefault ?? false,
+			setAsDefault: true,
 		});
 	},
 });

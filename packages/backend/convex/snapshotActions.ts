@@ -15,15 +15,37 @@ import {
 } from "./lib/sandbox";
 
 const SNAPSHOT_ERROR_MAX_LENGTH = 2000;
+const REDACTED_SECRET = "[REDACTED]";
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 
-function formatSnapshotError(error: unknown): string {
-	const message =
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function redactSensitiveValue(message: string, value?: string | null): string {
+	if (!value) {
+		return message;
+	}
+	return message.replace(new RegExp(escapeRegExp(value), "g"), REDACTED_SECRET);
+}
+
+function formatSnapshotError(
+	error: unknown,
+	secretsToRedact: Array<string | null | undefined> = []
+): string {
+	const rawMessage =
 		error instanceof Error
 			? error.message
 			: typeof error === "string"
 				? error
 				: "Unknown snapshot build error";
+	const message = secretsToRedact.reduce<string>(
+		(currentMessage, secret) => redactSensitiveValue(currentMessage, secret),
+		rawMessage.replace(
+			/https:\/\/x-access-token:[^@\s]+@github\.com/g,
+			`https://x-access-token:${REDACTED_SECRET}@github.com`
+		)
+	);
 	if (message.length <= SNAPSHOT_ERROR_MAX_LENGTH) {
 		return message;
 	}
@@ -38,6 +60,7 @@ export const buildInitialSnapshot = internalAction({
 	},
 	handler: async (ctx, args) => {
 		let sandbox: Sandbox | null = null;
+		let githubToken: string | null = null;
 
 		try {
 			const project = await ctx.runQuery(internal.projects.internalGet, {
@@ -74,10 +97,10 @@ export const buildInitialSnapshot = internalAction({
 				}
 
 				const nango = new Nango({ secretKey: nangoSecretKey });
-				const githubToken = await getGitHubToken(nango, project.userId);
+				githubToken = await getGitHubToken(nango, project.userId);
 
 				const workdir = SANDBOX_WORKDIR;
-				const repoUrl = `https://x-access-token:${githubToken}@github.com/${project.githubOwner}/${project.githubName}.git`;
+				const repoUrl = `https://github.com/${project.githubOwner}/${project.githubName}.git`;
 				const safeRepoUrl = quoteShellArg(repoUrl);
 				const safeDefaultBranch = quoteShellArg(project.defaultBranch);
 				const safeWorkdir = quoteShellArg(workdir);
@@ -89,8 +112,22 @@ export const buildInitialSnapshot = internalAction({
 
 				await runWorkspaceCommand(
 					sandbox,
-					`mkdir -p ${safeWorkdir} && find ${safeWorkdir} -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
-					{ cwd: "/", timeoutMs: REPO_SYNC_TIMEOUT_MS }
+					`askpass_script=$(mktemp) && trap 'rm -f "$askpass_script"' EXIT && cat <<'EOF' > "$askpass_script"
+#!/bin/sh
+case "$1" in
+	*Username*) printf '%s\\n' 'x-access-token' ;;
+	*Password*) printf '%s\\n' "$GITHUB_TOKEN" ;;
+	*) printf '\\n' ;;
+esac
+EOF
+chmod 700 "$askpass_script" && mkdir -p ${safeWorkdir} && find ${safeWorkdir} -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && GIT_ASKPASS="$askpass_script" GIT_TERMINAL_PROMPT=0 git clone ${safeRepoUrl} ${safeWorkdir} --branch ${safeDefaultBranch} --single-branch`,
+					{
+						cwd: "/",
+						timeoutMs: REPO_SYNC_TIMEOUT_MS,
+						envs: {
+							GITHUB_TOKEN: githubToken,
+						},
+					}
 				);
 			} else {
 				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
@@ -112,7 +149,7 @@ export const buildInitialSnapshot = internalAction({
 			await ctx.runMutation(internal.snapshot.completeSnapshot, {
 				snapshotId: args.snapshotId,
 				status: "error",
-				error: formatSnapshotError(error),
+				error: formatSnapshotError(error, [githubToken]),
 			});
 			throw error;
 		} finally {
