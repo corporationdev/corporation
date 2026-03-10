@@ -130,4 +130,8 @@ export function buildLocalProxyEnv(): Record<string, string> {
 	};
 }
 
-export { LOCAL_PROXY_CA_CERT_PATH, LOCAL_PROXY_LOG_PATH, LOCAL_PROXY_STDERR_PATH };
+export {
+	LOCAL_PROXY_CA_CERT_PATH,
+	LOCAL_PROXY_LOG_PATH,
+	LOCAL_PROXY_STDERR_PATH,
+};

@@ -33,12 +33,10 @@ function requireEnv(name: string): string {
 	return value;
 }
 
-function getRuntimeAuthConfig():
-	| {
-			convexSiteUrl: string;
-			ownerUserId: string;
-	  }
-	| null {
+function getRuntimeAuthConfig(): {
+	convexSiteUrl: string;
+	ownerUserId: string;
+} | null {
 	try {
 		return {
 			convexSiteUrl: requireEnv("CORPORATION_CONVEX_SITE_URL"),

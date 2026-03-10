@@ -145,9 +145,12 @@ describeIf("sandbox-runtime proxy integration", () => {
 			throw new Error("sandbox not initialized");
 		}
 
-		const processResult = await currentSandbox.commands.run("pgrep -af mitmdump", {
-			timeoutMs: 5000,
-		});
+		const processResult = await currentSandbox.commands.run(
+			"pgrep -af mitmdump",
+			{
+				timeoutMs: 5000,
+			}
+		);
 		expect(processResult.stdout).toContain("mitmdump");
 
 		const certResult = await currentSandbox.commands.run(
