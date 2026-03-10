@@ -207,7 +207,6 @@ export const rebuildWithEnvs = internalAction({
 		snapshotId: v.id("snapshots"),
 		sourceExternalSnapshotId: v.string(),
 		envs: v.record(v.string(), v.string()),
-		setAsDefault: v.boolean(),
 	},
 	handler: async (ctx, args) => {
 		let sandbox: Sandbox | null = null;
@@ -225,7 +224,7 @@ export const rebuildWithEnvs = internalAction({
 				projectId: args.projectId,
 				status: "ready",
 				externalSnapshotId: snapshot.snapshotId,
-				setAsDefault: args.setAsDefault,
+				setAsDefault: true,
 			});
 		} catch (error) {
 			await ctx.runMutation(internal.snapshot.completeSnapshot, {

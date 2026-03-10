@@ -125,7 +125,7 @@ export const buildInitialSnapshot = authedMutation({
 export async function scheduleRebuildWithEnvs(
 	ctx: MutationCtx,
 	project: Doc<"projects">,
-	options: { secrets: Record<string, string>; setAsDefault: boolean }
+	options: { secrets: Record<string, string> }
 ): Promise<Id<"snapshots">> {
 	if (!project.defaultSnapshotId) {
 		throw new ConvexError("Project has no default snapshot to rebuild from");
@@ -147,7 +147,6 @@ export async function scheduleRebuildWithEnvs(
 		snapshotId,
 		sourceExternalSnapshotId: sourceSnapshot.externalSnapshotId,
 		envs: options.secrets,
-		setAsDefault: options.setAsDefault,
 	});
 
 	return snapshotId;
