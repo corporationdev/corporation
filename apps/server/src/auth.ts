@@ -28,19 +28,27 @@ function getJWKS(convexSiteUrl: string) {
 	return cachedJWKS;
 }
 
+export async function verifyAuthToken(
+	token: string,
+	convexSiteUrl: string
+): Promise<JWTPayload | null> {
+	try {
+		const jwks = getJWKS(convexSiteUrl);
+		const { payload } = await jwtVerify(token, jwks);
+		const result = jwtPayloadSchema.safeParse(payload);
+		return result.success ? result.data : null;
+	} catch {
+		return null;
+	}
+}
+
 export const authMiddleware = bearerAuth({
 	verifyToken: async (token, c) => {
-		try {
-			const jwks = getJWKS(c.env.CONVEX_SITE_URL);
-			const { payload } = await jwtVerify(token, jwks);
-			const result = jwtPayloadSchema.safeParse(payload);
-			if (!result.success) {
-				return false;
-			}
-			c.set("jwtPayload", result.data);
-			return true;
-		} catch {
+		const payload = await verifyAuthToken(token, c.env.CONVEX_SITE_URL);
+		if (!payload) {
 			return false;
 		}
+		c.set("jwtPayload", payload);
+		return true;
 	},
 });

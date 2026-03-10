@@ -73,3 +73,69 @@ describe("sandbox-runtime proxy", () => {
 		expect(result.stdout.trim()).toBe("200");
 	});
 });
+
+if (process.env.SANDBOX_RUNTIME_TEST_TARGET !== "sandbox") {
+	describe("sandbox-runtime proxy worker forwarding", () => {
+		let harness: RuntimeHarness | null = null;
+		let workerServer: Bun.Server<unknown> | null = null;
+		let forwardedPayload:
+			| {
+					url: string;
+					method: string;
+					headers?: Record<string, string>;
+			  }
+			| null = null;
+
+		beforeAll(async () => {
+			workerServer = Bun.serve({
+				port: 0,
+				fetch: async (request) => {
+					if (request.method !== "POST" || request.url.indexOf("/api/proxy/http") === -1) {
+						return new Response("not found", { status: 404 });
+					}
+
+					forwardedPayload = (await request.json()) as typeof forwardedPayload;
+
+					return new Response("worker-forwarded", {
+						status: 200,
+						headers: {
+							"content-type": "text/plain",
+							"x-worker-forwarded": "yes",
+						},
+					});
+				},
+			});
+
+			harness = await createRuntimeHarness({
+				runtimeEnv: {
+					CORPORATION_PROXY_WORKER_URL: `http://127.0.0.1:${workerServer.port}/api/proxy/http`,
+					CORPORATION_PROXY_MATCH_HOSTS: "forward.test",
+				},
+			});
+			await harness.setup();
+		}, 300_000);
+
+		afterAll(async () => {
+			await harness?.teardown();
+			await workerServer?.stop(true);
+		}, 300_000);
+
+		test("forwards matched hosts through the worker route", async () => {
+			if (!harness) {
+				throw new Error("harness not initialized");
+			}
+
+			const result = await harness.runWithProxy(
+				"curl -sS --noproxy '' http://forward.test/worker-path?hello=world",
+				20_000
+			);
+
+			expect(result.stdout.trim()).toBe("worker-forwarded");
+			expect(forwardedPayload).not.toBeNull();
+			expect(forwardedPayload?.url).toBe(
+				"http://forward.test/worker-path?hello=world"
+			);
+			expect(forwardedPayload?.method).toBe("GET");
+		});
+	});
+}

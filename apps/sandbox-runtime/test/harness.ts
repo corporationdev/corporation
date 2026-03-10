@@ -44,6 +44,10 @@ export type RuntimeHarness = {
 	) => Promise<RuntimeCommandResult>;
 };
 
+type RuntimeHarnessOptions = {
+	runtimeEnv?: Record<string, string | undefined>;
+};
+
 function shellQuote(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`;
 }
@@ -191,7 +195,9 @@ function buildPrefixedProxyCommand(
 		.join(" ")} ${command}`;
 }
 
-async function createLocalHarness(): Promise<RuntimeHarness> {
+async function createLocalHarness(
+	options?: RuntimeHarnessOptions
+): Promise<RuntimeHarness> {
 	const tempDir = await mkdtemp(resolve(tmpdir(), "sandbox-runtime-local-"));
 	const bundlePath = await buildBundle(tempDir);
 	const runtimePort = randomPort();
@@ -201,6 +207,7 @@ async function createLocalHarness(): Promise<RuntimeHarness> {
 		...process.env,
 		CORPORATION_PROXY_PORT: String(proxyPort),
 		CORPORATION_PROXY_STATE_DIR: proxyStateDir,
+		...options?.runtimeEnv,
 	};
 	const proxyConfig = getLocalProxyConfig(runtimeEnv);
 
@@ -263,7 +270,9 @@ async function createLocalHarness(): Promise<RuntimeHarness> {
 	};
 }
 
-async function createSandboxHarness(): Promise<RuntimeHarness> {
+async function createSandboxHarness(
+	options?: RuntimeHarnessOptions
+): Promise<RuntimeHarness> {
 	const apiKey = process.env.E2B_API_KEY;
 	if (!apiKey) {
 		throw new Error("Missing E2B_API_KEY for sandbox integration tests");
@@ -279,6 +288,7 @@ async function createSandboxHarness(): Promise<RuntimeHarness> {
 	const runtimeEnv = {
 		CORPORATION_PROXY_PORT: String(proxyPort),
 		CORPORATION_PROXY_STATE_DIR: proxyStateDir,
+		...options?.runtimeEnv,
 	};
 	const proxyConfig = getLocalProxyConfig(runtimeEnv);
 	const sandbox = await Sandbox.create(template, {
@@ -349,11 +359,13 @@ async function createSandboxHarness(): Promise<RuntimeHarness> {
 	};
 }
 
-export async function createRuntimeHarness(): Promise<RuntimeHarness> {
+export async function createRuntimeHarness(
+	options?: RuntimeHarnessOptions
+): Promise<RuntimeHarness> {
 	const mode = process.env.SANDBOX_RUNTIME_TEST_TARGET === "sandbox"
 		? "sandbox"
 		: "local";
 	return mode === "sandbox"
-		? await createSandboxHarness()
-		: await createLocalHarness();
+		? await createSandboxHarness(options)
+		: await createLocalHarness(options);
 }

@@ -1,13 +1,17 @@
 /* global Bun */
 
 import { existsSync, mkdirSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import net from "node:net";
+import { resolve } from "node:path";
+import { LOCAL_PROXY_ADDON_SCRIPT } from "./proxy-addon";
 import { buildLocalProxyEnv, getLocalProxyConfig } from "./proxy-config";
 import { log } from "./logging";
 
 const LOCAL_PROXY_LOG_PATH = "/tmp/corporation-mitmproxy.log";
 const LOCAL_PROXY_ERROR_LOG_PATH = "/tmp/corporation-mitmproxy.stderr.log";
 const LOCAL_PROXY_START_TIMEOUT_MS = 10_000;
+const LOCAL_PROXY_ADDON_FILENAME = "proxy-addon.py";
 
 let proxyProc: ReturnType<typeof Bun.spawn> | null = null;
 let proxyStartPromise: Promise<void> | null = null;
@@ -58,6 +62,7 @@ async function waitForProxyReady(): Promise<void> {
 
 function buildMitmCommand(): string {
 	const proxyConfig = getLocalProxyConfig(process.env);
+	const addonPath = resolve(proxyConfig.stateDir, LOCAL_PROXY_ADDON_FILENAME);
 
 	return [
 		`export SSL_CERT_FILE=${shellQuote("/etc/ssl/certs/ca-certificates.crt")};`,
@@ -70,9 +75,18 @@ function buildMitmCommand(): string {
 		"--set block_global=false",
 		"--set flow_detail=0",
 		"--set termlog_verbosity=error",
+		`-s ${shellQuote(addonPath)}`,
 		`>> ${shellQuote(LOCAL_PROXY_LOG_PATH)}`,
 		`2>> ${shellQuote(LOCAL_PROXY_ERROR_LOG_PATH)}`,
 	].join(" ");
+}
+
+async function writeProxyAddon(): Promise<void> {
+	const proxyConfig = getLocalProxyConfig(process.env);
+	await writeFile(
+		resolve(proxyConfig.stateDir, LOCAL_PROXY_ADDON_FILENAME),
+		LOCAL_PROXY_ADDON_SCRIPT
+	);
 }
 
 async function startLocalProxy(): Promise<void> {
@@ -86,6 +100,7 @@ async function startLocalProxy(): Promise<void> {
 
 	const proxyConfig = getLocalProxyConfig(process.env);
 	mkdirSync(proxyConfig.stateDir, { recursive: true });
+	await writeProxyAddon();
 
 	proxyProc = Bun.spawn(["bash", "-lc", buildMitmCommand()], {
 		stdin: "ignore",

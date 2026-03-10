@@ -6,7 +6,7 @@ const DEFAULT_NO_PROXY_ENTRIES = ["localhost", "127.0.0.1", "::1"];
 
 type ProxyEnvSource = Record<string, string | undefined>;
 
-function splitNoProxy(value: string | undefined): string[] {
+function splitCsv(value: string | undefined): string[] {
 	if (!value) {
 		return [];
 	}
@@ -14,6 +14,10 @@ function splitNoProxy(value: string | undefined): string[] {
 		.split(",")
 		.map((entry) => entry.trim())
 		.filter((entry) => entry.length > 0);
+}
+
+function splitNoProxy(value: string | undefined): string[] {
+	return splitCsv(value);
 }
 
 function buildNoProxyValue(baseEnv: ProxyEnvSource): string {
@@ -44,6 +48,22 @@ function getLocalProxyStateDir(baseEnv: ProxyEnvSource): string {
 	return baseEnv.CORPORATION_PROXY_STATE_DIR || DEFAULT_LOCAL_PROXY_STATE_DIR;
 }
 
+function getLocalProxyWorkerUrl(baseEnv: ProxyEnvSource): string | null {
+	const value = baseEnv.CORPORATION_PROXY_WORKER_URL?.trim();
+	return value ? value : null;
+}
+
+function getLocalProxyMatchHosts(baseEnv: ProxyEnvSource): string[] {
+	return splitCsv(baseEnv.CORPORATION_PROXY_MATCH_HOSTS).map((host) =>
+		host.toLowerCase()
+	);
+}
+
+function getLocalProxyWorkerToken(baseEnv: ProxyEnvSource): string | null {
+	const value = baseEnv.CORPORATION_PROXY_WORKER_TOKEN?.trim();
+	return value ? value : null;
+}
+
 export function getLocalProxyConfig(
 	baseEnv: ProxyEnvSource = process.env
 ): {
@@ -52,6 +72,9 @@ export function getLocalProxyConfig(
 	stateDir: string;
 	caCertPath: string;
 	url: string;
+	workerUrl: string | null;
+	matchHosts: string[];
+	workerToken: string | null;
 } {
 	const host = getLocalProxyHost(baseEnv);
 	const port = getLocalProxyPort(baseEnv);
@@ -63,6 +86,9 @@ export function getLocalProxyConfig(
 		stateDir,
 		caCertPath: `${stateDir}/mitmproxy-ca-cert.pem`,
 		url: `http://${host}:${port}`,
+		workerUrl: getLocalProxyWorkerUrl(baseEnv),
+		matchHosts: getLocalProxyMatchHosts(baseEnv),
+		workerToken: getLocalProxyWorkerToken(baseEnv),
 	};
 }
 
