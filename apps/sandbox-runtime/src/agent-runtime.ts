@@ -9,8 +9,8 @@ import type {
 	SessionEvent,
 } from "@corporation/contracts/sandbox-do";
 import { turnRunnerCallbackPayloadSchema } from "@corporation/contracts/sandbox-do";
-import { getLatestVerifiedAuthToken } from "./auth-state";
 import { isAuthRequiredError, probeAgents } from "./agent-probe";
+import { getLatestVerifiedAuthToken } from "./auth-state";
 import {
 	ACP_PROTOCOL_VERSION,
 	CALLBACK_MAX_ATTEMPTS,

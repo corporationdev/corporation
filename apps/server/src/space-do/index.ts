@@ -279,6 +279,5 @@ export const space = actor({
 		resize: (c, cols: number, rows: number) =>
 			terminalResize(asSpaceRuntimeContext(c), cols, rows),
 		getDesktopStreamUrl: (c) => getDesktopStreamUrl(asSpaceRuntimeContext(c)),
-		keepAliveSandbox: async (): Promise<void> => {},
 	},
 });
