@@ -182,7 +182,6 @@ export const updateSecrets = authedMutation({
 
 		await scheduleRebuildWithEnvs(ctx, updatedProject, {
 			secrets: args.secrets,
-			setAsDefault: true,
 		});
 	},
 });
