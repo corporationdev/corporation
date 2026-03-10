@@ -34,9 +34,9 @@ async function bootAgentAndGetUrl(
 	space: Space
 ): Promise<string> {
 	const convexSiteUrl = process.env.CONVEX_SITE_URL;
-	const serverUrl = process.env.SERVER_PUBLIC_URL;
+	const serverUrl = process.env.SERVER_URL;
 	if (!(convexSiteUrl && serverUrl)) {
-		throw new Error("Missing CONVEX_SITE_URL or SERVER_PUBLIC_URL env var");
+		throw new Error("Missing CONVEX_SITE_URL or SERVER_URL env var");
 	}
 
 	await runWorkspaceCommand(
@@ -92,7 +92,7 @@ async function createSandbox(
 	space: Space
 ): Promise<Sandbox> {
 	const convexSiteUrl = process.env.CONVEX_SITE_URL;
-	const serverUrl = process.env.SERVER_PUBLIC_URL;
+	const serverUrl = process.env.SERVER_URL;
 	if (!(convexSiteUrl && serverUrl)) {
 		throw new Error("Missing CONVEX_SITE_URL or SERVER_URL env var");
 	}

@@ -1,3 +1,4 @@
+import { getStageServerUrl } from "@corporation/config/server-url";
 import { getStageKind } from "@corporation/config/stage";
 
 type ResolveRuntimeContextOptions = {
@@ -19,10 +20,11 @@ export type RuntimeContext = {
 	serverBindings: {
 		CONVEX_URL: string;
 		CONVEX_SITE_URL: string;
-		SERVER_PUBLIC_URL: string;
+		SERVER_URL: string;
 	};
 	convexSyncEnv: {
 		WEB_URL: string;
+		SERVER_URL: string;
 	};
 };
 
@@ -35,10 +37,7 @@ export function resolveRuntimeContext(
 	if (stageKind === "dev") {
 		const CONVEX_URL = "https://hip-impala-208.convex.cloud";
 		const CONVEX_SITE_URL = "https://hip-impala-208.convex.site";
-		// Alchemy overrides SERVER_PUBLIC_URL with the tunnel URL at deploy time,
-		// so this default is just a placeholder for config resolution.
-		const SERVER_PUBLIC_URL =
-			process.env.SERVER_PUBLIC_URL ?? "http://localhost:3000";
+		const SERVER_URL = getStageServerUrl(stage);
 
 		return {
 			webClientEnv: {
@@ -48,17 +47,18 @@ export function resolveRuntimeContext(
 				VITE_STAGE_KIND: "dev",
 			},
 			webDevProxyEnv: {
-				DEV_SERVER_PROXY_TARGET: SERVER_PUBLIC_URL,
+				DEV_SERVER_PROXY_TARGET: "http://localhost:3000",
 				DEV_CONVEX_PROXY_TARGET: CONVEX_URL,
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
 				CONVEX_URL,
 				CONVEX_SITE_URL,
-				SERVER_PUBLIC_URL,
+				SERVER_URL,
 			},
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
+				SERVER_URL,
 			},
 		};
 	}
@@ -66,10 +66,7 @@ export function resolveRuntimeContext(
 	if (stageKind === "sandbox") {
 		const CONVEX_URL = "http://localhost:3210";
 		const CONVEX_SITE_URL = "http://localhost:3211";
-		// Alchemy overrides SERVER_PUBLIC_URL with the tunnel URL at deploy time,
-		// so this default is just a placeholder for config resolution.
-		const SERVER_PUBLIC_URL =
-			process.env.SERVER_PUBLIC_URL ?? "http://localhost:3000";
+		const SERVER_URL = getStageServerUrl(stage);
 
 		return {
 			webClientEnv: {
@@ -79,17 +76,18 @@ export function resolveRuntimeContext(
 				VITE_STAGE_KIND: "sandbox",
 			},
 			webDevProxyEnv: {
-				DEV_SERVER_PROXY_TARGET: SERVER_PUBLIC_URL,
+				DEV_SERVER_PROXY_TARGET: "http://localhost:3000",
 				DEV_CONVEX_PROXY_TARGET: CONVEX_URL,
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
 				CONVEX_URL,
 				CONVEX_SITE_URL,
-				SERVER_PUBLIC_URL,
+				SERVER_URL,
 			},
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
+				SERVER_URL,
 			},
 		};
 	}
@@ -111,6 +109,8 @@ export function resolveRuntimeContext(
 			);
 		}
 
+		const SERVER_URL = getStageServerUrl(stage);
+
 		return {
 			webClientEnv: {
 				VITE_SERVER_URL: "/api",
@@ -121,10 +121,11 @@ export function resolveRuntimeContext(
 			serverBindings: {
 				CONVEX_URL,
 				CONVEX_SITE_URL,
-				SERVER_PUBLIC_URL: `https://${stage}.corporation.dev/api`,
+				SERVER_URL,
 			},
 			convexSyncEnv: {
 				WEB_URL: `https://${stage}.corporation.dev`,
+				SERVER_URL,
 			},
 		};
 	}
@@ -132,7 +133,7 @@ export function resolveRuntimeContext(
 	if (stageKind === "production") {
 		const CONVEX_URL = "https://joyous-snake-377.convex.cloud";
 		const CONVEX_SITE_URL = "https://joyous-snake-377.convex.site";
-
+		const SERVER_URL = getStageServerUrl(stage);
 		return {
 			webClientEnv: {
 				VITE_SERVER_URL: "/api",
@@ -143,10 +144,11 @@ export function resolveRuntimeContext(
 			serverBindings: {
 				CONVEX_URL,
 				CONVEX_SITE_URL,
-				SERVER_PUBLIC_URL: "https://app.corporation.dev/api",
+				SERVER_URL,
 			},
 			convexSyncEnv: {
 				WEB_URL: "https://app.corporation.dev",
+				SERVER_URL,
 			},
 		};
 	}
