@@ -9,6 +9,7 @@ import type {
 	SessionEvent,
 } from "@corporation/contracts/sandbox-do";
 import { turnRunnerCallbackPayloadSchema } from "@corporation/contracts/sandbox-do";
+import { getLatestVerifiedAuthToken } from "./auth-state";
 import { isAuthRequiredError, probeAgents } from "./agent-probe";
 import {
 	ACP_PROTOCOL_VERSION,
@@ -33,6 +34,8 @@ import {
 	stdioWrite,
 	teardownBridge,
 } from "./stdio-bridge";
+
+const RIVET_CONN_PARAMS_HEADER = "x-rivet-conn-params";
 
 type SessionBridge = {
 	bridge: StdioBridge;
@@ -186,12 +189,23 @@ function createTurnCallbackDispatcher(params: {
 				if (callbackDeliveryBroken && !options.force) {
 					throw new Error("Callback delivery unavailable after prior failure");
 				}
+				const runtimeAuth = getLatestVerifiedAuthToken();
+				if (!runtimeAuth) {
+					throw new Error(
+						"Callback delivery unavailable without a verified runtime auth token"
+					);
+				}
 				try {
 					await postJsonWithRetry(
 						callbackUrl,
 						{ args: [payload] },
 						CALLBACK_TIMEOUT_MS,
-						CALLBACK_MAX_ATTEMPTS
+						CALLBACK_MAX_ATTEMPTS,
+						{
+							[RIVET_CONN_PARAMS_HEADER]: JSON.stringify({
+								authToken: runtimeAuth.token,
+							}),
+						}
 					);
 				} catch (error) {
 					if (!callbackDeliveryBroken) {
