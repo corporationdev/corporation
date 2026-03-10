@@ -1,18 +1,19 @@
 /* global Bun */
 
 import { existsSync, mkdirSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import net from "node:net";
+import { resolve } from "node:path";
 import { log } from "./logging";
+import { LOCAL_PROXY_ADDON_SCRIPT } from "./proxy-addon";
+import { buildLocalProxyEnv, getLocalProxyConfig } from "./proxy-config";
 
 const SYSTEM_CA_CERT_PATH = "/etc/ssl/certs/ca-certificates.crt";
 const SYSTEM_CA_CERT_DIR = "/etc/ssl/certs";
-const LOCAL_PROXY_HOST = "127.0.0.1";
-const LOCAL_PROXY_PORT = 8877;
-const LOCAL_PROXY_STATE_DIR = "/tmp/corporation-mitmproxy";
-const LOCAL_PROXY_CA_CERT_PATH = `${LOCAL_PROXY_STATE_DIR}/mitmproxy-ca-cert.pem`;
 const LOCAL_PROXY_LOG_PATH = "/tmp/corporation-mitmproxy.log";
 const LOCAL_PROXY_STDERR_PATH = "/tmp/corporation-mitmproxy.stderr.log";
 const LOCAL_PROXY_START_TIMEOUT_MS = 10_000;
+const LOCAL_PROXY_ADDON_FILENAME = "proxy-addon.py";
 
 let proxyProc: ReturnType<typeof Bun.spawn> | null = null;
 let proxyStartPromise: Promise<void> | null = null;
@@ -36,15 +37,19 @@ function canConnect(host: string, port: number): Promise<boolean> {
 }
 
 function buildMitmdumpCommand(): string {
+	const proxyConfig = getLocalProxyConfig(process.env);
+	const addonPath = resolve(proxyConfig.stateDir, LOCAL_PROXY_ADDON_FILENAME);
+
 	return [
 		"exec mitmdump",
-		`--listen-host ${shellEscape(LOCAL_PROXY_HOST)}`,
-		`--listen-port ${String(LOCAL_PROXY_PORT)}`,
-		`--set confdir=${shellEscape(LOCAL_PROXY_STATE_DIR)}`,
+		`--listen-host ${shellEscape(proxyConfig.host)}`,
+		`--listen-port ${String(proxyConfig.port)}`,
+		`--set confdir=${shellEscape(proxyConfig.stateDir)}`,
 		`--set ssl_verify_upstream_trusted_ca=${shellEscape(SYSTEM_CA_CERT_PATH)}`,
 		`--set ssl_verify_upstream_trusted_confdir=${shellEscape(SYSTEM_CA_CERT_DIR)}`,
 		"--set flow_detail=0",
 		"--set termlog_verbosity=error",
+		`-s ${shellEscape(addonPath)}`,
 		`>> ${shellEscape(LOCAL_PROXY_LOG_PATH)}`,
 		`2>> ${shellEscape(LOCAL_PROXY_STDERR_PATH)}`,
 	].join(" ");
@@ -52,6 +57,7 @@ function buildMitmdumpCommand(): string {
 
 async function waitForProxyReady(): Promise<void> {
 	const startedAt = Date.now();
+	const proxyConfig = getLocalProxyConfig(process.env);
 
 	while (Date.now() - startedAt < LOCAL_PROXY_START_TIMEOUT_MS) {
 		if (proxyProc?.exitCode !== null && proxyProc?.exitCode !== undefined) {
@@ -61,8 +67,8 @@ async function waitForProxyReady(): Promise<void> {
 		}
 
 		if (
-			existsSync(LOCAL_PROXY_CA_CERT_PATH) &&
-			(await canConnect(LOCAL_PROXY_HOST, LOCAL_PROXY_PORT))
+			existsSync(proxyConfig.caCertPath) &&
+			(await canConnect(proxyConfig.host, proxyConfig.port))
 		) {
 			return;
 		}
@@ -71,7 +77,15 @@ async function waitForProxyReady(): Promise<void> {
 	}
 
 	throw new Error(
-		`Timed out waiting for mitmdump on ${LOCAL_PROXY_HOST}:${LOCAL_PROXY_PORT}`
+		`Timed out waiting for mitmdump on ${proxyConfig.host}:${proxyConfig.port}`
+	);
+}
+
+async function writeProxyAddon(): Promise<void> {
+	const proxyConfig = getLocalProxyConfig(process.env);
+	await writeFile(
+		resolve(proxyConfig.stateDir, LOCAL_PROXY_ADDON_FILENAME),
+		LOCAL_PROXY_ADDON_SCRIPT
 	);
 }
 
@@ -84,9 +98,18 @@ async function startLocalProxy(): Promise<void> {
 		throw new Error("mitmdump is not installed in the sandbox image");
 	}
 
-	mkdirSync(LOCAL_PROXY_STATE_DIR, { recursive: true });
+	const proxyConfig = getLocalProxyConfig(process.env);
+	mkdirSync(proxyConfig.stateDir, { recursive: true });
+	await writeProxyAddon();
 
 	proxyProc = Bun.spawn(["bash", "-lc", buildMitmdumpCommand()], {
+		env: {
+			...process.env,
+			CORPORATION_PROXY_WORKER_URL: proxyConfig.workerUrl ?? "",
+			CORPORATION_PROXY_WORKER_TOKEN: proxyConfig.workerToken ?? "",
+			CORPORATION_PROXY_WORKER_FORWARD_HOSTS:
+				proxyConfig.workerForwardHosts.join(","),
+		},
 		stdin: "ignore",
 		stdout: "ignore",
 		stderr: "ignore",
@@ -95,9 +118,10 @@ async function startLocalProxy(): Promise<void> {
 	await waitForProxyReady();
 
 	log("info", "Sandbox proxy is ready", {
-		host: LOCAL_PROXY_HOST,
-		port: LOCAL_PROXY_PORT,
-		caCertPath: LOCAL_PROXY_CA_CERT_PATH,
+		host: proxyConfig.host,
+		port: proxyConfig.port,
+		caCertPath: proxyConfig.caCertPath,
+		workerForwardHosts: proxyConfig.workerForwardHosts,
 	});
 }
 
@@ -112,22 +136,5 @@ export async function ensureLocalProxyStarted(): Promise<void> {
 	await proxyStartPromise;
 }
 
-export function buildLocalProxyEnv(): Record<string, string> {
-	const proxyUrl = `http://${LOCAL_PROXY_HOST}:${String(LOCAL_PROXY_PORT)}`;
-	const noProxy = "localhost,127.0.0.1,::1";
-
-	return {
-		HTTP_PROXY: proxyUrl,
-		HTTPS_PROXY: proxyUrl,
-		NO_PROXY: noProxy,
-		http_proxy: proxyUrl,
-		https_proxy: proxyUrl,
-		no_proxy: noProxy,
-		CURL_CA_BUNDLE: LOCAL_PROXY_CA_CERT_PATH,
-		NODE_EXTRA_CA_CERTS: LOCAL_PROXY_CA_CERT_PATH,
-		REQUESTS_CA_BUNDLE: LOCAL_PROXY_CA_CERT_PATH,
-		SSL_CERT_FILE: LOCAL_PROXY_CA_CERT_PATH,
-	};
-}
-
-export { LOCAL_PROXY_CA_CERT_PATH, LOCAL_PROXY_LOG_PATH, LOCAL_PROXY_STDERR_PATH };
+export { buildLocalProxyEnv, getLocalProxyConfig };
+export { LOCAL_PROXY_LOG_PATH, LOCAL_PROXY_STDERR_PATH };

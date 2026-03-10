@@ -7,7 +7,7 @@ import { config } from "dotenv";
 import { Sandbox } from "e2b";
 import {
 	buildLocalProxyEnv,
-	LOCAL_PROXY_CA_CERT_PATH,
+	getLocalProxyConfig,
 	LOCAL_PROXY_LOG_PATH,
 	LOCAL_PROXY_STDERR_PATH,
 } from "../src/proxy";
@@ -35,6 +35,7 @@ const runtimeLogPath = "/tmp/sandbox-runtime.integration.log";
 const runtimeStderrPath = "/tmp/sandbox-runtime.integration.stderr.log";
 
 const describeIf = apiKey ? describe : describe.skip;
+const proxyConfig = getLocalProxyConfig();
 
 function shellEscape(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`;
@@ -145,13 +146,16 @@ describeIf("sandbox-runtime proxy integration", () => {
 			throw new Error("sandbox not initialized");
 		}
 
-		const processResult = await currentSandbox.commands.run("pgrep -af mitmdump", {
-			timeoutMs: 5000,
-		});
+		const processResult = await currentSandbox.commands.run(
+			"pgrep -af mitmdump",
+			{
+				timeoutMs: 5000,
+			}
+		);
 		expect(processResult.stdout).toContain("mitmdump");
 
 		const certResult = await currentSandbox.commands.run(
-			`test -f ${shellEscape(LOCAL_PROXY_CA_CERT_PATH)} && echo ok`,
+			`test -f ${shellEscape(proxyConfig.caCertPath)} && echo ok`,
 			{ timeoutMs: 5000 }
 		);
 		expect(certResult.stdout.trim()).toBe("ok");

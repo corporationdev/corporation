@@ -8,7 +8,7 @@ import {
 import { agentCommand, writeAgentConfigs } from "./agents";
 import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
 import { log } from "./logging";
-import { buildLocalProxyEnv } from "./proxy";
+import { buildLocalProxyEnv } from "./proxy-config";
 import {
 	type AcpAgentRequestMethod,
 	type AcpAgentRequestParams,
