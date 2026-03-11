@@ -3,17 +3,17 @@
 import crypto from "node:crypto";
 import { AGENT_METHODS, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import type { AcpEnvelope } from "@corporation/contracts/sandbox-do";
-import { Effect, Layer, Queue, Scope, ServiceMap, Stream } from "effect";
+import { Effect, Layer, Queue, type Scope, ServiceMap, Stream } from "effect";
 import { agentCommand, writeAgentConfigs } from "./agents";
-import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
-import { log } from "./logging";
-import { buildLocalProxyEnv } from "./proxy-config";
 import {
 	AcpBridgeError,
 	type RuntimeActionError as RuntimeActionErrorType,
 	toAcpBridgeError,
 	toRuntimeActionError,
 } from "./errors";
+import { ACP_REQUEST_TIMEOUT_MS } from "./helpers";
+import { log } from "./logging";
+import { buildLocalProxyEnv } from "./proxy-config";
 import {
 	type AcpAgentRequestMethod,
 	type AcpAgentRequestParams,
@@ -24,7 +24,9 @@ import {
 } from "./schemas";
 
 type EnvelopeDirection = "inbound" | "outbound";
-type EnvelopeSink = ((envelope: AcpEnvelope, direction: EnvelopeDirection) => void) | null;
+type EnvelopeSink =
+	| ((envelope: AcpEnvelope, direction: EnvelopeDirection) => void)
+	| null;
 
 type RequestOptions = {
 	signal?: AbortSignal;
@@ -144,10 +146,37 @@ function getAbortError(signal: AbortSignal, fallback: string): Error {
 	return new Error(fallback);
 }
 
+function resolveResultEnvelope<M extends AcpAgentRequestMethod>(
+	_method: M,
+	methodSchemas: ReturnType<typeof getAcpAgentRequestMethodSchemas>,
+	resultEnvelope: AcpEnvelope
+): AcpAgentRequestResult<M> {
+	if ("error" in resultEnvelope) {
+		const error = resultEnvelope.error as {
+			code?: unknown;
+			message?: unknown;
+		};
+		throw new Error(
+			`ACP error (${error.code}): ${error.message ?? JSON.stringify(error)}`
+		);
+	}
+
+	if (!("result" in resultEnvelope)) {
+		throw new Error(
+			`ACP response missing result: ${JSON.stringify(resultEnvelope)}`
+		);
+	}
+
+	const parsedResult = methodSchemas
+		? methodSchemas.result.parse(resultEnvelope.result)
+		: resultEnvelope.result;
+	return parsedResult as AcpAgentRequestResult<M>;
+}
+
 function createBridge(
 	agent: string
 ): Effect.Effect<AcpBridge, RuntimeActionErrorType, Scope.Scope> {
-	return Effect.gen(function*() {
+	return Effect.gen(function* () {
 		const command = agentCommand(agent);
 		log("info", "Spawning agent command (stdio)", { cmd: command.join(" ") });
 		writeAgentConfigs(agent);
@@ -257,16 +286,12 @@ function createBridge(
 
 		if (state.proc.stdout) {
 			yield* Effect.promise(() =>
-				processLinesFromStream(
-					state.proc.stdout,
-					processStdoutLine,
-					() => {
-						state.dead = true;
-						rejectPendingRequests(
-							new Error(`Agent ${agent} stdout stream closed`)
-						);
-					}
-				)
+				processLinesFromStream(state.proc.stdout, processStdoutLine, () => {
+					state.dead = true;
+					rejectPendingRequests(
+						new Error(`Agent ${agent} stdout stream closed`)
+					);
+				})
 			).pipe(Effect.forkScoped);
 		}
 
@@ -290,7 +315,10 @@ function createBridge(
 						stdin.write(`${JSON.stringify(envelope)}\n`);
 					},
 					catch: (cause) =>
-						toAcpBridgeError(`Failed to write ACP envelope for ${agent}`, cause),
+						toAcpBridgeError(
+							`Failed to write ACP envelope for ${agent}`,
+							cause
+						),
 				})
 			),
 			Stream.runDrain,
@@ -298,7 +326,7 @@ function createBridge(
 		);
 
 		yield* Effect.addFinalizer(() =>
-			Effect.gen(function*() {
+			Effect.gen(function* () {
 				state.dead = true;
 				rejectPendingRequests(new Error(`Agent bridge torn down: ${agent}`));
 				yield* Queue.shutdown(outboundQueue);
@@ -350,7 +378,9 @@ function createBridge(
 									}
 									state.pendingResolvers.delete(id);
 									clearTimeout(pending.timer);
-									reject(getAbortError(signal, `ACP request aborted: ${method}`));
+									reject(
+										getAbortError(signal, `ACP request aborted: ${method}`)
+									);
 								};
 
 								const timer = setTimeout(() => {
@@ -359,9 +389,7 @@ function createBridge(
 										return;
 									}
 									state.pendingResolvers.delete(id);
-									reject(
-										new Error(`ACP request timed out: ${method} (${id})`)
-									);
+									reject(new Error(`ACP request timed out: ${method} (${id})`));
 								}, timeoutMs);
 
 								if (options?.signal) {
@@ -384,41 +412,20 @@ function createBridge(
 
 								state.pendingResolvers.set(id, {
 									resolve: (resultEnvelope) => {
-										if ("error" in resultEnvelope) {
-											const error = resultEnvelope.error as {
-												code?: unknown;
-												message?: unknown;
-											};
-											reject(
-												new Error(
-													`ACP error (${error.code}): ${
-														error.message ?? JSON.stringify(error)
-													}`
-												)
-											);
-											return;
-										}
-
-										if (!("result" in resultEnvelope)) {
-											reject(
-												new Error(
-													`ACP response missing result: ${JSON.stringify(
-														resultEnvelope
-													)}`
-												)
-											);
-											return;
-										}
-
 										try {
-											const parsedResult = methodSchemas
-												? methodSchemas.result.parse(resultEnvelope.result)
-												: resultEnvelope.result;
 											resolve(
-												parsedResult as AcpAgentRequestResult<typeof method>
+												resolveResultEnvelope(
+													method,
+													methodSchemas,
+													resultEnvelope
+												)
 											);
 										} catch (error) {
-											reject(error);
+											reject(
+												error instanceof Error
+													? error
+													: new Error(String(error))
+											);
 										}
 									},
 									reject,
@@ -443,7 +450,10 @@ function createBridge(
 						enqueueEnvelope(envelope);
 					},
 					catch: (cause) =>
-						toAcpBridgeError(`Failed to queue ACP envelope for ${agent}`, cause),
+						toAcpBridgeError(
+							`Failed to queue ACP envelope for ${agent}`,
+							cause
+						),
 				}),
 			interrupt: Effect.sync(() => {
 				state.dead = true;
@@ -463,7 +473,9 @@ function createBridge(
 		return bridge;
 	}).pipe(
 		Effect.catchCause((cause) =>
-			Effect.fail(toRuntimeActionError(`Failed to spawn bridge for ${agent}`, cause))
+			Effect.fail(
+				toRuntimeActionError(`Failed to spawn bridge for ${agent}`, cause)
+			)
 		)
 	);
 }
@@ -473,24 +485,26 @@ export function setModelOrThrow(
 	agentSessionId: string,
 	modelId: string
 ): Effect.Effect<void, AcpBridgeError> {
-	return bridge.request(AGENT_METHODS.session_set_model, {
-		sessionId: agentSessionId,
-		modelId,
-	}).pipe(
-		Effect.catchIf(
-			(_error): _error is AcpBridgeError => true,
-			(error) => {
-				if (isUnsupportedMethodError(error)) {
-					log("warn", "session/set_model not supported by agent, skipping", {
-						error: error instanceof Error ? error.message : String(error),
-					});
-					return Effect.succeed(undefined);
+	return bridge
+		.request(AGENT_METHODS.session_set_model, {
+			sessionId: agentSessionId,
+			modelId,
+		})
+		.pipe(
+			Effect.catchIf(
+				(_error): _error is AcpBridgeError => true,
+				(error) => {
+					if (isUnsupportedMethodError(error)) {
+						log("warn", "session/set_model not supported by agent, skipping", {
+							error: error instanceof Error ? error.message : String(error),
+						});
+						return Effect.succeed(undefined);
+					}
+					return Effect.fail(error as AcpBridgeError);
 				}
-				return Effect.fail(error as AcpBridgeError);
-			}
-		),
-		Effect.asVoid
-	);
+			),
+			Effect.asVoid
+		);
 }
 
 export const AcpBridgeFactoryLive = Layer.succeed(AcpBridgeFactory)({

@@ -1,7 +1,7 @@
 /* global Bun */
 
-import { BunRuntime } from "@effect/platform-bun";
 import type { PromptRequestBody } from "@corporation/contracts/sandbox-do";
+import { BunRuntime } from "@effect/platform-bun";
 import { Effect, Exit, Layer, Scope, ServiceMap } from "effect";
 import { createApp } from "./app";
 import { makeHttpTurnEventCallback } from "./http-turn-event-callback";
@@ -37,67 +37,69 @@ function parseArgs(): { host: string; port: number } {
 
 const { host, port } = parseArgs();
 
-const main = Effect.scoped(Effect.gen(function* () {
-	const scope = yield* Scope.make();
-	yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+const main = Effect.scoped(
+	Effect.gen(function* () {
+		const scope = yield* Scope.make();
+		yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
 
-	const services = yield* Layer.buildWithScope(runtimeLayer, scope);
-	const runtimeActions = ServiceMap.get(services, RuntimeActions);
+		const services = yield* Layer.buildWithScope(runtimeLayer, scope);
+		const runtimeActions = ServiceMap.get(services, RuntimeActions);
 
-	const run = <A, E>(effect: Effect.Effect<A, E, never>) =>
-		Effect.runPromise(effect);
-	const app = createApp({
-		startTurn: async (
-			body: PromptRequestBody
-		): Promise<{ error: string } | null> => {
-			const callback = await run(
-				makeHttpTurnEventCallback({
-					turnId: body.turnId,
-					sessionId: body.sessionId,
-					callbackUrl: body.callbackUrl,
-					callbackToken: body.callbackToken,
-				})
-			);
-
-			return await run(
-				runtimeActions
-					.startTurn({
+		const run = <A, E>(effect: Effect.Effect<A, E, never>) =>
+			Effect.runPromise(effect);
+		const app = createApp({
+			startTurn: async (
+				body: PromptRequestBody
+			): Promise<{ error: string } | null> => {
+				const callback = await run(
+					makeHttpTurnEventCallback({
 						turnId: body.turnId,
 						sessionId: body.sessionId,
-						agent: body.agent,
-						cwd: body.cwd,
-						modelId: body.modelId,
-						prompt: body.prompt,
-						onEvent: callback,
+						callbackUrl: body.callbackUrl,
+						callbackToken: body.callbackToken,
 					})
-					.pipe(
-						Effect.as(null),
-						Effect.catchTag("TurnConflictError", (error) =>
-							Effect.succeed({ error: error.error })
+				);
+
+				return await run(
+					runtimeActions
+						.startTurn({
+							turnId: body.turnId,
+							sessionId: body.sessionId,
+							agent: body.agent,
+							cwd: body.cwd,
+							modelId: body.modelId,
+							prompt: body.prompt,
+							onEvent: callback,
+						})
+						.pipe(
+							Effect.as(null),
+							Effect.catchTag("TurnConflictError", (error) =>
+								Effect.succeed({ error: error.error })
+							)
 						)
-					)
-			);
-		},
-		cancelTurn: (turnId) => run(runtimeActions.cancelTurn(turnId)),
-		probeAgents: (body) => run(runtimeActions.probeAgents(body)),
-	});
+				);
+			},
+			cancelTurn: (turnId) => run(runtimeActions.cancelTurn(turnId)),
+			probeAgents: (body) => run(runtimeActions.probeAgents(body)),
+		});
 
-	const server = Bun.serve({
-		hostname: host,
-		port,
-		fetch: app.fetch,
-	});
+		const server = Bun.serve({
+			hostname: host,
+			port,
+			fetch: app.fetch,
+		});
 
-	yield* Effect.addFinalizer(() =>
-		Effect.sync(() => {
-			server.stop(true);
-		})
-	);
+		yield* Effect.addFinalizer(() =>
+			Effect.sync(() => {
+				server.stop(true);
+			})
+		);
 
-	log("info", `Listening on ${host}:${port}`);
-	console.log(`[sandbox-runtime] Listening on ${host}:${port}`);
+		log("info", `Listening on ${host}:${port}`);
+		console.log(`[sandbox-runtime] Listening on ${host}:${port}`);
 
-	yield* Effect.never;
-}));
+		yield* Effect.never;
+	})
+);
 
 BunRuntime.runMain(main);

@@ -1,13 +1,13 @@
 import crypto from "node:crypto";
 import { AGENT_METHODS } from "@agentclientprotocol/sdk";
-import type { AcpEnvelope, SessionEvent } from "@corporation/contracts/sandbox-do";
-import { Effect, Ref, Scope } from "effect";
+import type {
+	AcpEnvelope,
+	SessionEvent,
+} from "@corporation/contracts/sandbox-do";
+import { Effect, Ref, type Scope } from "effect";
 import type { AcpBridgeFactoryShape } from "./acp-bridge";
-import { setModelOrThrow, type AcpBridge } from "./acp-bridge";
-import {
-	RuntimeActionError,
-	toRuntimeActionError,
-} from "./errors";
+import { type AcpBridge, setModelOrThrow } from "./acp-bridge";
+import { type RuntimeActionError, toRuntimeActionError } from "./errors";
 import { ACP_PROTOCOL_VERSION } from "./helpers";
 import { log } from "./logging";
 import { buildSessionMcpServers } from "./mcp-tools";
@@ -117,7 +117,7 @@ async function bootstrapSessionBridge(params: {
 export function makeSessionHandle(
 	params: MakeSessionHandleParams
 ): Effect.Effect<SessionHandle, RuntimeActionError, Scope.Scope> {
-	return Effect.gen(function*() {
+	return Effect.gen(function* () {
 		const bridge = yield* params.bridgeFactory.make(params.agent);
 		const activeTurnIdRef = yield* Ref.make<string | null>(null);
 		const agentSessionId = yield* Effect.tryPromise({
@@ -135,7 +135,7 @@ export function makeSessionHandle(
 			agentSessionId,
 			modelId: params.modelId,
 			isAlive: bridge.isAlive,
-			cancelActiveTurn: Effect.gen(function*() {
+			cancelActiveTurn: Effect.gen(function* () {
 				const activeTurnId = yield* Ref.get(activeTurnIdRef);
 				if (!activeTurnId) {
 					return false;
@@ -154,7 +154,7 @@ export function makeSessionHandle(
 				return true;
 			}),
 			runTurn: (turn) =>
-				Effect.gen(function*() {
+				Effect.gen(function* () {
 					const currentActiveTurnId = yield* Ref.get(activeTurnIdRef);
 					if (currentActiveTurnId && currentActiveTurnId !== turn.turnId) {
 						return yield* Effect.fail(
@@ -165,7 +165,11 @@ export function makeSessionHandle(
 					}
 
 					if (handle.modelId !== turn.modelId && turn.modelId) {
-						yield* setModelOrThrow(bridge, handle.agentSessionId, turn.modelId).pipe(
+						yield* setModelOrThrow(
+							bridge,
+							handle.agentSessionId,
+							turn.modelId
+						).pipe(
 							Effect.mapError((error) =>
 								toRuntimeActionError(
 									`Failed to set model for session ${turn.sessionId}`,
@@ -209,22 +213,28 @@ export function makeSessionHandle(
 					});
 
 					try {
-						yield* bridge.request(AGENT_METHODS.session_prompt, {
-							sessionId: handle.agentSessionId,
-							prompt: turn.prompt,
-						}).pipe(
-							Effect.mapError((error) =>
-								toRuntimeActionError(
-									`Failed to execute prompt for session ${turn.sessionId}`,
-									error
+						yield* bridge
+							.request(AGENT_METHODS.session_prompt, {
+								sessionId: handle.agentSessionId,
+								prompt: turn.prompt,
+							})
+							.pipe(
+								Effect.mapError((error) =>
+									toRuntimeActionError(
+										`Failed to execute prompt for session ${turn.sessionId}`,
+										error
+									)
 								)
-							)
+							);
+						log(
+							"info",
+							"Turn prompt completed, draining queued session events",
+							{
+								turnId: turn.turnId,
+								sessionId: turn.sessionId,
+								agentSessionId: handle.agentSessionId,
+							}
 						);
-						log("info", "Turn prompt completed, draining queued session events", {
-							turnId: turn.turnId,
-							sessionId: turn.sessionId,
-							agentSessionId: handle.agentSessionId,
-						});
 						yield* Effect.tryPromise({
 							try: () => deliveryChain,
 							catch: (cause) => cause,
@@ -249,35 +259,37 @@ export function makeSessionHandle(
 							sessionId: turn.sessionId,
 							agentSessionId: handle.agentSessionId,
 						});
-						yield* turn.onEvent({ _tag: "Completed" }).pipe(
-							Effect.mapError((error) =>
-								toRuntimeActionError(
-									`Failed delivering completion event for ${turn.sessionId}`,
-									error
+						yield* turn
+							.onEvent({ _tag: "Completed" })
+							.pipe(
+								Effect.mapError((error) =>
+									toRuntimeActionError(
+										`Failed delivering completion event for ${turn.sessionId}`,
+										error
+									)
 								)
-							)
-						);
+							);
 						log("info", "Terminal completed event delivered", {
 							turnId: turn.turnId,
 							sessionId: turn.sessionId,
 							agentSessionId: handle.agentSessionId,
 						});
-						} finally {
-							yield* bridge.setEnvelopeSink(null);
-							yield* Ref.set(activeTurnIdRef, null);
-						}
-					}),
-			};
+					} finally {
+						yield* bridge.setEnvelopeSink(null);
+						yield* Ref.set(activeTurnIdRef, null);
+					}
+				}),
+		};
 
 		return handle;
-		}).pipe(
-			Effect.catchCause((cause) =>
-				Effect.fail(
-					toRuntimeActionError(
-						`Failed to initialize session handle for ${params.sessionId}`,
-						cause
-					)
+	}).pipe(
+		Effect.catchCause((cause) =>
+			Effect.fail(
+				toRuntimeActionError(
+					`Failed to initialize session handle for ${params.sessionId}`,
+					cause
 				)
 			)
-		);
-	}
+		)
+	);
+}

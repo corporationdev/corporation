@@ -1,7 +1,9 @@
 import { Data } from "effect";
 
 export class TurnConflictError extends Data.TaggedError("TurnConflictError")<{
-	readonly error: "Turn already in progress" | "Session already has an active turn";
+	readonly error:
+		| "Turn already in progress"
+		| "Session already has an active turn";
 }> {}
 
 export class SessionReuseError extends Data.TaggedError("SessionReuseError")<{

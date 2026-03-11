@@ -1,8 +1,16 @@
 import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
-import { Effect, Exit, Fiber, Layer, Ref, Scope, ServiceMap } from "effect";
+import {
+	Effect,
+	Exit,
+	type Fiber,
+	Layer,
+	Ref,
+	Scope,
+	ServiceMap,
+} from "effect";
 import { AcpBridgeFactory } from "./acp-bridge";
 import {
-	RuntimeActionError,
+	type RuntimeActionError,
 	SessionReuseError,
 	TurnConflictError,
 	toRuntimeActionError,
@@ -31,7 +39,9 @@ type SessionRegistryState = {
 };
 
 type SessionRegistryShape = {
-	reserveTurn: (request: StartTurnRequest) => Effect.Effect<void, TurnConflictError>;
+	reserveTurn: (
+		request: StartTurnRequest
+	) => Effect.Effect<void, TurnConflictError>;
 	releaseTurn: (turnId: string, sessionId: string) => Effect.Effect<void>;
 	attachTurnFiber: (
 		turnId: string,
@@ -46,12 +56,16 @@ type SessionRegistryShape = {
 	) => Effect.Effect<SessionHandle, SessionReuseError | RuntimeActionError>;
 	getSessionHandle: (sessionId: string) => Effect.Effect<SessionHandle | null>;
 	clearCachedVerifiedProbe: (agent: string) => Effect.Effect<void>;
-	getVerifiedProbeEntry: (agent: string) => Effect.Effect<VerifiedProbeEntry | null>;
+	getVerifiedProbeEntry: (
+		agent: string
+	) => Effect.Effect<VerifiedProbeEntry | null>;
 	setVerifiedProbeEntry: (
 		agent: string,
 		entry: VerifiedProbeEntry | null
 	) => Effect.Effect<void>;
-	getInFlightProbe: (agent: string) => Effect.Effect<Promise<AgentProbeAgent> | null>;
+	getInFlightProbe: (
+		agent: string
+	) => Effect.Effect<Promise<AgentProbeAgent> | null>;
 	setInFlightProbe: (
 		agent: string,
 		promise: Promise<AgentProbeAgent> | null
@@ -76,12 +90,12 @@ function emptyState(): SessionRegistryState {
 }
 
 export const SessionRegistryLive = Layer.effect(SessionRegistry)(
-	Effect.gen(function*() {
+	Effect.gen(function* () {
 		const bridgeFactory = yield* AcpBridgeFactory;
 		const stateRef = yield* Ref.make(emptyState());
 
 		const discardDeadHandle = (sessionId: string) =>
-			Effect.gen(function*() {
+			Effect.gen(function* () {
 				const managedHandle = yield* Ref.modify(stateRef, (state) => {
 					const nextSessionHandles = new Map(state.sessionHandles);
 					const nextPreviousAgentSessionIds = new Map(
@@ -116,7 +130,7 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 
 		const registry: SessionRegistryShape = {
 			reserveTurn: (request) =>
-				Effect.gen(function*() {
+				Effect.gen(function* () {
 					const hasConflict = yield* Ref.modify(stateRef, (state) => {
 						if (state.activeTurns.has(request.turnId)) {
 							return [
@@ -191,7 +205,7 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 					Effect.map((state) => state.activeTurns.get(turnId) ?? null)
 				),
 			getSessionHandle: (sessionId) =>
-				Effect.gen(function*() {
+				Effect.gen(function* () {
 					const managedHandle = yield* Ref.get(stateRef).pipe(
 						Effect.map((state) => state.sessionHandles.get(sessionId) ?? null)
 					);
@@ -208,7 +222,7 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 					return managedHandle.handle;
 				}),
 			getOrCreateSessionHandle: (request) =>
-				Effect.gen(function*() {
+				Effect.gen(function* () {
 					const existing = yield* registry.getSessionHandle(request.sessionId);
 					if (existing) {
 						if (existing.agent !== request.agent) {
@@ -228,28 +242,32 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 						return existing;
 					}
 
-					const previousAgentSessionId = yield* Ref.modify(stateRef, (state) => {
-						const nextPreviousAgentSessionIds = new Map(
-							state.previousAgentSessionIds
-						);
-						const previous = nextPreviousAgentSessionIds.get(request.sessionId) ?? null;
-						nextPreviousAgentSessionIds.delete(request.sessionId);
-						return [
-							previous,
-							{
-								...state,
-								previousAgentSessionIds: nextPreviousAgentSessionIds,
-							},
-						] as const;
-					});
+					const previousAgentSessionId = yield* Ref.modify(
+						stateRef,
+						(state) => {
+							const nextPreviousAgentSessionIds = new Map(
+								state.previousAgentSessionIds
+							);
+							const previous =
+								nextPreviousAgentSessionIds.get(request.sessionId) ?? null;
+							nextPreviousAgentSessionIds.delete(request.sessionId);
+							return [
+								previous,
+								{
+									...state,
+									previousAgentSessionIds: nextPreviousAgentSessionIds,
+								},
+							] as const;
+						}
+					);
 
-						const scope = yield* Scope.make();
-						const handle = yield* makeSessionHandle({
-							bridgeFactory,
-							sessionId: request.sessionId,
-							agent: request.agent,
-							cwd: request.cwd,
-							modelId: request.modelId,
+					const scope = yield* Scope.make();
+					const handle = yield* makeSessionHandle({
+						bridgeFactory,
+						sessionId: request.sessionId,
+						agent: request.agent,
+						cwd: request.cwd,
+						modelId: request.modelId,
 						previousAgentSessionId,
 					}).pipe(Scope.provide(scope));
 
@@ -260,16 +278,16 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 					});
 
 					return handle;
-					}).pipe(
-						Effect.catchCause((cause) =>
-							Effect.fail(
-								toRuntimeActionError(
-									`Failed to get or create session handle for ${request.sessionId}`,
-									cause
-								)
+				}).pipe(
+					Effect.catchCause((cause) =>
+						Effect.fail(
+							toRuntimeActionError(
+								`Failed to get or create session handle for ${request.sessionId}`,
+								cause
 							)
 						)
-					),
+					)
+				),
 			clearCachedVerifiedProbe: (agent) =>
 				Ref.update(stateRef, (state) => {
 					const nextVerifiedProbeByAgent = new Map(state.verifiedProbeByAgent);

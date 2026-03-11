@@ -12,7 +12,7 @@
     "rootDirs": ["."],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["../../packages/app/src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src", "../../packages/env/env.d.ts"]

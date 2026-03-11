@@ -25,19 +25,23 @@ export function createApp(runtime: AppRuntime) {
 	app.use("/v1/*", runtimeAuthMiddleware);
 
 	return app
-		.post("/v1/prompt", zValidator("json", promptRequestBodySchema), async (c) => {
-			const body = c.req.valid("json");
+		.post(
+			"/v1/prompt",
+			zValidator("json", promptRequestBodySchema),
+			async (c) => {
+				const body = c.req.valid("json");
 
-			const reserveError = await runtime.startTurn(body);
-			if (reserveError) {
-				return c.json(
-					{ error: reserveError.error as "Turn already in progress" },
-					409
-				);
+				const reserveError = await runtime.startTurn(body);
+				if (reserveError) {
+					return c.json(
+						{ error: reserveError.error as "Turn already in progress" },
+						409
+					);
+				}
+
+				return c.json({ accepted: true as const }, 202);
 			}
-
-			return c.json({ accepted: true as const }, 202);
-		})
+		)
 		.post(
 			"/v1/agents/probe",
 			zValidator("json", agentProbeRequestBodySchema),
