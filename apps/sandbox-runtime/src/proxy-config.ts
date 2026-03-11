@@ -1,14 +1,11 @@
+import { getProxyForwardHosts } from "@corporation/config/proxy-integrations";
+
 const DEFAULT_LOCAL_PROXY_HOST = "127.0.0.1";
 const DEFAULT_LOCAL_PROXY_PORT = 8877;
 const DEFAULT_LOCAL_PROXY_STATE_DIR = "/tmp/corporation-mitmproxy";
 const DEFAULT_LOCAL_PROXY_WORKER_TOKEN_FILENAME = "worker-token.txt";
 const DEFAULT_NO_PROXY_ENTRIES = ["localhost", "127.0.0.1", "::1"];
 const TRAILING_SLASH_RE = /\/$/;
-const DEFAULT_ENABLED_INTEGRATIONS = ["github"];
-
-const WORKER_FORWARD_HOSTS_BY_INTEGRATION: Record<string, string[]> = {
-	github: ["api.github.com", "uploads.github.com"],
-};
 
 type ProxyEnvSource = Record<string, string | undefined>;
 
@@ -52,25 +49,6 @@ function getLocalProxyStateDir(baseEnv: ProxyEnvSource): string {
 
 function getWorkerTokenPath(stateDir: string): string {
 	return `${stateDir}/${DEFAULT_LOCAL_PROXY_WORKER_TOKEN_FILENAME}`;
-}
-
-function getEnabledIntegrations(baseEnv: ProxyEnvSource): string[] {
-	const configured = splitCsv(
-		baseEnv.CORPORATION_PROXY_ENABLED_INTEGRATIONS
-	).map((value) => value.toLowerCase());
-	return configured.length > 0 ? configured : DEFAULT_ENABLED_INTEGRATIONS;
-}
-
-function getWorkerForwardHosts(baseEnv: ProxyEnvSource): string[] {
-	const hosts = new Set<string>();
-
-	for (const integration of getEnabledIntegrations(baseEnv)) {
-		for (const host of WORKER_FORWARD_HOSTS_BY_INTEGRATION[integration] ?? []) {
-			hosts.add(host);
-		}
-	}
-
-	return Array.from(hosts);
 }
 
 function buildWorkerUrlFromServerUrl(serverUrl: string): string | null {
@@ -121,7 +99,7 @@ export function getLocalProxyConfig(baseEnv: ProxyEnvSource = process.env): {
 		url: `http://${host}:${port}`,
 		workerUrl: getWorkerUrl(baseEnv),
 		workerTokenPath: getWorkerTokenPath(stateDir),
-		workerForwardHosts: getWorkerForwardHosts(baseEnv),
+		workerForwardHosts: getProxyForwardHosts(),
 	};
 }
 
@@ -146,7 +124,6 @@ export function buildLocalProxyEnv(
 }
 
 export {
-	DEFAULT_ENABLED_INTEGRATIONS,
 	DEFAULT_LOCAL_PROXY_STATE_DIR,
 	DEFAULT_LOCAL_PROXY_WORKER_TOKEN_FILENAME,
 };

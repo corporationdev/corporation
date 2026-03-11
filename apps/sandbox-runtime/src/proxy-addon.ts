@@ -40,7 +40,11 @@ def should_forward(flow: http.HTTPFlow) -> bool:
 
 
 def build_forward_headers(flow: http.HTTPFlow) -> dict[str, str]:
-    return {str(key): str(value) for key, value in flow.request.headers.items()}
+    return {
+        str(key): str(value)
+        for key, value in flow.request.headers.items()
+        if str(key).lower() != "authorization"
+    }
 
 
 def build_response_headers(headers) -> dict[str, str]:
