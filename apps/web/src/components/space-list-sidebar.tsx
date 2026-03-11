@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Building } from "lucide-react";
+import { Leaf } from "lucide-react";
 import type * as React from "react";
 import { NavUser } from "@/components/nav-user";
 import { SpaceList } from "@/components/space-list";
@@ -21,11 +21,11 @@ export function SpaceListSidebar({
 		<Sidebar {...props}>
 			<SidebarHeader className="aui-sidebar-header mb-2">
 				<Link
-					className="aui-sidebar-header-content flex items-center gap-2 p-2"
+					className="aui-sidebar-header-content flex items-center gap-1 p-2"
 					to="/"
 				>
-					<Building />
-					The Corporation
+					<Leaf className="size-4" />
+					Tendril
 				</Link>
 			</SidebarHeader>
 			<SidebarContent className="aui-sidebar-content px-2">
