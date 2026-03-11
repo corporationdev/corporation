@@ -7,6 +7,6 @@ import { createAuthClient } from "better-auth/react";
 import { toAbsoluteUrl } from "./url";
 
 export const authClient = createAuthClient({
-	baseURL: toAbsoluteUrl(`${env.VITE_CONVEX_SITE_URL}/api/auth`),
+	baseURL: toAbsoluteUrl(`${env.VITE_CORPORATION_CONVEX_SITE_URL}/api/auth`),
 	plugins: [convexClient(), crossDomainClient()],
 });

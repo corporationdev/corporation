@@ -47,7 +47,10 @@ export async function verifyAuthToken(
 
 export const authMiddleware = bearerAuth({
 	verifyToken: async (token, c) => {
-		const payload = await verifyAuthToken(token, c.env.CONVEX_SITE_URL);
+		const payload = await verifyAuthToken(
+			token,
+			c.env.CORPORATION_CONVEX_SITE_URL
+		);
 		if (!payload) {
 			return false;
 		}

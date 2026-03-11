@@ -72,8 +72,7 @@ function getWorkerUrl(baseEnv: ProxyEnvSource): string | null {
 		return explicitValue;
 	}
 
-	const serverUrl =
-		baseEnv.SERVER_URL?.trim() || baseEnv.CORPORATION_SERVER_URL?.trim();
+	const serverUrl = baseEnv.CORPORATION_SERVER_URL?.trim();
 	return serverUrl ? buildWorkerUrlFromServerUrl(serverUrl) : null;
 }
 

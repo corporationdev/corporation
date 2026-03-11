@@ -1,5 +1,10 @@
-import { Plus, Trash2 } from "lucide-react";
+import {
+	validateSecretName as validateName,
+	validateSecretValue as validateValue,
+} from "@corporation/shared/secrets";
+import { PencilLine, Plus, Trash2, X } from "lucide-react";
 import type React from "react";
+import { useState } from "react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -11,13 +16,36 @@ const QUOTED_VALUE_RE = /^(['"])(.*)\1$/;
 const secretEntrySchema = z.object({
 	key: z.string(),
 	value: z.string(),
+	hint: z.optional(z.string()),
+	isStored: z.optional(z.boolean()),
 });
+
+function validateSecretName({ value }: { value: unknown }): string | undefined {
+	const str = String(value).trim();
+	if (!str) {
+		return undefined;
+	}
+	return validateName(str);
+}
+
+function validateSecretValue({
+	value,
+}: {
+	value: unknown;
+}): string | undefined {
+	return validateValue(String(value));
+}
 
 export const projectConfigSchema = z.object({
 	secrets: z.array(secretEntrySchema),
 });
 
 export type SecretEntry = z.infer<typeof secretEntrySchema>;
+export type StoredSecret = {
+	name: string;
+	hint: string;
+	updatedAt: number;
+};
 
 export function buildSecrets(secrets: SecretEntry[]): Record<string, string> {
 	const result: Record<string, string> = {};
@@ -30,13 +58,57 @@ export function buildSecrets(secrets: SecretEntry[]): Record<string, string> {
 	return result;
 }
 
-export function secretsFromRecord(
-	secrets: Record<string, string> | undefined | null
+export function buildSecretChanges(
+	initialSecrets: SecretEntry[],
+	nextSecrets: SecretEntry[]
+): {
+	upserts: Record<string, string>;
+	removeNames: string[];
+} {
+	const initialStoredSecretNames = new Set(
+		initialSecrets
+			.filter((secret) => secret.isStored)
+			.map((secret) => secret.key.trim())
+			.filter(Boolean)
+	);
+	const retainedStoredSecretNames = new Set<string>();
+	const upserts: Record<string, string> = {};
+
+	for (const secret of nextSecrets) {
+		const trimmedKey = secret.key.trim();
+		if (!trimmedKey) {
+			continue;
+		}
+
+		if (secret.isStored) {
+			retainedStoredSecretNames.add(trimmedKey);
+		}
+
+		if (!secret.isStored || secret.value.length > 0) {
+			upserts[trimmedKey] = secret.value;
+		}
+	}
+
+	return {
+		upserts,
+		removeNames: Array.from(initialStoredSecretNames).filter(
+			(name) => !retainedStoredSecretNames.has(name)
+		),
+	};
+}
+
+export function secretsFromMetadata(
+	secrets: StoredSecret[] | undefined | null
 ): SecretEntry[] {
-	if (!secrets || Object.keys(secrets).length === 0) {
+	if (!secrets || secrets.length === 0) {
 		return [{ key: "", value: "" }];
 	}
-	return Object.entries(secrets).map(([key, value]) => ({ key, value }));
+	return secrets.map((secret) => ({
+		key: secret.name,
+		value: "",
+		hint: secret.hint,
+		isStored: true,
+	}));
 }
 
 function parseEnvContent(text: string): SecretEntry[] {
@@ -60,7 +132,7 @@ function parseEnvContent(text: string): SecretEntry[] {
 type FieldState = {
 	name: string;
 	state: {
-		value: string;
+		value: unknown;
 		meta: {
 			isTouched: boolean;
 			isValid: boolean;
@@ -68,7 +140,7 @@ type FieldState = {
 		};
 	};
 	handleBlur: () => void;
-	handleChange: (value: string) => void;
+	handleChange: (value: unknown) => void;
 };
 
 type SecretEntryArrayFieldState = {
@@ -79,8 +151,36 @@ type SecretEntryArrayFieldState = {
 	removeValue: (index: number) => void;
 };
 
+function FieldError({
+	errors,
+}: {
+	errors: Array<{ message?: string } | string | undefined>;
+}) {
+	const message = errors
+		.map((e) => (typeof e === "string" ? e : e?.message))
+		.find(Boolean);
+	if (!message) {
+		return null;
+	}
+	return <p className="text-destructive text-xs">{message}</p>;
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: TanStack Form's ReactFormExtendedApi has 12 generic type parameters that can't be practically typed for a shared component
 export function ProjectConfigForm({ form }: { form: any }) {
+	const [editingIndices, setEditingIndices] = useState<Set<number>>(new Set());
+
+	const startEditing = (index: number) => {
+		setEditingIndices((prev) => new Set(prev).add(index));
+	};
+
+	const stopEditing = (index: number) => {
+		setEditingIndices((prev) => {
+			const next = new Set(prev);
+			next.delete(index);
+			return next;
+		});
+	};
+
 	return (
 		<form.Field mode="array" name="secrets">
 			{(field: SecretEntryArrayFieldState) => {
@@ -111,7 +211,13 @@ export function ProjectConfigForm({ form }: { form: any }) {
 						<div className="flex items-center justify-between">
 							<FieldLabel>Secrets</FieldLabel>
 							<Button
-								onClick={() => field.pushValue({ key: "", value: "" })}
+								onClick={() =>
+									field.pushValue({
+										key: "",
+										value: "",
+										isStored: false,
+									})
+								}
 								size="xs"
 								type="button"
 								variant="ghost"
@@ -122,48 +228,96 @@ export function ProjectConfigForm({ form }: { form: any }) {
 						</div>
 						{field.state.value?.length > 0 && (
 							<div className="flex flex-col gap-2">
-								{field.state.value.map((_: SecretEntry, index: number) => (
-									<div
-										className="flex items-center gap-2"
-										key={`secret-${index.toString()}`}
-									>
-										<form.Field name={`secrets[${index}].key`}>
-											{(subField: FieldState) => (
-												<Input
-													name={subField.name}
-													onBlur={subField.handleBlur}
-													onChange={(e) =>
-														subField.handleChange(e.target.value)
-													}
-													onPaste={(e) => handlePaste(e, index)}
-													placeholder="KEY"
-													value={subField.state.value}
-												/>
-											)}
-										</form.Field>
-										<form.Field name={`secrets[${index}].value`}>
-											{(subField: FieldState) => (
-												<Input
-													name={subField.name}
-													onBlur={subField.handleBlur}
-													onChange={(e) =>
-														subField.handleChange(e.target.value)
-													}
-													placeholder="value"
-													value={subField.state.value}
-												/>
-											)}
-										</form.Field>
-										<Button
-											onClick={() => field.removeValue(index)}
-											size="icon-sm"
-											type="button"
-											variant="ghost"
+								{field.state.value.map((_: SecretEntry, index: number) => {
+									const entry = field.state.value[index];
+									const isStored = Boolean(entry?.isStored);
+									const isEditing = editingIndices.has(index);
+
+									return (
+										<div
+											className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2"
+											key={`secret-${index.toString()}`}
 										>
-											<Trash2 className="size-3.5" />
-										</Button>
-									</div>
-								))}
+											<form.Field
+												name={`secrets[${index}].key`}
+												validators={
+													isStored ? undefined : { onBlur: validateSecretName }
+												}
+											>
+												{(subField: FieldState) => (
+													<div className="flex flex-col gap-1">
+														<Input
+															disabled={isStored}
+															name={subField.name}
+															onBlur={subField.handleBlur}
+															onChange={(e) =>
+																subField.handleChange(e.target.value)
+															}
+															onPaste={(e) => handlePaste(e, index)}
+															placeholder="KEY"
+															value={String(subField.state.value)}
+														/>
+														<FieldError errors={subField.state.meta.errors} />
+													</div>
+												)}
+											</form.Field>
+											{isStored && !isEditing ? (
+												<Input disabled value={entry?.hint || "••••••••"} />
+											) : (
+												<form.Field
+													name={`secrets[${index}].value`}
+													validators={{ onBlur: validateSecretValue }}
+												>
+													{(subField: FieldState) => (
+														<div className="flex flex-col gap-1">
+															<Input
+																name={subField.name}
+																onBlur={subField.handleBlur}
+																onChange={(e) =>
+																	subField.handleChange(e.target.value)
+																}
+																placeholder="VALUE"
+																type="password"
+																value={String(subField.state.value)}
+															/>
+															<FieldError errors={subField.state.meta.errors} />
+														</div>
+													)}
+												</form.Field>
+											)}
+											<div className="flex items-center">
+												{isStored && (
+													<Button
+														onClick={() => {
+															if (isEditing) {
+																stopEditing(index);
+															} else {
+																startEditing(index);
+															}
+														}}
+														size="icon-sm"
+														type="button"
+														variant="ghost"
+													>
+														{isEditing ? (
+															<X className="size-3.5" />
+														) : (
+															<PencilLine className="size-3.5" />
+														)}
+													</Button>
+												)}
+												<Button
+													onClick={() => field.removeValue(index)}
+													size="icon-sm"
+													type="button"
+													variant="ghost"
+												>
+													<Trash2 className="size-3.5" />
+												</Button>
+											</div>
+										</div>
+									);
+								})}
 							</div>
 						)}
 					</div>

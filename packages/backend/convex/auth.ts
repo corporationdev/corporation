@@ -6,7 +6,7 @@ import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 
-const webUrl = process.env.WEB_URL ?? "";
+const webUrl = process.env.CORPORATION_WEB_URL ?? "";
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
