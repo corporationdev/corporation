@@ -15,7 +15,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// Subcommand routing: `sandbox-runtime mcp desktop` starts the desktop MCP server
+// Subcommand routing: `sandbox-runtime mcp <name>` starts an MCP server
 // ---------------------------------------------------------------------------
 
 const subcommand = process.argv[2];
@@ -24,6 +24,14 @@ if (subcommand === "mcp") {
 	if (mcpName === "desktop") {
 		const { runDesktopMcp } = await import("./desktop-mcp");
 		await runDesktopMcp();
+		// Keep the process alive — StdioServerTransport reads from stdin
+		// but server.connect() returns immediately. Block here so we don't
+		// fall through to the HTTP server code below.
+		// biome-ignore lint/suspicious/noEmptyBlockStatements: intentionally block forever
+		await new Promise(() => {});
+	} else if (mcpName === "code") {
+		const { runCodeMcp } = await import("./code-mcp");
+		await runCodeMcp();
 		// Keep the process alive — StdioServerTransport reads from stdin
 		// but server.connect() returns immediately. Block here so we don't
 		// fall through to the HTTP server code below.

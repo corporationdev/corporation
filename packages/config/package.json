@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./acp-agent-manifest": "./src/acp-agent-manifest.ts",
+    "./proxy-integrations": "./src/proxy-integrations.ts",
     "./server-url": "./src/server-url.ts",
     "./tsconfig.base.json": "./tsconfig.base.json",
     "./runtime": "./src/runtime.ts",

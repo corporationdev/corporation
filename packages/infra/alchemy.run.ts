@@ -7,6 +7,7 @@ import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
 	KVNamespace,
+	Ruleset,
 	Tunnel,
 	Vite,
 	Worker,
@@ -96,6 +97,28 @@ if (serverTunnel && app.local) {
 		},
 		processName: "cloudflared",
 		quiet: true,
+	});
+}
+
+if (serverHostname) {
+	await Ruleset("agent-server-proxy-bypass", {
+		apiToken: alchemy.secret(process.env.CLOUDFLARE_API_TOKEN),
+		zone: "corporation.dev",
+		phase: "http_request_firewall_custom",
+		name: `agent-server-proxy-bypass-${stage}`,
+		description:
+			"Allow authenticated internal proxy ingress to reach the worker",
+		rules: [
+			{
+				description:
+					"Skip Cloudflare browser and firewall heuristics for internal proxy ingress",
+				expression: `http.host eq "${serverHostname}" and starts_with(http.request.uri.path, "/api/proxy")`,
+				action: "skip",
+				action_parameters: {
+					products: ["bic", "securityLevel", "uaBlock", "waf"],
+				},
+			},
+		],
 	});
 }
 

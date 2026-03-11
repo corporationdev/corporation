@@ -4,8 +4,23 @@ import json
 import os
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 from mitmproxy import http
+
+
+LOG_FILE_PATH = "/tmp/corporation-mitmproxy.log"
+
+
+def log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    line = f"[{ts}] {msg}"
+    print(line, flush=True)
+    try:
+        with open(LOG_FILE_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\\n")
+    except OSError:
+        pass
 
 
 WORKER_URL = os.environ.get("CORPORATION_PROXY_WORKER_URL", "").strip()
@@ -17,6 +32,7 @@ WORKER_FORWARD_HOSTS = {
 }
 
 
+
 def should_forward(flow: http.HTTPFlow) -> bool:
     if not WORKER_URL or not WORKER_FORWARD_HOSTS:
         return False
@@ -24,7 +40,11 @@ def should_forward(flow: http.HTTPFlow) -> bool:
 
 
 def build_forward_headers(flow: http.HTTPFlow) -> dict[str, str]:
-    return {str(key): str(value) for key, value in flow.request.headers.items()}
+    return {
+        str(key): str(value)
+        for key, value in flow.request.headers.items()
+        if str(key).lower() != "authorization"
+    }
 
 
 def build_response_headers(headers) -> dict[str, str]:
@@ -71,9 +91,11 @@ class CorporationProxyAddon:
             return
 
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        req = build_worker_request(flow)
+        log(f"proxying {flow.request.method} {flow.request.pretty_url} -> {req.full_url}")
 
         try:
-            with opener.open(build_worker_request(flow), timeout=30) as response:
+            with opener.open(req, timeout=30) as response:
                 body = response.read()
                 flow.response = http.Response.make(
                     response.status,
