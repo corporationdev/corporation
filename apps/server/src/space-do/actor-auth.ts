@@ -11,7 +11,10 @@ export async function createActorAuthState(
 		throw new UserError("Unauthorized", { code: "unauthorized" });
 	}
 
-	const jwtPayload = await verifyAuthToken(authToken, env.CONVEX_SITE_URL);
+	const jwtPayload = await verifyAuthToken(
+		authToken,
+		env.CORPORATION_CONVEX_SITE_URL
+	);
 	if (!jwtPayload) {
 		throw new UserError("Invalid auth token", { code: "unauthorized" });
 	}

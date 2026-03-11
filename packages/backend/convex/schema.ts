@@ -30,7 +30,6 @@ export default defineSchema(
 			githubOwner: v.optional(v.string()),
 			githubName: v.optional(v.string()),
 			defaultBranch: v.optional(v.string()),
-			secrets: v.optional(v.record(v.string(), v.string())),
 			defaultSnapshotId: v.optional(v.id("snapshots")),
 			createdAt: v.number(),
 			updatedAt: v.number(),
@@ -84,15 +83,17 @@ export default defineSchema(
 			.index("by_user_and_agent", ["userId", "agentId"]),
 		secrets: defineTable({
 			userId: v.string(),
+			projectId: v.id("projects"),
 			name: v.string(),
-			encryptedKey: v.string(),
+			encryptedValue: v.string(),
 			iv: v.string(),
 			hint: v.string(),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
-			.index("by_user_and_name", ["userId", "name"]),
+			.index("by_project", ["projectId"])
+			.index("by_project_and_name", ["projectId", "name"]),
 	},
 	// TODO: remove schemaValidation: false before launch
 	{ schemaValidation: false }

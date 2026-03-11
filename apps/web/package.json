@@ -14,6 +14,7 @@
     "@corporation/backend": "workspace:*",
     "@corporation/config": "workspace:*",
     "@corporation/contracts": "workspace:*",
+    "@corporation/shared": "workspace:*",
     "@corporation/env": "workspace:*",
     "@durable-streams/client": "^0.2.1",
     "@fontsource-variable/geist": "^5.2.8",

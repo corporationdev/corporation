@@ -5,13 +5,13 @@ import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-	buildSecrets,
+	buildSecretChanges,
 	ProjectConfigForm,
 	projectConfigSchema,
-	secretsFromRecord,
+	secretsFromMetadata,
 } from "@/components/project-config-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardHeader } from "@/components/ui/card";
@@ -59,7 +59,7 @@ type Project = NonNullable<
 	ReturnType<typeof useQuery<typeof api.projects.get>>
 >;
 
-type Tab = "snapshots" | "settings";
+type Tab = "snapshots" | "secrets";
 
 function ProjectDetail({ project }: { project: Project }) {
 	const navigate = useNavigate();
@@ -103,7 +103,7 @@ function ProjectDetail({ project }: { project: Project }) {
 
 			<div>
 				<div className="flex border-b">
-					{(["snapshots", "settings"] as Tab[]).map((tab) => (
+					{(["snapshots", "secrets"] as Tab[]).map((tab) => (
 						<button
 							className={cn(
 								"px-4 py-2 text-sm transition-colors",
@@ -122,7 +122,7 @@ function ProjectDetail({ project }: { project: Project }) {
 
 				<div className="mt-4">
 					{activeTab === "snapshots" && <SnapshotList project={project} />}
-					{activeTab === "settings" && <SettingsTab project={project} />}
+					{activeTab === "secrets" && <SecretsTab project={project} />}
 				</div>
 			</div>
 		</div>
@@ -235,7 +235,7 @@ function SnapshotList({ project }: { project: Project }) {
 	);
 }
 
-function SettingsTab({ project }: { project: Project }) {
+function SecretsTab({ project }: { project: Project }) {
 	const { mutate: updateSecrets, isPending } = useConvexTanstackMutation(
 		api.projects.updateSecrets,
 		{
@@ -247,21 +247,33 @@ function SettingsTab({ project }: { project: Project }) {
 			},
 		}
 	);
+	const initialSecrets = useMemo(
+		() => secretsFromMetadata(project.secrets),
+		[project.secrets]
+	);
 
 	const form = useForm({
 		defaultValues: {
-			secrets: secretsFromRecord(project.secrets),
+			secrets: initialSecrets,
 		},
 		validators: {
 			onSubmit: projectConfigSchema,
 		},
 		onSubmit: ({ value }) => {
+			const changes = buildSecretChanges(initialSecrets, value.secrets);
 			updateSecrets({
 				id: project._id,
-				secrets: buildSecrets(value.secrets),
+				upserts: changes.upserts,
+				removeNames: changes.removeNames,
 			});
 		},
 	});
+
+	useEffect(() => {
+		form.reset({
+			secrets: initialSecrets,
+		});
+	}, [form, initialSecrets]);
 
 	return (
 		<form

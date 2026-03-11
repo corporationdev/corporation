@@ -17,6 +17,7 @@
     "convex-helpers": "catalog:",
     "dotenv": "catalog:",
     "nanoid": "catalog:",
+    "@corporation/shared": "workspace:*",
     "svix": "catalog:",
     "zod": "catalog:",
     "@ai-sdk/anthropic": "catalog:",

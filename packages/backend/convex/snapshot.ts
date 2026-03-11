@@ -122,10 +122,9 @@ export const buildInitialSnapshot = authedMutation({
 	},
 });
 
-export async function scheduleRebuildWithEnvs(
+export async function scheduleRebuildWithSecrets(
 	ctx: MutationCtx,
-	project: Doc<"projects">,
-	options: { secrets: Record<string, string> }
+	project: Doc<"projects">
 ): Promise<Id<"snapshots">> {
 	if (!project.defaultSnapshotId) {
 		throw new ConvexError("Project has no default snapshot to rebuild from");
@@ -146,11 +145,43 @@ export async function scheduleRebuildWithEnvs(
 		projectId: project._id,
 		snapshotId,
 		sourceExternalSnapshotId: sourceSnapshot.externalSnapshotId,
-		envs: options.secrets,
 	});
 
 	return snapshotId;
 }
+
+export const scheduleInitialSnapshotInternal = internalMutation({
+	args: {
+		projectId: v.id("projects"),
+		setAsDefault: v.optional(v.boolean()),
+		label: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const project = await ctx.db.get(args.projectId);
+		if (!project) {
+			throw new ConvexError("Project not found");
+		}
+
+		return await scheduleInitialSnapshot(ctx, project, {
+			setAsDefault: args.setAsDefault,
+			label: args.label,
+		});
+	},
+});
+
+export const scheduleRebuildWithSecretsInternal = internalMutation({
+	args: {
+		projectId: v.id("projects"),
+	},
+	handler: async (ctx, args) => {
+		const project = await ctx.db.get(args.projectId);
+		if (!project) {
+			throw new ConvexError("Project not found");
+		}
+
+		return await scheduleRebuildWithSecrets(ctx, project);
+	},
+});
 
 export const createFromSpace = authedMutation({
 	args: {

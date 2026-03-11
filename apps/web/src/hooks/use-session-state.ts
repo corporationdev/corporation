@@ -32,7 +32,7 @@ function buildSessionStreamBaseUrl(
 	const encodedSpaceSlug = encodeURIComponent(spaceSlug);
 	const encodedSessionId = encodeURIComponent(sessionId);
 	return toAbsoluteUrl(
-		`${env.VITE_SERVER_URL}/spaces/${encodedSpaceSlug}/sessions/${encodedSessionId}`
+		`${env.VITE_CORPORATION_SERVER_URL}/spaces/${encodedSpaceSlug}/sessions/${encodedSessionId}`
 	);
 }
 
