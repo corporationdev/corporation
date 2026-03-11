@@ -17,7 +17,7 @@ describe("local proxy config", () => {
 
 	test("derives the worker route from a root server url", () => {
 		const config = getLocalProxyConfig({
-			SERVER_URL: "https://app.corporation.dev",
+			CORPORATION_SERVER_URL: "https://app.corporation.dev",
 		});
 
 		expect(config.workerUrl).toBe("https://app.corporation.dev/api/proxy");
@@ -25,7 +25,7 @@ describe("local proxy config", () => {
 
 	test("derives the worker route from an api-prefixed server url", () => {
 		const config = getLocalProxyConfig({
-			SERVER_URL: "https://app.corporation.dev/api",
+			CORPORATION_SERVER_URL: "https://app.corporation.dev/api",
 		});
 
 		expect(config.workerUrl).toBe("https://app.corporation.dev/api/proxy");

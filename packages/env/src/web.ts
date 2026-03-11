@@ -4,9 +4,9 @@ import { z } from "zod";
 export const env = createEnv({
 	clientPrefix: "VITE_",
 	client: {
-		VITE_CONVEX_URL: z.string(),
-		VITE_CONVEX_SITE_URL: z.string(),
-		VITE_SERVER_URL: z.string(),
+		VITE_CORPORATION_CONVEX_URL: z.string(),
+		VITE_CORPORATION_CONVEX_SITE_URL: z.string(),
+		VITE_CORPORATION_SERVER_URL: z.string(),
 		VITE_STAGE_KIND: z.enum(["dev", "sandbox", "preview", "production"]),
 	},
 	// biome-ignore lint/suspicious/noExplicitAny: import.meta.env types not available outside Vite app
