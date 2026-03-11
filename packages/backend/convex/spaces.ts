@@ -7,7 +7,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { buildConvexPatch } from "./lib/patch";
 import { requireProjectInActiveOrg } from "./lib/projectAccess";
-import { spaceStatusValidator } from "./schema";
+import { spaceBootstrapSourceValidator, spaceStatusValidator } from "./schema";
 
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string; activeOrganizationId: string | null },
@@ -47,12 +47,14 @@ type EnsureSpaceInput = {
 	slug: string;
 	userId: string;
 	project: Doc<"projects">;
+	bootstrapSource?: "snapshot" | "base-template";
 	snapshotId?: Id<"snapshots">;
 	name?: string;
 	firstMessage?: string;
 };
 
 type SpaceUpdatePatch = {
+	bootstrapSource?: Doc<"spaces">["bootstrapSource"];
 	status?: Doc<"spaces">["status"];
 	snapshotId?: Id<"snapshots">;
 	sandboxId?: string;
@@ -63,6 +65,37 @@ type SpaceUpdatePatch = {
 type InternalSpaceUpdatePatch = SpaceUpdatePatch & {
 	name?: string;
 };
+
+function buildExistingSpacePatch(
+	existing: Doc<"spaces">,
+	args: EnsureSpaceInput,
+	bootstrapSource: "snapshot" | "base-template"
+) {
+	if (existing.status === "running") {
+		return null;
+	}
+
+	const shouldUpdateSnapshot =
+		bootstrapSource === "snapshot" &&
+		args.snapshotId !== undefined &&
+		existing.snapshotId !== args.snapshotId;
+	const shouldUpdateBootstrapSource =
+		existing.bootstrapSource !== bootstrapSource;
+
+	if (!(shouldUpdateSnapshot || shouldUpdateBootstrapSource)) {
+		return null;
+	}
+
+	return {
+		bootstrapSource,
+		...(shouldUpdateSnapshot && args.snapshotId !== undefined
+			? {
+					snapshotId: args.snapshotId,
+				}
+			: {}),
+		updatedAt: Date.now(),
+	};
+}
 
 async function requireReadySnapshot(
 	ctx: MutationCtx,
@@ -117,6 +150,11 @@ export async function ensureSpaceRecord(
 	ctx: MutationCtx,
 	args: EnsureSpaceInput
 ): Promise<Id<"spaces">> {
+	const bootstrapSource = args.bootstrapSource ?? "snapshot";
+	if (bootstrapSource === "snapshot" && !args.snapshotId) {
+		throw new ConvexError("Snapshot is required for snapshot bootstraps");
+	}
+
 	const slug = args.slug.trim();
 	const existing = await ctx.db
 		.query("spaces")
@@ -131,15 +169,7 @@ export async function ensureSpaceRecord(
 			throw new ConvexError("Space slug already belongs to another space");
 		}
 
-		const patch =
-			existing.status !== "running" &&
-			args.snapshotId !== undefined &&
-			existing.snapshotId !== args.snapshotId
-				? {
-						snapshotId: args.snapshotId,
-						updatedAt: Date.now(),
-					}
-				: null;
+		const patch = buildExistingSpacePatch(existing, args, bootstrapSource);
 		if (patch) {
 			await ctx.db.patch(existing._id, patch);
 		}
@@ -161,6 +191,7 @@ export async function ensureSpaceRecord(
 		userId: args.userId,
 		slug,
 		projectId: args.project._id,
+		bootstrapSource,
 		snapshotId: args.snapshotId,
 		name: args.name ?? "New Space",
 		status: "creating",
@@ -296,6 +327,7 @@ export const get = authedQuery({
 export const update = authedMutation({
 	args: {
 		id: v.id("spaces"),
+		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		status: v.optional(spaceStatusValidator),
 		snapshotId: v.optional(v.id("snapshots")),
 		sandboxId: v.optional(v.union(v.string(), v.null())),
@@ -310,7 +342,7 @@ export const update = authedMutation({
 		await requireOwnedSpace(ctx, space);
 
 		const patch = buildConvexPatch<SpaceUpdatePatch, typeof args>(args, {
-			assign: ["status", "snapshotId"],
+			assign: ["bootstrapSource", "status", "snapshotId"],
 			clearable: ["sandboxId", "agentUrl", "error"],
 		});
 
@@ -335,6 +367,7 @@ export const touch = authedMutation({
 export const internalUpdate = internalMutation({
 	args: {
 		id: v.id("spaces"),
+		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		status: v.optional(spaceStatusValidator),
 		snapshotId: v.optional(v.id("snapshots")),
 		sandboxId: v.optional(v.union(v.string(), v.null())),
@@ -346,7 +379,7 @@ export const internalUpdate = internalMutation({
 		const patch = buildConvexPatch<InternalSpaceUpdatePatch, typeof args>(
 			args,
 			{
-				assign: ["status", "snapshotId", "name"],
+				assign: ["bootstrapSource", "status", "snapshotId", "name"],
 				clearable: ["sandboxId", "agentUrl", "error"],
 			}
 		);
@@ -437,6 +470,7 @@ export const ensure = authedMutation({
 		slug: v.string(),
 		projectId: v.optional(v.id("projects")),
 		snapshotId: v.optional(v.id("snapshots")),
+		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		firstMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -461,6 +495,7 @@ export const ensure = authedMutation({
 				slug,
 				userId: ctx.userId,
 				project,
+				bootstrapSource: args.bootstrapSource,
 				snapshotId,
 				firstMessage: args.firstMessage,
 			});
@@ -471,16 +506,17 @@ export const ensure = authedMutation({
 		}
 
 		const project = await requireProjectAccess(ctx, args.projectId);
-		const snapshotId = await resolveSnapshotIdForProject(
-			ctx,
-			project,
-			args.snapshotId
-		);
+		const bootstrapSource = args.bootstrapSource ?? "snapshot";
+		const snapshotId =
+			bootstrapSource === "snapshot"
+				? await resolveSnapshotIdForProject(ctx, project, args.snapshotId)
+				: undefined;
 
 		return await ensureSpaceRecord(ctx, {
 			slug,
 			userId: ctx.userId,
 			project,
+			bootstrapSource,
 			snapshotId,
 			firstMessage: args.firstMessage,
 		});
@@ -525,7 +561,13 @@ export const startSandbox = authedMutation({
 		if (space.status === "running" || space.status === "creating") {
 			return;
 		}
-		if (!(space.sandboxId || space.snapshotId)) {
+		if (
+			!(
+				space.sandboxId ||
+				space.snapshotId ||
+				space.bootstrapSource === "base-template"
+			)
+		) {
 			throw new ConvexError("Sandbox cannot be started");
 		}
 

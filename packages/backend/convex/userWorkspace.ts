@@ -5,7 +5,7 @@ import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { SANDBOX_WORKDIR } from "./lib/sandbox";
-import { ensureSpaceRecord, resolveSnapshotIdForProject } from "./spaces";
+import { ensureSpaceRecord } from "./spaces";
 
 const USER_SPACE_NAME = "Personal Workspace";
 const ISO_MILLIS_SUFFIX = /\.\d{3}Z$/;
@@ -82,13 +82,12 @@ export const configure = authedMutation({
 			ctx.userId,
 			project._id
 		);
-		const snapshotId = await resolveSnapshotIdForProject(ctx, project);
 
 		return await ensureSpaceRecord(ctx, {
 			slug: existingSpace?.slug ?? nanoid(),
 			userId: ctx.userId,
 			project,
-			snapshotId,
+			bootstrapSource: "base-template",
 			name: USER_SPACE_NAME,
 		});
 	},

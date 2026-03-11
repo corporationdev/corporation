@@ -1554,5 +1554,15 @@ export declare const components: {
         any
       >;
     };
+    bootstrap: {
+      ensureUserOrganization: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          userId: string;
+        },
+        string
+      >;
+    };
   };
 };

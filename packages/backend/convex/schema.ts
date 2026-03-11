@@ -20,6 +20,11 @@ export const projectKindValidator = v.union(
 	v.literal("base")
 );
 
+export const spaceBootstrapSourceValidator = v.union(
+	v.literal("snapshot"),
+	v.literal("base-template")
+);
+
 export default defineSchema(
 	{
 		projects: defineTable({
@@ -48,6 +53,7 @@ export default defineSchema(
 			userId: v.string(),
 			slug: v.string(),
 			projectId: v.id("projects"),
+			bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 			snapshotId: v.optional(v.id("snapshots")),
 			sandboxId: v.optional(v.string()),
 			agentUrl: v.optional(v.string()),

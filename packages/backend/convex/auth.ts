@@ -34,16 +34,6 @@ type BetterAuthHookContext = {
 	context?: Parameters<typeof getOrgAdapter>[0];
 } | null;
 
-function slugifyOrganizationName(name: string, userId: string) {
-	const base = name
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 40);
-	const suffix = userId.slice(0, 6).toLowerCase();
-	return `${base || "workspace"}-${suffix}`;
-}
-
 export const authComponent = createClient<DataModel, typeof authSchema>(
 	components.betterAuth,
 	{
@@ -70,41 +60,26 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
 
 						const authContext = hookContext.context;
 						const orgAdapter = getOrgAdapter(authContext, organizationOptions);
+						const ensuredOrganizationId = await requireRunMutationCtx(
+							ctx
+						).runMutation(
+							components.betterAuth.bootstrap.ensureUserOrganization,
+							{
+								userId: session.userId,
+							}
+						);
 						const existingOrganizations = await orgAdapter.listOrganizations(
 							session.userId
 						);
+						const hasValidActiveOrganization = existingOrganizations.some(
+							(organization) => organization.id === session.activeOrganizationId
+						);
+						const validatedActiveOrganizationId = hasValidActiveOrganization
+							? session.activeOrganizationId
+							: null;
 
-						let activeOrganizationId = session.activeOrganizationId ?? null;
-
-						if (existingOrganizations.length === 0) {
-							const user = await authContext.internalAdapter.findUserById(
-								session.userId
-							);
-							const organizationName = user?.name?.trim()
-								? `${user.name}'s Workspace`
-								: "My Workspace";
-							const organization = await orgAdapter.createOrganization({
-								organization: {
-									name: organizationName,
-									slug: slugifyOrganizationName(
-										organizationName,
-										session.userId
-									),
-									createdAt: new Date(),
-								},
-							});
-
-							await orgAdapter.createMember({
-								organizationId: organization.id,
-								userId: session.userId,
-								role: "owner",
-								createdAt: new Date(),
-							});
-
-							activeOrganizationId = organization.id;
-						} else if (!activeOrganizationId) {
-							activeOrganizationId = existingOrganizations[0]?.id ?? null;
-						}
+						const activeOrganizationId =
+							validatedActiveOrganizationId ?? ensuredOrganizationId;
 
 						if (activeOrganizationId) {
 							await requireRunMutationCtx(ctx).runMutation(

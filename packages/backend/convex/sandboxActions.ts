@@ -7,6 +7,7 @@ import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import {
+	BASE_TEMPLATE,
 	bootServer,
 	runWorkspaceCommand,
 	SANDBOX_AGENT_PORT,
@@ -139,26 +140,28 @@ async function resolveSandbox(
 		}
 	}
 
-	if (!space.snapshotId) {
-		throw new Error("Space snapshot is not set");
-	}
-	const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
-		id: space.snapshotId,
-	});
-	if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
-		throw new Error("Space snapshot is not ready");
-	}
+	const sourceSnapshotId =
+		space.bootstrapSource === "base-template"
+			? BASE_TEMPLATE
+			: await (async () => {
+					if (!space.snapshotId) {
+						throw new Error("Space snapshot is not set");
+					}
+					const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
+						id: space.snapshotId,
+					});
+					if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
+						throw new Error("Space snapshot is not ready");
+					}
+					return snapshot.externalSnapshotId;
+				})();
 
 	await ctx.runMutation(internal.spaces.internalUpdate, {
 		id: space._id,
 		status: "creating" as const,
 	});
 
-	return await createSandbox(
-		snapshot.externalSnapshotId,
-		projectEnvs,
-		spaceOwnerId
-	);
+	return await createSandbox(sourceSnapshotId, projectEnvs, spaceOwnerId);
 }
 
 export const archiveSandbox = internalAction({
