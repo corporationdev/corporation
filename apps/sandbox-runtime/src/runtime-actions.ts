@@ -4,15 +4,14 @@ import type {
 	TurnRunnerError,
 } from "@corporation/contracts/sandbox-do";
 import { Effect, Fiber, Layer, ServiceMap } from "effect";
-import { isAuthRequiredError } from "./probe-service";
-import { ProbeService } from "./probe-service";
-import { SessionRegistry } from "./session-registry";
-import {
-	type RuntimeActionError as RuntimeActionErrorType,
+import type {
+	RuntimeActionError as RuntimeActionErrorType,
 	TurnConflictError,
 } from "./errors";
 import { formatError } from "./helpers";
 import { log } from "./logging";
+import { isAuthRequiredError, ProbeService } from "./probe-service";
+import { SessionRegistry } from "./session-registry";
 import type { StartTurnRequest } from "./turn-events";
 
 export type RuntimeActionsShape = {
@@ -40,16 +39,16 @@ function toTurnRunnerError(error: unknown): TurnRunnerError {
 }
 
 export const RuntimeActionsLive = Layer.effect(RuntimeActions)(
-	Effect.gen(function*() {
+	Effect.gen(function* () {
 		const registry = yield* SessionRegistry;
 		const probeService = yield* ProbeService;
 
 		const service: RuntimeActionsShape = {
 			startTurn: (request) =>
-				Effect.gen(function*() {
+				Effect.gen(function* () {
 					yield* registry.reserveTurn(request);
 
-					const child = Effect.gen(function*() {
+					const child = Effect.gen(function* () {
 						try {
 							const handle = yield* registry.getOrCreateSessionHandle(request);
 							yield* handle.runTurn(request);
@@ -60,15 +59,18 @@ export const RuntimeActionsLive = Layer.effect(RuntimeActions)(
 
 							yield* request
 								.onEvent({
-										_tag: "Failed",
-										error: toTurnRunnerError(error),
-									})
-									.pipe(
-										Effect.catchIf(
-											(_error): _error is import("./errors").CallbackDeliveryError => true,
-											() => Effect.succeed(undefined)
-										)
-									);
+									_tag: "Failed",
+									error: toTurnRunnerError(error),
+								})
+								.pipe(
+									Effect.catchIf(
+										(
+											_error
+										): _error is import("./errors").CallbackDeliveryError =>
+											true,
+										() => Effect.succeed(undefined)
+									)
+								);
 
 							log("error", "Turn failed", {
 								turnId: request.turnId,
@@ -77,13 +79,13 @@ export const RuntimeActionsLive = Layer.effect(RuntimeActions)(
 						} finally {
 							yield* registry.releaseTurn(request.turnId, request.sessionId);
 						}
-						});
+					});
 
-						const fiber = yield* child.pipe(Effect.forkDetach);
-						yield* registry.attachTurnFiber(request.turnId, fiber);
-					}),
+					const fiber = yield* child.pipe(Effect.forkDetach);
+					yield* registry.attachTurnFiber(request.turnId, fiber);
+				}),
 			cancelTurn: (turnId) =>
-				Effect.gen(function*() {
+				Effect.gen(function* () {
 					const sessionId = yield* registry.getTurnSessionId(turnId);
 					if (!sessionId) {
 						return false;

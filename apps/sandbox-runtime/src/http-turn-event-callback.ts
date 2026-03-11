@@ -1,6 +1,7 @@
-import { Effect } from "effect";
 import type { SessionEvent } from "@corporation/contracts/sandbox-do";
+import { Effect } from "effect";
 import { getLatestVerifiedAuthToken } from "./auth-state";
+import { type CallbackDeliveryError, toCallbackDeliveryError } from "./errors";
 import {
 	CALLBACK_MAX_ATTEMPTS,
 	CALLBACK_TIMEOUT_MS,
@@ -10,10 +11,6 @@ import {
 	postJsonWithRetry,
 } from "./helpers";
 import { log } from "./logging";
-import {
-	type CallbackDeliveryError,
-	toCallbackDeliveryError,
-} from "./errors";
 import type { RuntimeTurnEvent, TurnEventCallback } from "./turn-events";
 
 const RIVET_CONN_PARAMS_HEADER = "x-rivet-conn-params";
@@ -102,11 +99,15 @@ export function makeHttpTurnEventCallback(
 						if (!callbackDeliveryBroken) {
 							callbackDeliveryBroken = true;
 							callbackDeliveryError = error;
-							log("error", "Callback delivery failed; halting event callbacks", {
-								turnId: input.turnId,
-								sequence,
-								error: formatError(error),
-							});
+							log(
+								"error",
+								"Callback delivery failed; halting event callbacks",
+								{
+									turnId: input.turnId,
+									sequence,
+									error: formatError(error),
+								}
+							);
 						}
 						throw toCallbackDeliveryError("Callback delivery failed", error);
 					}
@@ -132,7 +133,7 @@ export function makeHttpTurnEventCallback(
 			}
 			pendingEventFlushTimer = setTimeout(() => {
 				pendingEventFlushTimer = null;
-				void flushEventBatch().catch((error) => {
+				flushEventBatch().catch((error) => {
 					log("error", "Failed to flush events callback batch", {
 						turnId: input.turnId,
 						error: formatError(error),
@@ -182,11 +183,7 @@ export function makeHttpTurnEventCallback(
 					}
 
 					await flushEventBatch({ force: true }).catch(() => undefined);
-					await sendCallback(
-						"failed",
-						{ error: event.error },
-						{ force: true }
-					);
+					await sendCallback("failed", { error: event.error }, { force: true });
 				},
 				catch: (cause): CallbackDeliveryError =>
 					cause instanceof Error && "_tag" in cause

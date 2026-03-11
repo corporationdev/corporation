@@ -1,23 +1,22 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import crypto from "node:crypto";
+import { resolve } from "node:path";
 import { AGENT_METHODS } from "@agentclientprotocol/sdk";
 import type { AcpEnvelope } from "@corporation/contracts/sandbox-do";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
 import { Effect, Exit, Layer, Scope, ServiceMap } from "effect";
-import { isAgentInstalled } from "../src/agents";
 import {
-	AcpBridgeFactory,
 	type AcpBridge,
+	AcpBridgeFactory,
 	type AcpBridgeFactoryShape,
 } from "../src/acp-bridge";
-import { toAcpBridgeError } from "../src/errors";
-import { makeSessionHandle } from "../src/session-handle";
-import { SessionRegistry, SessionRegistryLive } from "../src/session-registry";
+import { isAgentInstalled } from "../src/agents";
+import { toAcpBridgeError, toCallbackDeliveryError } from "../src/errors";
 import { ProbeService, type ProbeServiceShape } from "../src/probe-service";
 import { RuntimeActions, RuntimeActionsLive } from "../src/runtime-actions";
-import type { RuntimeTurnEvent, StartTurnRequest } from "../src/turn-events";
-import { toCallbackDeliveryError } from "../src/errors";
 import { runtimeLayer } from "../src/runtime-layer";
+import { makeSessionHandle } from "../src/session-handle";
+import { SessionRegistry, SessionRegistryLive } from "../src/session-registry";
+import type { RuntimeTurnEvent, StartTurnRequest } from "../src/turn-events";
 
 const AGENT_ID = "claude-acp";
 const TEST_CWD = resolve(import.meta.dir, "..");
@@ -38,7 +37,10 @@ type SessionRegistryTestShape = {
 type RuntimeActionsShape = {
 	startTurn: (request: StartTurnRequest) => Effect.Effect<any, any, any>;
 	cancelTurn: (turnId: string) => Effect.Effect<boolean, any, any>;
-	probeAgents: (body: { ids?: string[]; cwd?: string }) => Effect.Effect<any, any, any>;
+	probeAgents: (body: {
+		ids?: string[];
+		cwd?: string;
+	}) => Effect.Effect<any, any, any>;
 };
 
 function deferred<T>() {
@@ -94,7 +96,9 @@ async function eventually<T>(
 	throw new Error(`${options.label} timed out after ${timeoutMs}ms`);
 }
 
-function createNoopTurn(overrides?: Partial<StartTurnRequest>): StartTurnRequest {
+function createNoopTurn(
+	overrides?: Partial<StartTurnRequest>
+): StartTurnRequest {
 	return {
 		turnId: `turn-${crypto.randomUUID()}`,
 		sessionId: `session-${crypto.randomUUID()}`,
@@ -108,10 +112,10 @@ function createNoopTurn(overrides?: Partial<StartTurnRequest>): StartTurnRequest
 
 function createEventCollector(options?: { blockFirstSessionEvent?: boolean }) {
 	const events: RuntimeTurnEvent[] = [];
-	const firstSessionEvent = deferred<Extract<RuntimeTurnEvent, { _tag: "SessionEvent" }>>();
-	const terminalEvent = deferred<
-		Extract<RuntimeTurnEvent, { _tag: "Completed" | "Failed" }>
-	>();
+	const firstSessionEvent =
+		deferred<Extract<RuntimeTurnEvent, { _tag: "SessionEvent" }>>();
+	const terminalEvent =
+		deferred<Extract<RuntimeTurnEvent, { _tag: "Completed" | "Failed" }>>();
 	const unblockFirstSessionEvent = deferred<void>();
 	let sawFirstSessionEvent = false;
 
@@ -140,14 +144,17 @@ function createEventCollector(options?: { blockFirstSessionEvent?: boolean }) {
 		releaseFirstSessionEvent: () => {
 			unblockFirstSessionEvent.resolve();
 		},
-		waitForFirstSessionEvent: (timeoutMs = 5_000) =>
+		waitForFirstSessionEvent: (timeoutMs = 5000) =>
 			waitFor(firstSessionEvent.promise, timeoutMs, "first session event"),
-		waitForTerminalEvent: (timeoutMs = 5_000) =>
+		waitForTerminalEvent: (timeoutMs = 5000) =>
 			waitFor(terminalEvent.promise, timeoutMs, "terminal runtime event"),
 	};
 }
 
-function outboundEnvelope(method: string, id = `${method}-${crypto.randomUUID()}`): AcpEnvelope {
+function outboundEnvelope(
+	method: string,
+	id = `${method}-${crypto.randomUUID()}`
+): AcpEnvelope {
 	return {
 		jsonrpc: "2.0",
 		id,
@@ -183,8 +190,9 @@ function createScriptedBridgeFactory(options?: {
 	const factory: AcpBridgeFactoryShape = {
 		make: () =>
 			Effect.sync(() => {
-				let sink: ((envelope: AcpEnvelope, direction: "inbound" | "outbound") => void) | null =
-					null;
+				let sink:
+					| ((envelope: AcpEnvelope, direction: "inbound" | "outbound") => void)
+					| null = null;
 				const promptStarted = deferred<void>();
 				const promptFinished = deferred<void>();
 				const promptRequestId = `${AGENT_METHODS.session_prompt}-${crypto.randomUUID()}`;
@@ -195,7 +203,10 @@ function createScriptedBridgeFactory(options?: {
 					waitForPrompt: promptStarted.promise,
 					resolvePrompt: () => promptFinished.resolve(),
 					emitSessionEventPair: () => {
-						sink?.(outboundEnvelope(AGENT_METHODS.session_prompt, promptRequestId), "outbound");
+						sink?.(
+							outboundEnvelope(AGENT_METHODS.session_prompt, promptRequestId),
+							"outbound"
+						);
 						sink?.(inboundEnvelope(promptRequestId), "inbound");
 					},
 				};
@@ -236,10 +247,15 @@ function createScriptedBridgeFactory(options?: {
 									return {} as never;
 								}
 
-								throw new Error(`Unexpected ACP request method: ${String(method)}`);
+								throw new Error(
+									`Unexpected ACP request method: ${String(method)}`
+								);
 							},
 							catch: (cause) =>
-								toAcpBridgeError(`Fake bridge request failed: ${String(method)}`, cause),
+								toAcpBridgeError(
+									`Fake bridge request failed: ${String(method)}`,
+									cause
+								),
 						}),
 					write: (envelope) =>
 						Effect.sync(() => {
@@ -282,21 +298,15 @@ describeIf("runtime actions integration", () => {
 
 		const probeLayer = await run(Scope.make());
 		probeScope = probeLayer;
-		const services = await run(
-			Layer.buildWithScope(runtimeLayer, probeLayer)
-		);
+		const services = await run(Layer.buildWithScope(runtimeLayer, probeLayer));
 		probeRuntimeActions = ServiceMap.get(
 			services,
 			RuntimeActions
 		) as RuntimeActionsShape;
 
-		const probe = await run(
+		await run(
 			probeRuntimeActions.probeAgents({ ids: [AGENT_ID], cwd: TEST_CWD })
-		) as {
-			agents: Array<{ status: string }>;
-		};
-		expect(probe.agents).toHaveLength(1);
-		expect(probe.agents[0]?.status).toBe("verified");
+		);
 	});
 
 	afterAll(async () => {
@@ -307,9 +317,9 @@ describeIf("runtime actions integration", () => {
 	});
 
 	test("probes claude-acp successfully with an explicit cwd", async () => {
-		const probe = await run(
+		const probe = (await run(
 			probeRuntimeActions.probeAgents({ ids: [AGENT_ID], cwd: TEST_CWD })
-		) as {
+		)) as {
 			agents: Array<{ id: string; status: string }>;
 		};
 		expect(probe.agents).toHaveLength(1);
@@ -320,7 +330,7 @@ describeIf("runtime actions integration", () => {
 	test("session handle drains delayed session events before emitting completed", async () => {
 		const collector = createEventCollector({ blockFirstSessionEvent: true });
 		const { factory } = createScriptedBridgeFactory({
-			onPrompt: async (bridge) => {
+			onPrompt: (bridge) => {
 				bridge.emitSessionEventPair();
 				bridge.resolvePrompt();
 			},
@@ -384,7 +394,9 @@ describeIf("runtime actions integration", () => {
 			) as unknown as SessionRegistryTestShape;
 
 			const firstRequest = createNoopTurn({ sessionId: "shared-session" });
-			const firstHandle = await run(registry.getSessionHandle("shared-session"));
+			const firstHandle = await run(
+				registry.getSessionHandle("shared-session")
+			);
 			expect(firstHandle).toBeNull();
 
 			const createdHandle = (await run(
@@ -426,7 +438,7 @@ describeIf("runtime actions integration", () => {
 
 	test("runtime actions cancel an active turn and release the session", async () => {
 		const { factory, bridges } = createScriptedBridgeFactory({
-			onPrompt: async (bridge) => {
+			onPrompt: (bridge) => {
 				bridge.emitSessionEventPair();
 				if (bridge.cancelCount > 0) {
 					bridge.resolvePrompt();
@@ -477,11 +489,14 @@ describeIf("runtime actions integration", () => {
 				)
 			);
 
-			const activeBridge = (await eventually(
+			const activeBridge = await eventually(
 				async () => bridges[0] ?? null,
 				(value) => value !== null,
 				{ label: "bridge creation" }
-			))!;
+			);
+			if (!activeBridge) {
+				throw new Error("bridge creation returned null");
+			}
 			await activeBridge.waitForPrompt;
 			expect(await run(runtimeActions.cancelTurn(turnId))).toBe(true);
 			expect(activeBridge.cancelCount).toBe(1);
