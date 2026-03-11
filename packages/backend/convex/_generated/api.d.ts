@@ -20,6 +20,7 @@ import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_git from "../lib/git.js";
 import type * as lib_nango from "../lib/nango.js";
 import type * as lib_patch from "../lib/patch.js";
+import type * as lib_projectAccess from "../lib/projectAccess.js";
 import type * as lib_projectSecrets from "../lib/projectSecrets.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   "lib/git": typeof lib_git;
   "lib/nango": typeof lib_nango;
   "lib/patch": typeof lib_patch;
+  "lib/projectAccess": typeof lib_projectAccess;
   "lib/projectSecrets": typeof lib_projectSecrets;
   "lib/sandbox": typeof lib_sandbox;
   "lib/validSecrets": typeof lib_validSecrets;
@@ -1552,16 +1554,6 @@ export declare const components: {
           onUpdateHandle?: string;
         },
         any
-      >;
-    };
-    bootstrap: {
-      ensureUserOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          userId: string;
-        },
-        string
       >;
     };
   };
