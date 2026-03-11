@@ -1,0 +1,32 @@
+{
+  "name": "server-runtime-do-test-1773263006338",
+  "main": "/Users/isaacdyor/.codex/worktrees/6259/corporation/apps/server/src/index.ts",
+  "compatibility_date": "2026-03-11",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SPACE_DO",
+        "class_name": "SpaceDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "SpaceDurableObject"
+      ]
+    }
+  ],
+  "vars": {
+    "CORPORATION_CONVEX_SITE_URL": "http://127.0.0.1:56790",
+    "CORPORATION_RUNTIME_AUTH_SECRET": "test-runtime-secret-641fb0b5-71b0-43a6-ba21-d332ce0c474c",
+    "CORPORATION_INTERNAL_API_KEY": "test-internal-api-key",
+    "NANGO_SECRET_KEY": "test-nango-secret",
+    "ANTHROPIC_API_KEY": "",
+    "E2B_API_KEY": ""
+  }
+}

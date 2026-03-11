@@ -38,13 +38,37 @@ const HEARTBEAT_ACK_FRAME = JSON.stringify({ type: "heartbeat_ack" });
 
 type SocketListener = Parameters<WebSocket["addEventListener"]>[1];
 type SocketListenerOptions = Parameters<WebSocket["addEventListener"]>[2];
+type ORPCFrameDirection = "request" | "response";
+
+function getORPCFrameDirection(
+	data: string | ArrayBufferLike | ArrayBufferView<ArrayBufferLike>
+): ORPCFrameDirection | null {
+	try {
+		const bytes =
+			typeof data === "string"
+				? null
+				: ArrayBuffer.isView(data)
+					? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+					: new Uint8Array(data);
+		const text =
+			typeof data === "string" ? data : new TextDecoder().decode(bytes);
+		const parsed = JSON.parse(text) as {
+			p?: { u?: unknown };
+		};
+		return typeof parsed.p?.u === "string" ? "request" : "response";
+	} catch {
+		return null;
+	}
+}
 
 class RuntimeWebSocketPeer {
 	private readonly listeners = new Map<string, Set<SocketListener>>();
+	private readonly direction: ORPCFrameDirection;
 	private readonly socket: WebSocket;
 
-	constructor(socket: WebSocket) {
+	constructor(socket: WebSocket, direction: ORPCFrameDirection) {
 		this.socket = socket;
+		this.direction = direction;
 		socket.addEventListener("open", (event) => this.emit("open", event));
 		socket.addEventListener("close", (event) => this.emit("close", event));
 		socket.addEventListener("error", (event) => this.emit("error", event));
@@ -53,6 +77,9 @@ class RuntimeWebSocketPeer {
 				typeof event.data === "string" &&
 				event.data === HEARTBEAT_ACK_FRAME
 			) {
+				return;
+			}
+			if (getORPCFrameDirection(event.data) !== this.direction) {
 				return;
 			}
 			this.emit("message", event);
@@ -339,10 +366,17 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 							);
 						});
 
-						const peer = new RuntimeWebSocketPeer(socket);
-						const client = createRuntimeIngressClient(peer);
+						const ingressPeer = new RuntimeWebSocketPeer(
+							socket,
+							"response"
+						);
+						const controlPeer = new RuntimeWebSocketPeer(
+							socket,
+							"request"
+						);
+						const client = createRuntimeIngressClient(ingressPeer);
 						const controlHandler = new RPCHandler(runtimeControlRouter);
-						controlHandler.upgrade(peer);
+						controlHandler.upgrade(controlPeer);
 
 						await Effect.runPromise(setSocket(socket));
 						await Effect.runPromise(setClient(client));

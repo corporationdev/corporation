@@ -24,6 +24,7 @@ import type {
 import { env } from "@corporation/env/server";
 import { Sandbox } from "@e2b/desktop";
 import { createORPCClient } from "@orpc/client";
+import { ORPCError } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
 import type { ContractRouterClient } from "@orpc/contract";
 import { implement } from "@orpc/server";
@@ -284,6 +285,25 @@ function parseAfterOffset(url: URL): number | undefined {
 	}
 	const parsed = Number.parseInt(raw, 10);
 	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function isORPCRequestFrame(message: string | ArrayBuffer): boolean {
+	try {
+		const text =
+			typeof message === "string"
+				? message
+				: new TextDecoder().decode(message);
+		const parsed = JSON.parse(text) as {
+			t?: number;
+			p?: { u?: unknown };
+		};
+		if (parsed.t === 4) {
+			return true;
+		}
+		return typeof parsed.p?.u === "string";
+	} catch {
+		return false;
+	}
 }
 
 function compareRuntimeAttachments(
@@ -615,13 +635,25 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			}),
 			sendMessage: implementer.sendMessage.handler(
 				async ({ context, input }) => {
-					await sendMessage(
-						this.createContext(context.authState, context.connectionId),
-						input.sessionId,
-						input.content,
-						input.agent,
-						input.modelId
-					);
+					try {
+						await sendMessage(
+							this.createContext(context.authState, context.connectionId),
+							input.sessionId,
+							input.content,
+							input.agent,
+							input.modelId
+						);
+					} catch (error) {
+						if (
+							error instanceof Error &&
+							error.message === "Sandbox runtime is not connected"
+						) {
+							throw new ORPCError("SERVICE_UNAVAILABLE", {
+								message: error.message,
+							});
+						}
+						throw error;
+					}
 					return null;
 				}
 			),
@@ -950,7 +982,16 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			return false;
 		}
 
-		const sandbox = await connectSandbox(binding?.sandboxId ?? null);
+		let sandbox: Sandbox | null = null;
+		try {
+			sandbox = await connectSandbox(binding?.sandboxId ?? null);
+		} catch (error) {
+			console.warn("Failed to connect sandbox while syncing binding", {
+				actorId: this.actorId,
+				sandboxId: binding?.sandboxId ?? null,
+				error,
+			});
+		}
 		await resetTerminal(ctx);
 		await this.persistBinding(binding);
 		this.vars.sandbox = sandbox;
@@ -1260,6 +1301,9 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			updatedConnection
 		);
 		updatedConnection.peer.notifyMessage(message);
+		if (!isORPCRequestFrame(message)) {
+			return;
+		}
 
 		await this.runtimeIngressRPCHandler.message(ws, message, {
 			context: {
