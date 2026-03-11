@@ -13,8 +13,8 @@ import type {
 	TimelineEntry,
 } from "@/components/chat/types";
 import { apiClient, getAuthHeaders } from "@/lib/api-client";
-import type { SpaceActor } from "@/lib/rivetkit";
 import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
+import type { SpaceActor } from "@/lib/space-client";
 import { toAbsoluteUrl } from "@/lib/url";
 
 const getSessionStreamStateRoute =

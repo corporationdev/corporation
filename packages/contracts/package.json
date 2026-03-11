@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./sandbox-do": "./src/sandbox-do.ts",
-    "./client-do": "./src/client-do.ts"
+    "./client-do": "./src/client-do.ts",
+    "./space-socket": "./src/space-socket.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "catalog:",

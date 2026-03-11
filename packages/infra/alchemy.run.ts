@@ -6,7 +6,6 @@ import { deriveEnvTier } from "@corporation/config/stage";
 import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
-	KVNamespace,
 	Ruleset,
 	Tunnel,
 	Vite,
@@ -45,12 +44,10 @@ const app = await alchemy("corporation", {
 		: undefined,
 });
 
-const actorDO = DurableObjectNamespace("actor-do", {
-	className: "ActorHandler",
+const spaceDO = DurableObjectNamespace("space-do", {
+	className: "SpaceDurableObject",
 	sqlite: true,
 });
-
-const actorKV = await KVNamespace("actor-kv");
 const serverHostname =
 	envTier === "dev" ? getStageServerHostname(stage) : undefined;
 const serverTunnel =
@@ -134,8 +131,7 @@ export const server = await Worker("agent-server", {
 			process.env.CORPORATION_INTERNAL_API_KEY
 		),
 		...runtime.serverBindings,
-		ACTOR_DO: actorDO,
-		ACTOR_KV: actorKV,
+		SPACE_DO: spaceDO,
 	},
 	dev: {
 		port: 3000,

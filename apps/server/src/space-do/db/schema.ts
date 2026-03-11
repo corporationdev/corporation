@@ -38,6 +38,12 @@ export const sessions = sqliteTable("sessions", {
 	error: text("error", { mode: "json" }),
 });
 
+export const spaceMetadata = sqliteTable("space_metadata", {
+	id: integer("id").primaryKey(),
+	sandboxId: text("sandbox_id"),
+	agentUrl: text("agent_url"),
+});
+
 export const sessionStreamFrames = sqliteTable(
 	"session_stream_frames",
 	{
@@ -76,6 +82,7 @@ export type SessionStreamFrameRow = InferSelectModel<
 >;
 
 export const schema = {
+	spaceMetadata,
 	sessions,
 	sessionStreamFrames,
 };

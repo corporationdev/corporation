@@ -38,12 +38,18 @@ export type ConnectionSender = {
 	send: (eventName: string, ...args: unknown[]) => void;
 };
 
+export type BrowserConnection = ConnectionSender & {
+	socket: WebSocket;
+};
+
 export type SpaceRuntimeContext = {
 	actorId: string;
 	key: string[];
+	ctx: DurableObjectState;
+	env: Env;
 	state: PersistedState;
 	vars: SpaceVars;
-	conns: Map<string, ConnectionSender>;
+	conns: Map<string, BrowserConnection>;
 	waitUntil: (promise: Promise<void>) => void;
 	broadcast: (eventName: string, ...args: unknown[]) => void;
 	conn?: { id: string; state: SpaceConnectionState };

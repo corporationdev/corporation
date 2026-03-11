@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { SpaceActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/space-client";
 
 type DesktopTabProps = {
 	actor: SpaceActor;

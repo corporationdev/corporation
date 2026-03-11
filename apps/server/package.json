@@ -6,7 +6,6 @@
   "exports": {
     ".": "./src/index.ts",
     "./app": "./src/app.ts",
-    "./registry": "./src/registry.ts",
     "./session-protocol": "./src/session-protocol.ts"
   },
   "scripts": {
@@ -27,15 +26,13 @@
     "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@nangohq/node": "catalog:",
-    "@rivetkit/cloudflare-workers": "catalog:",
     "convex": "catalog:",
     "drizzle-orm": "catalog:",
     "hono": "catalog:",
     "jose": "catalog:",
     "nanoid": "catalog:",
     "octokit": "catalog:",
-    "zod": "catalog:",
-    "rivetkit": "catalog:"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
