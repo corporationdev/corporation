@@ -5,10 +5,16 @@
   "type": "module",
   "exports": {
     "./sandbox-do": "./src/sandbox-do.ts",
-    "./browser-do": "./src/browser-do.ts"
+    "./browser-do": "./src/browser-do.ts",
+    "./runtime-auth": "./src/runtime-auth.ts",
+    "./orpc/browser-space": "./src/orpc/browser-space.ts",
+    "./orpc/runtime-control": "./src/orpc/runtime-control.ts",
+    "./orpc/runtime-ingress": "./src/orpc/runtime-ingress.ts",
+    "./orpc/worker-http": "./src/orpc/worker-http.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "catalog:",
+    "@orpc/contract": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -1,11 +1,13 @@
-import { turnRunnerCallbackPayloadSchema } from "@corporation/contracts/sandbox-do";
-import { env } from "@corporation/env/server";
+import type {
+	RuntimeCommandRejectedMessage,
+	RuntimeSessionEventBatchMessage,
+	RuntimeStartTurnMessage,
+	RuntimeTurnCompletedMessage,
+	RuntimeTurnFailedMessage,
+} from "@corporation/contracts/sandbox-do";
 import { createLogger } from "@corporation/logger";
 import { eq } from "drizzle-orm";
-import { hc } from "hono/client";
 import { nanoid } from "nanoid";
-import type { SandboxRuntimeApp } from "sandbox-runtime/client";
-import { createRuntimeAuthHeaders } from "./actor-auth";
 import { sessions } from "./db/schema";
 import { normalizeSessionEvent } from "./session-event-normalizer";
 import {
@@ -14,55 +16,46 @@ import {
 } from "./session-stream";
 import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
 
-const TRAILING_SLASH_RE = /\/$/;
 const log = createLogger("space:agent-runner");
 
 type TextPromptPart = { type: "text"; text: string };
 
-async function launchAgentRunner(
+async function failSessionRun(
 	ctx: SpaceRuntimeContext,
-	params: {
-		turnId: string;
-		sessionId: string;
-		agent: string;
-		modelId: string;
-		prompt: TextPromptPart[];
-		callbackUrl: string;
-		callbackToken: string;
-		authToken: string;
-	}
+	sessionId: string,
+	turnId: string,
+	errorMessage: string,
+	reason: string
 ): Promise<void> {
-	const binding = ctx.state.binding;
-	if (!binding) {
-		throw new Error("Sandbox runtime is not connected");
+	const [session] = await ctx.vars.db
+		.select({
+			id: sessions.id,
+			runId: sessions.runId,
+		})
+		.from(sessions)
+		.where(eq(sessions.id, sessionId))
+		.limit(1);
+
+	if (!session || session.runId !== turnId) {
+		return;
 	}
 
-	const client = hc<SandboxRuntimeApp>(binding.agentUrl);
-	const response = await client.v1.prompt.$post(
-		{
-			json: {
-				turnId: params.turnId,
-				sessionId: params.sessionId,
-				agent: params.agent,
-				modelId: params.modelId,
-				prompt: params.prompt,
-				cwd: SANDBOX_WORKDIR,
-				callbackUrl: params.callbackUrl,
-				callbackToken: params.callbackToken,
-			},
-		},
-		{
-			headers: createRuntimeAuthHeaders(params.authToken),
-			init: { signal: AbortSignal.timeout(15_000) },
-		}
-	);
-
-	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		throw new Error(
-			`sandbox-runtime prompt failed (${response.status}): ${text}`
-		);
-	}
+	await ctx.vars.db
+		.update(sessions)
+		.set({
+			status: "error",
+			runId: null,
+			callbackToken: null,
+			pid: null,
+			error: errorMessage,
+		})
+		.where(eq(sessions.id, sessionId));
+	appendSessionStatusFrame(ctx, {
+		sessionId,
+		status: "error",
+		error: errorMessage,
+		reason,
+	});
 }
 
 export async function startAgentRunner(
@@ -72,21 +65,14 @@ export async function startAgentRunner(
 		prompt: TextPromptPart[];
 		agent: string;
 		modelId: string;
-		authToken: string;
 	}
 ): Promise<void> {
-	if (!ctx.state.binding) {
+	if (!ctx.runtime.isConnected()) {
 		throw new Error("Sandbox runtime is not connected");
 	}
 
 	const turnId = nanoid();
-	const callbackToken = crypto.randomUUID();
-	const baseUrl = env.CORPORATION_SERVER_URL;
-	if (!baseUrl) {
-		throw new Error("Missing CORPORATION_SERVER_URL env var");
-	}
-	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/api/spaces/${encodeURIComponent(ctx.key[0] ?? "")}/runtime/callbacks/agent-runner`;
-
+	const commandId = nanoid();
 	const didStart = ctx.vars.db.transaction((tx) => {
 		const existingSession = tx
 			.select({ id: sessions.id, status: sessions.status })
@@ -107,7 +93,7 @@ export async function startAgentRunner(
 			.set({
 				runId: turnId,
 				status: "running",
-				callbackToken,
+				callbackToken: null,
 				error: null,
 			})
 			.where(eq(sessions.id, params.sessionId))
@@ -119,7 +105,6 @@ export async function startAgentRunner(
 		throw new Error("Session already has a running turn");
 	}
 
-	ctx.vars.agentRunnerSequenceBySessionId.set(params.sessionId, 0);
 	appendSessionStatusFrame(ctx, {
 		sessionId: params.sessionId,
 		status: "running",
@@ -128,164 +113,185 @@ export async function startAgentRunner(
 	});
 
 	try {
-		await launchAgentRunner(ctx, {
+		const message: RuntimeStartTurnMessage = {
+			type: "start_turn",
+			commandId,
 			turnId,
 			sessionId: params.sessionId,
 			agent: params.agent,
 			modelId: params.modelId,
+			cwd: SANDBOX_WORKDIR,
 			prompt: params.prompt,
-			callbackUrl,
-			callbackToken,
-			authToken: params.authToken,
+		};
+		ctx.runtime.send(message, {
+			type: "start_turn",
+			commandId,
+			sessionId: params.sessionId,
+			turnId,
 		});
 	} catch (error) {
+		const errorMessage =
+			error instanceof Error ? error.message : "Failed to send turn to runtime";
 		log.error(
 			{ err: error, actorId: ctx.actorId, sessionId: params.sessionId, turnId },
-			"launchAgentRunner failed"
+			"startAgentRunner failed to send start_turn"
 		);
-		await ctx.vars.db
-			.update(sessions)
-			.set({
-				status: "error",
-				runId: null,
-				callbackToken: null,
-				error: error instanceof Error ? error.message : String(error),
-			})
-			.where(eq(sessions.id, params.sessionId));
-		appendSessionStatusFrame(ctx, {
-			sessionId: params.sessionId,
-			status: "error",
-			error: error instanceof Error ? error.message : String(error),
-			reason: "run_launch_failed",
-		});
+		await failSessionRun(
+			ctx,
+			params.sessionId,
+			turnId,
+			errorMessage,
+			"run_launch_failed"
+		);
 		throw error;
 	}
 }
 
-export async function ingestAgentRunnerBatch(
+export async function ingestRuntimeSessionEventBatch(
 	ctx: SpaceRuntimeContext,
-	payload: unknown
+	message: RuntimeSessionEventBatchMessage
 ): Promise<void> {
-	const result = turnRunnerCallbackPayloadSchema.safeParse(payload);
-	if (!result.success) {
-		log.error(
-			{ err: result.error.message, actorId: ctx.actorId, payload },
-			"failed to parse callback payload"
-		);
-		throw new Error(`Invalid callback payload: ${result.error.message}`);
-	}
-	const parsed = result.data;
-
 	const [session] = await ctx.vars.db
 		.select({
 			id: sessions.id,
 			runId: sessions.runId,
-			callbackToken: sessions.callbackToken,
 		})
 		.from(sessions)
-		.where(eq(sessions.id, parsed.sessionId))
+		.where(eq(sessions.id, message.sessionId))
 		.limit(1);
 
-	if (!session) {
-		throw new Error(`Unknown session: ${parsed.sessionId}`);
-	}
-
-	if (session.runId !== parsed.turnId) {
-		// Late callbacks are expected after cancel/restart races.
-		// Treat these as no-op so the runner can drain and release cleanly.
-		log.warn(
-			{
-				actorId: ctx.actorId,
-				sessionId: session.id,
-				incomingTurnId: parsed.turnId,
-				currentRunId: session.runId,
-				kind: parsed.kind,
-				sequence: parsed.sequence,
-			},
-			"ignoring stale callback for non-current run"
-		);
-		return;
-	}
-	if (!session.callbackToken || session.callbackToken !== parsed.token) {
-		throw new Error("Invalid callback token");
-	}
-
-	const lastSequence = ctx.vars.agentRunnerSequenceBySessionId.get(session.id);
-	if (lastSequence !== undefined) {
-		if (parsed.sequence <= lastSequence) {
-			return;
-		}
-		if (parsed.sequence > lastSequence + 1) {
-			log.warn(
-				{
-					actorId: ctx.actorId,
-					sessionId: session.id,
-					turnId: parsed.turnId,
-					expected: lastSequence + 1,
-					received: parsed.sequence,
-				},
-				"callback sequence gap detected; accepting newer callback"
-			);
-		}
-	}
-
-	if (parsed.kind === "events") {
-		const validEvents = parsed.events.filter(
-			(event) => event.sessionId === session.id
-		);
-		if (validEvents.length > 0) {
-			appendSessionEventFrames(
-				ctx,
-				session.id,
-				validEvents.map(normalizeSessionEvent)
-			);
-		}
-		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
+	if (!session || session.runId !== message.turnId) {
 		return;
 	}
 
-	if (parsed.kind === "completed") {
-		await ctx.vars.db
-			.update(sessions)
-			.set({
-				status: "idle",
-				runId: null,
-				callbackToken: null,
-				pid: null,
-				error: null,
-			})
-			.where(eq(sessions.id, session.id));
-		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
-		appendSessionStatusFrame(ctx, {
-			sessionId: session.id,
+	const validEvents = message.events.filter(
+		(event) => event.sessionId === message.sessionId
+	);
+	if (validEvents.length === 0) {
+		return;
+	}
+
+	appendSessionEventFrames(
+		ctx,
+		message.sessionId,
+		validEvents.map(normalizeSessionEvent)
+	);
+}
+
+export async function ingestRuntimeTurnCompleted(
+	ctx: SpaceRuntimeContext,
+	message: RuntimeTurnCompletedMessage
+): Promise<void> {
+	const [session] = await ctx.vars.db
+		.select({
+			id: sessions.id,
+			runId: sessions.runId,
+		})
+		.from(sessions)
+		.where(eq(sessions.id, message.sessionId))
+		.limit(1);
+
+	if (!session || session.runId !== message.turnId) {
+		return;
+	}
+
+	await ctx.vars.db
+		.update(sessions)
+		.set({
 			status: "idle",
+			runId: null,
+			callbackToken: null,
+			pid: null,
 			error: null,
-			reason: "run_completed",
-		});
+		})
+		.where(eq(sessions.id, message.sessionId));
+	appendSessionStatusFrame(ctx, {
+		sessionId: message.sessionId,
+		status: "idle",
+		error: null,
+		reason: "run_completed",
+	});
+}
+
+export async function ingestRuntimeTurnFailed(
+	ctx: SpaceRuntimeContext,
+	message: RuntimeTurnFailedMessage
+): Promise<void> {
+	await failSessionRun(
+		ctx,
+		message.sessionId,
+		message.turnId,
+		message.error.message,
+		"run_failed"
+	);
+	log.error(
+		{
+			actorId: ctx.actorId,
+			sessionId: message.sessionId,
+			turnId: message.turnId,
+		},
+		"runtime reported turn failure"
+	);
+}
+
+export async function ingestRuntimeCommandRejected(
+	ctx: SpaceRuntimeContext,
+	message: RuntimeCommandRejectedMessage,
+	command:
+		| {
+				type: "start_turn";
+				sessionId: string;
+				turnId: string;
+		  }
+		| {
+				type: "cancel_turn";
+				sessionId: string;
+				turnId: string;
+		  }
+		| null
+): Promise<void> {
+	if (!command) {
 		return;
 	}
 
-	if (parsed.kind === "failed") {
-		await ctx.vars.db
-			.update(sessions)
-			.set({
-				status: "error",
-				runId: null,
-				callbackToken: null,
-				pid: null,
-				error: parsed.error.message,
-			})
-			.where(eq(sessions.id, session.id));
-		ctx.vars.agentRunnerSequenceBySessionId.set(session.id, parsed.sequence);
-		appendSessionStatusFrame(ctx, {
-			sessionId: session.id,
-			status: "error",
-			error: parsed.error.message,
-			reason: "run_failed",
-		});
-		log.error(
-			{ actorId: ctx.actorId, sessionId: session.id, turnId: parsed.turnId },
-			"turn runner reported failure"
+	if (command.type === "start_turn") {
+		await failSessionRun(
+			ctx,
+			command.sessionId,
+			command.turnId,
+			message.reason,
+			"run_rejected"
+		);
+	}
+}
+
+export async function failRunningSessionsForRuntimeDisconnect(
+	ctx: SpaceRuntimeContext,
+	reason: string
+): Promise<void> {
+	const runningSessions = await ctx.vars.db
+		.select({
+			id: sessions.id,
+			runId: sessions.runId,
+		})
+		.from(sessions)
+		.where(eq(sessions.status, "running"));
+
+	if (runningSessions.length === 0) {
+		return;
+	}
+
+	const errorMessage = `Sandbox runtime disconnected: ${reason}`;
+	for (const session of runningSessions) {
+		if (!session.runId) {
+			continue;
+		}
+		await failSessionRun(
+			ctx,
+			session.id,
+			session.runId,
+			errorMessage,
+			"runtime_disconnected"
 		);
 	}
 }

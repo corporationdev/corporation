@@ -1,11 +1,14 @@
 import type {
-	SpaceSocketEventMessage,
+	SessionRow,
 	SpaceSocketEventName,
-	SpaceSocketServerMessage,
+	TerminalOutputPayload,
 } from "@corporation/contracts/browser-do";
-import { spaceSocketServerMessageSchema } from "@corporation/contracts/browser-do";
+import type { browserSpaceContract } from "@corporation/contracts/orpc/browser-space";
+import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
 import { env } from "@corporation/env/web";
-import { nanoid } from "nanoid";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/websocket";
+import type { ContractRouterClient } from "@orpc/contract";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { toAbsoluteUrl } from "./url";
 
@@ -21,16 +24,11 @@ function buildSocketUrl(spaceSlug: string, authToken: string): string {
 
 class SpaceSocketClient {
 	private readonly listeners = new Map<SpaceSocketEventName, Set<Listener>>();
-	private readonly pending = new Map<
-		string,
-		{
-			resolve: (value: unknown) => void;
-			reject: (reason: unknown) => void;
-		}
-	>();
 	private readonly statusListeners = new Set<() => void>();
 	private readonly authToken: string;
 	private socket: WebSocket | null = null;
+	private client: ContractRouterClient<typeof browserSpaceContract> | null =
+		null;
 	private disposed = false;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private reconnectAttempt = 0;
@@ -72,6 +70,12 @@ class SpaceSocketClient {
 		}
 	}
 
+	private emitEvent(eventName: SpaceSocketEventName, payload: unknown) {
+		for (const listener of this.listeners.get(eventName) ?? []) {
+			listener(payload);
+		}
+	}
+
 	private setStatus(status: "connecting" | "connected" | "disconnected") {
 		if (this.status === status) {
 			return;
@@ -93,22 +97,19 @@ class SpaceSocketClient {
 
 		socket.addEventListener("open", () => {
 			this.reconnectAttempt = 0;
+			this.client = createORPCClient<
+				ContractRouterClient<typeof browserSpaceContract>
+			>(
+				new RPCLink({
+					websocket: socket,
+				})
+			);
 			this.setStatus("connected");
-		});
-
-		socket.addEventListener("message", (event) => {
-			if (typeof event.data !== "string") {
-				return;
-			}
-			this.handleMessage(event.data);
+			this.startSubscriptions(socket);
 		});
 
 		socket.addEventListener("close", () => {
-			const pending = [...this.pending.values()];
-			this.pending.clear();
-			for (const entry of pending) {
-				entry.reject(new Error("Space socket disconnected"));
-			}
+			this.client = null;
 			this.socket = null;
 			this.setStatus("disconnected");
 			this.scheduleReconnect();
@@ -117,6 +118,46 @@ class SpaceSocketClient {
 		socket.addEventListener("error", () => {
 			socket.close();
 		});
+	}
+
+	private startSubscriptions(socket: WebSocket) {
+		const client = this.client;
+		if (!client) {
+			return;
+		}
+
+		this.consumeSubscription(
+			socket,
+			"sessions.changed",
+			Promise.resolve(client.onSessionsChanged())
+		);
+		this.consumeSubscription(
+			socket,
+			"terminal.output",
+			Promise.resolve(client.onTerminalOutput())
+		);
+	}
+
+	private async consumeSubscription(
+		socket: WebSocket,
+		eventName: "sessions.changed" | "terminal.output",
+		iteratorPromise: Promise<
+			AsyncIterable<SessionRow[] | TerminalOutputPayload>
+		>
+	) {
+		try {
+			const iterator = await iteratorPromise;
+			for await (const payload of iterator) {
+				if (this.socket !== socket || this.disposed) {
+					return;
+				}
+				this.emitEvent(eventName, payload);
+			}
+		} catch (error) {
+			if (this.socket === socket && !this.disposed) {
+				console.error(`Space subscription failed: ${eventName}`, error);
+			}
+		}
 	}
 
 	private scheduleReconnect() {
@@ -131,68 +172,11 @@ class SpaceSocketClient {
 		}, delay);
 	}
 
-	private handleMessage(raw: string) {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(raw);
-		} catch {
-			return;
-		}
-		const message = spaceSocketServerMessageSchema.safeParse(parsed) as
-			| { success: true; data: SpaceSocketServerMessage }
-			| { success: false };
-		if (!message.success) {
-			return;
-		}
-
-		if (message.data.type === "rpc_result") {
-			const pending = this.pending.get(message.data.id);
-			if (!pending) {
-				return;
-			}
-			this.pending.delete(message.data.id);
-			if (message.data.ok) {
-				pending.resolve(message.data.result);
-			} else {
-				pending.reject(new Error(message.data.error.message));
-			}
-			return;
-		}
-
-		this.handleEvent(message.data);
-	}
-
-	private handleEvent(message: SpaceSocketEventMessage) {
-		const listeners = this.listeners.get(message.event);
-		if (!listeners) {
-			return;
-		}
-		for (const listener of listeners) {
-			listener(message.payload);
-		}
-	}
-
-	async call<T>(method: string, ...args: unknown[]): Promise<T> {
-		const socket = this.socket;
-		if (!(socket && this.status === "connected")) {
+	private getClient() {
+		if (!(this.client && this.socket && this.status === "connected")) {
 			throw new Error("Space connection unavailable");
 		}
-		const id = nanoid();
-		const promise = new Promise<T>((resolve, reject) => {
-			this.pending.set(id, {
-				resolve: resolve as (value: unknown) => void,
-				reject,
-			});
-		});
-		socket.send(
-			JSON.stringify({
-				type: "rpc",
-				id,
-				method,
-				args,
-			})
-		);
-		return await promise;
+		return this.client;
 	}
 
 	dispose() {
@@ -205,6 +189,61 @@ class SpaceSocketClient {
 			this.socket.close(1000, "Disposed");
 			this.socket = null;
 		}
+		this.client = null;
+	}
+
+	async syncSandboxBinding(
+		binding: {
+			sandboxId: string;
+		} | null
+	): Promise<boolean> {
+		return await this.getClient().syncSandboxBinding({ binding });
+	}
+
+	async listSessions(): Promise<SessionRow[]> {
+		return await this.getClient().listSessions();
+	}
+
+	async sendMessage(
+		sessionId: string,
+		content: string,
+		agent: string,
+		modelId: string
+	): Promise<void> {
+		await this.getClient().sendMessage({
+			sessionId,
+			content,
+			agent,
+			modelId,
+		});
+	}
+
+	async cancelSession(sessionId: string): Promise<void> {
+		await this.getClient().cancelSession({ sessionId });
+	}
+
+	async getAgentProbeState(): Promise<AgentProbeResponse> {
+		return await this.getClient().getAgentProbeState();
+	}
+
+	async runCommand(command: string, background = false): Promise<void> {
+		await this.getClient().runCommand({ command, background });
+	}
+
+	async input(data: number[]): Promise<void> {
+		await this.getClient().input({ data });
+	}
+
+	async resize(cols: number, rows: number): Promise<void> {
+		await this.getClient().resize({ cols, rows });
+	}
+
+	async getTerminalSnapshot(): Promise<boolean> {
+		return await this.getClient().getTerminalSnapshot();
+	}
+
+	async getDesktopStreamUrl(): Promise<string> {
+		return await this.getClient().getDesktopStreamUrl();
 	}
 }
 
@@ -212,10 +251,9 @@ export type SpaceConnection = {
 	syncSandboxBinding: (
 		binding: {
 			sandboxId: string;
-			agentUrl: string;
 		} | null
 	) => Promise<boolean>;
-	listSessions: () => Promise<unknown>;
+	listSessions: () => Promise<SessionRow[]>;
 	sendMessage: (
 		sessionId: string,
 		content: string,
@@ -223,7 +261,7 @@ export type SpaceConnection = {
 		modelId: string
 	) => Promise<void>;
 	cancelSession: (sessionId: string) => Promise<void>;
-	getAgentProbeState: () => Promise<unknown>;
+	getAgentProbeState: () => Promise<AgentProbeResponse>;
 	runCommand: (command: string, background?: boolean) => Promise<void>;
 	input: (data: number[]) => Promise<void>;
 	resize: (cols: number, rows: number) => Promise<void>;
@@ -287,19 +325,18 @@ export function useSpaceSocketClient(
 		}
 
 		return {
-			syncSandboxBinding: (binding) =>
-				client.call<boolean>("syncSandboxBinding", binding),
-			listSessions: () => client.call("listSessions"),
+			syncSandboxBinding: (binding) => client.syncSandboxBinding(binding),
+			listSessions: () => client.listSessions(),
 			sendMessage: (sessionId, content, agent, modelId) =>
-				client.call("sendMessage", sessionId, content, agent, modelId),
-			cancelSession: (sessionId) => client.call("cancelSession", sessionId),
-			getAgentProbeState: () => client.call("getAgentProbeState"),
+				client.sendMessage(sessionId, content, agent, modelId),
+			cancelSession: (sessionId) => client.cancelSession(sessionId),
+			getAgentProbeState: () => client.getAgentProbeState(),
 			runCommand: (command, background) =>
-				client.call("runCommand", command, background ?? false),
-			input: (data) => client.call("input", data),
-			resize: (cols, rows) => client.call("resize", cols, rows),
-			getTerminalSnapshot: () => client.call("getTerminalSnapshot"),
-			getDesktopStreamUrl: () => client.call("getDesktopStreamUrl"),
+				client.runCommand(command, background ?? false),
+			input: (data) => client.input(data),
+			resize: (cols, rows) => client.resize(cols, rows),
+			getTerminalSnapshot: () => client.getTerminalSnapshot(),
+			getDesktopStreamUrl: () => client.getDesktopStreamUrl(),
 		};
 	}, [client, status]);
 

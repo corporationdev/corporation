@@ -1,13 +1,5 @@
 import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
-import {
-	Effect,
-	Exit,
-	type Fiber,
-	Layer,
-	Ref,
-	Scope,
-	ServiceMap,
-} from "effect";
+import { Effect, Exit, Fiber, Layer, Ref, Scope, ServiceMap } from "effect";
 import { AcpBridgeFactory } from "./acp-bridge";
 import {
 	type RuntimeActionError,
@@ -70,6 +62,7 @@ type SessionRegistryShape = {
 		agent: string,
 		promise: Promise<AgentProbeAgent> | null
 	) => Effect.Effect<void>;
+	interruptAllTurns: () => Effect.Effect<void>;
 };
 
 export class SessionRegistry extends ServiceMap.Service<
@@ -321,6 +314,24 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 						nextInFlightProbeByAgent.delete(agent);
 					}
 					return { ...state, inFlightProbeByAgent: nextInFlightProbeByAgent };
+				}),
+			interruptAllTurns: () =>
+				Effect.gen(function* () {
+					const fibers = yield* Ref.modify(stateRef, (state) => {
+						return [
+							Array.from(state.activeTurnFibers.values()),
+							{
+								...state,
+								activeTurns: new Map(),
+								activeSessionTurns: new Map(),
+								activeTurnFibers: new Map(),
+							},
+						] as const;
+					});
+
+					for (const fiber of fibers) {
+						yield* Fiber.interrupt(fiber);
+					}
 				}),
 		};
 

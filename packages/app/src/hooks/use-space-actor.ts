@@ -5,7 +5,6 @@ import { type SpaceConnection, useSpaceSocketClient } from "@/lib/space-client";
 
 type SandboxBinding = {
 	sandboxId: string;
-	agentUrl: string;
 };
 
 type SpaceActorSpace =
@@ -13,7 +12,6 @@ type SpaceActorSpace =
 			slug: string;
 			status?: string;
 			sandboxId?: string | null;
-			agentUrl?: string | null;
 	  }
 	| null
 	| undefined;
@@ -21,13 +19,12 @@ type SpaceActorSpace =
 type ActiveSpaceConnection = NonNullable<SpaceConnection>;
 
 function getSandboxBinding(space: SpaceActorSpace): SandboxBinding | null {
-	if (!(space?.sandboxId && space.agentUrl)) {
+	if (!space?.sandboxId) {
 		return null;
 	}
 
 	return {
 		sandboxId: space.sandboxId,
-		agentUrl: space.agentUrl,
 	};
 }
 
@@ -36,7 +33,7 @@ function getBindingSignature(binding: SandboxBinding | null): string {
 		return "__unbound__";
 	}
 
-	return `${binding.sandboxId}::${binding.agentUrl}`;
+	return binding.sandboxId;
 }
 
 export function useSpaceActor(

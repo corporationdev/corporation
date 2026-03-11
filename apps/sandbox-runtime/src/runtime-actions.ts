@@ -22,6 +22,7 @@ export type RuntimeActionsShape = {
 	probeAgents: (
 		request: AgentProbeRequestBody
 	) => Effect.Effect<AgentProbeResponse, RuntimeActionErrorType>;
+	interruptAllTurns: () => Effect.Effect<void>;
 };
 
 export class RuntimeActions extends ServiceMap.Service<
@@ -107,6 +108,7 @@ export const RuntimeActionsLive = Layer.effect(RuntimeActions)(
 					return true;
 				}),
 			probeAgents: (request) => probeService.probeAgents(request),
+			interruptAllTurns: () => registry.interruptAllTurns(),
 		};
 
 		return service;

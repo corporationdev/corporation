@@ -1,8 +1,9 @@
 import { resolveProxyIntegrationForUrl } from "@corporation/config/proxy-integrations";
+import { verifyRuntimeAccessToken } from "@corporation/contracts/runtime-auth";
 import { Nango } from "@nangohq/node";
 import { Hono } from "hono";
 import { z } from "zod";
-import { type AuthVariables, authMiddleware } from "./auth";
+import { verifyAuthToken } from "./auth";
 
 const HOP_BY_HOP_HEADERS = new Set([
 	"connection",
@@ -21,6 +22,10 @@ type ProxyRequestBody = {
 	method: NangoProxyMethod;
 	headers?: Record<string, string>;
 	bodyBase64?: string;
+};
+
+type AuthVariables = {
+	userId: string;
 };
 
 type ResponseHeadersInput = Headers | Record<string, unknown>;
@@ -137,7 +142,37 @@ function toResponseBody(
 }
 
 export const proxyApp = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
-	.use(authMiddleware)
+	.use(async (c, next) => {
+		const authHeader = c.req.header("authorization");
+		if (!authHeader?.startsWith("Bearer ")) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
+
+		const token = authHeader.slice("Bearer ".length).trim();
+		if (!token) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
+
+		const browserPayload = await verifyAuthToken(
+			token,
+			c.env.CORPORATION_CONVEX_SITE_URL
+		);
+		if (browserPayload) {
+			c.set("userId", browserPayload.sub);
+			return await next();
+		}
+
+		const runtimeSecret = c.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+		if (!runtimeSecret) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
+		const runtimePayload = await verifyRuntimeAccessToken(token, runtimeSecret);
+		if (!runtimePayload) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
+		c.set("userId", runtimePayload.sub);
+		return await next();
+	})
 	.post("/", async (c) => {
 		const bodyResult = proxyRequestBodySchema.safeParse(
 			await c.req.json().catch(() => null)
@@ -165,7 +200,7 @@ export const proxyApp = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 			return c.json({ error: "No matching proxy integration for URL" }, 400);
 		}
 
-		const { sub: userId } = c.get("jwtPayload");
+		const userId = c.get("userId");
 		const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
 		const { connections } = await nango.listConnections({
 			userId,

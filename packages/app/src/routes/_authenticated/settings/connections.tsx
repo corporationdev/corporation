@@ -1,6 +1,9 @@
+import type {
+	Integration,
+	ListIntegrationsOutput,
+} from "@corporation/contracts/orpc/worker-http";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import type { InferResponseType } from "hono/client";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,26 +14,11 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, apiUtils } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/connections")({
 	component: ConnectionsPage,
 });
-
-type IntegrationsResponse = InferResponseType<
-	typeof apiClient.integrations.$get,
-	200
->;
-type Integration = IntegrationsResponse["integrations"][number];
-
-async function fetchIntegrations() {
-	const res = await apiClient.integrations.$get({});
-	if (!res.ok) {
-		throw new Error("Failed to fetch integrations");
-	}
-	const data = await res.json();
-	return data.integrations;
-}
 
 function IntegrationCard({
 	integration,
@@ -99,14 +87,15 @@ function IntegrationCard({
 
 function ConnectionsPage() {
 	const queryClient = useQueryClient();
+	const integrationsQueryKey = apiUtils.integrations.list.queryKey();
 
 	const {
 		data: integrations,
 		isLoading,
 		error,
 	} = useQuery({
-		queryKey: ["integrations"],
-		queryFn: fetchIntegrations,
+		...apiUtils.integrations.list.queryOptions(),
+		select: (data) => data.integrations,
 	});
 
 	const disconnectMutation = useMutation({
@@ -116,62 +105,55 @@ function ConnectionsPage() {
 		}: {
 			connectionId: string;
 			providerConfigKey: string;
-		}) => {
-			const res = await apiClient.integrations.connections[
-				":connectionId"
-			].$delete({
-				param: { connectionId },
-				query: { provider_config_key: providerConfigKey },
-			});
-
-			if (!res.ok) {
-				throw new Error("Failed to disconnect");
-			}
-		},
+		}) =>
+			apiClient.integrations.disconnect({
+				connectionId,
+				providerConfigKey,
+			}),
 		onMutate: async ({ providerConfigKey }) => {
-			await queryClient.cancelQueries({ queryKey: ["integrations"] });
+			await queryClient.cancelQueries({ queryKey: integrationsQueryKey });
 
-			const previous = queryClient.getQueryData<Integration[]>([
-				"integrations",
-			]);
+			const previous =
+				queryClient.getQueryData<ListIntegrationsOutput>(integrationsQueryKey);
 
-			queryClient.setQueryData<Integration[]>(["integrations"], (old) =>
-				old?.map((i) =>
-					i.unique_key === providerConfigKey ? { ...i, connection: null } : i
-				)
+			queryClient.setQueryData<ListIntegrationsOutput>(
+				integrationsQueryKey,
+				(old) =>
+					old
+						? {
+								...old,
+								integrations: old.integrations.map((integration) =>
+									integration.unique_key === providerConfigKey
+										? { ...integration, connection: null }
+										: integration
+								),
+							}
+						: old
 			);
 
 			return { previous };
 		},
 		onError: (_err, _vars, context) => {
 			if (context?.previous) {
-				queryClient.setQueryData(["integrations"], context.previous);
+				queryClient.setQueryData(integrationsQueryKey, context.previous);
 			}
 		},
 		onSettled: () => {
-			queryClient.invalidateQueries({ queryKey: ["integrations"] });
+			queryClient.invalidateQueries({ queryKey: integrationsQueryKey });
 		},
 	});
 
 	const connectMutation = useMutation({
 		mutationFn: async (uniqueKey: string) => {
-			const res = await apiClient.integrations.connect.$post({
-				json: {
-					allowed_integrations: [uniqueKey],
-				},
+			const { connect_link } = await apiClient.integrations.connect({
+				allowedIntegrations: [uniqueKey],
 			});
-
-			if (!res.ok) {
-				throw new Error("Failed to create connect session");
-			}
-
-			const { connect_link } = await res.json();
 			if (connect_link) {
 				window.open(connect_link, "_blank");
 			}
 		},
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["integrations"] });
+			queryClient.invalidateQueries({ queryKey: integrationsQueryKey });
 		},
 	});
 

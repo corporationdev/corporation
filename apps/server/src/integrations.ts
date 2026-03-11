@@ -1,6 +1,10 @@
 import { $, createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { Nango } from "@nangohq/node";
 import { type AuthVariables, authMiddleware } from "./auth";
+import {
+	createIntegrationConnectSession,
+	disconnectIntegration,
+	listIntegrations,
+} from "./services/integrations";
 
 const ErrorResponseSchema = z.object({
 	error: z.string().openapi({ description: "Error message" }),
@@ -161,47 +165,11 @@ const disconnectRoute = createRoute({
 export const integrationsApp = $(
 	new OpenAPIHono<IntegrationsEnv>()
 		.openapi(listIntegrationsRoute, async (c) => {
-			const { sub: userId } = c.get("jwtPayload");
-			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
-
 			try {
-				const [integrationsRes, connectionsData] = await Promise.all([
-					nango.listIntegrations(),
-					nango.listConnections({ userId }),
-				]);
-
-				const connectionsByKey = new Map(
-					connectionsData.connections.map((conn) => [
-						conn.provider_config_key,
-						conn,
-					])
+				return c.json(
+					await listIntegrations(c.env, c.get("jwtPayload").sub),
+					200
 				);
-
-				const integrations = integrationsRes.configs.map(
-					(config: { unique_key: string; provider: string; logo?: string }) => {
-						const conn = connectionsByKey.get(config.unique_key);
-						return {
-							unique_key: config.unique_key,
-							provider: config.provider,
-							logo: config.logo,
-							connection: conn
-								? {
-										connection_id: conn.connection_id,
-										provider: conn.provider,
-										created: conn.created,
-										end_user: conn.end_user
-											? {
-													email: conn.end_user.email,
-													display_name: conn.end_user.display_name,
-												}
-											: null,
-									}
-								: null,
-						};
-					}
-				);
-
-				return c.json({ integrations }, 200);
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";
@@ -210,25 +178,11 @@ export const integrationsApp = $(
 		})
 		.openapi(createConnectSessionRoute, async (c) => {
 			const body = c.req.valid("json");
-			const { sub: userId, email, name } = c.get("jwtPayload");
-			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
-
 			try {
-				const { data } = await nango.createConnectSession({
-					end_user: {
-						id: userId,
-						email,
-						display_name: name,
-					},
-					allowed_integrations: body.allowed_integrations,
-				});
-
 				return c.json(
-					{
-						token: data.token,
-						connect_link: data.connect_link,
-						expires_at: data.expires_at,
-					},
+					await createIntegrationConnectSession(c.env, c.get("jwtPayload"), {
+						allowedIntegrations: body.allowed_integrations,
+					}),
 					200
 				);
 			} catch (error) {
@@ -240,11 +194,14 @@ export const integrationsApp = $(
 		.openapi(disconnectRoute, async (c) => {
 			const { connectionId } = c.req.valid("param");
 			const { provider_config_key } = c.req.valid("query");
-			const nango = new Nango({ secretKey: c.env.NANGO_SECRET_KEY });
-
 			try {
-				await nango.deleteConnection(provider_config_key, connectionId);
-				return c.json({ success: true }, 200);
+				return c.json(
+					await disconnectIntegration(c.env, {
+						connectionId,
+						providerConfigKey: provider_config_key,
+					}),
+					200
+				);
 			} catch (error) {
 				const message =
 					error instanceof Error ? error.message : "Unknown error";

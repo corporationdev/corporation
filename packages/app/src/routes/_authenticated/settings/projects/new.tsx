@@ -19,16 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { GitHubRepo } from "@/hooks/use-github-repos";
 import { useGitHubRepos } from "@/hooks/use-github-repos";
-import { apiClient } from "@/lib/api-client";
-
-async function fetchIntegrations() {
-	const res = await apiClient.integrations.$get({});
-	if (!res.ok) {
-		throw new Error("Failed to fetch integrations");
-	}
-	const data = await res.json();
-	return data.integrations;
-}
+import { apiClient, apiUtils } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/projects/new")({
 	component: NewProjectPage,
@@ -37,6 +28,7 @@ export const Route = createFileRoute("/_authenticated/settings/projects/new")({
 function NewProjectPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const integrationsQueryKey = apiUtils.integrations.list.queryKey();
 	const createProject = useConvexMutation(api.projects.create);
 
 	const [search, setSearch] = useState("");
@@ -44,8 +36,8 @@ function NewProjectPage() {
 	const [noGithub, setNoGithub] = useState(false);
 
 	const { data: integrations, isLoading: isIntegrationsLoading } = useQuery({
-		queryKey: ["integrations"],
-		queryFn: fetchIntegrations,
+		...apiUtils.integrations.list.queryOptions(),
+		select: (data) => data.integrations,
 	});
 
 	const isGithubConnected = integrations?.some(
@@ -58,19 +50,15 @@ function NewProjectPage() {
 
 	const connectGithubMutation = useMutation({
 		mutationFn: async () => {
-			const res = await apiClient.integrations.connect.$post({
-				json: { allowed_integrations: ["github"] },
+			const { connect_link } = await apiClient.integrations.connect({
+				allowedIntegrations: ["github"],
 			});
-			if (!res.ok) {
-				throw new Error("Failed to create connect session");
-			}
-			const { connect_link } = await res.json();
 			if (connect_link) {
 				window.open(connect_link, "_blank");
 			}
 		},
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["integrations"] });
+			queryClient.invalidateQueries({ queryKey: integrationsQueryKey });
 		},
 		onError: (error) => {
 			toast.error(error.message);

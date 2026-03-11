@@ -3,10 +3,7 @@ import { env } from "@corporation/env/server";
 import { createLogger } from "@corporation/logger";
 import { generateText, Output } from "ai";
 import { asc, desc, eq } from "drizzle-orm";
-import { hc } from "hono/client";
-import type { SandboxRuntimeApp } from "sandbox-runtime/client";
 import { z } from "zod";
-import { createRuntimeAuthHeaders, requireActorAuth } from "./actor-auth";
 import { startAgentRunner } from "./agent-runner";
 import { type SessionRow, sessions } from "./db/schema";
 import { appendSessionStatusFrame } from "./session-stream";
@@ -130,7 +127,6 @@ export async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
-	const { authToken } = requireActorAuth(ctx);
 	await ensureSession(ctx, sessionId, agent, modelId);
 
 	// Auto-generate session title on first message of this session
@@ -158,7 +154,6 @@ export async function sendMessage(
 		prompt,
 		agent,
 		modelId,
-		authToken,
 	});
 }
 
@@ -166,7 +161,6 @@ export async function cancelSession(
 	ctx: SpaceRuntimeContext,
 	sessionId: string
 ): Promise<void> {
-	const { authToken } = requireActorAuth(ctx);
 	const sessionRows = await ctx.vars.db
 		.select({
 			id: sessions.id,
@@ -200,24 +194,29 @@ export async function cancelSession(
 	});
 
 	if (runId) {
-		const binding = ctx.state.binding;
-		if (!binding) {
+		if (!ctx.runtime.isConnected()) {
 			return;
 		}
-		const client = hc<SandboxRuntimeApp>(binding.agentUrl);
-		client.v1.prompt[":turnId"]
-			.$delete(
-				{ param: { turnId: runId } },
+		try {
+			const commandId = crypto.randomUUID();
+			ctx.runtime.send(
 				{
-					headers: createRuntimeAuthHeaders(authToken),
-					init: { signal: AbortSignal.timeout(5000) },
+					type: "cancel_turn",
+					commandId,
+					turnId: runId,
+				},
+				{
+					type: "cancel_turn",
+					commandId,
+					sessionId,
+					turnId: runId,
 				}
-			)
-			.catch((error) => {
-				log.warn(
-					{ sessionId, runId, err: error },
-					"cancel-session.agent-cancel-failed"
-				);
-			});
+			);
+		} catch (error) {
+			log.warn(
+				{ sessionId, runId, err: error },
+				"cancel-session.agent-cancel-failed"
+			);
+		}
 	}
 }
