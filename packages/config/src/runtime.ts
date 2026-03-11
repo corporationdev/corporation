@@ -24,6 +24,7 @@ export type RuntimeContext = {
 	};
 	convexSyncEnv: {
 		CORPORATION_WEB_URL: string;
+		CORPORATION_CONVEX_SITE_URL: string;
 		CORPORATION_SERVER_URL: string;
 		CORPORATION_EMAIL_FROM: string;
 	};
@@ -59,6 +60,7 @@ export function resolveRuntimeContext(
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: "http://localhost:3001",
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
 				CORPORATION_EMAIL_FROM: "dev@corporation.dev",
 			},
@@ -89,6 +91,7 @@ export function resolveRuntimeContext(
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: "http://localhost:3001",
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
 				CORPORATION_EMAIL_FROM: "sandbox@corporation.dev",
 			},
@@ -128,6 +131,7 @@ export function resolveRuntimeContext(
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: `https://${stage}.corporation.dev`,
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
 				CORPORATION_EMAIL_FROM: "preview@corporation.dev",
 			},
@@ -152,6 +156,7 @@ export function resolveRuntimeContext(
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: "https://app.corporation.dev",
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
 				CORPORATION_EMAIL_FROM: "hello@corporation.dev",
 			},

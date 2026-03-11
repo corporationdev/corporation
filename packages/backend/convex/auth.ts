@@ -21,6 +21,7 @@ function slugifyOrganizationName(name: string, userId: string) {
 }
 
 const webUrl = process.env.CORPORATION_WEB_URL ?? "";
+const convexSiteUrl = process.env.CORPORATION_CONVEX_SITE_URL;
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
 	Boolean
@@ -131,6 +132,7 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 
 export function createAuthOptions(ctx: GenericCtx<DataModel>) {
 	return {
+		...(convexSiteUrl ? { baseURL: `${convexSiteUrl}/api/auth` } : {}),
 		trustedOrigins,
 		database: authComponent.adapter(ctx),
 		databaseHooks: {
