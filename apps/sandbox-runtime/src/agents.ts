@@ -76,6 +76,12 @@ export function isAgentInstalled(agent: string): boolean {
 
 /** Map of agent name -> array of { path, content } config files to write before spawning. */
 const AGENT_CONFIGS: Record<string, { path: string; content: string }[]> = {
+	"claude-acp": [
+		{
+			path: `${SANDBOX_HOME_DIR}/.claude/settings.json`,
+			content: JSON.stringify(claudeCodeSettings),
+		},
+	],
 	claude: [
 		{
 			path: `${SANDBOX_HOME_DIR}/.claude/settings.json`,
