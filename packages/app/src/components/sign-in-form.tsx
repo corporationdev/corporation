@@ -1,16 +1,17 @@
 import { useForm } from "@tanstack/react-form";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
 
 import { authClient } from "@/lib/auth-client";
+import { sanitizeAuthRedirectTarget } from "@/lib/auth-redirect";
 
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
-export default function SignInForm() {
-	const navigate = useNavigate();
+export default function SignInForm({ redirectTo }: { redirectTo?: string }) {
+	const safeRedirectTo = sanitizeAuthRedirectTarget(redirectTo);
 
 	const form = useForm({
 		defaultValues: {
@@ -18,7 +19,10 @@ export default function SignInForm() {
 			password: "",
 		},
 		onSubmit: async ({ value }) => {
-			const callbackURL = new URL("/", window.location.origin).toString();
+			const callbackURL = new URL(
+				safeRedirectTo,
+				window.location.origin
+			).toString();
 			await authClient.signIn.email(
 				{
 					email: value.email,
@@ -27,9 +31,7 @@ export default function SignInForm() {
 				},
 				{
 					onSuccess: () => {
-						navigate({
-							to: "/",
-						});
+						window.location.assign(safeRedirectTo);
 						toast.success("Sign in successful");
 					},
 					onError: (error) => {
@@ -104,21 +106,32 @@ export default function SignInForm() {
 					</form.Field>
 				</div>
 
-				<form.Subscribe>
-					{(state) => (
+				<form.Subscribe
+					selector={(state) => ({
+						canSubmit: state.canSubmit,
+						isSubmitting: state.isSubmitting,
+					})}
+				>
+					{({ canSubmit, isSubmitting }) => (
 						<Button
 							className="w-full"
-							disabled={!state.canSubmit || state.isSubmitting}
+							disabled={!canSubmit || isSubmitting}
 							type="submit"
 						>
-							{state.isSubmitting ? "Submitting..." : "Sign In"}
+							{isSubmitting ? "Submitting..." : "Sign In"}
 						</Button>
 					)}
 				</form.Subscribe>
 			</form>
 
 			<div className="mt-4 text-center">
-				<Link className="text-indigo-600 hover:text-indigo-800" to="/signup">
+				<Link
+					className="text-indigo-600 hover:text-indigo-800"
+					search={{
+						redirect: safeRedirectTo === "/" ? undefined : safeRedirectTo,
+					}}
+					to="/signup"
+				>
 					Need an account? Sign Up
 				</Link>
 			</div>

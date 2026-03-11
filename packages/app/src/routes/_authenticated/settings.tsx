@@ -1,11 +1,12 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { ArrowLeft, Bot, Cable, FolderKanban } from "lucide-react";
+import { ArrowLeft, Bot, Building2, Cable, FolderKanban } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/settings")({
 	component: SettingsLayout,
 });
 
 const navItems = [
+	{ label: "Organization", href: "/settings/organization", icon: Building2 },
 	{ label: "Projects", href: "/settings/projects", icon: FolderKanban },
 	{ label: "Connections", href: "/settings/connections", icon: Cable },
 	{ label: "Agents", href: "/settings/agents", icon: Bot },

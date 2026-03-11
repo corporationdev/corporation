@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi } from "@tanstack/react-router";
 
 import SignUpForm from "@/components/sign-up-form";
 
@@ -6,6 +6,9 @@ export const Route = createFileRoute("/_public/signup")({
 	component: RouteComponent,
 });
 
+const publicRoute = getRouteApi("/_public");
+
 function RouteComponent() {
-	return <SignUpForm />;
+	const { redirect } = publicRoute.useSearch();
+	return <SignUpForm redirectTo={redirect} />;
 }
