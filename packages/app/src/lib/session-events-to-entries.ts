@@ -1,4 +1,4 @@
-import type { SessionEvent } from "@corporation/contracts/client-do";
+import type { SessionEvent } from "@corporation/contracts/browser-do";
 import type {
 	MessageTimelineEntry,
 	ReasoningTimelineEntry,

@@ -6,4 +6,4 @@ export type {
 	SessionStreamFrame,
 	SessionStreamState,
 	SessionStreamStatusFrame,
-} from "@corporation/contracts/client-do";
+} from "@corporation/contracts/browser-do";

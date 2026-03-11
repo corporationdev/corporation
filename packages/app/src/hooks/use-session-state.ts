@@ -1,7 +1,7 @@
 import type {
 	SessionEvent,
 	SessionStreamFrame,
-} from "@corporation/contracts/client-do";
+} from "@corporation/contracts/browser-do";
 import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";

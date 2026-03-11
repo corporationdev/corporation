@@ -1,4 +1,4 @@
-import type { SessionStreamState } from "@corporation/contracts/client-do";
+import type { SessionStreamState } from "@corporation/contracts/browser-do";
 import { Hono } from "hono";
 import { type AuthVariables, authMiddleware } from "./auth";
 import { createSpaceForwardHeaders, getSpaceStub } from "./space-do/stub";

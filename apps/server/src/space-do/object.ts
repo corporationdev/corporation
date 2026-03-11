@@ -3,7 +3,7 @@ import acpAgents from "@corporation/config/acp-agent-manifest";
 import {
 	type SpaceSocketClientMessage,
 	spaceSocketClientMessageSchema,
-} from "@corporation/contracts/client-do";
+} from "@corporation/contracts/browser-do";
 import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
 import { env } from "@corporation/env/server";
 import { Sandbox } from "@e2b/desktop";

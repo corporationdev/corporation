@@ -1,4 +1,4 @@
-import type { SessionStreamFrameData } from "@corporation/contracts/client-do";
+import type { SessionStreamFrameData } from "@corporation/contracts/browser-do";
 import type { InferSelectModel } from "drizzle-orm";
 import {
 	index,
