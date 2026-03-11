@@ -144,48 +144,6 @@ function stopTailing() {
 	}
 }
 
-async function getSandboxOwnerId(): Promise<string> {
-	if (process.env.CORPORATION_SANDBOX_OWNER_ID?.trim()) {
-		return process.env.CORPORATION_SANDBOX_OWNER_ID.trim();
-	}
-
-	const result = await sandbox.commands.run(
-		"printenv CORPORATION_SANDBOX_OWNER_ID",
-		{ timeoutMs: 5000 }
-	);
-	const ownerId = result.stdout.trim();
-	if (!ownerId) {
-		throw new Error(
-			[
-				"Unable to determine CORPORATION_SANDBOX_OWNER_ID for sandbox-runtime dev sync.",
-				"Provision a fresh sandbox after the auth changes, or set CORPORATION_SANDBOX_OWNER_ID locally before running `bun dev:sandbox-runtime`.",
-			].join("\n")
-		);
-	}
-	return ownerId;
-}
-
-async function getSandboxConvexSiteUrl(): Promise<string> {
-	if (process.env.CORPORATION_CONVEX_SITE_URL?.trim()) {
-		return process.env.CORPORATION_CONVEX_SITE_URL.trim();
-	}
-
-	const result = await sandbox.commands.run(
-		"printenv CORPORATION_CONVEX_SITE_URL",
-		{ timeoutMs: 5000 }
-	);
-	const value = result.stdout.trim();
-	if (!value) {
-		throw new Error(
-			[
-				"Unable to determine CORPORATION_CONVEX_SITE_URL for sandbox-runtime dev sync.",
-				"Provision a fresh sandbox after the auth changes, or set CORPORATION_CONVEX_SITE_URL locally before running `bun dev:sandbox-runtime`.",
-			].join("\n")
-		);
-	}
-	return value;
-}
-
 async function getSandboxServerUrl(): Promise<string | null> {
 	if (process.env.CORPORATION_SERVER_URL?.trim()) {
 		return process.env.CORPORATION_SERVER_URL.trim();
@@ -197,6 +155,42 @@ async function getSandboxServerUrl(): Promise<string | null> {
 		.catch(() => "");
 
 	return result || null;
+}
+
+async function getSandboxRuntimeEnv(name: string): Promise<string> {
+	const localValue = process.env[name]?.trim();
+	if (localValue) {
+		return localValue;
+	}
+
+	const tmuxValue = await sandbox.commands
+		.run(
+			`tmux show-environment -t ${runtimeSessionName} ${shellEscape(name)} 2>/dev/null || true`,
+			{ timeoutMs: 5000 }
+		)
+		.then((output) => output.stdout.trim())
+		.catch(() => "");
+	if (tmuxValue.startsWith(`${name}=`)) {
+		const value = tmuxValue.slice(`${name}=`.length).trim();
+		if (value) {
+			return value;
+		}
+	}
+
+	const envValue = await sandbox.commands
+		.run(`printenv ${shellEscape(name)}`, { timeoutMs: 5000 })
+		.then((output) => output.stdout.trim())
+		.catch(() => "");
+	if (envValue) {
+		return envValue;
+	}
+
+	throw new Error(
+		[
+			`Unable to determine ${name} for sandbox-runtime dev sync.`,
+			`Provision a fresh sandbox after the runtime auth changes, or set ${name} locally before running \`bun dev:sandbox-runtime\`.`,
+		].join("\n")
+	);
 }
 
 async function waitForRuntimeHealth(): Promise<void> {
@@ -249,9 +243,13 @@ async function buildAndSync() {
 
 	try {
 		const start = Date.now();
-		const ownerUserId = await getSandboxOwnerId();
-		const runtimeConvexSiteUrl = await getSandboxConvexSiteUrl();
 		const runtimeServerUrl = await getSandboxServerUrl();
+		const runtimeSpaceSlug = await getSandboxRuntimeEnv(
+			"CORPORATION_SPACE_SLUG"
+		);
+		const runtimeRefreshToken = await getSandboxRuntimeEnv(
+			"CORPORATION_RUNTIME_REFRESH_TOKEN"
+		);
 
 		await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
 
@@ -296,7 +294,7 @@ async function buildAndSync() {
 			}
 		);
 		await sandbox.commands.run(
-			`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_SERVER_URL=${shellEscape(runtimeServerUrl ?? "")} CORPORATION_CONVEX_SITE_URL=${shellEscape(runtimeConvexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${shellEscape(ownerUserId)} bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}"`,
+			`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_SERVER_URL=${shellEscape(runtimeServerUrl ?? "")} CORPORATION_SPACE_SLUG=${shellEscape(runtimeSpaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${shellEscape(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${shellEscape(sandboxId)} bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}"`,
 			{ timeoutMs: 5000 }
 		);
 		await waitForRuntimeHealth();

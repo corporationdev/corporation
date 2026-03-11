@@ -1,11 +1,11 @@
 import type {
 	SessionEvent,
 	SessionStreamFrame,
+	SessionStreamState,
 } from "@corporation/contracts/browser-do";
 import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
-import type { InferResponseType } from "hono/client";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -16,14 +16,6 @@ import { apiClient, getAuthHeaders } from "@/lib/api-client";
 import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
 import type { SpaceActor } from "@/lib/space-client";
 import { toAbsoluteUrl } from "@/lib/url";
-
-const getSessionStreamStateRoute =
-	apiClient.spaces[":spaceSlug"].sessions[":sessionId"].state.$get;
-
-type SessionStreamStateResponse = InferResponseType<
-	typeof getSessionStreamStateRoute,
-	200
->;
 
 function buildSessionStreamBaseUrl(
 	spaceSlug: string,
@@ -40,22 +32,11 @@ async function fetchSessionStreamState(
 	spaceSlug: string,
 	sessionId: string,
 	signal: AbortSignal
-): Promise<SessionStreamStateResponse> {
-	const response = await getSessionStreamStateRoute(
-		{
-			param: {
-				spaceSlug,
-				sessionId,
-			},
-		},
-		{
-			init: { signal },
-		}
+): Promise<SessionStreamState> {
+	return await apiClient.spaces.getSessionStreamState(
+		{ spaceSlug, sessionId },
+		{ signal }
 	);
-	if (!response.ok) {
-		throw new Error(`Failed to fetch session state (${response.status})`);
-	}
-	return response.json();
 }
 
 function readStreamBatch(

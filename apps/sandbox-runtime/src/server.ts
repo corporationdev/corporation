@@ -1,17 +1,9 @@
 /* global Bun */
 
-import type { PromptRequestBody } from "@corporation/contracts/sandbox-do";
 import { BunRuntime } from "@effect/platform-bun";
-import { Effect, Exit, Layer, Scope, ServiceMap } from "effect";
-import { createApp } from "./app";
-import { makeHttpTurnEventCallback } from "./http-turn-event-callback";
+import { Effect, Exit, Layer, Scope } from "effect";
 import { log } from "./logging";
-import { RuntimeActions } from "./runtime-actions";
 import { runtimeLayer } from "./runtime-layer";
-
-// ---------------------------------------------------------------------------
-// HTTP server
-// ---------------------------------------------------------------------------
 
 const DEFAULT_PORT = 5799;
 const DEFAULT_HOST = "0.0.0.0";
@@ -37,56 +29,23 @@ function parseArgs(): { host: string; port: number } {
 
 const { host, port } = parseArgs();
 
-const main = Effect.scoped(
+const main: Effect.Effect<void, Error, never> = Effect.scoped(
 	Effect.gen(function* () {
 		const scope = yield* Scope.make();
 		yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
 
-		const services = yield* Layer.buildWithScope(runtimeLayer, scope);
-		const runtimeActions = ServiceMap.get(services, RuntimeActions);
-
-		const run = <A, E>(effect: Effect.Effect<A, E, never>) =>
-			Effect.runPromise(effect);
-		const app = createApp({
-			startTurn: async (
-				body: PromptRequestBody
-			): Promise<{ error: string } | null> => {
-				const callback = await run(
-					makeHttpTurnEventCallback({
-						turnId: body.turnId,
-						sessionId: body.sessionId,
-						callbackUrl: body.callbackUrl,
-						callbackToken: body.callbackToken,
-					})
-				);
-
-				return await run(
-					runtimeActions
-						.startTurn({
-							turnId: body.turnId,
-							sessionId: body.sessionId,
-							agent: body.agent,
-							cwd: body.cwd,
-							modelId: body.modelId,
-							prompt: body.prompt,
-							onEvent: callback,
-						})
-						.pipe(
-							Effect.as(null),
-							Effect.catchTag("TurnConflictError", (error) =>
-								Effect.succeed({ error: error.error })
-							)
-						)
-				);
-			},
-			cancelTurn: (turnId) => run(runtimeActions.cancelTurn(turnId)),
-			probeAgents: (body) => run(runtimeActions.probeAgents(body)),
-		});
+		yield* Layer.buildWithScope(runtimeLayer, scope);
 
 		const server = Bun.serve({
 			hostname: host,
 			port,
-			fetch: app.fetch,
+			fetch: (request) => {
+				const url = new URL(request.url);
+				if (url.pathname === "/health") {
+					return Response.json({ status: "ok" as const });
+				}
+				return new Response("Not found", { status: 404 });
+			},
 		});
 
 		yield* Effect.addFinalizer(() =>
@@ -98,7 +57,7 @@ const main = Effect.scoped(
 		log("info", `Listening on ${host}:${port}`);
 		console.log(`[sandbox-runtime] Listening on ${host}:${port}`);
 
-		yield* Effect.never;
+		yield* Effect.promise(() => new Promise<never>(() => undefined));
 	})
 );
 

@@ -130,6 +130,9 @@ export const server = await Worker("agent-server", {
 		CORPORATION_INTERNAL_API_KEY: alchemy.secret(
 			process.env.CORPORATION_INTERNAL_API_KEY
 		),
+		CORPORATION_RUNTIME_AUTH_SECRET: alchemy.secret(
+			process.env.CORPORATION_RUNTIME_AUTH_SECRET
+		),
 		...runtime.serverBindings,
 		SPACE_DO: spaceDO,
 	},

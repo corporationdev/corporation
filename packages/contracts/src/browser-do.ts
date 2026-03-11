@@ -272,6 +272,33 @@ export const sessionStreamStateSchema = z.object({
 });
 export type SessionStreamState = z.infer<typeof sessionStreamStateSchema>;
 
+export const sessionRowSchema = z.object({
+	id: z.string().min(1),
+	title: z.string(),
+	agent: z.string(),
+	agentSessionId: z.string(),
+	lastConnectionId: z.string(),
+	createdAt: z.number().int(),
+	updatedAt: z.number().int(),
+	destroyedAt: z.number().int().nullable(),
+	sessionInit: z.unknown().nullable().optional(),
+	modelId: z.string().nullable(),
+	runId: z.string().nullable(),
+	pid: z.number().int().nullable(),
+	status: sessionStatusSchema,
+	lastStreamOffset: z.number().int(),
+	callbackToken: z.string().nullable(),
+	error: z.string().nullable().optional(),
+});
+export type SessionRow = z.infer<typeof sessionRowSchema>;
+
+export const terminalOutputPayloadSchema = z.object({
+	terminalId: z.string().min(1),
+	data: z.array(z.number().int().gte(0).lte(255)),
+	snapshot: z.boolean().optional(),
+});
+export type TerminalOutputPayload = z.infer<typeof terminalOutputPayloadSchema>;
+
 export const spaceSocketEventNameSchema = z.enum([
 	"sessions.changed",
 	"terminal.output",

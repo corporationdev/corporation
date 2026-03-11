@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./client": "./src/client.ts",
     "./proxy": "./src/proxy.ts",
     "./schemas": "./src/schemas.ts"
   },
@@ -19,6 +18,9 @@
     "@effect/platform-bun": "catalog:",
     "@hono/zod-validator": "^0.7.6",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:",
     "jose": "catalog:",

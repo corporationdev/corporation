@@ -5,13 +5,12 @@
  * sandbox-runtime — compiled Bun binary that runs inside E2B sandboxes.
  *
  * Responsibilities:
- *   1. HTTP server on a configurable port (default 5799)
- *      - GET  /v1/health
- *      - POST /v1/prompt
- *      - DELETE /v1/prompt/:turnId
- *   2. ACP JSON-RPC bridge: spawns an agent subprocess and communicates
+ *   1. Maintain an outbound control websocket to the Corporation server.
+ *   2. Expose a tiny health server on a configurable port (default 5799).
+ *   3. ACP JSON-RPC bridge: spawns an agent subprocess and communicates
  *      via stdin/stdout using newline-delimited JSON (ndjson).
- *   3. Streams session events back to the actor via ordered HTTP callbacks.
+ *   4. Streams session events back to the space durable object over the
+ *      runtime websocket transport.
  */
 
 // ---------------------------------------------------------------------------
@@ -44,7 +43,7 @@ if (subcommand === "mcp") {
 }
 
 // ---------------------------------------------------------------------------
-// Default mode: start HTTP server
+// Default mode: start the runtime transport and health server
 // ---------------------------------------------------------------------------
 
 await import("./server");

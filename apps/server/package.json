@@ -9,6 +9,7 @@
     "./session-protocol": "./src/session-protocol.ts"
   },
   "scripts": {
+    "test": "bun test ./test --timeout 300000",
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts"
   },
@@ -26,6 +27,9 @@
     "e2b": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@nangohq/node": "catalog:",
+    "@orpc/client": "catalog:",
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
     "convex": "catalog:",
     "drizzle-orm": "catalog:",
     "hono": "catalog:",
@@ -37,6 +41,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "drizzle-kit": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
   }
 }

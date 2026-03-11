@@ -1,21 +1,20 @@
+import type { workerHttpContract } from "@corporation/contracts/orpc/worker-http";
 import { env } from "@corporation/env/web";
-import type { AppType } from "@corporation/server/app";
-import { hc } from "hono/client";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import type { ContractRouterClient } from "@orpc/contract";
+import { createRouterUtils } from "@orpc/tanstack-query";
 import { authClient } from "./auth-client";
 
-export const apiClient = hc<AppType>(env.VITE_CORPORATION_SERVER_URL, {
-	fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-		const authHeaders = await getAuthHeaders();
-		const merged = new Headers(init?.headers);
-		for (const [key, value] of Object.entries(authHeaders)) {
-			merged.set(key, value);
-		}
-		return fetch(input, {
-			...init,
-			headers: merged,
-		});
-	},
+const rpcLink = new RPCLink({
+	url: `${env.VITE_CORPORATION_SERVER_URL}/api/rpc`,
+	headers: () => getAuthHeaders(),
 });
+
+export const apiClient: ContractRouterClient<typeof workerHttpContract> =
+	createORPCClient(rpcLink);
+
+export const apiUtils = createRouterUtils(apiClient);
 
 const CONVEX_TOKEN_PATH = "/convex/token";
 const TOKEN_REFRESH_BUFFER_MS = 30_000;

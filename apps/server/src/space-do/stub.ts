@@ -1,11 +1,18 @@
+import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
 import type { JWTPayload } from "../auth";
 
 const SPACE_AUTH_HEADER = "x-space-auth";
 const SPACE_SLUG_HEADER = "x-space-slug";
+const SPACE_RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
 
 type SpaceAuthState = {
 	authToken: string;
 	jwtPayload: JWTPayload;
+};
+
+type RuntimeAuthState = {
+	authToken: string;
+	claims: RuntimeAccessTokenClaims;
 };
 
 type SpaceStub = {
@@ -34,6 +41,24 @@ export function createSpaceForwardHeaders(opts: {
 			authToken: opts.authToken,
 			jwtPayload: opts.jwtPayload,
 		} satisfies SpaceAuthState)
+	);
+	headers.set(SPACE_SLUG_HEADER, opts.spaceSlug);
+	return headers;
+}
+
+export function createRuntimeForwardHeaders(opts: {
+	spaceSlug: string;
+	authToken: string;
+	claims: RuntimeAccessTokenClaims;
+	headers?: HeadersInit;
+}): Headers {
+	const headers = new Headers(opts.headers);
+	headers.set(
+		SPACE_RUNTIME_AUTH_HEADER,
+		JSON.stringify({
+			authToken: opts.authToken,
+			claims: opts.claims,
+		} satisfies RuntimeAuthState)
 	);
 	headers.set(SPACE_SLUG_HEADER, opts.spaceSlug);
 	return headers;

@@ -32,6 +32,18 @@ export class RuntimeActionError extends Data.TaggedError("RuntimeActionError")<{
 	readonly cause?: unknown;
 }> {}
 
+export class RuntimeAuthError extends Data.TaggedError("RuntimeAuthError")<{
+	readonly message: string;
+	readonly cause?: unknown;
+}> {}
+
+export class RuntimeTransportUnavailableError extends Data.TaggedError(
+	"RuntimeTransportUnavailableError"
+)<{
+	readonly message: string;
+	readonly cause?: unknown;
+}> {}
+
 export function toRuntimeActionError(
 	message: string,
 	cause?: unknown
@@ -55,4 +67,18 @@ export function toAcpBridgeError(
 
 export function toProbeError(message: string, cause?: unknown): ProbeError {
 	return new ProbeError({ message, cause });
+}
+
+export function toRuntimeAuthError(
+	message: string,
+	cause?: unknown
+): RuntimeAuthError {
+	return new RuntimeAuthError({ message, cause });
+}
+
+export function toRuntimeTransportUnavailableError(
+	message: string,
+	cause?: unknown
+): RuntimeTransportUnavailableError {
+	return new RuntimeTransportUnavailableError({ message, cause });
 }
