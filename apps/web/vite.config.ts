@@ -5,7 +5,10 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
-const srcDir = path.resolve(import.meta.dirname, "src");
+const appPackageSrc = path.resolve(
+	import.meta.dirname,
+	"../../packages/app/src"
+);
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
@@ -24,14 +27,14 @@ export default defineConfig(({ mode }) => {
 		plugins: [
 			tailwindcss(),
 			tanstackRouter({
-				routesDirectory: path.resolve(srcDir, "routes"),
-				generatedRouteTree: path.resolve(srcDir, "routeTree.gen.ts"),
+				routesDirectory: path.resolve(appPackageSrc, "routes"),
+				generatedRouteTree: path.resolve(appPackageSrc, "routeTree.gen.ts"),
 			}),
 			react(),
 		],
 		resolve: {
 			alias: {
-				"@": srcDir,
+				"@": appPackageSrc,
 			},
 		},
 		server: {
