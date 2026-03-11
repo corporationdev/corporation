@@ -1,7 +1,11 @@
 import { createLogger } from "@corporation/logger";
-import { CommandExitError, type CommandHandle, type Sandbox } from "e2b";
+import { CommandExitError, type Sandbox } from "@e2b/desktop";
 import { requireSandbox } from "./sandbox";
-import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
+import {
+	type CommandHandle,
+	SANDBOX_WORKDIR,
+	type SpaceRuntimeContext,
+} from "./types";
 
 const log = createLogger("space:terminal");
 const TERMINAL_ID = "workspace";

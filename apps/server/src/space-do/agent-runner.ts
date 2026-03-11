@@ -15,7 +15,6 @@ import {
 import { SANDBOX_WORKDIR, type SpaceRuntimeContext } from "./types";
 
 const TRAILING_SLASH_RE = /\/$/;
-const AGENT_RUNNER_ACTION = "ingestAgentRunnerBatch";
 const log = createLogger("space:agent-runner");
 
 type TextPromptPart = { type: "text"; text: string };
@@ -86,7 +85,7 @@ export async function startAgentRunner(
 	if (!baseUrl) {
 		throw new Error("Missing CORPORATION_SERVER_URL env var");
 	}
-	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/rivet/gateway/${encodeURIComponent(ctx.actorId)}/action/${AGENT_RUNNER_ACTION}`;
+	const callbackUrl = `${baseUrl.replace(TRAILING_SLASH_RE, "")}/api/spaces/${encodeURIComponent(ctx.key[0] ?? "")}/runtime/callbacks/agent-runner`;
 
 	const didStart = ctx.vars.db.transaction((tx) => {
 		const existingSession = tx

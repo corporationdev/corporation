@@ -1,4 +1,4 @@
-import type { SessionStreamFrameData } from "@corporation/contracts/client-do";
+import type { SessionStreamFrameData } from "@corporation/contracts/browser-do";
 import type { InferSelectModel } from "drizzle-orm";
 import {
 	index,
@@ -36,6 +36,12 @@ export const sessions = sqliteTable("sessions", {
 	lastStreamOffset: integer("last_stream_offset").notNull().default(0),
 	callbackToken: text("callback_token"),
 	error: text("error", { mode: "json" }),
+});
+
+export const spaceMetadata = sqliteTable("space_metadata", {
+	id: integer("id").primaryKey(),
+	sandboxId: text("sandbox_id"),
+	agentUrl: text("agent_url"),
 });
 
 export const sessionStreamFrames = sqliteTable(
@@ -76,6 +82,7 @@ export type SessionStreamFrameRow = InferSelectModel<
 >;
 
 export const schema = {
+	spaceMetadata,
 	sessions,
 	sessionStreamFrames,
 };

@@ -1,7 +1,7 @@
 import type {
 	SessionEvent,
 	SessionStreamFrame,
-} from "@corporation/contracts/client-do";
+} from "@corporation/contracts/browser-do";
 import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
@@ -13,8 +13,8 @@ import type {
 	TimelineEntry,
 } from "@/components/chat/types";
 import { apiClient, getAuthHeaders } from "@/lib/api-client";
-import type { SpaceActor } from "@/lib/rivetkit";
 import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
+import type { SpaceActor } from "@/lib/space-client";
 import { toAbsoluteUrl } from "@/lib/url";
 
 const getSessionStreamStateRoute =

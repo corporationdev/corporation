@@ -17,10 +17,10 @@ import {
 } from "@/components/ui/popover";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
-import type { SpaceActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/space-client";
 import { cn } from "@/lib/utils";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
-import type { SessionRow } from "../../../../apps/server/src/space-do";
+import type { SessionRow } from "../../../../apps/server/src/space-do/object";
 
 type AgentPanelProps = {
 	actor: SpaceActor;

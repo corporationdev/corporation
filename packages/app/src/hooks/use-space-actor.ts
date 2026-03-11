@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getAuthToken } from "@/lib/api-client";
-import { useActor } from "@/lib/rivetkit";
+import { type SpaceConnection, useSpaceSocketClient } from "@/lib/space-client";
 
 type SandboxBinding = {
 	sandboxId: string;
@@ -18,7 +18,7 @@ type SpaceActorSpace =
 	| null
 	| undefined;
 
-type SpaceConnection = NonNullable<ReturnType<typeof useActor>["connection"]>;
+type ActiveSpaceConnection = NonNullable<SpaceConnection>;
 
 function getSandboxBinding(space: SpaceActorSpace): SandboxBinding | null {
 	if (!(space?.sandboxId && space.agentUrl)) {
@@ -52,26 +52,25 @@ export function useSpaceActor(
 	const isSandboxReady = space?.status === "running" && !!binding;
 	const isEnabled = (options?.enabled ?? true) && !!spaceSlug;
 	const { data: authToken } = useQuery({
-		queryKey: ["rivet-auth-token"],
+		queryKey: ["space-auth-token"],
 		queryFn: getAuthToken,
 		enabled: isEnabled,
 		retry: false,
 	});
-	const actor = useActor({
-		name: "space",
-		key: spaceSlug ? [spaceSlug] : ["__disconnected__"],
-		params: authToken ? { authToken } : undefined,
-		enabled: isEnabled && !!authToken,
-	});
+	const actor = useSpaceSocketClient(
+		spaceSlug,
+		authToken,
+		isEnabled && !!authToken
+	);
 	const lastSyncedRef = useRef<{
-		connection: SpaceConnection | null;
+		connection: ActiveSpaceConnection | null;
 		signature: string | null;
 	}>({
 		connection: null,
 		signature: null,
 	});
 	const [syncedBinding, setSyncedBinding] = useState<{
-		connection: SpaceConnection | null;
+		connection: ActiveSpaceConnection | null;
 		signature: string | null;
 	}>({
 		connection: null,

@@ -3,7 +3,7 @@ import {
 	zPromptRequest,
 	zSessionNotification,
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
-import type { SessionEvent as ClientSessionEvent } from "@corporation/contracts/client-do";
+import type { SessionEvent as ClientSessionEvent } from "@corporation/contracts/browser-do";
 import type { SessionEvent as SandboxSessionEvent } from "@corporation/contracts/sandbox-do";
 
 function getTextContent(value: unknown): string | null {
