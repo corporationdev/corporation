@@ -22,6 +22,7 @@ import {
 	postJsonWithRetry,
 } from "./helpers";
 import { log } from "./logging";
+import { buildSessionMcpServers } from "./mcp-tools";
 import {
 	sessionCancelEnvelopeSchema,
 	sessionRequestPermissionEnvelopeSchema,
@@ -93,17 +94,6 @@ function maybeHandlePermissionRequest(
 function isUnsupportedMethodError(error: unknown): boolean {
 	const msg = error instanceof Error ? error.message : String(error);
 	return msg.includes("(-32601)");
-}
-
-function buildDesktopMcpServers() {
-	return [
-		{
-			name: "desktop",
-			command: "bun",
-			args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
-			env: [],
-		},
-	];
 }
 
 async function setModelOrThrow(
@@ -558,17 +548,11 @@ export class AgentRuntime {
 
 		if (supportsLoad && previousAgentSessionId) {
 			try {
+				const mcpServers = buildSessionMcpServers(cwd);
 				await stdioRequest<"session/load">(bridge, "session/load", {
 					sessionId: previousAgentSessionId,
 					cwd,
-					mcpServers: [
-						{
-							name: "desktop",
-							command: "bun",
-							args: ["/usr/local/bin/sandbox-runtime.js", "mcp", "desktop"],
-							env: [],
-						},
-					],
+					mcpServers,
 				});
 				agentSessionId = previousAgentSessionId;
 				log("info", "session/load succeeded", {
@@ -585,7 +569,7 @@ export class AgentRuntime {
 		}
 
 		if (!agentSessionId) {
-			const mcpServers = buildDesktopMcpServers();
+			const mcpServers = buildSessionMcpServers(cwd);
 			log("info", "Sending session/new with mcpServers", {
 				sessionId,
 				cwd,

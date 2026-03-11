@@ -55,10 +55,13 @@ export async function runDesktopMcp(): Promise<void> {
 		version: "1.0.0",
 	});
 
-	server.tool(
+	server.registerTool(
 		"screenshot",
-		"Take a screenshot of the desktop and return it as a base64-encoded PNG image",
-		{},
+		{
+			description:
+				"Take a screenshot of the desktop and return it as a base64-encoded PNG image",
+			inputSchema: {},
+		},
 		async () => {
 			// Capture as JPEG to keep payload small (no resize — coordinates must match the real desktop)
 			const { stdout } = await shell(
@@ -80,12 +83,14 @@ export async function runDesktopMcp(): Promise<void> {
 		}
 	);
 
-	server.tool(
+	server.registerTool(
 		"click",
-		"Move the mouse to (x, y) and left-click",
 		{
-			x: z.number().describe("X coordinate"),
-			y: z.number().describe("Y coordinate"),
+			description: "Move the mouse to (x, y) and left-click",
+			inputSchema: {
+				x: z.number().describe("X coordinate"),
+				y: z.number().describe("Y coordinate"),
+			},
 		},
 		async ({ x, y }) => {
 			await run("xdotool", [
@@ -100,12 +105,14 @@ export async function runDesktopMcp(): Promise<void> {
 		}
 	);
 
-	server.tool(
+	server.registerTool(
 		"double_click",
-		"Move the mouse to (x, y) and double-click",
 		{
-			x: z.number().describe("X coordinate"),
-			y: z.number().describe("Y coordinate"),
+			description: "Move the mouse to (x, y) and double-click",
+			inputSchema: {
+				x: z.number().describe("X coordinate"),
+				y: z.number().describe("Y coordinate"),
+			},
 		},
 		async ({ x, y }) => {
 			await run("xdotool", [
@@ -124,12 +131,14 @@ export async function runDesktopMcp(): Promise<void> {
 		}
 	);
 
-	server.tool(
+	server.registerTool(
 		"right_click",
-		"Move the mouse to (x, y) and right-click",
 		{
-			x: z.number().describe("X coordinate"),
-			y: z.number().describe("Y coordinate"),
+			description: "Move the mouse to (x, y) and right-click",
+			inputSchema: {
+				x: z.number().describe("X coordinate"),
+				y: z.number().describe("Y coordinate"),
+			},
 		},
 		async ({ x, y }) => {
 			await run("xdotool", [
@@ -146,11 +155,13 @@ export async function runDesktopMcp(): Promise<void> {
 		}
 	);
 
-	server.tool(
+	server.registerTool(
 		"type_text",
-		"Type text using the keyboard (simulates keypresses)",
 		{
-			text: z.string().describe("Text to type"),
+			description: "Type text using the keyboard (simulates keypresses)",
+			inputSchema: {
+				text: z.string().describe("Text to type"),
+			},
 		},
 		async ({ text }) => {
 			await run("xdotool", ["type", "--", text]);
@@ -158,11 +169,14 @@ export async function runDesktopMcp(): Promise<void> {
 		}
 	);
 
-	server.tool(
+	server.registerTool(
 		"key",
-		"Press a key or key combination (e.g. 'Return', 'ctrl+c', 'alt+F4')",
 		{
-			key: z.string().describe("Key or key combination to press"),
+			description:
+				"Press a key or key combination (e.g. 'Return', 'ctrl+c', 'alt+F4')",
+			inputSchema: {
+				key: z.string().describe("Key or key combination to press"),
+			},
 		},
 		async ({ key }) => {
 			await run("xdotool", ["key", key]);
@@ -170,19 +184,21 @@ export async function runDesktopMcp(): Promise<void> {
 		}
 	);
 
-	server.tool(
+	server.registerTool(
 		"scroll",
-		"Move the mouse to (x, y) and scroll up or down",
 		{
-			x: z.number().describe("X coordinate"),
-			y: z.number().describe("Y coordinate"),
-			direction: z.enum(["up", "down"]).describe("Scroll direction"),
-			amount: z
-				.number()
-				.int()
-				.min(1)
-				.default(3)
-				.describe("Number of scroll clicks"),
+			description: "Move the mouse to (x, y) and scroll up or down",
+			inputSchema: {
+				x: z.number().describe("X coordinate"),
+				y: z.number().describe("Y coordinate"),
+				direction: z.enum(["up", "down"]).describe("Scroll direction"),
+				amount: z
+					.number()
+					.int()
+					.min(1)
+					.default(3)
+					.describe("Number of scroll clicks"),
+			},
 		},
 		async ({ x, y, direction, amount }) => {
 			const button = direction === "up" ? "4" : "5";
@@ -207,10 +223,12 @@ export async function runDesktopMcp(): Promise<void> {
 		}
 	);
 
-	server.tool(
+	server.registerTool(
 		"cursor_position",
-		"Get the current mouse cursor position",
-		{},
+		{
+			description: "Get the current mouse cursor position",
+			inputSchema: {},
+		},
 		async () => {
 			const { stdout } = await run("xdotool", ["getmouselocation"]);
 			return { content: [{ type: "text", text: stdout.trim() }] };
