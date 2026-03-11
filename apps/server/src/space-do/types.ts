@@ -1,6 +1,5 @@
 import type { Sandbox } from "@e2b/desktop";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
-import type { CommandHandle } from "e2b";
 import type { JWTPayload } from "../auth";
 
 export const SANDBOX_WORKDIR = "/workspace";
@@ -24,6 +23,8 @@ export type SpaceConnectionState = {
 export type SpaceConnectionParams = {
 	authToken: string;
 };
+
+export type CommandHandle = Awaited<ReturnType<Sandbox["pty"]["create"]>>;
 
 export type SpaceVars = {
 	db: SpaceDatabase;

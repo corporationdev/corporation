@@ -1,6 +1,6 @@
 /* eslint-disable */
 /**
- * Generated `api` utility.
+ * Generated `ComponentApi` utility.
  *
  * THIS CODE IS AUTOMATICALLY GENERATED.
  *
@@ -8,96 +8,21 @@
  * @module
  */
 
-import type * as agentConfig from "../agentConfig.js";
-import type * as auth from "../auth.js";
-import type * as e2bWebhook from "../e2bWebhook.js";
-import type * as functions from "../functions.js";
-import type * as healthCheck from "../healthCheck.js";
-import type * as http from "../http.js";
-import type * as lib_claudeCodeAuth from "../lib/claudeCodeAuth.js";
-import type * as lib_codexAuth from "../lib/codexAuth.js";
-import type * as lib_crypto from "../lib/crypto.js";
-import type * as lib_git from "../lib/git.js";
-import type * as lib_nango from "../lib/nango.js";
-import type * as lib_patch from "../lib/patch.js";
-import type * as lib_projectSecrets from "../lib/projectSecrets.js";
-import type * as lib_sandbox from "../lib/sandbox.js";
-import type * as lib_validSecrets from "../lib/validSecrets.js";
-import type * as nangoWebhook from "../nangoWebhook.js";
-import type * as organizations from "../organizations.js";
-import type * as projects from "../projects.js";
-import type * as sandboxActions from "../sandboxActions.js";
-import type * as secretActions from "../secretActions.js";
-import type * as secrets from "../secrets.js";
-import type * as snapshot from "../snapshot.js";
-import type * as snapshotActions from "../snapshotActions.js";
-import type * as spaceBranchActions from "../spaceBranchActions.js";
-import type * as spaces from "../spaces.js";
-import type * as userWorkspace from "../userWorkspace.js";
-
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
-
-declare const fullApi: ApiFromModules<{
-  agentConfig: typeof agentConfig;
-  auth: typeof auth;
-  e2bWebhook: typeof e2bWebhook;
-  functions: typeof functions;
-  healthCheck: typeof healthCheck;
-  http: typeof http;
-  "lib/claudeCodeAuth": typeof lib_claudeCodeAuth;
-  "lib/codexAuth": typeof lib_codexAuth;
-  "lib/crypto": typeof lib_crypto;
-  "lib/git": typeof lib_git;
-  "lib/nango": typeof lib_nango;
-  "lib/patch": typeof lib_patch;
-  "lib/projectSecrets": typeof lib_projectSecrets;
-  "lib/sandbox": typeof lib_sandbox;
-  "lib/validSecrets": typeof lib_validSecrets;
-  nangoWebhook: typeof nangoWebhook;
-  organizations: typeof organizations;
-  projects: typeof projects;
-  sandboxActions: typeof sandboxActions;
-  secretActions: typeof secretActions;
-  secrets: typeof secrets;
-  snapshot: typeof snapshot;
-  snapshotActions: typeof snapshotActions;
-  spaceBranchActions: typeof spaceBranchActions;
-  spaces: typeof spaces;
-  userWorkspace: typeof userWorkspace;
-}>;
+import type { FunctionReference } from "convex/server";
 
 /**
- * A utility for referencing Convex functions in your app's public API.
+ * A utility for referencing a Convex component's exposed API.
  *
+ * Useful when expecting a parameter like `components.myComponent`.
  * Usage:
- * ```js
- * const myFunctionReference = api.myModule.myFunction;
+ * ```ts
+ * async function myFunction(ctx: QueryCtx, component: ComponentApi) {
+ *   return ctx.runQuery(component.someFile.someQuery, { ...args });
+ * }
  * ```
  */
-export declare const api: FilterApi<
-  typeof fullApi,
-  FunctionReference<any, "public">
->;
-
-/**
- * A utility for referencing Convex functions in your app's internal API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = internal.myModule.myFunction;
- * ```
- */
-export declare const internal: FilterApi<
-  typeof fullApi,
-  FunctionReference<any, "internal">
->;
-
-export declare const components: {
-  betterAuth: {
+export type ComponentApi<Name extends string | undefined = string | undefined> =
+  {
     adapter: {
       create: FunctionReference<
         "mutation",
@@ -199,7 +124,8 @@ export declare const components: {
           onCreateHandle?: string;
           select?: Array<string>;
         },
-        any
+        any,
+        Name
       >;
       deleteMany: FunctionReference<
         "mutation",
@@ -484,7 +410,8 @@ export declare const components: {
             numItems: number;
           };
         },
-        any
+        any,
+        Name
       >;
       deleteOne: FunctionReference<
         "mutation",
@@ -761,7 +688,8 @@ export declare const components: {
               };
           onDeleteHandle?: string;
         },
-        any
+        any,
+        Name
       >;
       findMany: FunctionReference<
         "query",
@@ -812,7 +740,8 @@ export declare const components: {
               | null;
           }>;
         },
-        any
+        any,
+        Name
       >;
       findOne: FunctionReference<
         "query",
@@ -853,7 +782,8 @@ export declare const components: {
               | null;
           }>;
         },
-        any
+        any,
+        Name
       >;
       updateMany: FunctionReference<
         "mutation",
@@ -1206,7 +1136,8 @@ export declare const components: {
             numItems: number;
           };
         },
-        any
+        any,
+        Name
       >;
       updateOne: FunctionReference<
         "mutation",
@@ -1551,18 +1482,8 @@ export declare const components: {
               };
           onUpdateHandle?: string;
         },
-        any
-      >;
-    };
-    bootstrap: {
-      ensureUserOrganization: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          userId: string;
-        },
-        string
+        any,
+        Name
       >;
     };
   };
-};

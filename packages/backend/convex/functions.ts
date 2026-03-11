@@ -1,13 +1,12 @@
 import { ConvexError } from "convex/values";
 import {
-	customAction,
 	customCtx,
 	customMutation,
 	customQuery,
 } from "convex-helpers/server/customFunctions";
 
-import { action, mutation, query } from "./_generated/server";
-import { authComponent } from "./auth";
+import { mutation, query } from "./_generated/server";
+import { authComponent, safeGetAuthSession } from "./auth";
 
 export const authedQuery = customQuery(
 	query,
@@ -16,7 +15,11 @@ export const authedQuery = customQuery(
 		if (!authUser) {
 			throw new ConvexError("Unauthenticated");
 		}
-		return { userId: authUser._id };
+		const authSession = await safeGetAuthSession(ctx);
+		return {
+			userId: authUser._id,
+			activeOrganizationId: authSession?.activeOrganizationId ?? null,
+		};
 	})
 );
 
@@ -27,17 +30,10 @@ export const authedMutation = customMutation(
 		if (!authUser) {
 			throw new ConvexError("Unauthenticated");
 		}
-		return { userId: authUser._id };
-	})
-);
-
-export const authedAction = customAction(
-	action,
-	customCtx(async (ctx) => {
-		const authUser = await authComponent.safeGetAuthUser(ctx);
-		if (!authUser) {
-			throw new ConvexError("Unauthenticated");
-		}
-		return { userId: authUser._id };
+		const authSession = await safeGetAuthSession(ctx);
+		return {
+			userId: authUser._id,
+			activeOrganizationId: authSession?.activeOrganizationId ?? null,
+		};
 	})
 );

@@ -1,10 +1,10 @@
+import { existsSync } from "node:fs";
 import { AGENT_METHODS } from "@agentclientprotocol/sdk";
 import type {
 	AgentProbeAgent,
 	AgentProbeRequestBody,
 	AgentProbeResponse,
 } from "@corporation/contracts/sandbox-do";
-import { existsSync } from "node:fs";
 import { Effect, Exit, Layer, Scope, ServiceMap } from "effect";
 import {
 	AcpBridgeFactory,
@@ -12,17 +12,20 @@ import {
 	setModelOrThrow,
 } from "./acp-bridge";
 import { isAgentInstalled, runtimeAgentEntries } from "./agents";
-import { ACP_PROTOCOL_VERSION } from "./helpers";
-import { log } from "./logging";
 import {
+	type AcpBridgeError,
 	type RuntimeActionError,
 	toRuntimeActionError,
 } from "./errors";
+import { ACP_PROTOCOL_VERSION } from "./helpers";
+import { log } from "./logging";
 import { SessionRegistry } from "./session-registry";
 
 const PROBE_CONCURRENCY = 9;
 const ACP_ERROR_CODE_REGEX = /acp error \((-?\d+)\):/i;
-const DEFAULT_PROBE_CWD = existsSync("/workspace") ? "/workspace" : process.cwd();
+const DEFAULT_PROBE_CWD = existsSync("/workspace")
+	? "/workspace"
+	: process.cwd();
 
 type RuntimeAgentEntry = ReturnType<typeof runtimeAgentEntries>[number];
 
@@ -81,6 +84,109 @@ export function isAuthRequiredError(error: unknown): boolean {
 	);
 }
 
+function buildVerifiedProbeAgent(
+	base: AgentProbeAgent,
+	configOptions: AgentProbeAgent["configOptions"],
+	verifiedAt: number,
+	authCheckedAt: number
+): AgentProbeAgent {
+	return {
+		...base,
+		status: "verified",
+		configOptions,
+		verifiedAt,
+		authCheckedAt,
+	};
+}
+
+function buildFailedProbeAgent(
+	base: AgentProbeAgent,
+	authCheckedAt: number,
+	error: unknown
+): AgentProbeAgent {
+	return {
+		...base,
+		status: isAuthRequiredError(error) ? "requires_auth" : "error",
+		authCheckedAt,
+		error: error instanceof Error ? error.message : String(error),
+	};
+}
+
+function verifyAgentSession(
+	entry: RuntimeAgentEntry,
+	cwd: string,
+	registry: {
+		getVerifiedProbeEntry: (
+			agent: string
+		) => Effect.Effect<{ verifiedAt: number } | null>;
+		setVerifiedProbeEntry: (
+			agent: string,
+			entry: { verifiedAt: number } | null
+		) => Effect.Effect<void>;
+	},
+	bridgeFactory: AcpBridgeFactoryShape,
+	scope: Scope.Closeable
+): Effect.Effect<
+	{
+		configOptions: AgentProbeAgent["configOptions"];
+		verifiedAt: number;
+	},
+	AcpBridgeError | RuntimeActionError
+> {
+	return Effect.gen(function* () {
+		const bridge = yield* bridgeFactory
+			.make(entry.id)
+			.pipe(Scope.provide(scope));
+		yield* Effect.sleep(250);
+		const alive = yield* bridge.isAlive;
+		if (!alive) {
+			throw new Error(`Agent ${entry.id} exited immediately during probe`);
+		}
+
+		yield* bridge.request("initialize", {
+			protocolVersion: ACP_PROTOCOL_VERSION,
+			clientInfo: { name: "sandbox-runtime", version: "v1" },
+		});
+
+		const sessionResult = yield* bridge.request("session/new", {
+			cwd,
+			mcpServers: [],
+		});
+
+		const configOptions = sessionResult.configOptions ?? [];
+		const cached = yield* registry.getVerifiedProbeEntry(entry.id);
+		if (cached) {
+			return {
+				configOptions,
+				verifiedAt: cached.verifiedAt,
+			};
+		}
+
+		if (sessionResult.models?.currentModelId) {
+			yield* setModelOrThrow(
+				bridge,
+				sessionResult.sessionId,
+				sessionResult.models.currentModelId
+			);
+		}
+
+		yield* bridge.request(AGENT_METHODS.session_prompt, {
+			sessionId: sessionResult.sessionId,
+			prompt: [{ type: "text", text: "Reply with OK." }],
+		});
+
+		const verifiedAt = Date.now();
+		yield* registry.setVerifiedProbeEntry(entry.id, {
+			verifiedAt,
+		});
+
+		return {
+			configOptions,
+			verifiedAt,
+		};
+	});
+}
+
 function probeSingleAgent(
 	entry: RuntimeAgentEntry,
 	cwd: string,
@@ -95,7 +201,7 @@ function probeSingleAgent(
 	},
 	bridgeFactory: AcpBridgeFactoryShape
 ): Effect.Effect<AgentProbeAgent> {
-	return Effect.gen(function*() {
+	return Effect.gen(function* () {
 		const base = buildProbeAgentBase({
 			id: entry.id,
 			name: entry.name,
@@ -111,77 +217,22 @@ function probeSingleAgent(
 
 		const scope = yield* Scope.make();
 		try {
-			const bridge = yield* bridgeFactory.make(entry.id).pipe(Scope.provide(scope));
-			yield* Effect.sleep(250);
-			const alive = yield* bridge.isAlive;
-			if (!alive) {
-				throw new Error(`Agent ${entry.id} exited immediately during probe`);
-			}
-
-			yield* bridge.request("initialize", {
-				protocolVersion: ACP_PROTOCOL_VERSION,
-				clientInfo: { name: "sandbox-runtime", version: "v1" },
-			});
-
-			const sessionResult = yield* bridge.request("session/new", {
+			const result = yield* verifyAgentSession(
+				entry,
 				cwd,
-				mcpServers: [],
-			});
-
-			const configOptions = sessionResult.configOptions ?? [];
-			const cached = yield* registry.getVerifiedProbeEntry(entry.id);
-			if (cached) {
-					return {
-						...base,
-						status: "verified" as const,
-						configOptions,
-						verifiedAt: cached.verifiedAt,
-						authCheckedAt,
-					};
-			}
-
-			if (sessionResult.models?.currentModelId) {
-				yield* setModelOrThrow(
-					bridge,
-					sessionResult.sessionId,
-					sessionResult.models.currentModelId
-				);
-			}
-
-			yield* bridge.request(AGENT_METHODS.session_prompt, {
-				sessionId: sessionResult.sessionId,
-				prompt: [{ type: "text", text: "Reply with OK." }],
-			});
-
-			yield* registry.setVerifiedProbeEntry(entry.id, {
-				verifiedAt: Date.now(),
-			});
-
-			return {
-				...base,
-				status: "verified" as const,
-				configOptions,
-				verifiedAt: Date.now(),
-				authCheckedAt,
-			};
+				registry,
+				bridgeFactory,
+				scope
+			);
+			return buildVerifiedProbeAgent(
+				base,
+				result.configOptions,
+				result.verifiedAt,
+				authCheckedAt
+			);
 		} catch (error) {
 			yield* registry.setVerifiedProbeEntry(entry.id, null);
-
-			if (isAuthRequiredError(error)) {
-				return {
-					...base,
-					status: "requires_auth" as const,
-					authCheckedAt,
-					error: error instanceof Error ? error.message : String(error),
-				};
-			}
-
-			return {
-				...base,
-				status: "error" as const,
-				authCheckedAt,
-				error: error instanceof Error ? error.message : String(error),
-			};
+			return buildFailedProbeAgent(base, authCheckedAt, error);
 		} finally {
 			yield* Scope.close(scope, Exit.void);
 		}
@@ -201,7 +252,7 @@ function probeSingleAgent(
 }
 
 export const ProbeServiceLive = Layer.effect(ProbeService)(
-	Effect.gen(function*() {
+	Effect.gen(function* () {
 		const registry = yield* SessionRegistry;
 		const bridgeFactory = yield* AcpBridgeFactory;
 
@@ -209,7 +260,7 @@ export const ProbeServiceLive = Layer.effect(ProbeService)(
 			entry: RuntimeAgentEntry,
 			probeCwd: string
 		) =>
-			Effect.gen(function*() {
+			Effect.gen(function* () {
 				const existing = yield* registry.getInFlightProbe(entry.id);
 				if (existing) {
 					return existing;
@@ -218,7 +269,9 @@ export const ProbeServiceLive = Layer.effect(ProbeService)(
 				const promise = Effect.runPromise(
 					probeSingleAgent(entry, probeCwd, registry, bridgeFactory)
 				).finally(() => {
-					void Effect.runPromise(registry.setInFlightProbe(entry.id, null));
+					Effect.runPromise(registry.setInFlightProbe(entry.id, null)).catch(
+						() => undefined
+					);
 				});
 
 				yield* registry.setInFlightProbe(entry.id, promise);
@@ -227,7 +280,7 @@ export const ProbeServiceLive = Layer.effect(ProbeService)(
 
 		const service: ProbeServiceShape = {
 			probeAgents: (body) =>
-				Effect.gen(function*() {
+				Effect.gen(function* () {
 					const probeCwd = body.cwd ?? DEFAULT_PROBE_CWD;
 					const entries = runtimeAgentEntries(body.ids);
 					const promises = yield* Effect.all(

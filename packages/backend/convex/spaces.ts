@@ -6,35 +6,55 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { buildConvexPatch } from "./lib/patch";
-import { spaceStatusValidator } from "./schema";
+import { requireProjectInActiveOrg } from "./lib/projectAccess";
+import { spaceBootstrapSourceValidator, spaceStatusValidator } from "./schema";
 
 async function requireOwnedSpace(
-	ctx: QueryCtx & { userId: string },
+	ctx: QueryCtx & { userId: string; activeOrganizationId: string | null },
 	space: Doc<"spaces">
 ): Promise<{
 	space: Doc<"spaces">;
 	project: Doc<"projects">;
 }> {
-	if (!space.projectId) {
+	if (space.userId !== ctx.userId) {
 		throw new ConvexError("Space not found");
 	}
-	const project = await ctx.db.get(space.projectId);
-	if (!project || project.userId !== ctx.userId) {
-		throw new ConvexError("Space not found");
-	}
+
+	const project = requireProjectInActiveOrg(
+		await ctx.db.get(space.projectId),
+		ctx.activeOrganizationId,
+		"Space",
+		{ allowBase: true }
+	);
 
 	return { space, project };
 }
 
+async function requireProjectAccess(
+	ctx: QueryCtx & { activeOrganizationId: string | null },
+	projectId: Id<"projects">,
+	options?: { allowBase?: boolean }
+): Promise<Doc<"projects">> {
+	return requireProjectInActiveOrg(
+		await ctx.db.get(projectId),
+		ctx.activeOrganizationId,
+		"Project",
+		options
+	);
+}
+
 type EnsureSpaceInput = {
 	slug: string;
+	userId: string;
 	project: Doc<"projects">;
+	bootstrapSource?: "snapshot" | "base-template";
 	snapshotId?: Id<"snapshots">;
 	name?: string;
 	firstMessage?: string;
 };
 
 type SpaceUpdatePatch = {
+	bootstrapSource?: Doc<"spaces">["bootstrapSource"];
 	status?: Doc<"spaces">["status"];
 	snapshotId?: Id<"snapshots">;
 	sandboxId?: string;
@@ -45,6 +65,37 @@ type SpaceUpdatePatch = {
 type InternalSpaceUpdatePatch = SpaceUpdatePatch & {
 	name?: string;
 };
+
+function buildExistingSpacePatch(
+	existing: Doc<"spaces">,
+	args: EnsureSpaceInput,
+	bootstrapSource: "snapshot" | "base-template"
+) {
+	if (existing.status === "running") {
+		return null;
+	}
+
+	const shouldUpdateSnapshot =
+		bootstrapSource === "snapshot" &&
+		args.snapshotId !== undefined &&
+		existing.snapshotId !== args.snapshotId;
+	const shouldUpdateBootstrapSource =
+		existing.bootstrapSource !== bootstrapSource;
+
+	if (!(shouldUpdateSnapshot || shouldUpdateBootstrapSource)) {
+		return null;
+	}
+
+	return {
+		bootstrapSource,
+		...(shouldUpdateSnapshot && args.snapshotId !== undefined
+			? {
+					snapshotId: args.snapshotId,
+				}
+			: {}),
+		updatedAt: Date.now(),
+	};
+}
 
 async function requireReadySnapshot(
 	ctx: MutationCtx,
@@ -61,10 +112,49 @@ async function requireReadySnapshot(
 	return snapshot;
 }
 
+export async function resolveSnapshotIdForProject(
+	ctx: MutationCtx,
+	project: Doc<"projects">,
+	requestedSnapshotId?: Id<"snapshots">
+): Promise<Id<"snapshots">> {
+	if (requestedSnapshotId) {
+		await requireReadySnapshot(ctx, project, requestedSnapshotId);
+		return requestedSnapshotId;
+	}
+
+	const latestReadySnapshot = (
+		await ctx.db
+			.query("snapshots")
+			.withIndex("by_project_and_startedAt", (q) =>
+				q.eq("projectId", project._id)
+			)
+			.order("desc")
+			.collect()
+	).find(
+		(snapshot) => snapshot.status === "ready" && snapshot.externalSnapshotId
+	);
+
+	if (latestReadySnapshot) {
+		return latestReadySnapshot._id;
+	}
+
+	if (project.defaultSnapshotId) {
+		await requireReadySnapshot(ctx, project, project.defaultSnapshotId);
+		return project.defaultSnapshotId;
+	}
+
+	throw new ConvexError("Project does not have a ready snapshot");
+}
+
 export async function ensureSpaceRecord(
 	ctx: MutationCtx,
 	args: EnsureSpaceInput
 ): Promise<Id<"spaces">> {
+	const bootstrapSource = args.bootstrapSource ?? "snapshot";
+	if (bootstrapSource === "snapshot" && !args.snapshotId) {
+		throw new ConvexError("Snapshot is required for snapshot bootstraps");
+	}
+
 	const slug = args.slug.trim();
 	const existing = await ctx.db
 		.query("spaces")
@@ -72,19 +162,14 @@ export async function ensureSpaceRecord(
 		.unique();
 
 	if (existing) {
-		if (existing.projectId !== args.project._id) {
-			throw new ConvexError("Space slug already belongs to another project");
+		if (
+			existing.projectId !== args.project._id ||
+			existing.userId !== args.userId
+		) {
+			throw new ConvexError("Space slug already belongs to another space");
 		}
 
-		const patch =
-			existing.status !== "running" &&
-			args.snapshotId !== undefined &&
-			existing.snapshotId !== args.snapshotId
-				? {
-						snapshotId: args.snapshotId,
-						updatedAt: Date.now(),
-					}
-				: null;
+		const patch = buildExistingSpacePatch(existing, args, bootstrapSource);
 		if (patch) {
 			await ctx.db.patch(existing._id, patch);
 		}
@@ -103,8 +188,10 @@ export async function ensureSpaceRecord(
 
 	const now = Date.now();
 	const spaceId = await ctx.db.insert("spaces", {
+		userId: args.userId,
 		slug,
 		projectId: args.project._id,
+		bootstrapSource,
 		snapshotId: args.snapshotId,
 		name: args.name ?? "New Space",
 		status: "creating",
@@ -129,43 +216,56 @@ export async function ensureSpaceRecord(
 export const list = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		const projects = (
-			await ctx.db
-				.query("projects")
-				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-				.collect()
-		).filter((project) => project.type === "workspace");
+		const spaces = await ctx.db
+			.query("spaces")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.collect();
 
-		const spaces = (
-			await asyncMap(projects, (project) =>
-				ctx.db
-					.query("spaces")
-					.withIndex("by_project", (q) => q.eq("projectId", project._id))
-					.collect()
-			)
-		).flat();
+		const visibleSpaces = (
+			await asyncMap(spaces, async (space) => {
+				try {
+					requireProjectInActiveOrg(
+						await ctx.db.get(space.projectId),
+						ctx.activeOrganizationId,
+						"Space"
+					);
+				} catch {
+					return null;
+				}
+				return space;
+			})
+		).filter((space): space is Doc<"spaces"> => !!space);
 
-		spaces.sort((a, b) => b.updatedAt - a.updatedAt);
-		return spaces.filter((s) => !s.archived);
+		visibleSpaces.sort((a, b) => b.updatedAt - a.updatedAt);
+		return visibleSpaces.filter((space) => !space.archived);
 	},
 });
 
 export const listByProject = authedQuery({
 	args: {},
 	handler: async (ctx) => {
+		const activeOrganizationId = ctx.activeOrganizationId;
+		if (!activeOrganizationId) {
+			return [];
+		}
+
 		const projects = (
 			await ctx.db
 				.query("projects")
-				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+				.withIndex("by_organization", (q) =>
+					q.eq("organizationId", activeOrganizationId)
+				)
 				.collect()
-		).filter((project) => project.type === "workspace");
+		).filter((project) => project.kind === "standard");
 
 		const spacesByProject = new Map<Id<"projects">, Doc<"spaces">[]>();
 		const projectSpaces = await asyncMap(projects, async (project) => ({
 			projectId: project._id,
 			spaces: await ctx.db
 				.query("spaces")
-				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.withIndex("by_user_and_project", (q) =>
+					q.eq("userId", ctx.userId).eq("projectId", project._id)
+				)
 				.collect(),
 		}));
 		for (const { projectId, spaces } of projectSpaces) {
@@ -199,10 +299,10 @@ export const getBySlug = authedQuery({
 		if (!space) {
 			return null;
 		}
-		const { project } = await requireOwnedSpace(ctx, space);
+		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
 
 		return {
-			...space,
+			...ownedSpace,
 			project,
 		};
 	},
@@ -215,10 +315,10 @@ export const get = authedQuery({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		const { project } = await requireOwnedSpace(ctx, space);
+		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
 
 		return {
-			...space,
+			...ownedSpace,
 			project,
 		};
 	},
@@ -227,6 +327,7 @@ export const get = authedQuery({
 export const update = authedMutation({
 	args: {
 		id: v.id("spaces"),
+		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		status: v.optional(spaceStatusValidator),
 		snapshotId: v.optional(v.id("snapshots")),
 		sandboxId: v.optional(v.union(v.string(), v.null())),
@@ -241,7 +342,7 @@ export const update = authedMutation({
 		await requireOwnedSpace(ctx, space);
 
 		const patch = buildConvexPatch<SpaceUpdatePatch, typeof args>(args, {
-			assign: ["status", "snapshotId"],
+			assign: ["bootstrapSource", "status", "snapshotId"],
 			clearable: ["sandboxId", "agentUrl", "error"],
 		});
 
@@ -266,6 +367,7 @@ export const touch = authedMutation({
 export const internalUpdate = internalMutation({
 	args: {
 		id: v.id("spaces"),
+		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		status: v.optional(spaceStatusValidator),
 		snapshotId: v.optional(v.id("snapshots")),
 		sandboxId: v.optional(v.union(v.string(), v.null())),
@@ -277,7 +379,7 @@ export const internalUpdate = internalMutation({
 		const patch = buildConvexPatch<InternalSpaceUpdatePatch, typeof args>(
 			args,
 			{
-				assign: ["status", "snapshotId", "name"],
+				assign: ["bootstrapSource", "status", "snapshotId", "name"],
 				clearable: ["sandboxId", "agentUrl", "error"],
 			}
 		);
@@ -368,6 +470,7 @@ export const ensure = authedMutation({
 		slug: v.string(),
 		projectId: v.optional(v.id("projects")),
 		snapshotId: v.optional(v.id("snapshots")),
+		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		firstMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -390,7 +493,9 @@ export const ensure = authedMutation({
 
 			return await ensureSpaceRecord(ctx, {
 				slug,
+				userId: ctx.userId,
 				project,
+				bootstrapSource: args.bootstrapSource,
 				snapshotId,
 				firstMessage: args.firstMessage,
 			});
@@ -400,23 +505,18 @@ export const ensure = authedMutation({
 			throw new ConvexError("projectId is required when creating a space");
 		}
 
-		const projectId = args.projectId;
-
-		const project = await ctx.db.get(projectId);
-		if (!project || project.userId !== ctx.userId) {
-			throw new ConvexError("Project not found");
-		}
-
+		const project = await requireProjectAccess(ctx, args.projectId);
+		const bootstrapSource = args.bootstrapSource ?? "snapshot";
 		const snapshotId =
-			args.snapshotId ?? project.defaultSnapshotId ?? undefined;
-		if (!snapshotId) {
-			throw new ConvexError("Project does not have a default snapshot");
-		}
-		await requireReadySnapshot(ctx, project, snapshotId);
+			bootstrapSource === "snapshot"
+				? await resolveSnapshotIdForProject(ctx, project, args.snapshotId)
+				: undefined;
 
 		return await ensureSpaceRecord(ctx, {
 			slug,
+			userId: ctx.userId,
 			project,
+			bootstrapSource,
 			snapshotId,
 			firstMessage: args.firstMessage,
 		});
@@ -461,7 +561,13 @@ export const startSandbox = authedMutation({
 		if (space.status === "running" || space.status === "creating") {
 			return;
 		}
-		if (!(space.sandboxId || space.snapshotId)) {
+		if (
+			!(
+				space.sandboxId ||
+				space.snapshotId ||
+				space.bootstrapSource === "base-template"
+			)
+		) {
 			throw new ConvexError("Sandbox cannot be started");
 		}
 
