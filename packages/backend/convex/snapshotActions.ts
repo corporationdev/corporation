@@ -67,29 +67,30 @@ export const buildInitialSnapshot = internalAction({
 			const project = await ctx.runQuery(internal.projects.internalGet, {
 				id: args.projectId,
 			});
+			if (!project?.organizationId) {
+				throw new Error("Project organization is not set");
+			}
 			projectEnvs = await ctx.runAction(
 				internal.secretActions.resolveProjectSecrets,
 				{
 					projectId: args.projectId,
 				}
 			);
-			const userProject = await ctx.runQuery(
-				internal.projects.internalGetUserProject,
-				{ userId: project.userId }
+			const baseProject = await ctx.runQuery(
+				internal.projects.internalGetOrgBaseProject,
+				{ organizationId: project.organizationId }
 			);
-			if (!userProject?.defaultSnapshotId) {
-				throw new Error(
-					"You must create your personal workspace before creating a project"
-				);
+			if (!baseProject?.defaultSnapshotId) {
+				throw new Error("Organization base project is not ready yet");
 			}
 			const sourceSnapshot = await ctx.runQuery(internal.snapshot.internalGet, {
-				id: userProject.defaultSnapshotId,
+				id: baseProject.defaultSnapshotId,
 			});
 			if (
 				sourceSnapshot.status !== "ready" ||
 				!sourceSnapshot.externalSnapshotId
 			) {
-				throw new Error("Your personal workspace snapshot is not ready yet");
+				throw new Error("Organization base snapshot is not ready yet");
 			}
 
 			if (

@@ -7,6 +7,7 @@ import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import {
+	BASE_TEMPLATE,
 	bootServer,
 	runWorkspaceCommand,
 	SANDBOX_AGENT_PORT,
@@ -31,7 +32,7 @@ function quoteShellEnv(value: string) {
 
 async function bootAgentAndGetUrl(
 	sandbox: Sandbox,
-	space: Space
+	spaceOwnerId: string
 ): Promise<string> {
 	const convexSiteUrl = process.env.CORPORATION_CONVEX_SITE_URL;
 	const serverUrl = process.env.CORPORATION_SERVER_URL;
@@ -62,7 +63,7 @@ async function bootAgentAndGetUrl(
 	try {
 		await bootServer(sandbox, {
 			sessionName: SANDBOX_AGENT_SESSION_NAME,
-			command: `CORPORATION_SERVER_URL=${quoteShellEnv(serverUrl)} CORPORATION_CONVEX_SITE_URL=${quoteShellEnv(convexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${quoteShellEnv(space.project.userId)} bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
+			command: `CORPORATION_SERVER_URL=${quoteShellEnv(serverUrl)} CORPORATION_CONVEX_SITE_URL=${quoteShellEnv(convexSiteUrl)} CORPORATION_SANDBOX_OWNER_ID=${quoteShellEnv(spaceOwnerId)} bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
 			healthUrl: AGENT_HEALTH_URL,
 			workdir: SANDBOX_WORKDIR,
 		});
@@ -75,13 +76,13 @@ async function bootAgentAndGetUrl(
 
 async function ensureAgentReadyAndGetUrl(
 	sandbox: Sandbox,
-	space: Space
+	spaceOwnerId: string
 ): Promise<string> {
 	try {
 		await sandbox.commands.run(`curl -sf --max-time 2 ${AGENT_HEALTH_URL}`);
 	} catch (error) {
 		if (error instanceof CommandExitError) {
-			return await bootAgentAndGetUrl(sandbox, space);
+			return await bootAgentAndGetUrl(sandbox, spaceOwnerId);
 		}
 		throw error;
 	}
@@ -91,7 +92,7 @@ async function ensureAgentReadyAndGetUrl(
 async function createSandbox(
 	snapshotId: string,
 	projectEnvs: Record<string, string>,
-	space: Space
+	spaceOwnerId: string
 ): Promise<Sandbox> {
 	const convexSiteUrl = process.env.CORPORATION_CONVEX_SITE_URL;
 	const serverUrl = process.env.CORPORATION_SERVER_URL;
@@ -105,7 +106,7 @@ async function createSandbox(
 		envs: {
 			...projectEnvs,
 			CORPORATION_CONVEX_SITE_URL: convexSiteUrl,
-			CORPORATION_SANDBOX_OWNER_ID: space.project.userId,
+			CORPORATION_SANDBOX_OWNER_ID: spaceOwnerId,
 			CORPORATION_SERVER_URL: serverUrl,
 		},
 		network: { allowPublicTraffic: true },
@@ -117,6 +118,7 @@ async function createSandbox(
 async function resolveSandbox(
 	ctx: ActionCtx,
 	space: Space,
+	spaceOwnerId: string,
 	projectEnvs: Record<string, string>
 ): Promise<Sandbox> {
 	if (space.sandboxId) {
@@ -138,22 +140,28 @@ async function resolveSandbox(
 		}
 	}
 
-	if (!space.snapshotId) {
-		throw new Error("Space snapshot is not set");
-	}
-	const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
-		id: space.snapshotId,
-	});
-	if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
-		throw new Error("Space snapshot is not ready");
-	}
+	const sourceSnapshotId =
+		space.bootstrapSource === "base-template"
+			? BASE_TEMPLATE
+			: await (async () => {
+					if (!space.snapshotId) {
+						throw new Error("Space snapshot is not set");
+					}
+					const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
+						id: space.snapshotId,
+					});
+					if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
+						throw new Error("Space snapshot is not ready");
+					}
+					return snapshot.externalSnapshotId;
+				})();
 
 	await ctx.runMutation(internal.spaces.internalUpdate, {
 		id: space._id,
 		status: "creating" as const,
 	});
 
-	return await createSandbox(snapshot.externalSnapshotId, projectEnvs, space);
+	return await createSandbox(sourceSnapshotId, projectEnvs, spaceOwnerId);
 }
 
 export const archiveSandbox = internalAction({
@@ -225,6 +233,10 @@ export const provisionForSpace = internalAction({
 			const space = await ctx.runQuery(internal.spaces.internalGet, {
 				id: args.spaceId,
 			});
+			if (!space.userId) {
+				throw new Error("Space owner is not set");
+			}
+			const spaceOwnerId = space.userId;
 			const projectEnvs = await ctx.runAction(
 				internal.secretActions.resolveProjectSecrets,
 				{
@@ -232,8 +244,13 @@ export const provisionForSpace = internalAction({
 				}
 			);
 
-			const sandbox = await resolveSandbox(ctx, space, projectEnvs);
-			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox, space);
+			const sandbox = await resolveSandbox(
+				ctx,
+				space,
+				spaceOwnerId,
+				projectEnvs
+			);
+			const agentUrl = await ensureAgentReadyAndGetUrl(sandbox, spaceOwnerId);
 
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
