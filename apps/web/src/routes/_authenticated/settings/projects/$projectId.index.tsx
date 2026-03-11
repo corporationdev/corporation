@@ -5,7 +5,7 @@ import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
 	buildSecretChanges,
@@ -247,7 +247,10 @@ function SecretsTab({ project }: { project: Project }) {
 			},
 		}
 	);
-	const initialSecrets = secretsFromMetadata(project.secrets);
+	const initialSecrets = useMemo(
+		() => secretsFromMetadata(project.secrets),
+		[project.secrets]
+	);
 
 	const form = useForm({
 		defaultValues: {
@@ -265,6 +268,12 @@ function SecretsTab({ project }: { project: Project }) {
 			});
 		},
 	});
+
+	useEffect(() => {
+		form.reset({
+			secrets: initialSecrets,
+		});
+	}, [form, initialSecrets]);
 
 	return (
 		<form

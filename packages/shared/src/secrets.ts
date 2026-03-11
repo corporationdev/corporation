@@ -43,6 +43,7 @@ export const secretNameSchema = z
 
 export const secretValueSchema = z
 	.string()
+	.min(1, "Secret values must be at least 1 character")
 	.max(
 		MAX_SECRET_VALUE_LENGTH,
 		"Secret values must be at most 16384 characters"
