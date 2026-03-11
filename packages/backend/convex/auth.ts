@@ -3,6 +3,7 @@ import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
 import { requireRunMutationCtx } from "@convex-dev/better-auth/utils";
 import { betterAuth } from "better-auth";
 import { getOrgAdapter, organization } from "better-auth/plugins/organization";
+import { Resend } from "resend";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
@@ -14,8 +15,83 @@ const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
 	Boolean
 );
+
+function getRequiredInviteEmailConfig() {
+	const resendApiKey = process.env.RESEND_API_KEY;
+	const emailFrom = process.env.CORPORATION_EMAIL_FROM;
+
+	if (!(resendApiKey && emailFrom && webUrl)) {
+		throw new Error(
+			"Organization invitations require RESEND_API_KEY, CORPORATION_EMAIL_FROM, and CORPORATION_WEB_URL"
+		);
+	}
+
+	return { resendApiKey, emailFrom };
+}
+
+function getResendClient() {
+	const { resendApiKey } = getRequiredInviteEmailConfig();
+	return new Resend(resendApiKey);
+}
+
+async function sendOrganizationInvitationEmail(data: {
+	id: string;
+	email: string;
+	role: string;
+	organization: {
+		name: string;
+	};
+	inviter: {
+		user: {
+			email: string;
+			name?: string | null;
+		};
+	};
+}) {
+	const { emailFrom } = getRequiredInviteEmailConfig();
+	const invitationUrl = new URL("/accept-invitation", webUrl);
+	invitationUrl.searchParams.set("id", data.id);
+	const inviterName = data.inviter.user.name?.trim() || data.inviter.user.email;
+	const subject = `${inviterName} invited you to join ${data.organization.name}`;
+	const text = [
+		`${inviterName} invited you to join ${data.organization.name} on corporation.`,
+		"",
+		`Role: ${data.role}`,
+		`Accept invitation: ${invitationUrl.toString()}`,
+	].join("\n");
+	const html = `
+		<div style="font-family: sans-serif; line-height: 1.6; color: #111827;">
+			<p><strong>${inviterName}</strong> invited you to join <strong>${data.organization.name}</strong> on corporation.</p>
+			<p>Role: <strong>${data.role}</strong></p>
+			<p>
+				<a href="${invitationUrl.toString()}" style="display: inline-block; padding: 10px 14px; background: #111827; color: #ffffff; text-decoration: none;">
+					Accept invitation
+				</a>
+			</p>
+			<p>If the button does not work, use this link:</p>
+			<p><a href="${invitationUrl.toString()}">${invitationUrl.toString()}</a></p>
+		</div>
+	`;
+
+	const resend = getResendClient();
+	const response = await resend.emails.send({
+		from: emailFrom,
+		to: [data.email],
+		subject,
+		text,
+		html,
+	});
+
+	if (response.error) {
+		throw new Error(
+			`Failed to send organization invitation email: ${response.error.message}`
+		);
+	}
+}
+
 const organizationOptions = {
 	allowUserToCreateOrganization: true,
+	sendInvitationEmail: sendOrganizationInvitationEmail,
 } as const;
 type BetterAuthSession = {
 	userId?: string;

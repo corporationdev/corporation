@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Leaf } from "lucide-react";
 import type * as React from "react";
 import { NavUser } from "@/components/nav-user";
+import { OrganizationSwitcher } from "@/components/organization-switcher";
 import { SpaceList } from "@/components/space-list";
 import {
 	Sidebar,
@@ -19,7 +20,7 @@ export function SpaceListSidebar({
 
 	return (
 		<Sidebar {...props}>
-			<SidebarHeader className="aui-sidebar-header mb-2">
+			<SidebarHeader className="aui-sidebar-header mb-2 gap-2">
 				<Link
 					className="aui-sidebar-header-content flex items-center gap-1 p-2"
 					to="/"
@@ -27,6 +28,7 @@ export function SpaceListSidebar({
 					<Leaf className="size-4" />
 					Tendril
 				</Link>
+				<OrganizationSwitcher />
 			</SidebarHeader>
 			<SidebarContent className="aui-sidebar-content px-2">
 				<SpaceList />

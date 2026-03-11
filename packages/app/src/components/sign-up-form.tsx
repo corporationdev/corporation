@@ -1,16 +1,17 @@
 import { useForm } from "@tanstack/react-form";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
 
 import { authClient } from "@/lib/auth-client";
+import { sanitizeAuthRedirectTarget } from "@/lib/auth-redirect";
 
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
-export default function SignUpForm() {
-	const navigate = useNavigate();
+export default function SignUpForm({ redirectTo }: { redirectTo?: string }) {
+	const safeRedirectTo = sanitizeAuthRedirectTarget(redirectTo);
 
 	const form = useForm({
 		defaultValues: {
@@ -19,7 +20,10 @@ export default function SignUpForm() {
 			name: "",
 		},
 		onSubmit: async ({ value }) => {
-			const callbackURL = new URL("/", window.location.origin).toString();
+			const callbackURL = new URL(
+				safeRedirectTo,
+				window.location.origin
+			).toString();
 			await authClient.signUp.email(
 				{
 					email: value.email,
@@ -29,9 +33,7 @@ export default function SignUpForm() {
 				},
 				{
 					onSuccess: () => {
-						navigate({
-							to: "/",
-						});
+						window.location.assign(safeRedirectTo);
 						toast.success("Sign up successful");
 					},
 					onError: (error) => {
@@ -143,7 +145,13 @@ export default function SignUpForm() {
 			</form>
 
 			<div className="mt-4 text-center">
-				<Link className="text-indigo-600 hover:text-indigo-800" to="/login">
+				<Link
+					className="text-indigo-600 hover:text-indigo-800"
+					search={{
+						redirect: safeRedirectTo === "/" ? undefined : safeRedirectTo,
+					}}
+					to="/login"
+				>
 					Already have an account? Sign In
 				</Link>
 			</div>
