@@ -10,19 +10,20 @@
     "auth:generate": "cd convex/betterAuth && bunx @better-auth/cli@latest generate --output ./schema.ts -y"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "catalog:",
     "@convex-dev/better-auth": "catalog:",
-    "e2b": "catalog:",
+    "@corporation/shared": "workspace:*",
     "@nangohq/node": "catalog:",
+    "ai": "catalog:",
     "better-auth": "catalog:",
     "convex": "catalog:",
     "convex-helpers": "catalog:",
     "dotenv": "catalog:",
+    "e2b": "catalog:",
     "nanoid": "catalog:",
-    "@corporation/shared": "workspace:*",
+    "resend": "^6.9.3",
     "svix": "catalog:",
-    "zod": "catalog:",
-    "@ai-sdk/anthropic": "catalog:",
-    "ai": "catalog:"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@corporation/config": "workspace:*",

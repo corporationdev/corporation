@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
@@ -17,12 +18,18 @@ import { Route as PublicLoginRouteImport } from './routes/_public/login'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedSpaceSpaceSlugRouteImport } from './routes/_authenticated/space_.$spaceSlug'
+import { Route as AuthenticatedSettingsOrganizationRouteImport } from './routes/_authenticated/settings/organization'
 import { Route as AuthenticatedSettingsConnectionsRouteImport } from './routes/_authenticated/settings/connections'
 import { Route as AuthenticatedSettingsAgentsRouteImport } from './routes/_authenticated/settings/agents'
 import { Route as AuthenticatedSettingsProjectsIndexRouteImport } from './routes/_authenticated/settings/projects/index'
 import { Route as AuthenticatedSettingsProjectsNewRouteImport } from './routes/_authenticated/settings/projects/new'
 import { Route as AuthenticatedSettingsProjectsProjectIdIndexRouteImport } from './routes/_authenticated/settings/projects/$projectId.index'
 
+const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
+  id: '/accept-invitation',
+  path: '/accept-invitation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PublicRoute = PublicRouteImport.update({
   id: '/_public',
   getParentRoute: () => rootRouteImport,
@@ -63,6 +70,12 @@ const AuthenticatedSpaceSpaceSlugRoute =
     path: '/space/$spaceSlug',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsOrganizationRoute =
+  AuthenticatedSettingsOrganizationRouteImport.update({
+    id: '/organization',
+    path: '/organization',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsConnectionsRoute =
   AuthenticatedSettingsConnectionsRouteImport.update({
     id: '/connections',
@@ -96,11 +109,13 @@ const AuthenticatedSettingsProjectsProjectIdIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/accept-invitation': typeof AcceptInvitationRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
   '/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/settings/projects/new': typeof AuthenticatedSettingsProjectsNewRoute
@@ -109,10 +124,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
+  '/accept-invitation': typeof AcceptInvitationRoute
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
   '/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
   '/space/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/settings/projects/new': typeof AuthenticatedSettingsProjectsNewRoute
@@ -123,12 +140,14 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_public': typeof PublicRouteWithChildren
+  '/accept-invitation': typeof AcceptInvitationRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_public/login': typeof PublicLoginRoute
   '/_public/signup': typeof PublicSignupRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/settings/agents': typeof AuthenticatedSettingsAgentsRoute
   '/_authenticated/settings/connections': typeof AuthenticatedSettingsConnectionsRoute
+  '/_authenticated/settings/organization': typeof AuthenticatedSettingsOrganizationRoute
   '/_authenticated/space_/$spaceSlug': typeof AuthenticatedSpaceSpaceSlugRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/settings/projects/new': typeof AuthenticatedSettingsProjectsNewRoute
@@ -139,11 +158,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/accept-invitation'
     | '/settings'
     | '/login'
     | '/signup'
     | '/settings/agents'
     | '/settings/connections'
+    | '/settings/organization'
     | '/space/$spaceSlug'
     | '/settings/'
     | '/settings/projects/new'
@@ -152,10 +173,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/accept-invitation'
     | '/login'
     | '/signup'
     | '/settings/agents'
     | '/settings/connections'
+    | '/settings/organization'
     | '/space/$spaceSlug'
     | '/settings'
     | '/settings/projects/new'
@@ -165,12 +188,14 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/_public'
+    | '/accept-invitation'
     | '/_authenticated/settings'
     | '/_public/login'
     | '/_public/signup'
     | '/_authenticated/'
     | '/_authenticated/settings/agents'
     | '/_authenticated/settings/connections'
+    | '/_authenticated/settings/organization'
     | '/_authenticated/space_/$spaceSlug'
     | '/_authenticated/settings/'
     | '/_authenticated/settings/projects/new'
@@ -181,10 +206,18 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   PublicRoute: typeof PublicRouteWithChildren
+  AcceptInvitationRoute: typeof AcceptInvitationRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/accept-invitation': {
+      id: '/accept-invitation'
+      path: '/accept-invitation'
+      fullPath: '/accept-invitation'
+      preLoaderRoute: typeof AcceptInvitationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_public': {
       id: '/_public'
       path: ''
@@ -241,6 +274,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSpaceSpaceSlugRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/organization': {
+      id: '/_authenticated/settings/organization'
+      path: '/organization'
+      fullPath: '/settings/organization'
+      preLoaderRoute: typeof AuthenticatedSettingsOrganizationRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/connections': {
       id: '/_authenticated/settings/connections'
       path: '/connections'
@@ -282,6 +322,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsAgentsRoute: typeof AuthenticatedSettingsAgentsRoute
   AuthenticatedSettingsConnectionsRoute: typeof AuthenticatedSettingsConnectionsRoute
+  AuthenticatedSettingsOrganizationRoute: typeof AuthenticatedSettingsOrganizationRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
   AuthenticatedSettingsProjectsNewRoute: typeof AuthenticatedSettingsProjectsNewRoute
   AuthenticatedSettingsProjectsIndexRoute: typeof AuthenticatedSettingsProjectsIndexRoute
@@ -291,6 +332,8 @@ interface AuthenticatedSettingsRouteChildren {
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsAgentsRoute: AuthenticatedSettingsAgentsRoute,
   AuthenticatedSettingsConnectionsRoute: AuthenticatedSettingsConnectionsRoute,
+  AuthenticatedSettingsOrganizationRoute:
+    AuthenticatedSettingsOrganizationRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
   AuthenticatedSettingsProjectsNewRoute: AuthenticatedSettingsProjectsNewRoute,
   AuthenticatedSettingsProjectsIndexRoute:
@@ -336,6 +379,7 @@ const PublicRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   PublicRoute: PublicRouteWithChildren,
+  AcceptInvitationRoute: AcceptInvitationRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
