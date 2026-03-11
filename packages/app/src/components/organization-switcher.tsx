@@ -6,6 +6,7 @@ import { CreateOrganizationDialog } from "@/components/create-organization-dialo
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
@@ -99,36 +100,38 @@ export function OrganizationSwitcher() {
 							side={isMobile ? "bottom" : "right"}
 							sideOffset={4}
 						>
-							<DropdownMenuLabel className="text-muted-foreground text-xs">
-								Organizations
-							</DropdownMenuLabel>
-							{organizationItems.map((organization, index) => (
-								<DropdownMenuItem
-									className="gap-2 p-2"
-									disabled={switchOrganizationMutation.isPending}
-									key={organization.id}
-									onClick={() =>
-										switchOrganizationMutation.mutate(organization.id)
-									}
-								>
-									<OrganizationAvatar name={organization.name} />
-									<div className="grid flex-1 text-left text-sm leading-tight">
-										<span className="truncate font-medium">
-											{organization.name}
-										</span>
-										<span className="truncate text-muted-foreground text-xs">
-											{organization.slug}
-										</span>
-									</div>
-									{activeOrganization.id === organization.id ? (
-										<Check className="size-4" />
-									) : (
-										<span className="text-muted-foreground text-xs">
-											⌘{index + 1}
-										</span>
-									)}
-								</DropdownMenuItem>
-							))}
+							<DropdownMenuGroup>
+								<DropdownMenuLabel className="text-muted-foreground text-xs">
+									Organizations
+								</DropdownMenuLabel>
+								{organizationItems.map((organization, index) => (
+									<DropdownMenuItem
+										className="gap-2 p-2"
+										disabled={switchOrganizationMutation.isPending}
+										key={organization.id}
+										onClick={() =>
+											switchOrganizationMutation.mutate(organization.id)
+										}
+									>
+										<OrganizationAvatar name={organization.name} />
+										<div className="grid flex-1 text-left text-sm leading-tight">
+											<span className="truncate font-medium">
+												{organization.name}
+											</span>
+											<span className="truncate text-muted-foreground text-xs">
+												{organization.slug}
+											</span>
+										</div>
+										{activeOrganization.id === organization.id ? (
+											<Check className="size-4" />
+										) : (
+											<span className="text-muted-foreground text-xs">
+												⌘{index + 1}
+											</span>
+										)}
+									</DropdownMenuItem>
+								))}
+							</DropdownMenuGroup>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								className="gap-2 p-2"

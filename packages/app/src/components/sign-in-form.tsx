@@ -106,14 +106,19 @@ export default function SignInForm({ redirectTo }: { redirectTo?: string }) {
 					</form.Field>
 				</div>
 
-				<form.Subscribe>
-					{(state) => (
+				<form.Subscribe
+					selector={(state) => ({
+						canSubmit: state.canSubmit,
+						isSubmitting: state.isSubmitting,
+					})}
+				>
+					{({ canSubmit, isSubmitting }) => (
 						<Button
 							className="w-full"
-							disabled={!state.canSubmit || state.isSubmitting}
+							disabled={!canSubmit || isSubmitting}
 							type="submit"
 						>
-							{state.isSubmitting ? "Submitting..." : "Sign In"}
+							{isSubmitting ? "Submitting..." : "Sign In"}
 						</Button>
 					)}
 				</form.Subscribe>
