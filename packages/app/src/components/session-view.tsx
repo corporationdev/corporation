@@ -18,7 +18,7 @@ import { ChatMessages } from "@/components/chat/chat-messages";
 import { usePersistedAgentModelSelection } from "@/hooks/use-persisted-agent-model-selection";
 import { useSessionState } from "@/hooks/use-session-state";
 import { deriveAgentSelectorOptions } from "@/lib/agent-config-options";
-import { getAuthedSpaceActorHandle, type SpaceActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/space-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 export const SessionView: FC<{
@@ -177,15 +177,13 @@ export const ConnectedSessionView: FC<{
 		if (space?._id) {
 			touchSpace({ id: space._id }).catch(() => undefined);
 		}
-		getAuthedSpaceActorHandle(spaceSlug)
-			.then((handle) =>
-				handle.sendMessage(
-					sessionId,
-					pending.text,
-					pending.agent,
-					pending.modelId
-				)
-			)
+		const connection = actor.connection;
+		if (!connection) {
+			setPendingSend(pending);
+			return;
+		}
+		connection
+			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
 			.catch((error: unknown) => {
 				console.error("Failed to flush pending message", error);
 				sessionState.clearOptimisticMessages();
@@ -198,8 +196,8 @@ export const ConnectedSessionView: FC<{
 		sessionState.clearOptimisticMessages,
 		sessionId,
 		space?._id,
-		spaceSlug,
 		touchSpace,
+		actor.connection,
 	]);
 
 	const handleSend = useCallback(async () => {
@@ -215,11 +213,11 @@ export const ConnectedSessionView: FC<{
 		try {
 			if (
 				actor.connStatus === "connected" &&
+				actor.connection &&
 				space?.status === "running" &&
 				isBindingSynced
 			) {
-				const handle = await getAuthedSpaceActorHandle(spaceSlug);
-				await handle.sendMessage(sessionId, text, agent, modelId);
+				await actor.connection.sendMessage(sessionId, text, agent, modelId);
 				if (space?._id) {
 					touchSpace({ id: space._id }).catch(() => undefined);
 				}
@@ -241,6 +239,7 @@ export const ConnectedSessionView: FC<{
 	}, [
 		message,
 		actor.connStatus,
+		actor.connection,
 		ensureSpace,
 		isBindingSynced,
 		sessionId,
@@ -256,13 +255,15 @@ export const ConnectedSessionView: FC<{
 
 	const handleStop = useCallback(async () => {
 		try {
-			const handle = await getAuthedSpaceActorHandle(spaceSlug);
-			await handle.cancelSession(sessionId);
+			if (!actor.connection) {
+				throw new Error("Space connection unavailable");
+			}
+			await actor.connection.cancelSession(sessionId);
 		} catch (error) {
 			console.error("Failed to cancel session", { error, sessionId });
 			toast.error("Failed to stop session");
 		}
-	}, [sessionId, spaceSlug]);
+	}, [actor.connection, sessionId]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {

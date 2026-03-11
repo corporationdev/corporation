@@ -4,7 +4,7 @@ import { MonitorIcon, PanelRightIcon, TerminalIcon } from "lucide-react";
 import { CreateSnapshotPopover } from "@/components/create-snapshot-popover";
 import { PtyTerminal } from "@/components/terminal/pty-terminal";
 import { Button } from "@/components/ui/button";
-import type { SpaceActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/space-client";
 import { cn } from "@/lib/utils";
 import { DesktopTab } from "./desktop-tab";
 import { SandboxPausedState } from "./sandbox-paused-state";

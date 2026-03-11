@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SpaceActor } from "@/lib/rivetkit";
-import type { SessionRow } from "../../../../apps/server/src/space-do";
+import { type SpaceActor, useSpaceEvent } from "@/lib/space-client";
+import type { SessionRow } from "../../../../apps/server/src/space-do/object";
 
 function getActorSpaceSlug(actor: SpaceActor): string | undefined {
 	const key = actor.opts.key;
@@ -20,22 +20,20 @@ export function useSpaceSessions(actor: SpaceActor): SpaceSessionsResult {
 	const queryClient = useQueryClient();
 	const isConnected = actor.connStatus === "connected" && !!actor.connection;
 
-	const { data, isLoading } = useQuery({
+	const { data, isLoading } = useQuery<SessionRow[]>({
 		queryKey: ["space-sessions", spaceSlug],
-		queryFn: () => {
+		queryFn: async () => {
 			const conn = actor.connection;
 			if (!conn) {
 				throw new Error("Actor connection is unavailable");
 			}
-			return Promise.resolve(conn.listSessions()).then((result) =>
-				Promise.resolve(result)
-			);
+			return (await conn.listSessions()) as SessionRow[];
 		},
 		enabled: isConnected,
 		retry: false,
 	});
 
-	actor.useEvent("sessions.changed", (event) => {
+	useSpaceEvent(actor, "sessions.changed", (event) => {
 		queryClient.setQueryData(
 			["space-sessions", spaceSlug],
 			event as SessionRow[]

@@ -1,6 +1,6 @@
 import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getAuthedSpaceActorHandle, type SpaceActor } from "@/lib/rivetkit";
+import type { SpaceActor } from "@/lib/space-client";
 
 export function useAgentProbeState({
 	actor,
@@ -21,10 +21,12 @@ export function useAgentProbeState({
 	const { data, error, isFetching, isLoading } = useQuery<AgentProbeResponse>({
 		queryKey: probeQueryKey,
 		queryFn: async () => {
-			const handle = await getAuthedSpaceActorHandle(spaceSlug);
-			return await handle.getAgentProbeState();
+			if (!actor.connection) {
+				throw new Error("Space connection unavailable");
+			}
+			return (await actor.connection.getAgentProbeState()) as AgentProbeResponse;
 		},
-		enabled: enabled && actor.connStatus === "connected",
+		enabled: enabled && actor.connStatus === "connected" && !!actor.connection,
 	});
 
 	return {

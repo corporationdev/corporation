@@ -1,5 +1,4 @@
 import { env } from "@corporation/env/server";
-import { UserError } from "rivetkit";
 import { verifyAuthToken } from "../auth";
 import type { SpaceConnectionParams, SpaceConnectionState } from "./types";
 
@@ -8,7 +7,7 @@ export async function createActorAuthState(
 ): Promise<SpaceConnectionState> {
 	const authToken = params?.authToken?.trim();
 	if (!authToken) {
-		throw new UserError("Unauthorized", { code: "unauthorized" });
+		throw new Error("Unauthorized");
 	}
 
 	const jwtPayload = await verifyAuthToken(
@@ -16,7 +15,7 @@ export async function createActorAuthState(
 		env.CORPORATION_CONVEX_SITE_URL
 	);
 	if (!jwtPayload) {
-		throw new UserError("Invalid auth token", { code: "unauthorized" });
+		throw new Error("Invalid auth token");
 	}
 
 	return {

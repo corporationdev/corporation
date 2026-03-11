@@ -1,6 +1,6 @@
 import { FitAddon, Terminal as GhosttyTerminal, init } from "ghostty-web";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SpaceActor } from "@/lib/rivetkit";
+import { type SpaceActor, useSpaceEvent } from "@/lib/space-client";
 
 type PtyTerminalProps = {
 	actor: SpaceActor;
@@ -291,7 +291,7 @@ export function PtyTerminal({ actor, spaceSlug }: PtyTerminalProps) {
 		});
 	}, [actor.connStatus, actor.connection, queueResize, spaceSlug]);
 
-	actor.useEvent("terminal.output", (payload: unknown) => {
+	useSpaceEvent(actor, "terminal.output", (payload: unknown) => {
 		const event = payload as {
 			terminalId: string;
 			data: number[];

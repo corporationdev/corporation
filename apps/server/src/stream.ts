@@ -1,16 +1,7 @@
+import type { SessionStreamState } from "@corporation/contracts/browser-do";
 import { Hono } from "hono";
-import { createClient } from "rivetkit/client";
 import { type AuthVariables, authMiddleware } from "./auth";
-import type { registry } from "./registry";
-
-function getRivetClient(reqUrl: string) {
-	const baseUrl = new URL(reqUrl);
-	return createClient<typeof registry>({
-		endpoint: `${baseUrl.origin}/api/rivet`,
-		disableMetadataLookup: true,
-		devtools: false,
-	});
-}
+import { createSpaceForwardHeaders, getSpaceStub } from "./space-do/stub";
 
 function getBearerToken(authHeader: string | undefined): string | null {
 	if (!authHeader?.startsWith("Bearer ")) {
@@ -47,21 +38,71 @@ type StreamReadResult = {
 	streamClosed: boolean;
 };
 
-type SpaceActor = ReturnType<ReturnType<typeof getRivetClient>["space"]["get"]>;
-
-function getSpaceActor(opts: {
-	reqUrl: string;
+function getSpaceStubWithAuth(opts: {
+	env: Env;
 	spaceSlug: string;
 	authToken: string;
-}): SpaceActor {
-	const client = getRivetClient(opts.reqUrl);
-	return client.space.get([opts.spaceSlug], {
-		params: { authToken: opts.authToken },
-	});
+	jwtPayload: AuthVariables["jwtPayload"];
+}) {
+	return {
+		readSessionStream: async (
+			sessionId: string,
+			offset: number,
+			limit: number | undefined,
+			live: boolean,
+			timeoutMs: number | undefined
+		): Promise<StreamReadResult> => {
+			const url = new URL("http://space/internal/session-stream/read");
+			url.searchParams.set("sessionId", sessionId);
+			url.searchParams.set("offset", String(offset));
+			if (typeof limit === "number") {
+				url.searchParams.set("limit", String(limit));
+			}
+			if (typeof timeoutMs === "number") {
+				url.searchParams.set("timeoutMs", String(timeoutMs));
+			}
+			url.searchParams.set("live", String(live));
+
+			const response = await getSpaceStub(opts.env, opts.spaceSlug).fetch(
+				new Request(url, {
+					headers: createSpaceForwardHeaders({
+						spaceSlug: opts.spaceSlug,
+						authToken: opts.authToken,
+						jwtPayload: opts.jwtPayload,
+					}),
+				})
+			);
+			if (!response.ok) {
+				throw new Error(`Failed to read session stream (${response.status})`);
+			}
+			return (await response.json()) as StreamReadResult;
+		},
+		getSessionStreamState: async (
+			sessionId: string
+		): Promise<SessionStreamState> => {
+			const url = new URL("http://space/internal/session-stream/state");
+			url.searchParams.set("sessionId", sessionId);
+			const response = await getSpaceStub(opts.env, opts.spaceSlug).fetch(
+				new Request(url, {
+					headers: createSpaceForwardHeaders({
+						spaceSlug: opts.spaceSlug,
+						authToken: opts.authToken,
+						jwtPayload: opts.jwtPayload,
+					}),
+				})
+			);
+			if (!response.ok) {
+				throw new Error(
+					`Failed to read session stream state (${response.status})`
+				);
+			}
+			return (await response.json()) as SessionStreamState;
+		},
+	};
 }
 
 function createSSEStream(opts: {
-	spaceActor: SpaceActor;
+	spaceActor: ReturnType<typeof getSpaceStubWithAuth>;
 	sessionId: string;
 	initialOffset: number;
 	limit: number | undefined;
@@ -145,10 +186,11 @@ export const streamApp = new Hono<{
 		if (!authToken) {
 			return c.json({ error: "Unauthorized" }, 401);
 		}
-		const spaceActor = getSpaceActor({
-			reqUrl: c.req.url,
+		const spaceActor = getSpaceStubWithAuth({
+			env: c.env,
 			spaceSlug,
 			authToken,
+			jwtPayload: c.get("jwtPayload"),
 		});
 		try {
 			const state = await spaceActor.getSessionStreamState(sessionId);
@@ -174,10 +216,11 @@ export const streamApp = new Hono<{
 			return c.json({ error: "Invalid offset query parameter" }, 400);
 		}
 
-		const spaceActor = getSpaceActor({
-			reqUrl: c.req.url,
+		const spaceActor = getSpaceStubWithAuth({
+			env: c.env,
 			spaceSlug,
 			authToken,
+			jwtPayload: c.get("jwtPayload"),
 		});
 		const limit = parseLimit(c.req.query("limit"));
 		const timeoutMs = parseLimit(c.req.query("timeoutMs"));
@@ -214,4 +257,32 @@ export const streamApp = new Hono<{
 			});
 			return c.json({ error: "Session not found" }, 404);
 		}
+	})
+	.post("/:spaceSlug/runtime/callbacks/agent-runner", async (c) => {
+		const { spaceSlug } = c.req.param();
+		const authToken = getBearerToken(c.req.header("authorization"));
+		if (!authToken) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
+
+		const response = await getSpaceStub(c.env, spaceSlug).fetch(
+			new Request("http://space/internal/runtime/agent-runner-callback", {
+				method: "POST",
+				headers: createSpaceForwardHeaders({
+					spaceSlug,
+					authToken,
+					jwtPayload: c.get("jwtPayload"),
+					headers: {
+						"content-type": "application/json",
+					},
+				}),
+				body: await c.req.raw.text(),
+			})
+		);
+
+		if (!response.ok) {
+			return c.json({ error: "Failed to ingest runtime callback" }, 500);
+		}
+
+		return c.json({ ok: true });
 	});
