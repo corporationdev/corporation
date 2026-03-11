@@ -2,8 +2,8 @@ import type {
 	SpaceSocketEventMessage,
 	SpaceSocketEventName,
 	SpaceSocketServerMessage,
-} from "@corporation/contracts/space-socket";
-import { spaceSocketServerMessageSchema } from "@corporation/contracts/space-socket";
+} from "@corporation/contracts/client-do";
+import { spaceSocketServerMessageSchema } from "@corporation/contracts/client-do";
 import { env } from "@corporation/env/web";
 import { nanoid } from "nanoid";
 import { useEffect, useMemo, useSyncExternalStore } from "react";

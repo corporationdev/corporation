@@ -1,10 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import acpAgents from "@corporation/config/acp-agent-manifest";
-import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
 import {
 	type SpaceSocketClientMessage,
 	spaceSocketClientMessageSchema,
-} from "@corporation/contracts/space-socket";
+} from "@corporation/contracts/client-do";
+import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
 import { env } from "@corporation/env/server";
 import { Sandbox } from "@e2b/desktop";
 import { eq } from "drizzle-orm";
