@@ -39,8 +39,7 @@ export const internalSaveProbeResults = internalMutation({
 			throw new ConvexError("Space not found");
 		}
 
-		const project = await ctx.db.get(space.projectId);
-		if (!project || project.userId !== args.userId) {
+		if (space.userId !== args.userId) {
 			throw new ConvexError("Space not found");
 		}
 

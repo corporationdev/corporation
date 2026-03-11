@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { requireProjectInActiveOrg } from "./lib/projectAccess";
 
 const ISO_MILLIS_SUFFIX = /\.\d{3}Z$/;
 
@@ -12,10 +13,11 @@ export const listByProject = authedQuery({
 		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const project = await ctx.db.get(args.projectId);
-		if (!project || project.userId !== ctx.userId) {
-			throw new ConvexError("Project not found");
-		}
+		requireProjectInActiveOrg(
+			await ctx.db.get(args.projectId),
+			ctx.activeOrganizationId,
+			"Project"
+		);
 
 		return await ctx.db
 			.query("snapshots")
@@ -37,10 +39,11 @@ export const get = authedQuery({
 			throw new ConvexError("Snapshot not found");
 		}
 
-		const project = await ctx.db.get(snapshot.projectId);
-		if (!project || project.userId !== ctx.userId) {
-			throw new ConvexError("Snapshot not found");
-		}
+		requireProjectInActiveOrg(
+			await ctx.db.get(snapshot.projectId),
+			ctx.activeOrganizationId,
+			"Snapshot"
+		);
 
 		return snapshot;
 	},
@@ -111,10 +114,11 @@ export const buildInitialSnapshot = authedMutation({
 		projectId: v.id("projects"),
 	},
 	handler: async (ctx, args) => {
-		const project = await ctx.db.get(args.projectId);
-		if (!project || project.userId !== ctx.userId) {
-			throw new ConvexError("Project not found");
-		}
+		const project = requireProjectInActiveOrg(
+			await ctx.db.get(args.projectId),
+			ctx.activeOrganizationId,
+			"Project"
+		);
 
 		await scheduleInitialSnapshot(ctx, project, {
 			setAsDefault: true,
@@ -163,11 +167,15 @@ export const createFromSpace = authedMutation({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-
-		const project = await ctx.db.get(space.projectId);
-		if (!project || project.userId !== ctx.userId) {
+		if (space.userId !== ctx.userId) {
 			throw new ConvexError("Space not found");
 		}
+
+		const project = requireProjectInActiveOrg(
+			await ctx.db.get(space.projectId),
+			ctx.activeOrganizationId,
+			"Space"
+		);
 
 		if (!space.sandboxId) {
 			throw new ConvexError("Sandbox is not running");

@@ -5,39 +5,61 @@ import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+import { requireProjectInActiveOrg } from "./lib/projectAccess";
 import { scheduleInitialSnapshot, scheduleRebuildWithEnvs } from "./snapshot";
 
-function requireOwnedProject(
-	userId: string,
-	project: Doc<"projects">
-): Doc<"projects"> {
-	if (project.userId !== userId) {
-		throw new ConvexError("Project not found");
+function requireActiveOrganization(
+	activeOrganizationId: string | null
+): string {
+	if (!activeOrganizationId) {
+		throw new ConvexError("No active organization");
 	}
-	return project;
+
+	return activeOrganizationId;
 }
 
-async function getUserProject(
+function requireOrgProjectAccess(
+	activeOrganizationId: string | null,
+	project: Doc<"projects">,
+	options?: { allowBase?: boolean }
+): Doc<"projects"> {
+	return requireProjectInActiveOrg(
+		project,
+		activeOrganizationId,
+		"Project",
+		options
+	);
+}
+
+async function getOrgBaseProject(
 	ctx: MutationCtx,
-	userId: string
+	organizationId: string
 ): Promise<Doc<"projects"> | null> {
 	return await ctx.db
 		.query("projects")
-		.withIndex("by_user_and_type", (q) =>
-			q.eq("userId", userId).eq("type", "user")
+		.withIndex("by_organization_and_kind", (q) =>
+			q.eq("organizationId", organizationId).eq("kind", "base")
 		)
 		.unique();
 }
 
 export const list = authedQuery({
 	args: {},
-	handler: async (ctx) =>
-		(
+	handler: async (ctx) => {
+		const organizationId = ctx.activeOrganizationId;
+		if (!organizationId) {
+			return [];
+		}
+
+		return (
 			await ctx.db
 				.query("projects")
-				.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+				.withIndex("by_organization", (q) =>
+					q.eq("organizationId", organizationId)
+				)
 				.collect()
-		).filter((project) => project.type === "workspace"),
+		).filter((project) => project.kind === "standard");
+	},
 });
 
 export const get = authedQuery({
@@ -47,17 +69,20 @@ export const get = authedQuery({
 		if (!project) {
 			throw new ConvexError("Project not found");
 		}
-		requireOwnedProject(ctx.userId, project);
+		const scopedProject = requireOrgProjectAccess(
+			ctx.activeOrganizationId,
+			project
+		);
 
 		const snapshots = await ctx.db
 			.query("snapshots")
 			.withIndex("by_project_and_startedAt", (q) =>
-				q.eq("projectId", project._id)
+				q.eq("projectId", scopedProject._id)
 			)
 			.order("desc")
 			.collect();
 
-		return { ...project, snapshots };
+		return { ...scopedProject, snapshots };
 	},
 });
 
@@ -71,42 +96,43 @@ export const create = authedMutation({
 		secrets: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args) => {
+		const organizationId = requireActiveOrganization(ctx.activeOrganizationId);
+
 		if (args.githubRepoId) {
 			const existing = await ctx.db
 				.query("projects")
-				.withIndex("by_user_and_github_repo", (q) =>
-					q.eq("userId", ctx.userId).eq("githubRepoId", args.githubRepoId)
+				.withIndex("by_organization_and_github_repo", (q) =>
+					q
+						.eq("organizationId", organizationId)
+						.eq("githubRepoId", args.githubRepoId)
 				)
 				.first();
 
-			if (existing) {
+			if (existing && existing.kind === "standard") {
 				throw new ConvexError("Repository already connected to a project");
 			}
 		}
 
-		const userProject = await getUserProject(ctx, ctx.userId);
-		if (!userProject?.defaultSnapshotId) {
-			throw new ConvexError(
-				"You must create your personal workspace before creating a project"
-			);
+		const baseProject = await getOrgBaseProject(ctx, organizationId);
+		if (!baseProject?.defaultSnapshotId) {
+			throw new ConvexError("Organization base project is not ready yet");
 		}
 
-		const userSnapshot = await ctx.db.get(userProject.defaultSnapshotId);
+		const baseSnapshot = await ctx.db.get(baseProject.defaultSnapshotId);
 		if (
-			!userSnapshot ||
-			userSnapshot.status !== "ready" ||
-			!userSnapshot.externalSnapshotId
+			!baseSnapshot ||
+			baseSnapshot.status !== "ready" ||
+			!baseSnapshot.externalSnapshotId
 		) {
-			throw new ConvexError(
-				"Your personal workspace snapshot is not ready yet"
-			);
+			throw new ConvexError("Organization base snapshot is not ready yet");
 		}
 
 		const now = Date.now();
 
 		const projectId = await ctx.db.insert("projects", {
 			userId: ctx.userId,
-			type: "workspace",
+			organizationId,
+			kind: "standard",
 			name: args.name,
 			githubRepoId: args.githubRepoId,
 			githubOwner: args.githubOwner,
@@ -122,7 +148,13 @@ export const create = authedMutation({
 			throw new ConvexError("Project not found");
 		}
 
-		await scheduleInitialSnapshot(ctx, project, { setAsDefault: true });
+		await scheduleInitialSnapshot(
+			ctx,
+			requireOrgProjectAccess(organizationId, project),
+			{
+				setAsDefault: true,
+			}
+		);
 
 		return projectId;
 	},
@@ -144,7 +176,7 @@ export const update = authedMutation({
 		if (!project) {
 			throw new ConvexError("Project not found");
 		}
-		requireOwnedProject(ctx.userId, project);
+		requireOrgProjectAccess(ctx.activeOrganizationId, project);
 
 		const { id, ...fields } = args;
 		const patch = Object.fromEntries(
@@ -168,7 +200,7 @@ export const updateSecrets = authedMutation({
 		if (!project) {
 			throw new ConvexError("Project not found");
 		}
-		requireOwnedProject(ctx.userId, project);
+		requireOrgProjectAccess(ctx.activeOrganizationId, project);
 
 		await ctx.db.patch(args.id, {
 			secrets: args.secrets,
@@ -180,9 +212,13 @@ export const updateSecrets = authedMutation({
 			throw new ConvexError("Project not found");
 		}
 
-		await scheduleRebuildWithEnvs(ctx, updatedProject, {
-			secrets: args.secrets,
-		});
+		await scheduleRebuildWithEnvs(
+			ctx,
+			requireOrgProjectAccess(ctx.activeOrganizationId, updatedProject),
+			{
+				secrets: args.secrets,
+			}
+		);
 	},
 });
 
@@ -195,7 +231,7 @@ const del = authedMutation({
 		if (!project) {
 			throw new ConvexError("Project not found");
 		}
-		requireOwnedProject(ctx.userId, project);
+		requireOrgProjectAccess(ctx.activeOrganizationId, project);
 
 		const [spaces, snapshots] = await Promise.all([
 			ctx.db
@@ -263,13 +299,13 @@ export const internalGetByGithubRepoId = internalQuery({
 	},
 });
 
-export const internalGetUserProject = internalQuery({
-	args: { userId: v.string() },
+export const internalGetOrgBaseProject = internalQuery({
+	args: { organizationId: v.string() },
 	handler: async (ctx, args) =>
 		await ctx.db
 			.query("projects")
-			.withIndex("by_user_and_type", (q) =>
-				q.eq("userId", args.userId).eq("type", "user")
+			.withIndex("by_organization_and_kind", (q) =>
+				q.eq("organizationId", args.organizationId).eq("kind", "base")
 			)
 			.unique(),
 });

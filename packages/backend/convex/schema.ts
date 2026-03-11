@@ -15,16 +15,17 @@ export const spaceStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const projectTypeValidator = v.union(
-	v.literal("user"),
-	v.literal("workspace")
+export const projectKindValidator = v.union(
+	v.literal("standard"),
+	v.literal("base")
 );
 
 export default defineSchema(
 	{
 		projects: defineTable({
 			userId: v.string(),
-			type: projectTypeValidator,
+			organizationId: v.string(),
+			kind: projectKindValidator,
 			name: v.string(),
 			githubRepoId: v.optional(v.number()),
 			githubOwner: v.optional(v.string()),
@@ -36,11 +37,16 @@ export default defineSchema(
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
-			.index("by_user_and_type", ["userId", "type"])
-			.index("by_user_and_github_repo", ["userId", "githubRepoId"])
+			.index("by_organization", ["organizationId"])
+			.index("by_organization_and_kind", ["organizationId", "kind"])
+			.index("by_organization_and_github_repo", [
+				"organizationId",
+				"githubRepoId",
+			])
 			.index("by_github_repo", ["githubRepoId"]),
 
 		spaces: defineTable({
+			userId: v.string(),
 			slug: v.string(),
 			projectId: v.id("projects"),
 			snapshotId: v.optional(v.id("snapshots")),
@@ -54,6 +60,8 @@ export default defineSchema(
 			updatedAt: v.number(),
 		})
 			.index("by_project", ["projectId"])
+			.index("by_user", ["userId"])
+			.index("by_user_and_project", ["userId", "projectId"])
 			.index("by_slug", ["slug"])
 			.index("by_sandboxId", ["sandboxId"]),
 
