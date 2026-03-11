@@ -1,3 +1,7 @@
+import {
+	validateSecretName,
+	validateSecretValue,
+} from "@corporation/shared/secrets";
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -6,7 +10,6 @@ import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { requireProjectInActiveOrg } from "./lib/projectAccess";
-import { scheduleInitialSnapshot, scheduleRebuildWithEnvs } from "./snapshot";
 
 function requireActiveOrganization(
 	activeOrganizationId: string | null
@@ -41,6 +44,23 @@ async function getOrgBaseProject(
 			q.eq("organizationId", organizationId).eq("kind", "base")
 		)
 		.unique();
+}
+
+function validateSecretRecord(secrets: Record<string, string>): void {
+	for (const [rawName, value] of Object.entries(secrets)) {
+		const name = rawName.trim();
+		if (!name) {
+			continue;
+		}
+		const nameError = validateSecretName(name);
+		if (nameError) {
+			throw new ConvexError(nameError);
+		}
+		const valueError = validateSecretValue(value);
+		if (valueError) {
+			throw new ConvexError(valueError);
+		}
+	}
 }
 
 export const list = authedQuery({
@@ -81,8 +101,20 @@ export const get = authedQuery({
 			)
 			.order("desc")
 			.collect();
+		const secrets = (
+			await ctx.db
+				.query("secrets")
+				.withIndex("by_project", (q) => q.eq("projectId", project._id))
+				.collect()
+		)
+			.map((secret) => ({
+				name: secret.name,
+				hint: secret.hint,
+				updatedAt: secret.updatedAt,
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name));
 
-		return { ...scopedProject, snapshots };
+		return { ...scopedProject, secrets, snapshots };
 	},
 });
 
@@ -97,6 +129,7 @@ export const create = authedMutation({
 	},
 	handler: async (ctx, args) => {
 		const organizationId = requireActiveOrganization(ctx.activeOrganizationId);
+		validateSecretRecord(args.secrets ?? {});
 
 		if (args.githubRepoId) {
 			const existing = await ctx.db
@@ -138,21 +171,15 @@ export const create = authedMutation({
 			githubOwner: args.githubOwner,
 			githubName: args.githubName,
 			defaultBranch: args.defaultBranch,
-			secrets: args.secrets,
 			createdAt: now,
 			updatedAt: now,
 		});
-
-		const project = await ctx.db.get(projectId);
-		if (!project) {
-			throw new ConvexError("Project not found");
-		}
-
-		await scheduleInitialSnapshot(
-			ctx,
-			requireOrgProjectAccess(organizationId, project),
+		await ctx.scheduler.runAfter(
+			0,
+			internal.secretActions.syncProjectSecretsAndScheduleInitialSnapshot,
 			{
-				setAsDefault: true,
+				projectId,
+				secrets: args.secrets ?? {},
 			}
 		);
 
@@ -168,7 +195,6 @@ export const update = authedMutation({
 		githubOwner: v.optional(v.string()),
 		githubName: v.optional(v.string()),
 		defaultBranch: v.optional(v.string()),
-		secrets: v.optional(v.record(v.string(), v.string())),
 		defaultSnapshotId: v.optional(v.id("snapshots")),
 	},
 	handler: async (ctx, args) => {
@@ -193,7 +219,8 @@ export const update = authedMutation({
 export const updateSecrets = authedMutation({
 	args: {
 		id: v.id("projects"),
-		secrets: v.record(v.string(), v.string()),
+		upserts: v.record(v.string(), v.string()),
+		removeNames: v.array(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const project = await ctx.db.get(args.id);
@@ -201,22 +228,18 @@ export const updateSecrets = authedMutation({
 			throw new ConvexError("Project not found");
 		}
 		requireOrgProjectAccess(ctx.activeOrganizationId, project);
+		validateSecretRecord(args.upserts);
 
 		await ctx.db.patch(args.id, {
-			secrets: args.secrets,
 			updatedAt: Date.now(),
 		});
-
-		const updatedProject = await ctx.db.get(args.id);
-		if (!updatedProject) {
-			throw new ConvexError("Project not found");
-		}
-
-		await scheduleRebuildWithEnvs(
-			ctx,
-			requireOrgProjectAccess(ctx.activeOrganizationId, updatedProject),
+		await ctx.scheduler.runAfter(
+			0,
+			internal.secretActions.syncProjectSecretsAndScheduleRebuild,
 			{
-				secrets: args.secrets,
+				projectId: args.id,
+				upserts: args.upserts,
+				removeNames: args.removeNames,
 			}
 		);
 	},
@@ -233,13 +256,17 @@ const del = authedMutation({
 		}
 		requireOrgProjectAccess(ctx.activeOrganizationId, project);
 
-		const [spaces, snapshots] = await Promise.all([
+		const [spaces, snapshots, secrets] = await Promise.all([
 			ctx.db
 				.query("spaces")
 				.withIndex("by_project", (q) => q.eq("projectId", args.id))
 				.collect(),
 			ctx.db
 				.query("snapshots")
+				.withIndex("by_project", (q) => q.eq("projectId", args.id))
+				.collect(),
+			ctx.db
+				.query("secrets")
 				.withIndex("by_project", (q) => q.eq("projectId", args.id))
 				.collect(),
 		]);
@@ -255,6 +282,9 @@ const del = authedMutation({
 
 		for (const snapshot of snapshots) {
 			await ctx.db.delete(snapshot._id);
+		}
+		for (const secret of secrets) {
+			await ctx.db.delete(secret._id);
 		}
 
 		await ctx.db.delete(args.id);

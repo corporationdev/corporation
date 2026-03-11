@@ -8,8 +8,6 @@ import { log } from "./logging";
 import { LOCAL_PROXY_ADDON_SCRIPT } from "./proxy-addon";
 import { getLocalProxyConfig } from "./proxy-config";
 
-const SYSTEM_CA_CERT_PATH = "/etc/ssl/certs/ca-certificates.crt";
-const SYSTEM_CA_CERT_DIR = "/etc/ssl/certs";
 const LOCAL_PROXY_LOG_PATH = "/tmp/corporation-mitmproxy.log";
 const LOCAL_PROXY_STDERR_PATH = "/tmp/corporation-mitmproxy.stderr.log";
 const LOCAL_PROXY_START_TIMEOUT_MS = 10_000;
@@ -39,14 +37,16 @@ function canConnect(host: string, port: number): Promise<boolean> {
 function buildMitmdumpCommand(): string {
 	const proxyConfig = getLocalProxyConfig(process.env);
 	const addonPath = resolve(proxyConfig.stateDir, LOCAL_PROXY_ADDON_FILENAME);
+	const systemCaCertPath = getSystemCaCertPath();
+	const systemCaCertDir = getSystemCaCertDir();
 
 	return [
 		"exec mitmdump",
 		`--listen-host ${shellEscape(proxyConfig.host)}`,
 		`--listen-port ${String(proxyConfig.port)}`,
 		`--set confdir=${shellEscape(proxyConfig.stateDir)}`,
-		`--set ssl_verify_upstream_trusted_ca=${shellEscape(SYSTEM_CA_CERT_PATH)}`,
-		`--set ssl_verify_upstream_trusted_confdir=${shellEscape(SYSTEM_CA_CERT_DIR)}`,
+		`--set ssl_verify_upstream_trusted_ca=${shellEscape(systemCaCertPath)}`,
+		`--set ssl_verify_upstream_trusted_confdir=${shellEscape(systemCaCertDir)}`,
 		"--set flow_detail=0",
 		"--set termlog_verbosity=error",
 		`-s ${shellEscape(addonPath)}`,
@@ -79,6 +79,34 @@ async function waitForProxyReady(): Promise<void> {
 	throw new Error(
 		`Timed out waiting for mitmdump on ${proxyConfig.host}:${proxyConfig.port}`
 	);
+}
+
+function getSystemCaCertPath(): string {
+	const candidates = [
+		"/etc/ssl/certs/ca-certificates.crt",
+		"/etc/ssl/cert.pem",
+		"/private/etc/ssl/cert.pem",
+	];
+
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+
+	throw new Error("Unable to find a system CA bundle for mitmdump");
+}
+
+function getSystemCaCertDir(): string {
+	const candidates = ["/etc/ssl/certs", "/private/etc/ssl/certs"];
+
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+
+	throw new Error("Unable to find a system CA directory for mitmdump");
 }
 
 async function writeProxyAddon(): Promise<void> {

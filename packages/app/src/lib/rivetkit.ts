@@ -4,7 +4,7 @@ import { createClient, createRivetKit } from "@rivetkit/react";
 import { getAuthToken } from "./api-client";
 import { toAbsoluteUrl } from "./url";
 
-const rivetEndpoint = toAbsoluteUrl(`${env.VITE_SERVER_URL}/rivet`);
+const rivetEndpoint = toAbsoluteUrl(`${env.VITE_CORPORATION_SERVER_URL}/rivet`);
 
 export const { useActor } = createRivetKit<typeof registry>({
 	endpoint: rivetEndpoint,

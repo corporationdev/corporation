@@ -9,7 +9,7 @@ import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
 
-const webUrl = process.env.WEB_URL ?? "";
+const webUrl = process.env.CORPORATION_WEB_URL ?? "";
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
 	Boolean

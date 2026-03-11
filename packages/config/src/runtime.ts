@@ -7,9 +7,9 @@ type ResolveRuntimeContextOptions = {
 
 export type RuntimeContext = {
 	webClientEnv: {
-		VITE_SERVER_URL: string;
-		VITE_CONVEX_URL: string;
-		VITE_CONVEX_SITE_URL: string;
+		VITE_CORPORATION_SERVER_URL: string;
+		VITE_CORPORATION_CONVEX_URL: string;
+		VITE_CORPORATION_CONVEX_SITE_URL: string;
 		VITE_STAGE_KIND: "dev" | "sandbox" | "preview" | "production";
 	};
 	webDevProxyEnv?: {
@@ -18,13 +18,13 @@ export type RuntimeContext = {
 		DEV_CONVEX_SITE_PROXY_TARGET: string;
 	};
 	serverBindings: {
-		CONVEX_URL: string;
-		CONVEX_SITE_URL: string;
-		SERVER_URL: string;
+		CORPORATION_CONVEX_URL: string;
+		CORPORATION_CONVEX_SITE_URL: string;
+		CORPORATION_SERVER_URL: string;
 	};
 	convexSyncEnv: {
-		WEB_URL: string;
-		SERVER_URL: string;
+		CORPORATION_WEB_URL: string;
+		CORPORATION_SERVER_URL: string;
 	};
 };
 
@@ -41,9 +41,9 @@ export function resolveRuntimeContext(
 
 		return {
 			webClientEnv: {
-				VITE_SERVER_URL: "/api",
-				VITE_CONVEX_URL: "/convex",
-				VITE_CONVEX_SITE_URL: "/convex",
+				VITE_CORPORATION_SERVER_URL: "/api",
+				VITE_CORPORATION_CONVEX_URL: "/convex",
+				VITE_CORPORATION_CONVEX_SITE_URL: "/convex",
 				VITE_STAGE_KIND: "dev",
 			},
 			webDevProxyEnv: {
@@ -52,13 +52,13 @@ export function resolveRuntimeContext(
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
-				CONVEX_URL,
-				CONVEX_SITE_URL,
-				SERVER_URL,
+				CORPORATION_CONVEX_URL: CONVEX_URL,
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 			convexSyncEnv: {
-				WEB_URL: "http://localhost:3001",
-				SERVER_URL,
+				CORPORATION_WEB_URL: "http://localhost:3001",
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 		};
 	}
@@ -70,9 +70,9 @@ export function resolveRuntimeContext(
 
 		return {
 			webClientEnv: {
-				VITE_SERVER_URL: "/api",
-				VITE_CONVEX_URL: "/convex",
-				VITE_CONVEX_SITE_URL: "/convex",
+				VITE_CORPORATION_SERVER_URL: "/api",
+				VITE_CORPORATION_CONVEX_URL: "/convex",
+				VITE_CORPORATION_CONVEX_SITE_URL: "/convex",
 				VITE_STAGE_KIND: "sandbox",
 			},
 			webDevProxyEnv: {
@@ -81,13 +81,13 @@ export function resolveRuntimeContext(
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
-				CONVEX_URL,
-				CONVEX_SITE_URL,
-				SERVER_URL,
+				CORPORATION_CONVEX_URL: CONVEX_URL,
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 			convexSyncEnv: {
-				WEB_URL: "http://localhost:3001",
-				SERVER_URL,
+				CORPORATION_WEB_URL: "http://localhost:3001",
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 		};
 	}
@@ -113,19 +113,19 @@ export function resolveRuntimeContext(
 
 		return {
 			webClientEnv: {
-				VITE_SERVER_URL: "/api",
-				VITE_CONVEX_URL: CONVEX_URL,
-				VITE_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				VITE_CORPORATION_SERVER_URL: "/api",
+				VITE_CORPORATION_CONVEX_URL: CONVEX_URL,
+				VITE_CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				VITE_STAGE_KIND: "preview",
 			},
 			serverBindings: {
-				CONVEX_URL,
-				CONVEX_SITE_URL,
-				SERVER_URL,
+				CORPORATION_CONVEX_URL: CONVEX_URL,
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 			convexSyncEnv: {
-				WEB_URL: `https://${stage}.corporation.dev`,
-				SERVER_URL,
+				CORPORATION_WEB_URL: `https://${stage}.corporation.dev`,
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 		};
 	}
@@ -136,19 +136,19 @@ export function resolveRuntimeContext(
 		const SERVER_URL = getStageServerUrl(stage);
 		return {
 			webClientEnv: {
-				VITE_SERVER_URL: "/api",
-				VITE_CONVEX_URL: CONVEX_URL,
-				VITE_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				VITE_CORPORATION_SERVER_URL: "/api",
+				VITE_CORPORATION_CONVEX_URL: CONVEX_URL,
+				VITE_CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				VITE_STAGE_KIND: "production",
 			},
 			serverBindings: {
-				CONVEX_URL,
-				CONVEX_SITE_URL,
-				SERVER_URL,
+				CORPORATION_CONVEX_URL: CONVEX_URL,
+				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 			convexSyncEnv: {
-				WEB_URL: "https://app.corporation.dev",
-				SERVER_URL,
+				CORPORATION_WEB_URL: "https://app.corporation.dev",
+				CORPORATION_SERVER_URL: SERVER_URL,
 			},
 		};
 	}

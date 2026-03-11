@@ -61,6 +61,7 @@ export const buildInitialSnapshot = internalAction({
 	handler: async (ctx, args) => {
 		let sandbox: Sandbox | null = null;
 		let githubToken: string | null = null;
+		let projectEnvs: Record<string, string> = {};
 
 		try {
 			const project = await ctx.runQuery(internal.projects.internalGet, {
@@ -69,6 +70,12 @@ export const buildInitialSnapshot = internalAction({
 			if (!project?.organizationId) {
 				throw new Error("Project organization is not set");
 			}
+			projectEnvs = await ctx.runAction(
+				internal.secretActions.resolveProjectSecrets,
+				{
+					projectId: args.projectId,
+				}
+			);
 			const baseProject = await ctx.runQuery(
 				internal.projects.internalGetOrgBaseProject,
 				{ organizationId: project.organizationId }
@@ -108,7 +115,7 @@ export const buildInitialSnapshot = internalAction({
 
 				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
 					network: { allowPublicTraffic: true },
-					envs: project.secrets ?? {},
+					envs: projectEnvs,
 				});
 
 				await runWorkspaceCommand(
@@ -133,7 +140,7 @@ chmod 700 "$askpass_script" && mkdir -p ${safeWorkdir} && find ${safeWorkdir} -m
 			} else {
 				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
 					network: { allowPublicTraffic: true },
-					envs: project.secrets ?? {},
+					envs: projectEnvs,
 				});
 			}
 
@@ -150,7 +157,10 @@ chmod 700 "$askpass_script" && mkdir -p ${safeWorkdir} && find ${safeWorkdir} -m
 			await ctx.runMutation(internal.snapshot.completeSnapshot, {
 				snapshotId: args.snapshotId,
 				status: "error",
-				error: formatSnapshotError(error, [githubToken]),
+				error: formatSnapshotError(error, [
+					githubToken,
+					...Object.values(projectEnvs),
+				]),
 			});
 			throw error;
 		} finally {
@@ -207,15 +217,18 @@ export const rebuildWithEnvs = internalAction({
 		projectId: v.id("projects"),
 		snapshotId: v.id("snapshots"),
 		sourceExternalSnapshotId: v.string(),
-		envs: v.record(v.string(), v.string()),
 	},
 	handler: async (ctx, args) => {
 		let sandbox: Sandbox | null = null;
+		let envs: Record<string, string> = {};
 
 		try {
+			envs = await ctx.runAction(internal.secretActions.resolveProjectSecrets, {
+				projectId: args.projectId,
+			});
 			sandbox = await Sandbox.betaCreate(args.sourceExternalSnapshotId, {
 				network: { allowPublicTraffic: true },
-				envs: args.envs,
+				envs,
 			});
 
 			const snapshot = await sandbox.createSnapshot();
@@ -231,7 +244,7 @@ export const rebuildWithEnvs = internalAction({
 			await ctx.runMutation(internal.snapshot.completeSnapshot, {
 				snapshotId: args.snapshotId,
 				status: "error",
-				error: formatSnapshotError(error),
+				error: formatSnapshotError(error, Object.values(envs)),
 			});
 			throw error;
 		} finally {

@@ -16,8 +16,10 @@
     "@agentclientprotocol/sdk": "catalog:",
     "@corporation/config": "workspace:*",
     "@corporation/contracts": "workspace:*",
+    "@effect/platform-bun": "catalog:",
     "@hono/zod-validator": "^0.7.6",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "effect": "catalog:",
     "hono": "catalog:",
     "jose": "catalog:",
     "zod": "catalog:"

@@ -10,13 +10,11 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { runtimeAuthMiddleware } from "./auth";
-import { log } from "./logging";
 
 export type AppRuntime = {
-	cancelTurn(turnId: string): boolean;
-	executeTurn(body: PromptRequestBody): Promise<void>;
+	cancelTurn(turnId: string): Promise<boolean>;
+	startTurn(body: PromptRequestBody): Promise<{ error: string } | null>;
 	probeAgents(body: AgentProbeRequestBody): Promise<AgentProbeResponse>;
-	reserveTurn(body: PromptRequestBody): { error: string } | null;
 };
 
 export function createApp(runtime: AppRuntime) {
@@ -27,26 +25,23 @@ export function createApp(runtime: AppRuntime) {
 	app.use("/v1/*", runtimeAuthMiddleware);
 
 	return app
-		.post("/v1/prompt", zValidator("json", promptRequestBodySchema), (c) => {
-			const body = c.req.valid("json");
+		.post(
+			"/v1/prompt",
+			zValidator("json", promptRequestBodySchema),
+			async (c) => {
+				const body = c.req.valid("json");
 
-			const reserveError = runtime.reserveTurn(body);
-			if (reserveError) {
-				return c.json(
-					{ error: reserveError.error as "Turn already in progress" },
-					409
-				);
+				const reserveError = await runtime.startTurn(body);
+				if (reserveError) {
+					return c.json(
+						{ error: reserveError.error as "Turn already in progress" },
+						409
+					);
+				}
+
+				return c.json({ accepted: true as const }, 202);
 			}
-
-			runtime.executeTurn(body).catch((error) => {
-				log("error", "Unhandled turn error", {
-					turnId: body.turnId,
-					error: error instanceof Error ? error.message : String(error),
-				});
-			});
-
-			return c.json({ accepted: true as const }, 202);
-		})
+		)
 		.post(
 			"/v1/agents/probe",
 			zValidator("json", agentProbeRequestBodySchema),
@@ -55,10 +50,10 @@ export function createApp(runtime: AppRuntime) {
 				return c.json(await runtime.probeAgents(body));
 			}
 		)
-		.delete("/v1/prompt/:turnId", (c) => {
+		.delete("/v1/prompt/:turnId", async (c) => {
 			const turnId = c.req.param("turnId");
 
-			if (!runtime.cancelTurn(turnId)) {
+			if (!(await runtime.cancelTurn(turnId))) {
 				return c.json({ error: "Turn not found" as const }, 404);
 			}
 

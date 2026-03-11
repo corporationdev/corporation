@@ -1,0 +1,36 @@
+{
+  "name": "desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@corporation/app": "workspace:*",
+    "@corporation/env": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "dotenv": "catalog:",
+    "electron": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@corporation/config": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "electron-vite": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
