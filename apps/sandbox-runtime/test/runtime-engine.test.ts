@@ -19,10 +19,11 @@ describe("RuntimeEngine", () => {
 		const driverCreates: CreateSessionInput[] = [];
 		const engine = new RuntimeEngine(
 			{
-				createSession: async (input) => {
+				createSession: (input) => {
 					driverCreates.push(input);
+					return Promise.resolve();
 				},
-				run: async () => undefined,
+				run: () => Promise.resolve(undefined),
 			},
 			() => undefined
 		);
@@ -113,15 +114,15 @@ describe("RuntimeEngine", () => {
 	});
 
 	test("applies config diffs before run and preserves them even if prompt execution fails", async () => {
-		const configUpdates: Array<{ sessionId: string; dynamicConfig: unknown }> = [];
+		const configUpdates: Array<{ sessionId: string; dynamicConfig: unknown }> =
+			[];
 		const engine = new RuntimeEngine(
 			{
-				updateSessionConfig: async (sessionId, dynamicConfig) => {
+				updateSessionConfig: (sessionId, dynamicConfig) => {
 					configUpdates.push({ sessionId, dynamicConfig });
+					return Promise.resolve();
 				},
-				run: async () => {
-					throw new Error("prompt failed");
-				},
+				run: () => Promise.reject(new Error("prompt failed")),
 			},
 			() => undefined
 		);
@@ -169,10 +170,8 @@ describe("RuntimeEngine", () => {
 	test("does not mutate session config if applying the diff fails", async () => {
 		const engine = new RuntimeEngine(
 			{
-				updateSessionConfig: async () => {
-					throw new Error("config failed");
-				},
-				run: async () => undefined,
+				updateSessionConfig: () => Promise.reject(new Error("config failed")),
+				run: () => Promise.resolve(undefined),
 			},
 			() => undefined
 		);
@@ -215,8 +214,9 @@ describe("RuntimeEngine", () => {
 				run: async () => {
 					await blocker.promise;
 				},
-				cancel: async (turnId) => {
+				cancel: (turnId) => {
 					cancelledTurnIds.push(turnId);
+					return Promise.resolve();
 				},
 			},
 			() => undefined

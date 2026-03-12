@@ -94,6 +94,7 @@ export type AcpConnection = {
 		method: typeof AGENT_METHODS.session_cancel,
 		params: CancelNotification
 	): Promise<void>;
+	close?(): Promise<void>;
 };
 
 export type AcpConnectionFactory = {

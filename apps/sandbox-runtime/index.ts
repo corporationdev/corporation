@@ -132,9 +132,7 @@ function getConfigDiff(
 	return diff;
 }
 
-function cloneStaticConfig(
-	config: SessionStaticConfig
-): SessionStaticConfig {
+function cloneStaticConfig(config: SessionStaticConfig): SessionStaticConfig {
 	return { ...config };
 }
 
@@ -162,7 +160,7 @@ function mergeDynamicConfig(
 						...(current.configOptions ?? {}),
 						...(next.configOptions ?? {}),
 					},
-			  }
+				}
 			: {}),
 	};
 }

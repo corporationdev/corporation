@@ -17,22 +17,23 @@ function createFakeConnection(sessionId: string) {
 	const requestCalls: RequestCall[] = [];
 	const notifyCalls: RequestCall[] = [];
 	const connection: AcpConnection = {
-		async request<M extends AcpRequestMethod>(
+		request<M extends AcpRequestMethod>(
 			method: M,
 			params: AcpRequestMap[M]["params"]
 		): Promise<AcpRequestMap[M]["result"]> {
 			requestCalls.push({ method, params });
 			switch (method) {
 				case "initialize":
-					return {} as AcpRequestMap[M]["result"];
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 				case "session/new":
-					return { sessionId } as AcpRequestMap[M]["result"];
+					return Promise.resolve({ sessionId } as AcpRequestMap[M]["result"]);
 				default:
-					return {} as AcpRequestMap[M]["result"];
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 			}
 		},
-		async notify(method, params) {
+		notify(method, params) {
 			notifyCalls.push({ method, params });
+			return Promise.resolve();
 		},
 	};
 
@@ -43,8 +44,8 @@ describe("createAcpDriver", () => {
 	test("creates one ACP session on createSession and applies initial config", async () => {
 		const fake = createFakeConnection("acp-1");
 		const factory: AcpConnectionFactory = {
-			async connect() {
-				return fake.connection;
+			connect() {
+				return Promise.resolve(fake.connection);
 			},
 		};
 		const driver = createAcpDriver(factory);
@@ -96,8 +97,8 @@ describe("createAcpDriver", () => {
 	test("run applies only the provided dynamic diff and then prompts", async () => {
 		const fake = createFakeConnection("acp-1");
 		const driver = createAcpDriver({
-			async connect() {
-				return fake.connection;
+			connect() {
+				return Promise.resolve(fake.connection);
 			},
 		});
 		await driver.createSession?.({
@@ -168,8 +169,8 @@ describe("createAcpDriver", () => {
 		};
 
 		const driver = createAcpDriver({
-			async connect() {
-				return fake.connection;
+			connect() {
+				return Promise.resolve(fake.connection);
 			},
 		});
 		await driver.createSession?.({
