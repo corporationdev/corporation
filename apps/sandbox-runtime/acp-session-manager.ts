@@ -25,11 +25,13 @@ import {
 	type SetSessionModeResponse,
 } from "@agentclientprotocol/sdk";
 import type {
-	DynamicSessionConfig,
+	AgentDriver,
+	CreateSessionInput,
 	EventSink,
 	ResolvedStartTurnInput,
+	SessionDynamicConfig,
 	SessionId,
-	SessionIdentity,
+	TurnId,
 } from "./index";
 
 const ACP_PROTOCOL_VERSION = 2;
@@ -98,163 +100,106 @@ export type AcpConnectionFactory = {
 	connect(agent: string): Promise<AcpConnection>;
 };
 
-export type AcpManagedSession = {
-	sessionId: SessionId;
-	staticConfig: SessionIdentity;
-	dynamicConfig?: DynamicSessionConfig;
+type AcpSession = {
+	acpSessionId: string;
+	connection: AcpConnection;
 };
 
-export class AcpSessionHandle {
-	readonly runtimeSessionId: SessionId;
-	readonly acpSessionId: string;
-	private readonly connection: AcpConnection;
-	private appliedDynamic: DynamicSessionConfig;
-
-	constructor(
-		runtimeSessionId: SessionId,
-		acpSessionId: string,
-		connection: AcpConnection,
-		initialDynamic: DynamicSessionConfig
-	) {
-		this.runtimeSessionId = runtimeSessionId;
-		this.acpSessionId = acpSessionId;
-		this.connection = connection;
-		this.appliedDynamic = { ...initialDynamic };
-	}
-
-	async runTurn(
-		input: ResolvedStartTurnInput,
-		_emit: EventSink
-	): Promise<void> {
-		const next = input.dynamicConfig;
-
-		if (next.modelId && next.modelId !== this.appliedDynamic.modelId) {
-			await this.connection.request(AGENT_METHODS.session_set_model, {
-				sessionId: this.acpSessionId,
-				modelId: next.modelId,
-			});
-			this.appliedDynamic = {
-				...this.appliedDynamic,
-				modelId: next.modelId,
-			};
-		}
-
-		if (next.modeId && next.modeId !== this.appliedDynamic.modeId) {
-			await this.connection.request(AGENT_METHODS.session_set_mode, {
-				sessionId: this.acpSessionId,
-				modeId: next.modeId,
-			});
-			this.appliedDynamic = {
-				...this.appliedDynamic,
-				modeId: next.modeId,
-			};
-		}
-
-		if (next.configOptions) {
-			for (const [configId, valueId] of Object.entries(next.configOptions)) {
-				const appliedValue = this.appliedDynamic.configOptions?.[configId];
-				if (valueId !== appliedValue) {
-					await this.connection.request(
-						AGENT_METHODS.session_set_config_option,
-						{
-							sessionId: this.acpSessionId,
-							configId,
-							value: valueId,
-						}
-					);
-				}
-			}
-			this.appliedDynamic = {
-				...this.appliedDynamic,
-				configOptions: {
-					...this.appliedDynamic.configOptions,
-					...next.configOptions,
-				},
-			};
-		}
-
-		await this.connection.request(AGENT_METHODS.session_prompt, {
-			sessionId: this.acpSessionId,
-			prompt: input.prompt,
+async function applyDynamicConfig(
+	connection: AcpConnection,
+	acpSessionId: string,
+	config: SessionDynamicConfig
+): Promise<void> {
+	if (config.modelId) {
+		await connection.request(AGENT_METHODS.session_set_model, {
+			sessionId: acpSessionId,
+			modelId: config.modelId,
 		});
 	}
-
-	async cancelActiveTurn(): Promise<void> {
-		await this.connection.notify(AGENT_METHODS.session_cancel, {
-			sessionId: this.acpSessionId,
+	if (config.modeId) {
+		await connection.request(AGENT_METHODS.session_set_mode, {
+			sessionId: acpSessionId,
+			modeId: config.modeId,
 		});
 	}
-
-	getSnapshot() {
-		return {
-			runtimeSessionId: this.runtimeSessionId,
-			acpSessionId: this.acpSessionId,
-			appliedDynamic: { ...this.appliedDynamic },
-		};
+	if (config.configOptions) {
+		for (const [configId, value] of Object.entries(config.configOptions)) {
+			await connection.request(AGENT_METHODS.session_set_config_option, {
+				sessionId: acpSessionId,
+				configId,
+				value,
+			});
+		}
 	}
 }
 
-export class AcpSessionManager {
-	private readonly handles = new Map<SessionId, AcpSessionHandle>();
-	private readonly factory: AcpConnectionFactory;
+export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
+	const sessions = new Map<SessionId, AcpSession>();
+	const turnToSession = new Map<TurnId, SessionId>();
 
-	constructor(factory: AcpConnectionFactory) {
-		this.factory = factory;
-	}
-
-	async getOrCreate(input: AcpManagedSession): Promise<AcpSessionHandle> {
-		const existing = this.handles.get(input.sessionId);
-		if (existing) {
-			return existing;
-		}
-
-		const connection = await this.factory.connect(input.staticConfig.agent);
-		await connection.request("initialize", {
-			protocolVersion: ACP_PROTOCOL_VERSION,
-			clientInfo: {
-				name: "sandbox-runtime",
-				version: "v1",
-			},
-		});
-		const created = await connection.request("session/new", {
-			cwd: input.staticConfig.cwd,
-			mcpServers: [],
-		});
-		const dynamicConfig = input.dynamicConfig ?? {};
-
-		if (dynamicConfig.modelId) {
-			await connection.request(AGENT_METHODS.session_set_model, {
-				sessionId: created.sessionId,
-				modelId: dynamicConfig.modelId,
-			});
-		}
-
-		if (dynamicConfig.modeId) {
-			await connection.request(AGENT_METHODS.session_set_mode, {
-				sessionId: created.sessionId,
-				modeId: dynamicConfig.modeId,
-			});
-		}
-
-		if (dynamicConfig.configOptions) {
-			for (const [configId, value] of Object.entries(
-				dynamicConfig.configOptions
-			)) {
-				await connection.request(AGENT_METHODS.session_set_config_option, {
-					sessionId: created.sessionId,
-					configId,
-					value,
-				});
+	return {
+		async createSession(input: CreateSessionInput): Promise<void> {
+			if (sessions.has(input.sessionId)) {
+				throw new Error(`ACP session already exists for ${input.sessionId}`);
 			}
-		}
 
-		const handle = new AcpSessionHandle(
-			input.sessionId,
-			created.sessionId,
-			connection,
-			dynamicConfig
-		);
-		this.handles.set(input.sessionId, handle);
-		return handle;
-	}
+			const connection = await factory.connect(input.staticConfig.agent);
+			await connection.request("initialize", {
+				protocolVersion: ACP_PROTOCOL_VERSION,
+				clientInfo: {
+					name: "sandbox-runtime",
+					version: "v1",
+				},
+			});
+			const created = await connection.request("session/new", {
+				cwd: input.staticConfig.cwd,
+				mcpServers: [],
+			});
+
+			await applyDynamicConfig(
+				connection,
+				created.sessionId,
+				input.dynamicConfig
+			);
+
+			sessions.set(input.sessionId, {
+				acpSessionId: created.sessionId,
+				connection,
+			});
+		},
+
+		async run(input: ResolvedStartTurnInput, _emit: EventSink): Promise<void> {
+			const session = sessions.get(input.sessionId);
+			if (!session) {
+				throw new Error(`ACP session not found for ${input.sessionId}`);
+			}
+
+			turnToSession.set(input.turnId, input.sessionId);
+
+			await applyDynamicConfig(
+				session.connection,
+				session.acpSessionId,
+				input.dynamicConfig
+			);
+
+			await session.connection.request(AGENT_METHODS.session_prompt, {
+				sessionId: session.acpSessionId,
+				prompt: input.prompt,
+			});
+		},
+
+		async cancel(turnId: TurnId): Promise<void> {
+			const sessionId = turnToSession.get(turnId);
+			if (!sessionId) {
+				return;
+			}
+			const session = sessions.get(sessionId);
+			if (!session) {
+				return;
+			}
+			await session.connection.notify(AGENT_METHODS.session_cancel, {
+				sessionId: session.acpSessionId,
+			});
+		},
+	};
 }
