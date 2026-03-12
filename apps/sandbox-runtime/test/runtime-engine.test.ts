@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type AgentDriver, RuntimeEngine, type RuntimeEvent } from "../index";
+import {
+	type AgentDriver,
+	RuntimeEngine,
+	type RuntimeEvent,
+	type ResolvedStartTurnInput,
+} from "../index";
 
 function createDeferred() {
 	let resolve!: () => void;
@@ -10,6 +15,51 @@ function createDeferred() {
 }
 
 describe("RuntimeEngine", () => {
+	test("ensureSession stores the initial session config", () => {
+		const engine = new RuntimeEngine(
+			{
+				run: async () => undefined,
+			},
+			() => undefined
+		);
+
+		const session = engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+
+		expect(session).toEqual({
+			sessionId: "session-1",
+			activeTurnId: null,
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+	});
+
+	test("startTurn fails if the session has not been ensured", async () => {
+		const engine = new RuntimeEngine(
+			{
+				run: async () => undefined,
+			},
+			() => undefined
+		);
+
+		await expect(
+			engine.startTurn({
+				sessionId: "session-1",
+				turnId: "turn-1",
+				prompt: [{ type: "text", text: "hello" }],
+			})
+		).rejects.toThrow("Session session-1 does not exist");
+	});
+
 	test("rejects a second turn while the same session is already running", async () => {
 		const blocker = createDeferred();
 		const events: RuntimeEvent[] = [];
@@ -20,6 +70,13 @@ describe("RuntimeEngine", () => {
 		};
 		const engine = new RuntimeEngine(driver, (event) => {
 			events.push(event);
+		});
+		engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				cwd: "/workspace/session-1",
+			},
 		});
 
 		const firstTurn = engine.startTurn({
@@ -65,6 +122,13 @@ describe("RuntimeEngine", () => {
 		const engine = new RuntimeEngine(driver, (event) => {
 			events.push(event);
 		});
+		engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				cwd: "/workspace/session-1",
+			},
+		});
 
 		const runningTurn = engine.startTurn({
 			sessionId: "session-1",
@@ -95,6 +159,13 @@ describe("RuntimeEngine", () => {
 		};
 		const engine = new RuntimeEngine(driver, (event) => {
 			events.push(event);
+		});
+		engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				cwd: "/workspace/session-1",
+			},
 		});
 
 		await expect(
@@ -139,6 +210,13 @@ describe("RuntimeEngine", () => {
 				events.push(event);
 			}
 		);
+		engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				cwd: "/workspace/session-1",
+			},
+		});
 
 		await engine.startTurn({
 			sessionId: "session-1",
@@ -173,6 +251,20 @@ describe("RuntimeEngine", () => {
 		};
 		const engine = new RuntimeEngine(driver, (event) => {
 			events.push(event);
+		});
+		engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				cwd: "/workspace/session-1",
+			},
+		});
+		engine.ensureSession({
+			sessionId: "session-2",
+			config: {
+				agent: "codex",
+				cwd: "/workspace/session-2",
+			},
 		});
 
 		const firstTurn = engine.startTurn({
@@ -210,16 +302,19 @@ describe("RuntimeEngine", () => {
 			},
 			() => undefined
 		);
-
-		await engine.startTurn({
+		engine.ensureSession({
 			sessionId: "session-1",
-			turnId: "turn-1",
-			prompt: [{ type: "text", text: "first" }],
 			config: {
 				agent: "claude",
 				modelId: "sonnet",
 				cwd: "/workspace/repo",
 			},
+		});
+
+		await engine.startTurn({
+			sessionId: "session-1",
+			turnId: "turn-1",
+			prompt: [{ type: "text", text: "first" }],
 		});
 
 		expect(engine.getSession("session-1")).toEqual({
@@ -256,11 +351,8 @@ describe("RuntimeEngine", () => {
 			},
 			() => undefined
 		);
-
-		await engine.startTurn({
+		engine.ensureSession({
 			sessionId: "session-1",
-			turnId: "turn-1",
-			prompt: [{ type: "text", text: "first" }],
 			config: {
 				agent: "claude",
 				modelId: "sonnet",
@@ -270,9 +362,15 @@ describe("RuntimeEngine", () => {
 
 		await engine.startTurn({
 			sessionId: "session-1",
+			turnId: "turn-1",
+			prompt: [{ type: "text", text: "first" }],
+		});
+
+		await engine.startTurn({
+			sessionId: "session-1",
 			turnId: "turn-2",
 			prompt: [{ type: "text", text: "second" }],
-			config: {
+			configOverride: {
 				modelId: "opus",
 			},
 		});
@@ -286,5 +384,107 @@ describe("RuntimeEngine", () => {
 				cwd: "/workspace/repo",
 			},
 		});
+	});
+
+	test("passes the resolved session config to the driver across turns", async () => {
+		const calls: ResolvedStartTurnInput[] = [];
+		const driver: AgentDriver = {
+			run: async (input) => {
+				calls.push(input);
+			},
+		};
+		const engine = new RuntimeEngine(driver, () => undefined);
+		engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+
+		await engine.startTurn({
+			sessionId: "session-1",
+			turnId: "turn-1",
+			prompt: [{ type: "text", text: "first" }],
+		});
+
+		await engine.startTurn({
+			sessionId: "session-1",
+			turnId: "turn-2",
+			prompt: [{ type: "text", text: "second" }],
+			configOverride: {
+				modelId: "opus",
+			},
+		});
+
+		expect(calls).toEqual([
+			{
+				sessionId: "session-1",
+				turnId: "turn-1",
+				prompt: [{ type: "text", text: "first" }],
+				config: {
+					agent: "claude",
+					modelId: "sonnet",
+					cwd: "/workspace/repo",
+				},
+			},
+			{
+				sessionId: "session-1",
+				turnId: "turn-2",
+				prompt: [{ type: "text", text: "second" }],
+				config: {
+					agent: "claude",
+					modelId: "opus",
+					cwd: "/workspace/repo",
+				},
+			},
+		]);
+	});
+
+	test("startTurn rejects if an override makes the stored session config invalid", async () => {
+		const driverCalls: ResolvedStartTurnInput[] = [];
+		const driver: AgentDriver = {
+			run: async (input) => {
+				driverCalls.push(input);
+			},
+		};
+		const events: RuntimeEvent[] = [];
+		const engine = new RuntimeEngine(driver, (event) => {
+			events.push(event);
+		});
+		engine.ensureSession({
+			sessionId: "session-1",
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+
+		await expect(
+			engine.startTurn({
+				sessionId: "session-1",
+				turnId: "turn-1",
+				prompt: [{ type: "text", text: "bad override" }],
+				configOverride: {
+					agent: undefined,
+					cwd: undefined,
+				},
+			})
+		).rejects.toThrow("Session session-1 has invalid config: agent and cwd are required");
+
+		expect(driverCalls).toEqual([]);
+		expect(events).toEqual([]);
+		expect(engine.getSession("session-1")).toEqual({
+			sessionId: "session-1",
+			activeTurnId: null,
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+		expect(engine.getTurn("turn-1")).toBeUndefined();
 	});
 });

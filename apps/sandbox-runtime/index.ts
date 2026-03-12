@@ -23,7 +23,22 @@ export type StartTurnInput = {
 	sessionId: SessionId;
 	turnId: TurnId;
 	prompt: PromptPart[];
-	config?: SessionConfig;
+	configOverride?: SessionConfig;
+};
+
+export type EnsureSessionInput = {
+	sessionId: SessionId;
+	config: ResolvedSessionConfig;
+};
+
+export type ResolvedSessionConfig = {
+	agent: string;
+	cwd: string;
+	modelId?: string;
+};
+
+export type ResolvedStartTurnInput = Omit<StartTurnInput, "config"> & {
+	config: ResolvedSessionConfig;
 };
 
 export type RuntimeEvent =
@@ -46,7 +61,7 @@ export type RuntimeEvent =
 export type EventSink = (event: RuntimeEvent) => void;
 
 export type AgentDriver = {
-	run(input: StartTurnInput, emit: EventSink): Promise<void>;
+	run(input: ResolvedStartTurnInput, emit: EventSink): Promise<void>;
 	cancel?(turnId: TurnId): Promise<void>;
 };
 
@@ -79,6 +94,20 @@ function mergeSessionConfig(
 	};
 }
 
+function resolveSessionConfig(
+	config: SessionConfig | null
+): ResolvedSessionConfig | null {
+	if (!(config?.agent && config.cwd)) {
+		return null;
+	}
+
+	return {
+		agent: config.agent,
+		cwd: config.cwd,
+		...(config.modelId ? { modelId: config.modelId } : {}),
+	};
+}
+
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
@@ -92,26 +121,46 @@ export class RuntimeEngine {
 		private readonly emit: EventSink
 	) {}
 
-	private getOrCreateSession(sessionId: SessionId): SessionState {
-		const existing = this.sessions.get(sessionId);
-		if (existing) {
-			return existing;
-		}
-
+	private createSession(input: EnsureSessionInput): SessionState {
 		const session: SessionState = {
-			sessionId,
+			sessionId: input.sessionId,
 			activeTurnId: null,
-			config: null,
+			config: { ...input.config },
 		};
-		this.sessions.set(sessionId, session);
+		this.sessions.set(input.sessionId, session);
 		return session;
 	}
 
+	ensureSession(input: EnsureSessionInput): RuntimeSession {
+		const existing = this.sessions.get(input.sessionId);
+		if (!existing) {
+			return this.getSession(
+				this.createSession(input).sessionId
+			) as RuntimeSession;
+		}
+
+		existing.config = {
+			...input.config,
+		};
+		return this.getSession(input.sessionId) as RuntimeSession;
+	}
+
 	async startTurn(input: StartTurnInput): Promise<void> {
-		const session = this.getOrCreateSession(input.sessionId);
+		const session = this.sessions.get(input.sessionId);
+		if (!session) {
+			throw new Error(`Session ${input.sessionId} does not exist`);
+		}
 		if (session.activeTurnId) {
 			throw new Error(
 				`Session ${input.sessionId} already has active turn ${session.activeTurnId}`
+			);
+		}
+
+		const nextConfig = mergeSessionConfig(session.config, input.configOverride);
+		const resolvedConfig = resolveSessionConfig(nextConfig);
+		if (!resolvedConfig) {
+			throw new Error(
+				`Session ${input.sessionId} has invalid config: agent and cwd are required`
 			);
 		}
 
@@ -120,7 +169,7 @@ export class RuntimeEngine {
 			sessionId: input.sessionId,
 			status: "running",
 		};
-		session.config = mergeSessionConfig(session.config, input.config);
+		session.config = nextConfig;
 		this.turns.set(input.turnId, turnState);
 		session.activeTurnId = input.turnId;
 		this.emit({
@@ -130,7 +179,15 @@ export class RuntimeEngine {
 		});
 
 		try {
-			await this.driver.run(input, this.emit);
+			await this.driver.run(
+				{
+					sessionId: input.sessionId,
+					turnId: input.turnId,
+					prompt: input.prompt,
+					config: resolvedConfig,
+				},
+				this.emit
+			);
 			if (turnState.status === "cancelled") {
 				return;
 			}
@@ -209,5 +266,6 @@ export const noopDriver: AgentDriver = {
 			turnId: input.turnId,
 			message: "noop driver ran",
 		});
+		await Promise.resolve();
 	},
 };
