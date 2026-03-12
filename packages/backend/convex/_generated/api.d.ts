@@ -16,6 +16,7 @@ import type * as e2bWebhook from "../e2bWebhook.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
+import type * as lib_agentCredentialBundles from "../lib/agentCredentialBundles.js";
 import type * as lib_claudeCodeAuth from "../lib/claudeCodeAuth.js";
 import type * as lib_codexAuth from "../lib/codexAuth.js";
 import type * as lib_crypto from "../lib/crypto.js";
@@ -37,6 +38,7 @@ import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaceBranchActions from "../spaceBranchActions.js";
 import type * as spaces from "../spaces.js";
 import type * as userWorkspace from "../userWorkspace.js";
+import type * as userWorkspaceActions from "../userWorkspaceActions.js";
 
 import type {
   ApiFromModules,
@@ -53,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
+  "lib/agentCredentialBundles": typeof lib_agentCredentialBundles;
   "lib/claudeCodeAuth": typeof lib_claudeCodeAuth;
   "lib/codexAuth": typeof lib_codexAuth;
   "lib/crypto": typeof lib_crypto;
@@ -74,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   spaceBranchActions: typeof spaceBranchActions;
   spaces: typeof spaces;
   userWorkspace: typeof userWorkspace;
+  userWorkspaceActions: typeof userWorkspaceActions;
 }>;
 
 /**

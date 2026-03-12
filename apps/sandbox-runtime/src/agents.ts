@@ -129,8 +129,7 @@ export function describeAgentCommand(agent: string) {
 
 export function getAgentCommandReadiness(agent: string) {
 	const diagnostics = describeAgentCommand(agent);
-	const ready =
-		diagnostics.exists === true && diagnostics.executable === true;
+	const ready = diagnostics.exists === true && diagnostics.executable === true;
 	return {
 		ready,
 		diagnostics,

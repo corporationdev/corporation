@@ -5,9 +5,16 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
 import { createRouterUtils } from "@orpc/tanstack-query";
 import { authClient } from "./auth-client";
+import { toAbsoluteUrl } from "./url";
+
+function buildServerRpcUrl(): string {
+	const baseUrl = new URL(toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL));
+	baseUrl.pathname = "/api/rpc";
+	return baseUrl.toString();
+}
 
 const rpcLink = new RPCLink({
-	url: `${env.VITE_CORPORATION_SERVER_URL}/api/rpc`,
+	url: buildServerRpcUrl(),
 	headers: () => getAuthHeaders(),
 });
 

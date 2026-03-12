@@ -21,11 +21,9 @@ function buildSessionStreamBaseUrl(
 	spaceSlug: string,
 	sessionId: string
 ): string {
-	const encodedSpaceSlug = encodeURIComponent(spaceSlug);
-	const encodedSessionId = encodeURIComponent(sessionId);
-	return toAbsoluteUrl(
-		`${env.VITE_CORPORATION_SERVER_URL}/spaces/${encodedSpaceSlug}/sessions/${encodedSessionId}`
-	);
+	const baseUrl = new URL(toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL));
+	baseUrl.pathname = `/api/spaces/${encodeURIComponent(spaceSlug)}/sessions/${encodeURIComponent(sessionId)}`;
+	return baseUrl.toString();
 }
 
 async function fetchSessionStreamState(

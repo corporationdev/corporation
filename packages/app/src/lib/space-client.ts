@@ -222,8 +222,8 @@ class SpaceSocketClient {
 		await this.getClient().cancelSession({ sessionId });
 	}
 
-	async getAgentProbeState(): Promise<AgentProbeResponse> {
-		return await this.getClient().getAgentProbeState();
+	async probeAgents(ids: string[]): Promise<AgentProbeResponse> {
+		return await this.getClient().probeAgents({ ids });
 	}
 
 	async runCommand(command: string, background = false): Promise<void> {
@@ -261,7 +261,7 @@ export type SpaceConnection = {
 		modelId: string
 	) => Promise<void>;
 	cancelSession: (sessionId: string) => Promise<void>;
-	getAgentProbeState: () => Promise<AgentProbeResponse>;
+	probeAgents: (ids: string[]) => Promise<AgentProbeResponse>;
 	runCommand: (command: string, background?: boolean) => Promise<void>;
 	input: (data: number[]) => Promise<void>;
 	resize: (cols: number, rows: number) => Promise<void>;
@@ -330,7 +330,7 @@ export function useSpaceSocketClient(
 			sendMessage: (sessionId, content, agent, modelId) =>
 				client.sendMessage(sessionId, content, agent, modelId),
 			cancelSession: (sessionId) => client.cancelSession(sessionId),
-			getAgentProbeState: () => client.getAgentProbeState(),
+			probeAgents: (ids) => client.probeAgents(ids),
 			runCommand: (command, background) =>
 				client.runCommand(command, background ?? false),
 			input: (data) => client.input(data),

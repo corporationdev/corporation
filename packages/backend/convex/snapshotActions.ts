@@ -9,6 +9,7 @@ import { internalAction } from "./_generated/server";
 import { quoteShellArg } from "./lib/git";
 import { getGitHubToken } from "./lib/nango";
 import {
+	BASE_TEMPLATE,
 	REPO_SYNC_TIMEOUT_MS,
 	runWorkspaceCommand,
 	SANDBOX_WORKDIR,
@@ -76,23 +77,6 @@ export const buildInitialSnapshot = internalAction({
 					projectId: args.projectId,
 				}
 			);
-			const baseProject = await ctx.runQuery(
-				internal.projects.internalGetOrgBaseProject,
-				{ organizationId: project.organizationId }
-			);
-			if (!baseProject?.defaultSnapshotId) {
-				throw new Error("Organization base project is not ready yet");
-			}
-			const sourceSnapshot = await ctx.runQuery(internal.snapshot.internalGet, {
-				id: baseProject.defaultSnapshotId,
-			});
-			if (
-				sourceSnapshot.status !== "ready" ||
-				!sourceSnapshot.externalSnapshotId
-			) {
-				throw new Error("Organization base snapshot is not ready yet");
-			}
-
 			if (
 				project.githubRepoId &&
 				project.githubOwner &&
@@ -113,7 +97,7 @@ export const buildInitialSnapshot = internalAction({
 				const safeDefaultBranch = quoteShellArg(project.defaultBranch);
 				const safeWorkdir = quoteShellArg(workdir);
 
-				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
+				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
 					network: { allowPublicTraffic: true },
 					envs: projectEnvs,
 				});
@@ -138,7 +122,7 @@ chmod 700 "$askpass_script" && mkdir -p ${safeWorkdir} && find ${safeWorkdir} -m
 					}
 				);
 			} else {
-				sandbox = await Sandbox.betaCreate(sourceSnapshot.externalSnapshotId, {
+				sandbox = await Sandbox.betaCreate(BASE_TEMPLATE, {
 					network: { allowPublicTraffic: true },
 					envs: projectEnvs,
 				});

@@ -427,6 +427,25 @@ export const internalGet = internalQuery({
 	},
 });
 
+export const internalGetByUserAndProject = internalQuery({
+	args: {
+		userId: v.string(),
+		projectId: v.id("projects"),
+	},
+	handler: async (ctx, args) => {
+		const spaces = await ctx.db
+			.query("spaces")
+			.withIndex("by_user_and_project", (q) =>
+				q.eq("userId", args.userId).eq("projectId", args.projectId)
+			)
+			.collect();
+
+		const activeSpaces = spaces.filter((space) => !space.archived);
+		activeSpaces.sort((a, b) => b.updatedAt - a.updatedAt);
+		return activeSpaces[0] ?? null;
+	},
+});
+
 export const getBySandboxId = internalQuery({
 	args: { sandboxId: v.string() },
 	handler: async (ctx, args) => {

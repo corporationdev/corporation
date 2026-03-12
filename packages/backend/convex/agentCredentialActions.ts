@@ -66,10 +66,13 @@ export const removeForCurrentUser = action({
 	handler: async (ctx, args) => {
 		const userId = await requireAuthUserId(ctx);
 
-		await ctx.runMutation(internal.agentCredentials.removeByUserAndAgentInternal, {
-			userId,
-			agentId: args.agentId,
-		});
+		await ctx.runMutation(
+			internal.agentCredentials.removeByUserAndAgentInternal,
+			{
+				userId,
+				agentId: args.agentId,
+			}
+		);
 
 		return null;
 	},

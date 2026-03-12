@@ -147,17 +147,8 @@ export const create = authedMutation({
 		}
 
 		const baseProject = await getOrgBaseProject(ctx, organizationId);
-		if (!baseProject?.defaultSnapshotId) {
+		if (!baseProject) {
 			throw new ConvexError("Organization base project is not ready yet");
-		}
-
-		const baseSnapshot = await ctx.db.get(baseProject.defaultSnapshotId);
-		if (
-			!baseSnapshot ||
-			baseSnapshot.status !== "ready" ||
-			!baseSnapshot.externalSnapshotId
-		) {
-			throw new ConvexError("Organization base snapshot is not ready yet");
 		}
 
 		const now = Date.now();

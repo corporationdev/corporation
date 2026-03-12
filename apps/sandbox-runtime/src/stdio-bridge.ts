@@ -155,7 +155,8 @@ export function spawnStdioBridge(
 
 	const homeDir = process.env.HOME ?? "/home/user";
 	const inheritedPath =
-		process.env.PATH ?? "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+		process.env.PATH ??
+		"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 	const runtimePath = `${homeDir}/.local/bin:${inheritedPath}`;
 
 	const proc = Bun.spawn(cmd, {

@@ -42,7 +42,7 @@ export type PromptRequestBody = z.infer<typeof promptRequestBodySchema>;
 
 export const agentProbeRequestBodySchema = z.object({
 	cwd: z.string().min(1).optional(),
-	ids: z.array(z.string().min(1)).optional(),
+	ids: z.array(z.string().min(1)).min(1),
 });
 export type AgentProbeRequestBody = z.infer<typeof agentProbeRequestBodySchema>;
 
@@ -133,7 +133,7 @@ export type RuntimeCancelTurnMessage = z.infer<
 
 export const runtimeProbeAgentsMessageSchema = runtimeCommandBaseSchema.extend({
 	type: z.literal("probe_agents"),
-	ids: z.array(z.string().min(1)).optional(),
+	ids: z.array(z.string().min(1)).min(1),
 	cwd: z.string().min(1).optional(),
 });
 export type RuntimeProbeAgentsMessage = z.infer<

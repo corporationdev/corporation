@@ -140,7 +140,7 @@ describe("Space DO runtime websocket integration (local worker)", () => {
 		const runtime = await harness.createRuntime(SPACE_SLUG, SANDBOX_ID);
 
 		try {
-			const probePromise = browser.client.getAgentProbeState();
+			const probePromise = browser.client.probeAgents({ ids: [AGENT_ID] });
 			const probeRequest = await runtime.waitForCommand("probe_agents");
 			await runtime.sendProbeResult({
 				type: "probe_result",

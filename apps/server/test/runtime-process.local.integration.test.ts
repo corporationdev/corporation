@@ -33,7 +33,7 @@ describe("sandbox-runtime process integration (local worker)", () => {
 
 		try {
 			const result = await eventually(
-				() => browser.client.getAgentProbeState(),
+				() => browser.client.probeAgents({ ids: [AGENT_ID] }),
 				(probe) =>
 					probe.agents.some(
 						(agent) =>

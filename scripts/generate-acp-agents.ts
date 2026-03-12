@@ -72,20 +72,31 @@ const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 		acpInstallStrategy: "distribution",
 		acpExecutableName: "claude-agent-acp",
 		installSource: "https://docs.anthropic.com/en/docs/claude-code/setup",
-		credentialSupport: "unsupported",
-		credentialBundle: null,
-		unsupportedReason:
-			"Remote credential sync is not supported yet for this agent's current auth modes.",
+		credentialSupport: "supported",
+		credentialBundle: {
+			schemaVersion: 1,
+			paths: [
+				{ path: "$HOME/.claude.json", kind: "file", required: true },
+				{
+					path: "$HOME/.claude/.credentials.json",
+					kind: "file",
+					required: true,
+				},
+			],
+		},
+		unsupportedReason: null,
 	},
 	"codex-acp": {
 		nativeInstallCommand:
 			'npm install -g --prefix "$HOME/.local" @openai/codex',
 		acpInstallStrategy: "distribution",
 		installSource: "https://github.com/openai/codex",
-		credentialSupport: "unsupported",
-		credentialBundle: null,
-		unsupportedReason:
-			"Remote credential sync is not supported yet for this agent's current auth modes.",
+		credentialSupport: "supported",
+		credentialBundle: {
+			schemaVersion: 1,
+			paths: [{ path: "$HOME/.codex/auth.json", kind: "file", required: true }],
+		},
+		unsupportedReason: null,
 	},
 	opencode: {
 		acpInstallStrategy: "native",
@@ -510,7 +521,9 @@ function toGeneratedAgent(agent: RegistryAgent): GeneratedAgent {
 		(useNativeForRuntime ? nativeRuntimeCommand : fallbackAcp.runtimeCommand);
 	const credentialSupport = manual.credentialSupport ?? "unsupported";
 	const credentialBundle =
-		credentialSupport === "supported" ? (manual.credentialBundle ?? null) : null;
+		credentialSupport === "supported"
+			? (manual.credentialBundle ?? null)
+			: null;
 	const unsupportedReason =
 		credentialSupport === "unsupported"
 			? (manual.unsupportedReason ?? "Credential sync is not supported yet.")

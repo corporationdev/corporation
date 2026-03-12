@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { authedQuery } from "./functions";
 import { internalMutation, internalQuery } from "./_generated/server";
+import { authedQuery } from "./functions";
 
 export const list = authedQuery({
 	args: {},

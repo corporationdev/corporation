@@ -17,10 +17,10 @@ export const Route = createFileRoute("/_authenticated/settings/agents")({
 
 function AgentCard({
 	agent,
-	isConfigured,
+	isConnected,
 }: {
 	agent: AcpAgentManifestEntry;
-	isConfigured: boolean;
+	isConnected: boolean;
 }) {
 	const isSupported = supportsAgentCredentials(agent);
 
@@ -39,43 +39,70 @@ function AgentCard({
 			<div
 				className={cn(
 					"rounded-full px-2.5 py-1 font-medium text-[11px]",
-					!isSupported
-						? "bg-muted text-muted-foreground"
-						: isConfigured
-						? "bg-emerald-500/12 text-emerald-600"
+					isSupported
+						? isConnected
+							? "bg-emerald-500/12 text-emerald-600"
+							: "bg-muted text-muted-foreground"
 						: "bg-muted text-muted-foreground"
 				)}
 			>
-				{!isSupported
-					? "Unsupported"
-					: isConfigured
+				{isSupported
+					? isConnected
 						? "Connected"
-						: "Not connected"}
+						: "Not connected"
+					: "Unsupported"}
 			</div>
 		</div>
 	);
 }
 
 function AgentsPage() {
-	const agentConfigs = useQuery(api.agentConfig.list);
+	const agentCredentials = useQuery(api.agentCredentials.list);
+	const agentConfig = useQuery(api.agentConfig.list);
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const connectedConfigByAgentId = useMemo(
+	const connectedCredentialsByAgentId = useMemo(
 		() =>
-			new Map((agentConfigs ?? []).map((config) => [config.agentId, config])),
-		[agentConfigs]
+			new Map(
+				(agentCredentials ?? []).map((credential) => [
+					credential.agentId,
+					credential,
+				])
+			),
+		[agentCredentials]
+	);
+	const configByAgentId = useMemo(
+		() =>
+			new Map(
+				(agentConfig ?? []).map((config) => [config.agentId, config.configOptions])
+			),
+		[agentConfig]
+	);
+	const connectedAgentIds = useMemo(
+		() =>
+			new Set([
+				...connectedCredentialsByAgentId.keys(),
+				...configByAgentId.keys(),
+			]),
+		[configByAgentId, connectedCredentialsByAgentId]
+	);
+	const storedAgents = useMemo(
+		() =>
+			[...connectedAgentIds].map((agentId) => ({
+				id: agentId,
+				configOptions: configByAgentId.get(agentId) ?? [],
+			})),
+		[configByAgentId, connectedAgentIds]
+	);
+	const supportedAgents = useMemo(
+		() => acpAgents.filter((agent) => supportsAgentCredentials(agent)),
+		[]
 	);
 	const sortedAgents = useMemo(() => {
 		const connectedAgents: typeof acpAgents = [];
 		const disconnectedAgents: typeof acpAgents = [];
-		const unsupportedAgents: typeof acpAgents = [];
 
-		for (const agent of acpAgents) {
-			if (!supportsAgentCredentials(agent)) {
-				unsupportedAgents.push(agent);
-				continue;
-			}
-
-			if (connectedConfigByAgentId.has(agent.id)) {
+		for (const agent of supportedAgents) {
+			if (connectedAgentIds.has(agent.id)) {
 				connectedAgents.push(agent);
 				continue;
 			}
@@ -83,8 +110,8 @@ function AgentsPage() {
 			disconnectedAgents.push(agent);
 		}
 
-		return [...connectedAgents, ...disconnectedAgents, ...unsupportedAgents];
-	}, [connectedConfigByAgentId]);
+		return [...connectedAgents, ...disconnectedAgents];
+	}, [supportedAgents, connectedAgentIds]);
 
 	return (
 		<>
@@ -97,8 +124,8 @@ function AgentsPage() {
 				</div>
 
 				<div className="space-y-2">
-					{agentConfigs === undefined
-						? acpAgents.map((agent) => (
+					{agentCredentials === undefined || agentConfig === undefined
+						? supportedAgents.map((agent) => (
 								<div
 									className="flex items-center gap-3 rounded-lg border px-4 py-3"
 									key={agent.id}
@@ -116,21 +143,21 @@ function AgentsPage() {
 									<Skeleton className="h-6 w-24 rounded-full" />
 								</div>
 							))
-						: sortedAgents.map((agent) => {
-								const config = connectedConfigByAgentId.get(agent.id);
-
-								return (
-									<AgentCard
-										agent={agent}
-										isConfigured={!!config}
-										key={agent.id}
-									/>
-								);
-							})}
+						: sortedAgents.map((agent) => (
+								<AgentCard
+									agent={agent}
+									isConnected={connectedAgentIds.has(agent.id)}
+									key={agent.id}
+								/>
+							))}
 				</div>
 			</div>
 
-			<AgentsConfigureDialog onOpenChange={setDialogOpen} open={dialogOpen} />
+			<AgentsConfigureDialog
+				onOpenChange={setDialogOpen}
+				open={dialogOpen}
+				storedAgents={storedAgents}
+			/>
 		</>
 	);
 }

@@ -1,7 +1,10 @@
 import { eventIterator, oc, type Schema } from "@orpc/contract";
 import { z } from "zod";
 import { sessionRowSchema, terminalOutputPayloadSchema } from "../browser-do";
-import { agentProbeResponseSchema } from "../sandbox-do";
+import {
+	agentProbeRequestBodySchema,
+	agentProbeResponseSchema,
+} from "../sandbox-do";
 
 function hibernatingEventIterator<
 	TYieldIn,
@@ -79,7 +82,9 @@ export const browserSpaceContract = {
 	listSessions: oc.output(z.array(sessionRowSchema)),
 	sendMessage: oc.input(sendMessageInputSchema).output(z.null()),
 	cancelSession: oc.input(cancelSessionInputSchema).output(z.null()),
-	getAgentProbeState: oc.output(agentProbeResponseSchema),
+	probeAgents: oc
+		.input(agentProbeRequestBodySchema)
+		.output(agentProbeResponseSchema),
 	runCommand: oc.input(runCommandInputSchema).output(z.null()),
 	input: oc.input(inputTerminalInputSchema).output(z.null()),
 	resize: oc.input(resizeTerminalInputSchema).output(z.null()),
