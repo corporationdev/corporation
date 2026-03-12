@@ -1,7 +1,40 @@
-import { eventIterator, oc } from "@orpc/contract";
+import { eventIterator, oc, type Schema } from "@orpc/contract";
 import { z } from "zod";
 import { sessionRowSchema, terminalOutputPayloadSchema } from "../browser-do";
 import { agentProbeResponseSchema } from "../sandbox-do";
+
+function hibernatingEventIterator<
+	TYieldIn,
+	TYieldOut,
+	TReturnIn = unknown,
+	TReturnOut = unknown,
+>(
+	yields: Schema<TYieldIn, TYieldOut>,
+	returns?: Schema<TReturnIn, TReturnOut>
+) {
+	const schema = eventIterator(yields, returns);
+
+	return {
+		...schema,
+		"~standard": {
+			...schema["~standard"],
+			validate(iterator: unknown) {
+				if (
+					typeof iterator === "object" &&
+					iterator !== null &&
+					"hibernationCallback" in iterator &&
+					typeof iterator.hibernationCallback === "function"
+				) {
+					return {
+						value: iterator,
+					};
+				}
+
+				return schema["~standard"].validate(iterator);
+			},
+		},
+	} as typeof schema;
+}
 
 export const sandboxBindingSchema = z
 	.object({
@@ -52,6 +85,10 @@ export const browserSpaceContract = {
 	resize: oc.input(resizeTerminalInputSchema).output(z.null()),
 	getTerminalSnapshot: oc.output(z.boolean()),
 	getDesktopStreamUrl: oc.output(z.string()),
-	onSessionsChanged: oc.output(eventIterator(z.array(sessionRowSchema))),
-	onTerminalOutput: oc.output(eventIterator(terminalOutputPayloadSchema)),
+	onSessionsChanged: oc.output(
+		hibernatingEventIterator(z.array(sessionRowSchema))
+	),
+	onTerminalOutput: oc.output(
+		hibernatingEventIterator(terminalOutputPayloadSchema)
+	),
 };

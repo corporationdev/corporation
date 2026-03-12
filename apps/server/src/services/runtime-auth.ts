@@ -8,11 +8,11 @@ import {
 const RUNTIME_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
 
 function buildRuntimeSocketUrl(
-	requestUrl: string,
+	serverUrl: string,
 	spaceSlug: string,
 	token: string
 ) {
-	const url = new URL(requestUrl);
+	const url = new URL(serverUrl);
 	url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 	url.pathname = `/api/spaces/${encodeURIComponent(spaceSlug)}/runtime/socket`;
 	url.search = new URLSearchParams({ token }).toString();
@@ -46,11 +46,13 @@ export async function createRuntimeAuthSession(
 		},
 		secret
 	);
+	const canonicalServerUrl = env.CORPORATION_SERVER_URL?.trim();
+	const runtimeSocketBaseUrl = canonicalServerUrl || requestUrl;
 
 	return runtimeAuthSessionResponseSchema.parse({
 		accessToken,
 		websocketUrl: buildRuntimeSocketUrl(
-			requestUrl,
+			runtimeSocketBaseUrl,
 			input.spaceSlug,
 			accessToken
 		),

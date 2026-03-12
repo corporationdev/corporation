@@ -53,25 +53,45 @@ function getAcpErrorCode(error: unknown): number | null {
 }
 
 export function isAuthRequiredError(error: unknown): boolean {
-	if (getAcpErrorCode(error) === -32_000) {
-		return true;
+	const seen = new Set<unknown>();
+	let current: unknown = error;
+
+	while (current !== undefined && current !== null && !seen.has(current)) {
+		seen.add(current);
+
+		if (getAcpErrorCode(current) === -32_000) {
+			return true;
+		}
+
+		const message = (
+			current instanceof Error ? current.message : String(current)
+		)
+			.toLowerCase()
+			.trim();
+		if (
+			message.includes("auth_required") ||
+			message.includes("authentication required") ||
+			message.includes("requires authentication") ||
+			message.includes("requires auth") ||
+			message.includes("api key must be set") ||
+			message.includes("missing api key") ||
+			message.includes("api key is required") ||
+			message.includes("no api key") ||
+			message.includes("unauthorized") ||
+			message.includes("unauthenticated")
+		) {
+			return true;
+		}
+
+		if (typeof current === "object" && "cause" in current) {
+			current = (current as { cause?: unknown }).cause;
+			continue;
+		}
+
+		break;
 	}
 
-	const message = (error instanceof Error ? error.message : String(error))
-		.toLowerCase()
-		.trim();
-	return (
-		message.includes("auth_required") ||
-		message.includes("authentication required") ||
-		message.includes("requires authentication") ||
-		message.includes("requires auth") ||
-		message.includes("api key must be set") ||
-		message.includes("missing api key") ||
-		message.includes("api key is required") ||
-		message.includes("no api key") ||
-		message.includes("unauthorized") ||
-		message.includes("unauthenticated")
-	);
+	return false;
 }
 
 function getAbortError(signal: AbortSignal, fallback: string): Error {

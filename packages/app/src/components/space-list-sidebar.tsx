@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Leaf } from "lucide-react";
+import { Sprout } from "lucide-react";
 import type * as React from "react";
 import { NavUser } from "@/components/nav-user";
 import { OrganizationSwitcher } from "@/components/organization-switcher";
@@ -25,7 +25,7 @@ export function SpaceListSidebar({
 					className="aui-sidebar-header-content flex items-center gap-1 p-2"
 					to="/"
 				>
-					<Leaf className="size-4" />
+					<Sprout className="size-4" />
 					Tendril
 				</Link>
 				<OrganizationSwitcher />

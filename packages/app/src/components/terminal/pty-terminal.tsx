@@ -72,6 +72,30 @@ function normalizeCopiedText(text: string) {
 	return normalizedLines.join("\n");
 }
 
+function getNormalizedSelection(terminal: GhosttyTerminal | null) {
+	if (!terminal?.hasSelection()) {
+		return null;
+	}
+
+	const selection = normalizeCopiedText(terminal.getSelection());
+	return selection.length > 0 ? selection : null;
+}
+
+async function writeTextToClipboard(text: string) {
+	if (!navigator.clipboard?.writeText) {
+		return;
+	}
+
+	try {
+		await navigator.clipboard.writeText(text);
+	} catch (error) {
+		console.error("Failed to write terminal selection to clipboard", {
+			error,
+			textLength: text.length,
+		});
+	}
+}
+
 export function PtyTerminal({ actor, spaceSlug }: PtyTerminalProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const terminalRef = useRef<GhosttyTerminal | null>(null);
@@ -131,20 +155,40 @@ export function PtyTerminal({ actor, spaceSlug }: PtyTerminalProps) {
 		let observer: ResizeObserver | null = null;
 		const handleCopy = (event: ClipboardEvent) => {
 			const terminal = terminalRef.current;
-			if (!(terminal?.hasSelection() && event.clipboardData)) {
+			const selection = getNormalizedSelection(terminal);
+			if (!selection) {
 				return;
 			}
 
 			event.preventDefault();
 			event.stopPropagation();
-			event.clipboardData.setData(
-				"text/plain",
-				normalizeCopiedText(terminal.getSelection())
-			);
+			event.clipboardData?.setData("text/plain", selection);
+			writeTextToClipboard(selection);
+		};
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (
+				!(
+					event.key.toLowerCase() === "c" &&
+					(event.metaKey || event.ctrlKey)
+				) ||
+				event.altKey
+			) {
+				return;
+			}
+
+			const selection = getNormalizedSelection(terminalRef.current);
+			if (!selection) {
+				return;
+			}
+
+			event.preventDefault();
+			event.stopPropagation();
+			writeTextToClipboard(selection);
 		};
 		const handleMouseDown = () => terminalRef.current?.focus();
 
 		container.addEventListener("copy", handleCopy, true);
+		container.addEventListener("keydown", handleKeyDown, true);
 		container.addEventListener("mousedown", handleMouseDown);
 
 		ensureGhosttyReady()
@@ -194,6 +238,7 @@ export function PtyTerminal({ actor, spaceSlug }: PtyTerminalProps) {
 		return () => {
 			cancelled = true;
 			container.removeEventListener("copy", handleCopy, true);
+			container.removeEventListener("keydown", handleKeyDown, true);
 			container.removeEventListener("mousedown", handleMouseDown);
 			observer?.disconnect();
 			terminal?.dispose();

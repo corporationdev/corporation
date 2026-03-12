@@ -21,10 +21,8 @@ import type {
 	RuntimeTurnCompletedMessage,
 	RuntimeTurnFailedMessage,
 } from "@corporation/contracts/sandbox-do";
-import { env } from "@corporation/env/server";
-import { Sandbox } from "@e2b/desktop";
-import { createORPCClient } from "@orpc/client";
-import { ORPCError } from "@orpc/client";
+import { createLogger } from "@corporation/logger";
+import { createORPCClient, ORPCError } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
 import type { ContractRouterClient } from "@orpc/contract";
 import { implement } from "@orpc/server";
@@ -48,12 +46,11 @@ import {
 import bundledMigrations from "./db/migrations";
 import { schema, spaceMetadata } from "./db/schema";
 import { getDesktopStreamUrl } from "./desktop";
-import { requireSandbox } from "./sandbox";
+import { ensureSandboxConnected } from "./sandbox";
 import { keepAliveSandbox } from "./sandbox-keep-alive";
 import { getSessionStreamState, readSessionStream } from "./session-stream";
 import { cancelSession, listSessions, sendMessage } from "./sessions";
 import {
-	broadcastTerminalSnapshot,
 	getTerminalSnapshot,
 	resetTerminal,
 	runCommandInTerminal,
@@ -83,6 +80,7 @@ const RUNTIME_HEARTBEAT_ACK_FRAME = JSON.stringify({
 	type: "heartbeat_ack",
 });
 const RUNTIME_PROBE_TIMEOUT_MS = 10_000;
+const log = createLogger("space:runtime");
 
 type BrowserSubscription = {
 	id: string;
@@ -185,18 +183,6 @@ function quoteShellArg(value: string) {
 	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-async function connectSandbox(
-	sandboxId: string | null
-): Promise<Sandbox | null> {
-	if (!sandboxId) {
-		return null;
-	}
-
-	return await Sandbox.connect(sandboxId, {
-		apiKey: env.E2B_API_KEY,
-	});
-}
-
 function sameBinding(
 	current: SandboxBinding | null,
 	next: SandboxBinding | null
@@ -290,9 +276,7 @@ function parseAfterOffset(url: URL): number | undefined {
 function isORPCRequestFrame(message: string | ArrayBuffer): boolean {
 	try {
 		const text =
-			typeof message === "string"
-				? message
-				: new TextDecoder().decode(message);
+			typeof message === "string" ? message : new TextDecoder().decode(message);
 		const parsed = JSON.parse(text) as {
 			t?: number;
 			p?: { u?: unknown };
@@ -398,20 +382,10 @@ export class SpaceDurableObject extends DurableObject<Env> {
 				}
 			: null;
 
-		let sandbox: Sandbox | null = null;
-		try {
-			sandbox = await connectSandbox(this.stateData.binding?.sandboxId ?? null);
-		} catch (error) {
-			console.warn("Failed to connect sandbox for space durable object", {
-				actorId: this.actorId,
-				sandboxId: this.stateData.binding?.sandboxId ?? null,
-				error,
-			});
-		}
-
 		this.vars = {
 			db,
-			sandbox,
+			sandbox: null,
+			sandboxPromise: null,
 			terminalHandles: new Map(),
 			sessionStreamWaiters: new Map(),
 			lastSandboxKeepAliveAt: 0,
@@ -683,7 +657,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 
 				const logId = crypto.randomUUID();
 				const nextCommand = `nohup bash -lc ${quoteShellArg(input.command)} >/tmp/corporation-run-command-${logId}.log 2>&1 </dev/null &`;
-				await requireSandbox(ctx).commands.run(nextCommand, {
+				await (await ensureSandboxConnected(ctx)).commands.run(nextCommand, {
 					user: SANDBOX_USER,
 				});
 				await keepAliveSandbox(ctx);
@@ -752,6 +726,16 @@ export class SpaceDurableObject extends DurableObject<Env> {
 
 		return implementer.router({
 			register: implementer.register.handler(async ({ context, input }) => {
+				log.info(
+					{
+						actorId: this.actorId,
+						connectionId: context.connectionId,
+						spaceSlug: input.spaceSlug,
+						sandboxId: input.sandboxId,
+						clientType: input.clientType,
+					},
+					"runtime ingress register received"
+				);
 				return await this.registerRuntimeConnection(
 					context.connection.socket,
 					context.connection,
@@ -759,7 +743,17 @@ export class SpaceDurableObject extends DurableObject<Env> {
 				);
 			}),
 			pushSessionEventBatch: implementer.pushSessionEventBatch.handler(
-				async ({ input }) => {
+				async ({ context, input }) => {
+					log.info(
+						{
+							actorId: this.actorId,
+							connectionId: context.connectionId,
+							sessionId: input.sessionId,
+							turnId: input.turnId,
+							eventCount: input.events.length,
+						},
+						"runtime ingress received session event batch"
+					);
 					const ctx = this.createContext(undefined, nanoid());
 					await ingestRuntimeSessionEventBatch(
 						ctx,
@@ -769,15 +763,36 @@ export class SpaceDurableObject extends DurableObject<Env> {
 					return null;
 				}
 			),
-			completeTurn: implementer.completeTurn.handler(async ({ input }) => {
-				this.clearPendingCommandsForTurn(input.turnId);
-				await ingestRuntimeTurnCompleted(
-					this.createContext(undefined, nanoid()),
-					input as RuntimeTurnCompletedMessage
+			completeTurn: implementer.completeTurn.handler(
+				async ({ context, input }) => {
+					log.info(
+						{
+							actorId: this.actorId,
+							connectionId: context.connectionId,
+							sessionId: input.sessionId,
+							turnId: input.turnId,
+						},
+						"runtime ingress received turn completion"
+					);
+					this.clearPendingCommandsForTurn(input.turnId);
+					await ingestRuntimeTurnCompleted(
+						this.createContext(undefined, nanoid()),
+						input as RuntimeTurnCompletedMessage
+					);
+					return null;
+				}
+			),
+			failTurn: implementer.failTurn.handler(async ({ context, input }) => {
+				log.warn(
+					{
+						actorId: this.actorId,
+						connectionId: context.connectionId,
+						sessionId: input.sessionId,
+						turnId: input.turnId,
+						error: input.error.message,
+					},
+					"runtime ingress received turn failure"
 				);
-				return null;
-			}),
-			failTurn: implementer.failTurn.handler(async ({ input }) => {
 				this.clearPendingCommandsForTurn(input.turnId);
 				await ingestRuntimeTurnFailed(
 					this.createContext(undefined, nanoid()),
@@ -786,14 +801,32 @@ export class SpaceDurableObject extends DurableObject<Env> {
 				return null;
 			}),
 			commandRejected: implementer.commandRejected.handler(
-				async ({ input }) => {
+				async ({ context, input }) => {
+					log.warn(
+						{
+							actorId: this.actorId,
+							connectionId: context.connectionId,
+							commandId: input.commandId,
+							reason: input.reason,
+						},
+						"runtime ingress received command rejection"
+					);
 					await this.handleRuntimeCommandRejected(
 						input as RuntimeCommandRejectedMessage
 					);
 					return null;
 				}
 			),
-			probeResult: implementer.probeResult.handler(({ input }) => {
+			probeResult: implementer.probeResult.handler(({ context, input }) => {
+				log.info(
+					{
+						actorId: this.actorId,
+						connectionId: context.connectionId,
+						commandId: input.commandId,
+						agentCount: input.agents.length,
+					},
+					"runtime ingress received probe result"
+				);
 				this.handleRuntimeProbeResult(input as RuntimeProbeResultMessage);
 				return null;
 			}),
@@ -888,6 +921,18 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			throw new Error("Sandbox runtime is not connected");
 		}
 
+		log.info(
+			{
+				actorId: this.actorId,
+				connectionId: activeRuntime.attachment.connectionId,
+				commandId: metadata.commandId,
+				commandType: metadata.type,
+				sessionId: "sessionId" in metadata ? metadata.sessionId : null,
+				turnId: "turnId" in metadata ? metadata.turnId : null,
+			},
+			"sending command to runtime websocket"
+		);
+
 		this.pendingRuntimeCommands.set(metadata.commandId, metadata);
 		const request =
 			message.type === "start_turn"
@@ -898,6 +943,17 @@ export class SpaceDurableObject extends DurableObject<Env> {
 
 		request.catch((error) => {
 			this.pendingRuntimeCommands.delete(metadata.commandId);
+			log.warn(
+				{
+					actorId: this.actorId,
+					commandId: metadata.commandId,
+					commandType: metadata.type,
+					sessionId: "sessionId" in metadata ? metadata.sessionId : null,
+					turnId: "turnId" in metadata ? metadata.turnId : null,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"runtime websocket command promise rejected"
+			);
 			if (metadata.type === "probe_agents") {
 				const pending = this.pendingProbeRequests.get(metadata.commandId);
 				if (pending) {
@@ -982,31 +1038,11 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			return false;
 		}
 
-		let sandbox: Sandbox | null = null;
-		try {
-			sandbox = await connectSandbox(binding?.sandboxId ?? null);
-		} catch (error) {
-			console.warn("Failed to connect sandbox while syncing binding", {
-				actorId: this.actorId,
-				sandboxId: binding?.sandboxId ?? null,
-				error,
-			});
-		}
 		await resetTerminal(ctx);
 		await this.persistBinding(binding);
-		this.vars.sandbox = sandbox;
+		this.vars.sandbox = null;
+		this.vars.sandboxPromise = null;
 		this.vars.lastSandboxKeepAliveAt = 0;
-
-		if (this.vars.sandbox && this.browserConnections.size > 0) {
-			try {
-				await broadcastTerminalSnapshot(ctx);
-			} catch (error) {
-				console.error(
-					"Failed to broadcast terminal snapshot after sync",
-					error
-				);
-			}
-		}
 
 		return true;
 	}
@@ -1148,6 +1184,17 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			attachment: updatedAttachment,
 		});
 		this.reconcileRuntimeConnections();
+		log.info(
+			{
+				actorId: this.actorId,
+				connectionId: updatedAttachment.connectionId,
+				spaceSlug: updatedAttachment.spaceSlug,
+				sandboxId: input.sandboxId,
+				connectedAt: updatedAttachment.connectedAt,
+				registeredAt: updatedAttachment.registeredAt,
+			},
+			"registered runtime websocket connection"
+		);
 
 		const ctx = this.createContext(undefined, nanoid());
 		await this.syncSandboxBinding(ctx, {
@@ -1171,6 +1218,18 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	): Promise<void> {
 		const metadata = this.pendingRuntimeCommands.get(message.commandId) ?? null;
 		this.pendingRuntimeCommands.delete(message.commandId);
+		log.warn(
+			{
+				actorId: this.actorId,
+				commandId: message.commandId,
+				commandType: metadata?.type ?? null,
+				sessionId:
+					metadata && "sessionId" in metadata ? metadata.sessionId : null,
+				turnId: metadata && "turnId" in metadata ? metadata.turnId : null,
+				reason: message.reason,
+			},
+			"handling runtime command rejection"
+		);
 
 		if (metadata?.type === "probe_agents") {
 			const pending = this.pendingProbeRequests.get(message.commandId);
@@ -1195,9 +1254,24 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		const pending = this.pendingProbeRequests.get(message.commandId);
 		this.pendingRuntimeCommands.delete(message.commandId);
 		if (!pending) {
+			log.warn(
+				{
+					actorId: this.actorId,
+					commandId: message.commandId,
+				},
+				"dropping runtime probe result with no pending request"
+			);
 			return;
 		}
 
+		log.info(
+			{
+				actorId: this.actorId,
+				commandId: message.commandId,
+				agentCount: message.agents.length,
+			},
+			"resolved runtime probe result"
+		);
 		clearTimeout(pending.timer);
 		this.pendingProbeRequests.delete(message.commandId);
 		pending.resolve({
@@ -1210,6 +1284,14 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		reason: string,
 		options?: { connectionId?: string }
 	): Promise<void> {
+		log.warn(
+			{
+				actorId: this.actorId,
+				connectionId: options?.connectionId ?? null,
+				reason,
+			},
+			"runtime websocket disconnected"
+		);
 		if (options?.connectionId) {
 			this.runtimeConnections.delete(options.connectionId);
 			if (this.runtimeConnectionId !== options.connectionId) {
@@ -1334,6 +1416,15 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		}
 
 		const connection = this.runtimeConnections.get(attachment.connectionId);
+		log.warn(
+			{
+				actorId: this.actorId,
+				connectionId: attachment.connectionId,
+				code: _code,
+				reason,
+			},
+			"runtime websocket closed"
+		);
 		connection?.peer.notifyClose();
 		this.runtimeIngressRPCHandler.close(ws);
 
@@ -1345,7 +1436,13 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	}
 
 	webSocketError(ws: WebSocket, error: unknown): void {
-		console.error("Space websocket error", error);
+		log.error(
+			{
+				actorId: this.actorId,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"space websocket error"
+		);
 		const attachment = ws.deserializeAttachment() as
 			| BrowserSocketAttachment
 			| RuntimeSocketAttachment

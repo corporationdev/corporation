@@ -196,23 +196,40 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 		): Effect.Effect<void, RuntimeTransportUnavailableError> =>
 			Effect.tryPromise({
 				try: async () => {
+					const logContext = {
+						type: message.type,
+						sessionId: "sessionId" in message ? message.sessionId : null,
+						turnId: "turnId" in message ? message.turnId : null,
+						commandId: "commandId" in message ? message.commandId : null,
+						eventCount: "events" in message ? message.events.length : null,
+					};
+					log("info", "Sending runtime ingress message", logContext);
 					switch (message.type) {
 						case "session_event_batch":
 							await client.pushSessionEventBatch(message);
+							log(
+								"info",
+								"Sent runtime ingress session event batch",
+								logContext
+							);
 							return;
 						case "turn_completed":
 							await client.completeTurn(message);
+							log("info", "Sent runtime ingress turn completion", logContext);
 							return;
 						case "turn_failed":
 							await client.failTurn(message);
+							log("info", "Sent runtime ingress turn failure", logContext);
 							return;
 						case "probe_result":
 							await client.probeResult(message as RuntimeProbeResultMessage);
+							log("info", "Sent runtime ingress probe result", logContext);
 							return;
 						case "command_rejected":
 							await client.commandRejected(
 								message as RuntimeCommandRejectedMessage
 							);
+							log("info", "Sent runtime ingress command rejection", logContext);
 							return;
 						default:
 							throw new Error("Unsupported runtime transport message");
@@ -245,6 +262,13 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 		const runtimeControlRouter = runtimeControlImplementer.router({
 			startTurn: runtimeControlImplementer.startTurn.handler(
 				async ({ input }) => {
+					log("info", "Received runtime control startTurn", {
+						commandId: input.commandId,
+						turnId: input.turnId,
+						sessionId: input.sessionId,
+						agent: input.agent,
+						modelId: input.modelId,
+					});
 					const onEvent = await Effect.runPromise(
 						makeWebSocketTurnEventCallback({
 							turnId: input.turnId,
@@ -292,6 +316,10 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 			),
 			cancelTurn: runtimeControlImplementer.cancelTurn.handler(
 				async ({ input }) => {
+					log("info", "Received runtime control cancelTurn", {
+						commandId: input.commandId,
+						turnId: input.turnId,
+					});
 					const cancelled = await Effect.runPromise(
 						runtimeActions.cancelTurn(input.turnId)
 					);
@@ -309,6 +337,10 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 			),
 			probeAgents: runtimeControlImplementer.probeAgents.handler(
 				async ({ input }) => {
+					log("info", "Received runtime control probeAgents", {
+						commandId: input.commandId,
+						agentCount: input.ids?.length ?? 0,
+					});
 					const response = await Effect.runPromise(
 						runtimeActions.probeAgents({
 							ids: input.ids,
@@ -341,6 +373,10 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 
 					try {
 						const session = await Effect.runPromise(authState.getSession());
+						log("info", "Opening runtime websocket", {
+							websocketUrl: session.websocketUrl,
+							attempt,
+						});
 						const socket = await new Promise<WebSocket>((resolve, reject) => {
 							const nextSocket = new WebSocket(session.websocketUrl);
 							const timer = setTimeout(() => {
@@ -366,17 +402,12 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 							);
 						});
 
-						const ingressPeer = new RuntimeWebSocketPeer(
-							socket,
-							"response"
-						);
-						const controlPeer = new RuntimeWebSocketPeer(
-							socket,
-							"request"
-						);
+						const ingressPeer = new RuntimeWebSocketPeer(socket, "response");
+						const controlPeer = new RuntimeWebSocketPeer(socket, "request");
 						const client = createRuntimeIngressClient(ingressPeer);
 						const controlHandler = new RPCHandler(runtimeControlRouter);
 						controlHandler.upgrade(controlPeer);
+						log("info", "Runtime websocket opened", { attempt });
 
 						await Effect.runPromise(setSocket(socket));
 						await Effect.runPromise(setClient(client));
@@ -388,7 +419,9 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 						}, HEARTBEAT_INTERVAL_MS);
 
 						const register = buildRegisterInput();
+						log("info", "Registering runtime websocket", register);
 						const registered = await client.register(register);
+						log("info", "Registered runtime websocket", registered);
 						await Effect.runPromise(
 							setStatus({
 								state: "connected",
@@ -401,6 +434,10 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 								"close",
 								() => {
 									clearInterval(heartbeat);
+									log("warn", "Runtime websocket closed", {
+										attempt,
+										readyState: socket.readyState,
+									});
 									resolve();
 								},
 								{ once: true }
@@ -409,6 +446,9 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 								"error",
 								() => {
 									clearInterval(heartbeat);
+									log("warn", "Runtime websocket emitted error event", {
+										attempt,
+									});
 									resolve();
 								},
 								{ once: true }
@@ -419,6 +459,9 @@ export const WebSocketRuntimeTransportLive = Layer.effect(RuntimeTransport)(
 							error: error instanceof Error ? error.message : String(error),
 						});
 					} finally {
+						log("warn", "Resetting runtime websocket transport state", {
+							attempt,
+						});
 						await Effect.runPromise(setSocket(null));
 						await Effect.runPromise(setClient(null));
 						await Effect.runPromise(

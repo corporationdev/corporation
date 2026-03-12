@@ -44,19 +44,45 @@ async function bootstrapSessionBridge(params: {
 	const { bridge, sessionId, agent, cwd, modelId, previousAgentSessionId } =
 		params;
 
+	log("info", "Bootstrapping ACP session bridge", {
+		sessionId,
+		agent,
+		cwd,
+		modelId,
+		previousAgentSessionId,
+	});
 	await Effect.runPromise(Effect.sleep(250));
+	log("info", "Finished ACP bootstrap delay", {
+		sessionId,
+		agent,
+	});
 
 	const alive = await Effect.runPromise(bridge.isAlive);
+	log("info", "Checked ACP bridge liveness", {
+		sessionId,
+		agent,
+		alive,
+	});
 	if (!alive) {
 		throw new Error(`Agent ${agent} exited immediately during bootstrap`);
 	}
 
+	log("info", "Sending ACP initialize", {
+		sessionId,
+		agent,
+	});
 	const initResult = await Effect.runPromise(
 		bridge.request("initialize", {
 			protocolVersion: ACP_PROTOCOL_VERSION,
 			clientInfo: { name: "sandbox-runtime", version: "v1" },
 		})
 	);
+	log("info", "Initialized ACP session bridge", {
+		sessionId,
+		agent,
+		supportsLoad: initResult.agentCapabilities?.loadSession === true,
+		modelId,
+	});
 
 	const supportsLoad = initResult.agentCapabilities?.loadSession === true;
 	let agentSessionId: string | null = null;
@@ -71,6 +97,11 @@ async function bootstrapSessionBridge(params: {
 				})
 			);
 			agentSessionId = previousAgentSessionId;
+			log("info", "Loaded previous ACP session", {
+				sessionId,
+				agent,
+				agentSessionId,
+			});
 		} catch (error) {
 			log("warn", "session/load failed, falling back to session/new", {
 				sessionId,
@@ -91,6 +122,11 @@ async function bootstrapSessionBridge(params: {
 		if (!agentSessionId) {
 			throw new Error("session/new did not return a sessionId");
 		}
+		log("info", "Created new ACP session", {
+			sessionId,
+			agent,
+			agentSessionId,
+		});
 	}
 
 	try {
@@ -109,6 +145,12 @@ async function bootstrapSessionBridge(params: {
 
 	if (modelId) {
 		await Effect.runPromise(setModelOrThrow(bridge, agentSessionId, modelId));
+		log("info", "Set initial ACP model", {
+			sessionId,
+			agent,
+			agentSessionId,
+			modelId,
+		});
 	}
 
 	return agentSessionId;
@@ -165,6 +207,12 @@ export function makeSessionHandle(
 					}
 
 					if (handle.modelId !== turn.modelId && turn.modelId) {
+						log("info", "Updating ACP session model for turn", {
+							turnId: turn.turnId,
+							sessionId: turn.sessionId,
+							agentSessionId: handle.agentSessionId,
+							modelId: turn.modelId,
+						});
 						yield* setModelOrThrow(
 							bridge,
 							handle.agentSessionId,
@@ -184,8 +232,19 @@ export function makeSessionHandle(
 					const connectionId = `sandbox-runtime-${turn.turnId}-${crypto.randomUUID()}`;
 					let deliveryChain = Promise.resolve();
 					let deliveryError: unknown = null;
+					let firstDeliveredEventLogged = false;
 
 					const queueSessionEventDelivery = (event: SessionEvent): void => {
+						if (!firstDeliveredEventLogged) {
+							firstDeliveredEventLogged = true;
+							log("info", "Observed first ACP session event for turn", {
+								turnId: turn.turnId,
+								sessionId: turn.sessionId,
+								agentSessionId: handle.agentSessionId,
+								eventIndex: event.eventIndex,
+								sender: event.sender,
+							});
+						}
 						deliveryChain = deliveryChain
 							.then(() =>
 								Effect.runPromise(turn.onEvent({ _tag: "SessionEvent", event }))
@@ -211,6 +270,12 @@ export function makeSessionHandle(
 							payload: envelope,
 						});
 					});
+					log("info", "Starting ACP session prompt", {
+						turnId: turn.turnId,
+						sessionId: turn.sessionId,
+						agentSessionId: handle.agentSessionId,
+						promptParts: turn.prompt.length,
+					});
 
 					try {
 						yield* bridge
@@ -226,6 +291,12 @@ export function makeSessionHandle(
 									)
 								)
 							);
+						log("info", "ACP session prompt returned", {
+							turnId: turn.turnId,
+							sessionId: turn.sessionId,
+							agentSessionId: handle.agentSessionId,
+							eventCount: eventIndex,
+						});
 						log(
 							"info",
 							"Turn prompt completed, draining queued session events",
@@ -273,10 +344,17 @@ export function makeSessionHandle(
 							turnId: turn.turnId,
 							sessionId: turn.sessionId,
 							agentSessionId: handle.agentSessionId,
+							eventCount: eventIndex,
 						});
 					} finally {
 						yield* bridge.setEnvelopeSink(null);
 						yield* Ref.set(activeTurnIdRef, null);
+						log("info", "Cleared ACP envelope sink for turn", {
+							turnId: turn.turnId,
+							sessionId: turn.sessionId,
+							agentSessionId: handle.agentSessionId,
+							eventCount: eventIndex,
+						});
 					}
 				}),
 		};

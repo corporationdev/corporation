@@ -57,6 +57,7 @@ export type CommandHandle = Awaited<ReturnType<Sandbox["pty"]["create"]>>;
 export type SpaceVars = {
 	db: SpaceDatabase;
 	sandbox: Sandbox | null;
+	sandboxPromise: Promise<Sandbox> | null;
 	terminalHandles: Map<string, CommandHandle>;
 	sessionStreamWaiters: Map<string, Set<() => void>>;
 	lastSandboxKeepAliveAt: number;

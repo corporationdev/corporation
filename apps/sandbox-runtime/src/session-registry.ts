@@ -158,11 +158,24 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 					});
 
 					if (hasConflict) {
+						log("warn", "Session registry rejected turn reservation", {
+							turnId: request.turnId,
+							sessionId: request.sessionId,
+							error: hasConflict.error,
+						});
 						return yield* Effect.fail(hasConflict);
 					}
+					log("info", "Reserved turn in session registry state", {
+						turnId: request.turnId,
+						sessionId: request.sessionId,
+					});
 				}),
 			releaseTurn: (turnId, sessionId) =>
 				Ref.update(stateRef, (state) => {
+					log("info", "Releasing turn from session registry state", {
+						turnId,
+						sessionId,
+					});
 					const nextActiveTurns = new Map(state.activeTurns);
 					const nextActiveSessionTurns = new Map(state.activeSessionTurns);
 					const nextActiveTurnFibers = new Map(state.activeTurnFibers);
@@ -218,6 +231,11 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 				Effect.gen(function* () {
 					const existing = yield* registry.getSessionHandle(request.sessionId);
 					if (existing) {
+						log("info", "Reusing existing session handle", {
+							sessionId: request.sessionId,
+							agent: request.agent,
+							agentSessionId: existing.agentSessionId,
+						});
 						if (existing.agent !== request.agent) {
 							return yield* Effect.fail(
 								new SessionReuseError({
@@ -255,6 +273,11 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 					);
 
 					const scope = yield* Scope.make();
+					log("info", "Creating new session handle", {
+						sessionId: request.sessionId,
+						agent: request.agent,
+						previousAgentSessionId,
+					});
 					const handle = yield* makeSessionHandle({
 						bridgeFactory,
 						sessionId: request.sessionId,
@@ -268,6 +291,11 @@ export const SessionRegistryLive = Layer.effect(SessionRegistry)(
 						const nextSessionHandles = new Map(state.sessionHandles);
 						nextSessionHandles.set(request.sessionId, { handle, scope });
 						return { ...state, sessionHandles: nextSessionHandles };
+					});
+					log("info", "Created new session handle", {
+						sessionId: request.sessionId,
+						agent: request.agent,
+						agentSessionId: handle.agentSessionId,
 					});
 
 					return handle;

@@ -74,6 +74,69 @@ export function isAgentInstalled(agent: string): boolean {
 	}
 }
 
+export function describeAgentCommand(agent: string) {
+	const command = agentCommand(agent);
+	const executablePath = command[0] ?? null;
+	if (!executablePath) {
+		return {
+			command,
+			executablePath: null,
+			exists: false,
+		};
+	}
+
+	const summary: Record<string, unknown> = {
+		command,
+		executablePath,
+		exists: false,
+	};
+
+	try {
+		const stat = fs.lstatSync(executablePath);
+		summary.exists = true;
+		summary.mode = stat.mode;
+		summary.size = stat.size;
+		summary.isSymlink = stat.isSymbolicLink();
+		summary.isFile = stat.isFile();
+		if (stat.isSymbolicLink()) {
+			summary.symlinkTarget = fs.readlinkSync(executablePath);
+		}
+		try {
+			summary.realpath = fs.realpathSync(executablePath);
+		} catch (error) {
+			summary.realpathError =
+				error instanceof Error ? error.message : String(error);
+		}
+		try {
+			const content = fs.readFileSync(executablePath, "utf8");
+			summary.firstLine = content.split("\n", 1)[0] ?? "";
+		} catch (error) {
+			summary.firstLineError =
+				error instanceof Error ? error.message : String(error);
+		}
+		try {
+			fs.accessSync(executablePath, fs.constants.X_OK);
+			summary.executable = true;
+		} catch {
+			summary.executable = false;
+		}
+	} catch (error) {
+		summary.error = error instanceof Error ? error.message : String(error);
+	}
+
+	return summary;
+}
+
+export function getAgentCommandReadiness(agent: string) {
+	const diagnostics = describeAgentCommand(agent);
+	const ready =
+		diagnostics.exists === true && diagnostics.executable === true;
+	return {
+		ready,
+		diagnostics,
+	};
+}
+
 /** Map of agent name -> array of { path, content } config files to write before spawning. */
 const AGENT_CONFIGS: Record<string, { path: string; content: string }[]> = {
 	"claude-acp": [

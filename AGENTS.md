@@ -10,14 +10,14 @@ When adding new imports, always add the code that uses the import before or in t
 
 Bun monorepo with Turborepo. Cloud dev environment product — users connect GitHub repos, provision E2B sandboxes, and interact via chat sessions, terminals, and port previews.
 
-**Data flow:** User action → React UI (`packages/app`) → Convex (`packages/backend`) for persistent data OR RivetKit actor (`apps/server`) for live session state → E2B sandbox (runs sandbox-agent for AI chat, PTY for terminals, port forwarding for previews).
+**Data flow:** User action → React UI (`packages/app`) → Convex (`packages/backend`) for persistent data OR Cloudflare Durable Objects in `apps/server` for live session state → E2B sandbox (runs sandbox-agent for AI chat, PTY for terminals, port forwarding for previews).
 
 ## Monorepo Layout
 
 ```
 apps/
   web/              Vite + React frontend, deployed to Cloudflare Pages
-  server/           Cloudflare Worker + Durable Objects (RivetKit actors)
+  server/           Cloudflare Worker + raw Durable Objects
   desktop/          Electron app (currently unused) 
 
 packages/
@@ -31,7 +31,7 @@ packages/
 
 ## Frontend — `packages/app/`
 
-TanStack Router (file-based routing in `src/routes/`), TanStack Query, Zustand stores, shadcn/ui. Auth via Better-Auth client. Connects to RivetKit actors for live session/terminal/preview state.
+TanStack Router (file-based routing in `src/routes/`), TanStack Query, Zustand stores, shadcn/ui. Auth via Better-Auth client. Connects to the `apps/server` Durable Objects for live session/terminal/preview state.
 
 ## Convex Backend — `packages/backend/convex/`
 
@@ -39,13 +39,12 @@ Persistent data: repositories, environments, spaces, snapshots. Schema in `schem
 
 ## Cloudflare Server — `apps/server/`
 
-Hono API (`src/app.ts`) + one RivetKit Durable Object actor per space (`src/space.ts`). The actor manages live state — sessions, terminals, and previews — via drivers in `src/space/`. Local Drizzle SQLite for transient tab metadata (`src/db/`).
+Hono API (`src/app.ts`) + one Durable Object per space. The Durable Object manages live state — sessions, terminals, and previews — via the `src/space-do/` modules. Local Drizzle SQLite stores transient tab metadata.
 
 ## Key External Services
 
 - **Convex** — database, real-time queries, auth (Better-Auth integration)
 - **E2B** — sandboxed Linux environments for code execution
 - **sandbox-agent** — AI agent SDK running inside E2B (chat, tool use, code editing)
-- **RivetKit** — actor framework on Cloudflare Durable Objects
 - **Nango** — User OAuth token management
 - **Alchemy** — Cloudflare infrastructure-as-code (`packages/infra/alchemy.run.ts`)

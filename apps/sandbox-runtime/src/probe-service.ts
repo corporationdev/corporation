@@ -5,7 +5,7 @@ import type {
 	AgentProbeRequestBody,
 	AgentProbeResponse,
 } from "@corporation/contracts/sandbox-do";
-import { Effect, Exit, Layer, Scope, ServiceMap } from "effect";
+import { Cause, Effect, Exit, Layer, Scope, ServiceMap } from "effect";
 import {
 	AcpBridgeFactory,
 	type AcpBridgeFactoryShape,
@@ -63,25 +63,45 @@ function getAcpErrorCode(error: unknown): number | null {
 }
 
 export function isAuthRequiredError(error: unknown): boolean {
-	if (getAcpErrorCode(error) === -32_000) {
-		return true;
+	const seen = new Set<unknown>();
+	let current: unknown = error;
+
+	while (current !== undefined && current !== null && !seen.has(current)) {
+		seen.add(current);
+
+		if (getAcpErrorCode(current) === -32_000) {
+			return true;
+		}
+
+		const message = (
+			current instanceof Error ? current.message : String(current)
+		)
+			.toLowerCase()
+			.trim();
+		if (
+			message.includes("auth_required") ||
+			message.includes("authentication required") ||
+			message.includes("requires authentication") ||
+			message.includes("requires auth") ||
+			message.includes("api key must be set") ||
+			message.includes("missing api key") ||
+			message.includes("api key is required") ||
+			message.includes("no api key") ||
+			message.includes("unauthorized") ||
+			message.includes("unauthenticated")
+		) {
+			return true;
+		}
+
+		if (typeof current === "object" && "cause" in current) {
+			current = (current as { cause?: unknown }).cause;
+			continue;
+		}
+
+		break;
 	}
 
-	const message = (error instanceof Error ? error.message : String(error))
-		.toLowerCase()
-		.trim();
-	return (
-		message.includes("auth_required") ||
-		message.includes("authentication required") ||
-		message.includes("requires authentication") ||
-		message.includes("requires auth") ||
-		message.includes("api key must be set") ||
-		message.includes("missing api key") ||
-		message.includes("api key is required") ||
-		message.includes("no api key") ||
-		message.includes("unauthorized") ||
-		message.includes("unauthenticated")
-	);
+	return false;
 }
 
 function buildVerifiedProbeAgent(
@@ -110,6 +130,24 @@ function buildFailedProbeAgent(
 		authCheckedAt,
 		error: error instanceof Error ? error.message : String(error),
 	};
+}
+
+function extractProbeFailure(cause: unknown): unknown {
+	if (!Cause.isCause(cause)) {
+		return cause;
+	}
+
+	const failed = cause.reasons.find(Cause.isFailReason);
+	if (failed) {
+		return failed.error;
+	}
+
+	const defect = cause.reasons.find(Cause.isDieReason);
+	if (defect) {
+		return defect.defect;
+	}
+
+	return Cause.prettyErrors(cause)[0] ?? String(cause);
 }
 
 function verifyAgentSession(
@@ -238,15 +276,16 @@ function probeSingleAgent(
 		}
 	}).pipe(
 		Effect.catchCause((cause) =>
-			Effect.succeed({
-				...buildProbeAgentBase({
-					id: entry.id,
-					name: entry.name,
-				}),
-				status: "error" as const,
-				authCheckedAt: Date.now(),
-				error: String(cause),
-			})
+			Effect.succeed(
+				buildFailedProbeAgent(
+					buildProbeAgentBase({
+						id: entry.id,
+						name: entry.name,
+					}),
+					Date.now(),
+					extractProbeFailure(cause)
+				)
+			)
 		)
 	);
 }
