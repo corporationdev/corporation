@@ -47,11 +47,26 @@ export const RuntimeActionsLive = Layer.effect(RuntimeActions)(
 		const service: RuntimeActionsShape = {
 			startTurn: (request) =>
 				Effect.gen(function* () {
+					log("info", "RuntimeActions.startTurn received request", {
+						turnId: request.turnId,
+						sessionId: request.sessionId,
+						agent: request.agent,
+						modelId: request.modelId,
+					});
 					yield* registry.reserveTurn(request);
+					log("info", "Reserved turn in session registry", {
+						turnId: request.turnId,
+						sessionId: request.sessionId,
+					});
 
 					const child = Effect.gen(function* () {
 						try {
 							const handle = yield* registry.getOrCreateSessionHandle(request);
+							log("info", "Obtained session handle for turn", {
+								turnId: request.turnId,
+								sessionId: request.sessionId,
+								agentSessionId: handle.agentSessionId,
+							});
 							yield* handle.runTurn(request);
 						} catch (error) {
 							if (isAuthRequiredError(error)) {
@@ -78,12 +93,20 @@ export const RuntimeActionsLive = Layer.effect(RuntimeActions)(
 								error: formatError(error),
 							});
 						} finally {
+							log("info", "Releasing turn in runtime actions", {
+								turnId: request.turnId,
+								sessionId: request.sessionId,
+							});
 							yield* registry.releaseTurn(request.turnId, request.sessionId);
 						}
 					});
 
 					const fiber = yield* child.pipe(Effect.forkDetach);
 					yield* registry.attachTurnFiber(request.turnId, fiber);
+					log("info", "Attached detached turn fiber", {
+						turnId: request.turnId,
+						sessionId: request.sessionId,
+					});
 				}),
 			cancelTurn: (turnId) =>
 				Effect.gen(function* () {

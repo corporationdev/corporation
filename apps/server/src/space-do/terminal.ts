@@ -1,6 +1,6 @@
 import { createLogger } from "@corporation/logger";
 import { CommandExitError, type Sandbox } from "@e2b/desktop";
-import { requireSandbox } from "./sandbox";
+import { ensureSandboxConnected } from "./sandbox";
 import {
 	type CommandHandle,
 	SANDBOX_WORKDIR,
@@ -119,7 +119,7 @@ async function ensureTerminal(
 		return;
 	}
 
-	const sandbox = requireSandbox(ctx);
+	const sandbox = await ensureSandboxConnected(ctx);
 	const normalizedCols = normalizeDimension(cols, DEFAULT_COLS);
 	const normalizedRows = normalizeDimension(rows, DEFAULT_ROWS);
 
@@ -211,7 +211,7 @@ async function captureSnapshotPayload(
 
 	try {
 		const result = await runTerminalCommand(
-			requireSandbox(ctx),
+			await ensureSandboxConnected(ctx),
 			`tmux capture-pane -p -e -J -t ${quoteShellArg(TERMINAL_ID)} -S -`
 		);
 		if (result.stdout) {
@@ -287,14 +287,17 @@ export async function input(
 	}
 
 	try {
-		await requireSandbox(ctx).pty.sendInput(handle.pid, new Uint8Array(data));
+		await (await ensureSandboxConnected(ctx)).pty.sendInput(
+			handle.pid,
+			new Uint8Array(data)
+		);
 	} catch (error) {
 		if (!isProcessNotFoundError(error)) {
 			throw error;
 		}
 		log.warn({ pid: handle.pid }, "pty not found, recreating");
 		const refreshed = await recreateHandle(ctx);
-		await requireSandbox(ctx).pty.sendInput(
+		await (await ensureSandboxConnected(ctx)).pty.sendInput(
 			refreshed.pid,
 			new Uint8Array(data)
 		);
@@ -326,13 +329,19 @@ export async function resize(
 	}
 
 	try {
-		await requireSandbox(ctx).pty.resize(handle.pid, { cols, rows });
+		await (await ensureSandboxConnected(ctx)).pty.resize(handle.pid, {
+			cols,
+			rows,
+		});
 	} catch (error) {
 		if (!isProcessNotFoundError(error)) {
 			throw error;
 		}
 		log.warn({ pid: handle.pid }, "pty not found during resize, recreating");
 		const refreshed = await recreateHandle(ctx, cols, rows);
-		await requireSandbox(ctx).pty.resize(refreshed.pid, { cols, rows });
+		await (await ensureSandboxConnected(ctx)).pty.resize(refreshed.pid, {
+			cols,
+			rows,
+		});
 	}
 }

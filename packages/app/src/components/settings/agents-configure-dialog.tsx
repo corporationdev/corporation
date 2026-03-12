@@ -7,6 +7,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
 	CheckIcon,
 	ChevronDownIcon,
+	CopyIcon,
 	DownloadIcon,
 	Loader2Icon,
 	RefreshCwIcon,
@@ -310,6 +311,19 @@ export function AgentsConfigureDialog({
 											Agents
 										</h2>
 										<div className="flex items-center gap-1">
+											{agent.sandboxId ? (
+												<Button
+													onClick={() => {
+														navigator.clipboard.writeText(agent.sandboxId!);
+														toast.success("Sandbox ID copied");
+													}}
+													size="icon"
+													title="Copy sandbox ID"
+													variant="ghost"
+												>
+													<CopyIcon className="size-3" />
+												</Button>
+											) : null}
 											<Button
 												disabled={!(isConnected && isSandboxReady)}
 												onClick={() => refreshAgentProbe(true)}

@@ -27,6 +27,57 @@ config({
 	quiet: true,
 });
 
+const encoder = new TextEncoder();
+
+function base64url(input: string): string {
+	return btoa(input)
+		.replaceAll("+", "-")
+		.replaceAll("/", "_")
+		.replaceAll(/=+$/g, "");
+}
+
+async function createDevRefreshToken(params: {
+	spaceSlug: string;
+	sandboxId: string;
+}): Promise<string> {
+	const secret = process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+	if (!secret) {
+		throw new Error(
+			"Missing CORPORATION_RUNTIME_AUTH_SECRET — set it in apps/server/.env"
+		);
+	}
+
+	const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+	const payload = base64url(
+		JSON.stringify({
+			sub: "dev",
+			spaceSlug: params.spaceSlug,
+			sandboxId: params.sandboxId,
+			clientType: "sandbox_runtime",
+			tokenType: "refresh",
+			aud: "space-runtime-refresh",
+			exp: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
+			iat: Math.floor(Date.now() / 1000),
+		})
+	);
+	const signingInput = `${header}.${payload}`;
+	const key = await crypto.subtle.importKey(
+		"raw",
+		encoder.encode(secret),
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign"]
+	);
+	const signature = new Uint8Array(
+		await crypto.subtle.sign("HMAC", key, encoder.encode(signingInput))
+	);
+	let signatureBinary = "";
+	for (const byte of signature) {
+		signatureBinary += String.fromCharCode(byte);
+	}
+	return `${signingInput}.${base64url(signatureBinary)}`;
+}
+
 const argv = process.argv.slice(2);
 const noWatch = argv.includes("--no-watch");
 const sandboxId = argv.find((arg) => !arg.startsWith("--"));
@@ -243,13 +294,6 @@ async function buildAndSync() {
 
 	try {
 		const start = Date.now();
-		const runtimeServerUrl = await getSandboxServerUrl();
-		const runtimeSpaceSlug = await getSandboxRuntimeEnv(
-			"CORPORATION_SPACE_SLUG"
-		);
-		const runtimeRefreshToken = await getSandboxRuntimeEnv(
-			"CORPORATION_RUNTIME_REFRESH_TOKEN"
-		);
 
 		await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
 
@@ -260,16 +304,10 @@ async function buildAndSync() {
 			return;
 		}
 
-		// Stop running process
+		// Stop running process (keep tmux session alive to preserve env)
 		await sandbox.commands.run("fuser -k 5799/tcp 2>/dev/null; true", {
 			timeoutMs: 5000,
 		});
-		await sandbox.commands.run(
-			`tmux kill-session -t ${runtimeSessionName} || true`,
-			{
-				timeoutMs: 5000,
-			}
-		);
 
 		// Upload bundle + setup script
 		const [bundleData, setupData] = await Promise.all([
@@ -286,17 +324,59 @@ async function buildAndSync() {
 			timeoutMs: 60_000,
 		});
 
-		// Truncate log and restart
+		// Truncate log and restart inside existing tmux session
 		await sandbox.commands.run(
 			`: > ${runtimeLogPath}; : > ${runtimeStderrPath}`,
 			{
 				timeoutMs: 3000,
 			}
 		);
-		await sandbox.commands.run(
-			`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_SERVER_URL=${shellEscape(runtimeServerUrl ?? "")} CORPORATION_SPACE_SLUG=${shellEscape(runtimeSpaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${shellEscape(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${shellEscape(sandboxId)} bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}"`,
-			{ timeoutMs: 5000 }
-		);
+
+		const runtimeCmd = `bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}`;
+
+		// Check if tmux session exists; reuse it to preserve env vars (auth token etc.)
+		const hasSession = await sandbox.commands
+			.run(`tmux has-session -t ${runtimeSessionName} 2>/dev/null`, {
+				timeoutMs: 3000,
+			})
+			.then(() => true)
+			.catch(() => false);
+
+		if (hasSession) {
+			// Respawn pane in existing session — new process inherits session env
+			// vars (auth token etc.) set via `tmux set-environment`
+			await sandbox.commands.run(
+				`tmux respawn-pane -k -t ${runtimeSessionName} ${shellEscape(runtimeCmd)}`,
+				{ timeoutMs: 5000 }
+			);
+		} else {
+			// First run or session was lost — resolve env vars and mint a fresh token
+			const runtimeServerUrl = await getSandboxServerUrl();
+			const runtimeSpaceSlug = await getSandboxRuntimeEnv(
+				"CORPORATION_SPACE_SLUG"
+			);
+			const runtimeRefreshToken = await createDevRefreshToken({
+				spaceSlug: runtimeSpaceSlug,
+				sandboxId,
+			});
+			// Create session and persist env vars for future respawn-pane reuse
+			await sandbox.commands.run(
+				`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_SERVER_URL=${shellEscape(runtimeServerUrl ?? "")} CORPORATION_SPACE_SLUG=${shellEscape(runtimeSpaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${shellEscape(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${shellEscape(sandboxId)} ${runtimeCmd}"`,
+				{ timeoutMs: 5000 }
+			);
+			// Persist into tmux session env so respawn-pane inherits them
+			for (const [name, value] of Object.entries({
+				CORPORATION_SERVER_URL: runtimeServerUrl ?? "",
+				CORPORATION_SPACE_SLUG: runtimeSpaceSlug,
+				CORPORATION_RUNTIME_REFRESH_TOKEN: runtimeRefreshToken,
+				CORPORATION_SANDBOX_ID: sandboxId,
+			})) {
+				await sandbox.commands.run(
+					`tmux set-environment -t ${shellEscape(runtimeSessionName)} ${shellEscape(name)} ${shellEscape(value)}`,
+					{ timeoutMs: 3000 }
+				);
+			}
+		}
 		await waitForRuntimeHealth();
 
 		const elapsed = Date.now() - start;

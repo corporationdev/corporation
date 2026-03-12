@@ -11,7 +11,11 @@ import {
 } from "../src/acp-bridge";
 import { isAgentInstalled } from "../src/agents";
 import { toAcpBridgeError, toCallbackDeliveryError } from "../src/errors";
-import { ProbeService, type ProbeServiceShape } from "../src/probe-service";
+import {
+	ProbeService,
+	ProbeServiceLive,
+	type ProbeServiceShape,
+} from "../src/probe-service";
 import { RuntimeActions, RuntimeActionsLive } from "../src/runtime-actions";
 import { runtimeLayer } from "../src/runtime-layer";
 import { makeSessionHandle } from "../src/session-handle";
@@ -42,6 +46,9 @@ type RuntimeActionsShape = {
 		cwd?: string;
 	}) => Effect.Effect<any, any, any>;
 };
+
+const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+	Effect.runPromise(effect as Effect.Effect<A, E, never>);
 
 function deferred<T>() {
 	let resolve!: (value: T | PromiseLike<T>) => void;
@@ -290,9 +297,6 @@ describeIf("runtime actions integration", () => {
 	let probeScope: Scope.Closeable | null = null;
 	let probeRuntimeActions: RuntimeActionsShape;
 
-	const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-		Effect.runPromise(effect as Effect.Effect<A, E, never>);
-
 	beforeAll(async () => {
 		process.env.SANDBOX_RUNTIME_DISABLE_SESSION_MCP = "1";
 
@@ -521,4 +525,39 @@ describeIf("runtime actions integration", () => {
 			await run(Scope.close(scope, Exit.void));
 		}
 	});
+});
+
+test("probe service maps ACP authentication failures to requires_auth", async () => {
+	const { factory } = createScriptedBridgeFactory({
+		onPrompt: () => {
+			throw new Error("ACP error (-32000): Authentication required");
+		},
+	});
+	const scope = await run(Scope.make());
+	try {
+		const bridgeLayer = Layer.succeed(AcpBridgeFactory)(factory);
+		const sessionRegistryLayer = SessionRegistryLive.pipe(
+			Layer.provide(bridgeLayer)
+		);
+		const probeLayer = ProbeServiceLive.pipe(
+			Layer.provide(Layer.mergeAll(bridgeLayer, sessionRegistryLayer))
+		);
+		const services = await run(Layer.buildWithScope(probeLayer, scope));
+		const probeService = ServiceMap.get(
+			services,
+			ProbeService
+		) as ProbeServiceShape;
+
+		const probe = (await run(
+			probeService.probeAgents({ ids: [AGENT_ID], cwd: TEST_CWD })
+		)) as {
+			agents: Array<{ id: string; status: string; error: string | null }>;
+		};
+		const agent = probe.agents[0];
+		expect(agent?.id).toBe(AGENT_ID);
+		expect(agent?.status).toBe("requires_auth");
+		expect(agent?.error).not.toContain("Cause([Fail");
+	} finally {
+		await run(Scope.close(scope, Exit.void));
+	}
 });

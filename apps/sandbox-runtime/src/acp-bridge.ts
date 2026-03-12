@@ -4,7 +4,12 @@ import crypto from "node:crypto";
 import { AGENT_METHODS, CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import type { AcpEnvelope } from "@corporation/contracts/sandbox-do";
 import { Effect, Layer, Queue, type Scope, ServiceMap, Stream } from "effect";
-import { agentCommand, writeAgentConfigs } from "./agents";
+import {
+	agentCommand,
+	describeAgentCommand,
+	getAgentCommandReadiness,
+	writeAgentConfigs,
+} from "./agents";
 import {
 	AcpBridgeError,
 	type RuntimeActionError as RuntimeActionErrorType,
@@ -61,6 +66,15 @@ type PendingResolver = {
 	reject: (error: Error) => void;
 	timer: ReturnType<typeof setTimeout>;
 };
+
+function describeEnvelope(envelope: AcpEnvelope) {
+	return {
+		id: "id" in envelope && envelope.id != null ? String(envelope.id) : null,
+		method: "method" in envelope ? envelope.method : null,
+		hasResult: "result" in envelope,
+		hasError: "error" in envelope,
+	};
+}
 
 function processLinesFromStream(
 	stream: ReadableStream<Uint8Array>,
@@ -180,6 +194,16 @@ function createBridge(
 		const command = agentCommand(agent);
 		log("info", "Spawning agent command (stdio)", { cmd: command.join(" ") });
 		writeAgentConfigs(agent);
+		log("info", "Agent command diagnostics", describeAgentCommand(agent));
+		const readiness = getAgentCommandReadiness(agent);
+		if (!readiness.ready) {
+			return yield* Effect.fail(
+				toRuntimeActionError(
+					`Agent runtime executable is not available for ${agent}`,
+					new Error(JSON.stringify(readiness.diagnostics))
+				)
+			);
+		}
 
 		const outboundQueue = yield* Queue.unbounded<AcpEnvelope>();
 		const state = {
@@ -197,6 +221,26 @@ function createBridge(
 				stderr: "pipe",
 			}),
 		};
+		log("info", "Spawned agent process", {
+			agent,
+			pid: state.proc.pid,
+			exitCode: state.proc.exitCode,
+		});
+		void state.proc.exited
+			.then((exitCode) => {
+				log("warn", "Agent process exited", {
+					agent,
+					pid: state.proc.pid,
+					exitCode,
+				});
+			})
+			.catch((error) => {
+				log("warn", "Agent process exit promise failed", {
+					agent,
+					pid: state.proc.pid,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
 
 		const rejectPendingRequests = (error: Error): void => {
 			for (const [id, pending] of state.pendingResolvers) {
@@ -210,6 +254,11 @@ function createBridge(
 			envelope: AcpEnvelope,
 			direction: EnvelopeDirection
 		): void => {
+			log("info", "Observed ACP envelope", {
+				agent,
+				direction,
+				...describeEnvelope(envelope),
+			});
 			state.onEnvelopeSink?.(envelope, direction);
 		};
 
@@ -288,6 +337,10 @@ function createBridge(
 			yield* Effect.promise(() =>
 				processLinesFromStream(state.proc.stdout, processStdoutLine, () => {
 					state.dead = true;
+					log("warn", "Agent stdout stream closed", {
+						agent,
+						pid: state.proc.pid,
+					});
 					rejectPendingRequests(
 						new Error(`Agent ${agent} stdout stream closed`)
 					);
@@ -297,7 +350,12 @@ function createBridge(
 
 		if (state.proc.stderr) {
 			yield* Effect.promise(() =>
-				processLinesFromStream(state.proc.stderr, processStderrLine)
+				processLinesFromStream(state.proc.stderr, processStderrLine, () => {
+					log("warn", "Agent stderr stream closed", {
+						agent,
+						pid: state.proc.pid,
+					});
+				})
 			).pipe(Effect.forkScoped);
 		}
 
@@ -368,6 +426,14 @@ function createBridge(
 							method,
 							params: parsedParams,
 						} satisfies AcpEnvelope;
+						const startedAt = Date.now();
+						log("info", "Queueing ACP request", {
+							agent,
+							method,
+							id,
+							timeoutMs,
+							pendingRequestCount: state.pendingResolvers.size,
+						});
 
 						return new Promise<AcpAgentRequestResult<typeof method>>(
 							(resolve, reject) => {
@@ -378,6 +444,12 @@ function createBridge(
 									}
 									state.pendingResolvers.delete(id);
 									clearTimeout(pending.timer);
+									log("warn", "ACP request aborted", {
+										agent,
+										method,
+										id,
+										elapsedMs: Date.now() - startedAt,
+									});
 									reject(
 										getAbortError(signal, `ACP request aborted: ${method}`)
 									);
@@ -389,6 +461,12 @@ function createBridge(
 										return;
 									}
 									state.pendingResolvers.delete(id);
+									log("warn", "ACP request timed out", {
+										agent,
+										method,
+										id,
+										elapsedMs: Date.now() - startedAt,
+									});
 									reject(new Error(`ACP request timed out: ${method} (${id})`));
 								}, timeoutMs);
 
@@ -413,6 +491,13 @@ function createBridge(
 								state.pendingResolvers.set(id, {
 									resolve: (resultEnvelope) => {
 										try {
+											log("info", "Received ACP response", {
+												agent,
+												method,
+												id,
+												elapsedMs: Date.now() - startedAt,
+												hasError: "error" in resultEnvelope,
+											});
 											resolve(
 												resolveResultEnvelope(
 													method,
@@ -421,6 +506,16 @@ function createBridge(
 												)
 											);
 										} catch (error) {
+											log("warn", "Failed to decode ACP response", {
+												agent,
+												method,
+												id,
+												elapsedMs: Date.now() - startedAt,
+												error:
+													error instanceof Error
+														? error.message
+														: String(error),
+											});
 											reject(
 												error instanceof Error
 													? error
@@ -469,6 +564,11 @@ function createBridge(
 					state.onEnvelopeSink = sink;
 				}),
 		};
+
+		log("info", "ACP bridge ready", {
+			agent,
+			pid: state.proc.pid,
+		});
 
 		return bridge;
 	}).pipe(

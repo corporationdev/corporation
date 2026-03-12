@@ -127,6 +127,18 @@ export async function sendMessage(
 	agent: string,
 	modelId: string
 ): Promise<void> {
+	log.info(
+		{
+			actorId: ctx.actorId,
+			sessionId,
+			agent,
+			modelId,
+			contentLength: content.length,
+			runtimeConnected: ctx.runtime.isConnected(),
+		},
+		"sendMessage: received browser message"
+	);
+
 	await ensureSession(ctx, sessionId, agent, modelId);
 
 	// Auto-generate session title on first message of this session
@@ -155,6 +167,16 @@ export async function sendMessage(
 		agent,
 		modelId,
 	});
+
+	log.info(
+		{
+			actorId: ctx.actorId,
+			sessionId,
+			agent,
+			modelId,
+		},
+		"sendMessage: dispatched message to agent runner"
+	);
 }
 
 export async function cancelSession(

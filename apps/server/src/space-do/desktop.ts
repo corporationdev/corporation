@@ -1,5 +1,5 @@
 import type { Sandbox } from "@e2b/desktop";
-import { requireSandbox } from "./sandbox";
+import { ensureSandboxConnected } from "./sandbox";
 import type { SpaceRuntimeContext } from "./types";
 
 const DISPLAY = ":0";
@@ -16,7 +16,7 @@ function tryGetExistingStreamUrl(sandbox: Sandbox): string | null {
 export async function getDesktopStreamUrl(
 	c: SpaceRuntimeContext
 ): Promise<string> {
-	const sandbox = requireSandbox(c);
+	const sandbox = await ensureSandboxConnected(c);
 
 	// Start Xvfb if not already running (connect() doesn't start the desktop)
 	try {

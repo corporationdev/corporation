@@ -12,6 +12,24 @@ const TIMED_OUT_RE = /timed out/i;
 type Harness = Awaited<ReturnType<typeof createHarness>>;
 type BrowserClient = Awaited<ReturnType<Harness["createBrowserClient"]>>;
 
+function sleep(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getSubscriptionState<T>(iterator: AsyncIterable<T>) {
+	const subscription = iterator[Symbol.asyncIterator]();
+	const pending = subscription.next();
+	pending.catch(() => undefined);
+
+	const outcome = await Promise.race([
+		pending.then(() => "resolved" as const),
+		sleep(250).then(() => "pending" as const),
+	]);
+
+	await subscription.return?.(undefined).catch(() => undefined);
+	return outcome;
+}
+
 function makeSessionEvent(sessionId: string, id: string): SessionEvent {
 	return {
 		id,
@@ -147,6 +165,42 @@ describe("Space DO runtime websocket integration (local worker)", () => {
 			expect(result.agents[0]?.status).toBe("verified");
 		} finally {
 			runtime.close();
+		}
+	});
+
+	test("browser ORPC subscriptions stay open without immediate iterator errors", async () => {
+		const subscriptionBrowser = await harness.createBrowserClient(
+			`subscription-space-${crypto.randomUUID()}`
+		);
+
+		try {
+			expect(
+				await getSubscriptionState(
+					await subscriptionBrowser.client.onSessionsChanged()
+				)
+			).toBe("pending");
+			expect(
+				await getSubscriptionState(
+					await subscriptionBrowser.client.onTerminalOutput()
+				)
+			).toBe("pending");
+		} finally {
+			subscriptionBrowser.close();
+		}
+	});
+
+	test("browser websocket upgrade does not depend on resolving binding first", async () => {
+		const handshakeHarness = await createHarness({
+			convexUrl: "http://127.0.0.1:1",
+		});
+
+		try {
+			const handshakeBrowser = await handshakeHarness.createBrowserClient(
+				`handshake-space-${crypto.randomUUID()}`
+			);
+			handshakeBrowser.close();
+		} finally {
+			await handshakeHarness.cleanup();
 		}
 	});
 

@@ -123,12 +123,33 @@ export async function startAgentRunner(
 			cwd: SANDBOX_WORKDIR,
 			prompt: params.prompt,
 		};
+		log.info(
+			{
+				actorId: ctx.actorId,
+				sessionId: params.sessionId,
+				turnId,
+				commandId,
+				agent: params.agent,
+				modelId: params.modelId,
+				promptParts: params.prompt.length,
+			},
+			"startAgentRunner sending start_turn to runtime"
+		);
 		ctx.runtime.send(message, {
 			type: "start_turn",
 			commandId,
 			sessionId: params.sessionId,
 			turnId,
 		});
+		log.info(
+			{
+				actorId: ctx.actorId,
+				sessionId: params.sessionId,
+				turnId,
+				commandId,
+			},
+			"startAgentRunner queued start_turn on runtime transport"
+		);
 	} catch (error) {
 		const errorMessage =
 			error instanceof Error ? error.message : "Failed to send turn to runtime";
@@ -168,8 +189,29 @@ export async function ingestRuntimeSessionEventBatch(
 		(event) => event.sessionId === message.sessionId
 	);
 	if (validEvents.length === 0) {
+		log.warn(
+			{
+				actorId: ctx.actorId,
+				sessionId: message.sessionId,
+				turnId: message.turnId,
+				eventCount: message.events.length,
+			},
+			"runtime session event batch contained no valid events"
+		);
 		return;
 	}
+
+	log.info(
+		{
+			actorId: ctx.actorId,
+			sessionId: message.sessionId,
+			turnId: message.turnId,
+			eventCount: validEvents.length,
+			firstEventIndex: validEvents[0]?.eventIndex ?? null,
+			lastEventIndex: validEvents.at(-1)?.eventIndex ?? null,
+		},
+		"ingesting runtime session event batch"
+	);
 
 	appendSessionEventFrames(
 		ctx,
@@ -211,6 +253,14 @@ export async function ingestRuntimeTurnCompleted(
 		error: null,
 		reason: "run_completed",
 	});
+	log.info(
+		{
+			actorId: ctx.actorId,
+			sessionId: message.sessionId,
+			turnId: message.turnId,
+		},
+		"ingested runtime turn completion"
+	);
 }
 
 export async function ingestRuntimeTurnFailed(
@@ -229,6 +279,7 @@ export async function ingestRuntimeTurnFailed(
 			actorId: ctx.actorId,
 			sessionId: message.sessionId,
 			turnId: message.turnId,
+			error: message.error.message,
 		},
 		"runtime reported turn failure"
 	);
@@ -251,8 +302,28 @@ export async function ingestRuntimeCommandRejected(
 		| null
 ): Promise<void> {
 	if (!command) {
+		log.warn(
+			{
+				actorId: ctx.actorId,
+				commandId: message.commandId,
+				reason: message.reason,
+			},
+			"runtime rejected command with no pending metadata"
+		);
 		return;
 	}
+
+	log.warn(
+		{
+			actorId: ctx.actorId,
+			commandId: message.commandId,
+			commandType: command.type,
+			sessionId: command.sessionId,
+			turnId: command.turnId,
+			reason: message.reason,
+		},
+		"runtime rejected command"
+	);
 
 	if (command.type === "start_turn") {
 		await failSessionRun(

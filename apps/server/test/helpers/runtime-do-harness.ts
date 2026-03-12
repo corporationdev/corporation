@@ -290,6 +290,7 @@ async function startJwksServer(): Promise<JwksServer> {
 
 async function startLocalWorker(options: {
 	convexSiteUrl: string;
+	convexUrl?: string;
 	runtimeAuthSecret: string;
 }): Promise<LocalWorker> {
 	const tempRoot = resolve(SERVER_APP_DIR, ".test-tmp");
@@ -336,6 +337,7 @@ async function startLocalWorker(options: {
 			},
 		],
 		vars: {
+			CORPORATION_CONVEX_URL: options.convexUrl ?? options.convexSiteUrl,
 			CORPORATION_CONVEX_SITE_URL: options.convexSiteUrl,
 			CORPORATION_RUNTIME_AUTH_SECRET: options.runtimeAuthSecret,
 			CORPORATION_INTERNAL_API_KEY: "test-internal-api-key",
@@ -606,11 +608,12 @@ export class FakeRuntimeSocket {
 	}
 }
 
-export async function createHarness() {
+export async function createHarness(options?: { convexUrl?: string }) {
 	const runtimeAuthSecret = `test-runtime-secret-${crypto.randomUUID()}`;
 	const jwksServer = await startJwksServer();
 	const worker = await startLocalWorker({
 		convexSiteUrl: jwksServer.baseUrl,
+		convexUrl: options?.convexUrl ?? jwksServer.baseUrl,
 		runtimeAuthSecret,
 	});
 

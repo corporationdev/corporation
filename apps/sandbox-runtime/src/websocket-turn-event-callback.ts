@@ -37,6 +37,13 @@ export function makeWebSocketTurnEventCallback(
 
 					const events = pendingEventBatch;
 					pendingEventBatch = [];
+					log("info", "Flushing websocket turn event batch", {
+						turnId: input.turnId,
+						sessionId: input.sessionId,
+						eventCount: events.length,
+						firstEventIndex: events[0]?.eventIndex ?? null,
+						lastEventIndex: events.at(-1)?.eventIndex ?? null,
+					});
 					await Effect.runPromise(
 						transport.send({
 							type: "session_event_batch",
@@ -95,6 +102,10 @@ export function makeWebSocketTurnEventCallback(
 
 				yield* flushEventBatch();
 				if (event._tag === "Completed") {
+					log("info", "Sending websocket turn completion callback", {
+						turnId: input.turnId,
+						sessionId: input.sessionId,
+					});
 					yield* transport
 						.send({
 							type: "turn_completed",
@@ -127,6 +138,11 @@ export function makeWebSocketTurnEventCallback(
 							)
 						)
 					);
+				log("warn", "Sent websocket turn failure callback", {
+					turnId: input.turnId,
+					sessionId: input.sessionId,
+					error: event.error.message,
+				});
 			});
 
 		return callback;
