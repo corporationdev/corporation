@@ -16,7 +16,9 @@ export type PromptPart = {
 export type SessionConfig = {
 	agent?: string;
 	modelId?: string;
+	modeId?: string;
 	cwd?: string;
+	configOptions?: Record<string, string>;
 };
 
 export type StartTurnInput = {
@@ -31,14 +33,24 @@ export type EnsureSessionInput = {
 	config: ResolvedSessionConfig;
 };
 
-export type ResolvedSessionConfig = {
+export type SessionIdentity = {
 	agent: string;
 	cwd: string;
-	modelId?: string;
 };
 
-export type ResolvedStartTurnInput = Omit<StartTurnInput, "config"> & {
-	config: ResolvedSessionConfig;
+export type DynamicSessionConfig = {
+	modelId?: string;
+	modeId?: string;
+	configOptions?: Record<string, string>;
+};
+
+export type ResolvedSessionConfig = SessionIdentity & DynamicSessionConfig;
+
+export type ResolvedStartTurnInput = {
+	sessionId: SessionId;
+	turnId: TurnId;
+	prompt: PromptPart[];
+	dynamicConfig: DynamicSessionConfig;
 };
 
 export type RuntimeEvent =
@@ -105,6 +117,8 @@ function resolveSessionConfig(
 		agent: config.agent,
 		cwd: config.cwd,
 		...(config.modelId ? { modelId: config.modelId } : {}),
+		...(config.modeId ? { modeId: config.modeId } : {}),
+		...(config.configOptions ? { configOptions: config.configOptions } : {}),
 	};
 }
 
@@ -115,11 +129,13 @@ function toErrorMessage(error: unknown): string {
 export class RuntimeEngine {
 	private readonly sessions = new Map<SessionId, SessionState>();
 	private readonly turns = new Map<TurnId, TurnState>();
+	private readonly driver: AgentDriver;
+	private readonly emit: EventSink;
 
-	constructor(
-		private readonly driver: AgentDriver,
-		private readonly emit: EventSink
-	) {}
+	constructor(driver: AgentDriver, emit: EventSink) {
+		this.driver = driver;
+		this.emit = emit;
+	}
 
 	private createSession(input: EnsureSessionInput): SessionState {
 		const session: SessionState = {
@@ -184,7 +200,11 @@ export class RuntimeEngine {
 					sessionId: input.sessionId,
 					turnId: input.turnId,
 					prompt: input.prompt,
-					config: resolvedConfig,
+					dynamicConfig: {
+						modelId: resolvedConfig.modelId,
+						modeId: resolvedConfig.modeId,
+						configOptions: resolvedConfig.configOptions,
+					},
 				},
 				this.emit
 			);

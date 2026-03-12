@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
 	type AgentDriver,
+	type ResolvedStartTurnInput,
 	RuntimeEngine,
 	type RuntimeEvent,
-	type ResolvedStartTurnInput,
 } from "../index";
 
 function createDeferred() {
@@ -63,8 +63,10 @@ describe("RuntimeEngine", () => {
 	test("rejects a second turn while the same session is already running", async () => {
 		const blocker = createDeferred();
 		const events: RuntimeEvent[] = [];
+		const driverCalls: ResolvedStartTurnInput[] = [];
 		const driver: AgentDriver = {
-			run: async () => {
+			run: async (input) => {
+				driverCalls.push(input);
 				await blocker.promise;
 			},
 		};
@@ -92,9 +94,7 @@ describe("RuntimeEngine", () => {
 				turnId: "turn-2",
 				prompt: [{ type: "text", text: "again" }],
 			})
-		).rejects.toThrow(
-			"Session session-1 already has active turn turn-1"
-		);
+		).rejects.toThrow("Session session-1 already has active turn turn-1");
 
 		blocker.resolve();
 		await firstTurn;
@@ -102,6 +102,14 @@ describe("RuntimeEngine", () => {
 		expect(events).toEqual([
 			{ type: "turn.started", sessionId: "session-1", turnId: "turn-1" },
 			{ type: "turn.completed", sessionId: "session-1", turnId: "turn-1" },
+		]);
+		expect(driverCalls).toEqual([
+			{
+				sessionId: "session-1",
+				turnId: "turn-1",
+				prompt: [{ type: "text", text: "hello" }],
+				dynamicConfig: {},
+			},
 		]);
 		expect(engine.getActiveTurnId("session-1")).toBeNull();
 		expect(engine.getTurn("turn-1")?.status).toBe("completed");
@@ -423,20 +431,16 @@ describe("RuntimeEngine", () => {
 				sessionId: "session-1",
 				turnId: "turn-1",
 				prompt: [{ type: "text", text: "first" }],
-				config: {
-					agent: "claude",
+				dynamicConfig: {
 					modelId: "sonnet",
-					cwd: "/workspace/repo",
 				},
 			},
 			{
 				sessionId: "session-1",
 				turnId: "turn-2",
 				prompt: [{ type: "text", text: "second" }],
-				config: {
-					agent: "claude",
+				dynamicConfig: {
 					modelId: "opus",
-					cwd: "/workspace/repo",
 				},
 			},
 		]);
@@ -472,7 +476,9 @@ describe("RuntimeEngine", () => {
 					cwd: undefined,
 				},
 			})
-		).rejects.toThrow("Session session-1 has invalid config: agent and cwd are required");
+		).rejects.toThrow(
+			"Session session-1 has invalid config: agent and cwd are required"
+		);
 
 		expect(driverCalls).toEqual([]);
 		expect(events).toEqual([]);
