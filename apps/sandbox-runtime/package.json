@@ -21,9 +21,11 @@
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
+    "chromium-bidi": "^15.0.0",
     "effect": "catalog:",
     "hono": "catalog:",
     "jose": "catalog:",
+    "playwright": "^1.54.1",
     "zod": "catalog:"
   },
   "devDependencies": {

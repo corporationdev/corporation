@@ -1,7 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import acpAgents, {
 	type AcpAgentManifestEntry,
-	supportsAgentCredentials,
 } from "@corporation/config/acp-agent-manifest";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
@@ -22,8 +21,6 @@ function AgentCard({
 	agent: AcpAgentManifestEntry;
 	isConnected: boolean;
 }) {
-	const isSupported = supportsAgentCredentials(agent);
-
 	return (
 		<div className="flex items-center gap-3 rounded-lg border px-4 py-3">
 			<img
@@ -39,18 +36,12 @@ function AgentCard({
 			<div
 				className={cn(
 					"rounded-full px-2.5 py-1 font-medium text-[11px]",
-					isSupported
-						? isConnected
-							? "bg-emerald-500/12 text-emerald-600"
-							: "bg-muted text-muted-foreground"
+					isConnected
+						? "bg-emerald-500/12 text-emerald-600"
 						: "bg-muted text-muted-foreground"
 				)}
 			>
-				{isSupported
-					? isConnected
-						? "Connected"
-						: "Not connected"
-					: "Unsupported"}
+				{isConnected ? "Connected" : "Not connected"}
 			</div>
 		</div>
 	);
@@ -73,7 +64,10 @@ function AgentsPage() {
 	const configByAgentId = useMemo(
 		() =>
 			new Map(
-				(agentConfig ?? []).map((config) => [config.agentId, config.configOptions])
+				(agentConfig ?? []).map((config) => [
+					config.agentId,
+					config.configOptions,
+				])
 			),
 		[agentConfig]
 	);
@@ -93,10 +87,7 @@ function AgentsPage() {
 			})),
 		[configByAgentId, connectedAgentIds]
 	);
-	const supportedAgents = useMemo(
-		() => acpAgents.filter((agent) => supportsAgentCredentials(agent)),
-		[]
-	);
+	const supportedAgents = useMemo(() => acpAgents, []);
 	const sortedAgents = useMemo(() => {
 		const connectedAgents: typeof acpAgents = [];
 		const disconnectedAgents: typeof acpAgents = [];

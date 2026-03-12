@@ -6,7 +6,7 @@
 //
 // Reads E2B_API_KEY from apps/server/.env automatically.
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import acpAgents from "@corporation/config/acp-agent-manifest";
 import { config } from "dotenv";
@@ -30,23 +30,25 @@ if (!apiKey) {
 // Build sandbox-runtime JS bundle
 console.log("Building sandbox-runtime…");
 const sandboxRuntimeDir = resolve(repoRoot, "apps/sandbox-runtime");
-const sandboxRuntimeBundlePath = resolve(
-	sandboxRuntimeDir,
-	"dist/sandbox-runtime.js"
-);
-await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
+const sandboxRuntimeBundleDir = resolve(sandboxRuntimeDir, "dist/runtime");
+await rm(sandboxRuntimeBundleDir, { recursive: true, force: true });
+await mkdir(sandboxRuntimeBundleDir, { recursive: true });
 const build = Bun.spawnSync([
 	"bun",
 	"build",
 	resolve(sandboxRuntimeDir, "src/index.ts"),
-	"--outfile",
-	sandboxRuntimeBundlePath,
+	"--outdir",
+	sandboxRuntimeBundleDir,
 	"--target=bun",
 ]);
 if (build.exitCode !== 0) {
 	throw new Error(
 		`sandbox-runtime build failed: ${build.stderr.toString().trim()}`
 	);
+}
+const sandboxRuntimeArtifacts = await readdir(sandboxRuntimeBundleDir);
+if (sandboxRuntimeArtifacts.length === 0) {
+	throw new Error("sandbox-runtime build produced no artifacts");
 }
 console.log("sandbox-runtime built.");
 
@@ -60,7 +62,7 @@ const installCommands = Array.from(
 	)
 );
 
-const template = Template({ fileContextPath: repoRoot })
+let template = Template({ fileContextPath: repoRoot })
 	.fromTemplate("desktop")
 	.setUser("root")
 	// Install Node.js 22 (desktop template doesn't include it)
@@ -81,6 +83,9 @@ const template = Template({ fileContextPath: repoRoot })
 		"export BUN_INSTALL=/usr/local && curl -fsSL https://bun.sh/install | bash && (test -x /usr/local/bin/bunx || ln -sf /usr/local/bin/bun /usr/local/bin/bunx)"
 	)
 	.runCmd(
+		"PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers bunx playwright install --with-deps chromium"
+	)
+	.runCmd(
 		"curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh"
 	)
 	.runCmd(
@@ -91,12 +96,18 @@ const template = Template({ fileContextPath: repoRoot })
 	)
 	.runCmd(
 		`mkdir -p /home/${SANDBOX_USER}/.local/bin /home/${SANDBOX_USER}/.local/share/corporation && chown -R ${SANDBOX_USER}:${SANDBOX_USER} /home/${SANDBOX_USER}/.local`
-	)
-	// Install sandbox-runtime JS bundle
-	.copy(
-		"apps/sandbox-runtime/dist/sandbox-runtime.js",
-		"/usr/local/bin/sandbox-runtime.js"
-	)
+	);
+
+for (const artifact of sandboxRuntimeArtifacts) {
+	const remoteArtifactName =
+		artifact === "index.js" ? "sandbox-runtime.js" : artifact;
+	template = template.copy(
+		`apps/sandbox-runtime/dist/runtime/${artifact}`,
+		`/usr/local/bin/${remoteArtifactName}`
+	);
+}
+
+template = template
 	.setUser(SANDBOX_USER)
 	.setWorkdir(SANDBOX_WORKDIR)
 	.runCmd(
@@ -109,7 +120,7 @@ const template = Template({ fileContextPath: repoRoot })
 	);
 
 for (const command of installCommands) {
-	template.runCmd(`${USER_PATH_EXPORT}\n${command}`);
+	template = template.runCmd(`${USER_PATH_EXPORT}\n${command}`);
 }
 
 console.log("Building base template…");
