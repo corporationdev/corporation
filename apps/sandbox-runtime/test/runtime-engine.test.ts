@@ -202,4 +202,89 @@ describe("RuntimeEngine", () => {
 			{ type: "turn.completed", sessionId: "session-2", turnId: "turn-2" },
 		]);
 	});
+
+	test("stores session config from startTurn and reuses it on later turns", async () => {
+		const engine = new RuntimeEngine(
+			{
+				run: async () => undefined,
+			},
+			() => undefined
+		);
+
+		await engine.startTurn({
+			sessionId: "session-1",
+			turnId: "turn-1",
+			prompt: [{ type: "text", text: "first" }],
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+
+		expect(engine.getSession("session-1")).toEqual({
+			sessionId: "session-1",
+			activeTurnId: null,
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+
+		await engine.startTurn({
+			sessionId: "session-1",
+			turnId: "turn-2",
+			prompt: [{ type: "text", text: "second" }],
+		});
+
+		expect(engine.getSession("session-1")).toEqual({
+			sessionId: "session-1",
+			activeTurnId: null,
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+	});
+
+	test("merges later session config updates into the existing session state", async () => {
+		const engine = new RuntimeEngine(
+			{
+				run: async () => undefined,
+			},
+			() => undefined
+		);
+
+		await engine.startTurn({
+			sessionId: "session-1",
+			turnId: "turn-1",
+			prompt: [{ type: "text", text: "first" }],
+			config: {
+				agent: "claude",
+				modelId: "sonnet",
+				cwd: "/workspace/repo",
+			},
+		});
+
+		await engine.startTurn({
+			sessionId: "session-1",
+			turnId: "turn-2",
+			prompt: [{ type: "text", text: "second" }],
+			config: {
+				modelId: "opus",
+			},
+		});
+
+		expect(engine.getSession("session-1")).toEqual({
+			sessionId: "session-1",
+			activeTurnId: null,
+			config: {
+				agent: "claude",
+				modelId: "opus",
+				cwd: "/workspace/repo",
+			},
+		});
+	});
 });

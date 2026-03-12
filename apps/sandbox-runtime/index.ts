@@ -13,10 +13,17 @@ export type PromptPart = {
 	text: string;
 };
 
+export type SessionConfig = {
+	agent?: string;
+	modelId?: string;
+	cwd?: string;
+};
+
 export type StartTurnInput = {
 	sessionId: SessionId;
 	turnId: TurnId;
 	prompt: PromptPart[];
+	config?: SessionConfig;
 };
 
 export type RuntimeEvent =
@@ -46,6 +53,7 @@ export type AgentDriver = {
 type SessionState = {
 	sessionId: SessionId;
 	activeTurnId: TurnId | null;
+	config: SessionConfig | null;
 };
 
 type TurnState = {
@@ -54,7 +62,22 @@ type TurnState = {
 	status: TurnStatus;
 };
 
+export type RuntimeSession = Readonly<SessionState>;
 export type RuntimeTurn = Readonly<TurnState>;
+
+function mergeSessionConfig(
+	current: SessionConfig | null,
+	next: SessionConfig | undefined
+): SessionConfig | null {
+	if (!next) {
+		return current;
+	}
+
+	return {
+		...(current ?? {}),
+		...next,
+	};
+}
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -78,6 +101,7 @@ export class RuntimeEngine {
 		const session: SessionState = {
 			sessionId,
 			activeTurnId: null,
+			config: null,
 		};
 		this.sessions.set(sessionId, session);
 		return session;
@@ -96,6 +120,7 @@ export class RuntimeEngine {
 			sessionId: input.sessionId,
 			status: "running",
 		};
+		session.config = mergeSessionConfig(session.config, input.config);
 		this.turns.set(input.turnId, turnState);
 		session.activeTurnId = input.turnId;
 		this.emit({
@@ -157,6 +182,18 @@ export class RuntimeEngine {
 		}
 
 		return { ...turn };
+	}
+
+	getSession(sessionId: SessionId): RuntimeSession | undefined {
+		const session = this.sessions.get(sessionId);
+		if (!session) {
+			return undefined;
+		}
+
+		return {
+			...session,
+			config: session.config ? { ...session.config } : null,
+		};
 	}
 
 	getActiveTurnId(sessionId: SessionId): TurnId | null {
