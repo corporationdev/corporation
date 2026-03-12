@@ -130,6 +130,13 @@ async function bootAgentAndGetUrl(
 			command: `CORPORATION_SERVER_URL=${quoteShellEnv(serverUrl)} CORPORATION_CONVEX_SITE_URL=${quoteShellEnv(convexSiteUrl)} CORPORATION_SPACE_SLUG=${quoteShellEnv(params.spaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${quoteShellEnv(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${quoteShellEnv(sandbox.sandboxId)} bun /usr/local/bin/sandbox-runtime.js --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
 			healthUrl: AGENT_HEALTH_URL,
 			workdir: SANDBOX_WORKDIR,
+			sessionEnv: {
+				CORPORATION_SERVER_URL: serverUrl,
+				CORPORATION_CONVEX_SITE_URL: convexSiteUrl,
+				CORPORATION_SPACE_SLUG: params.spaceSlug,
+				CORPORATION_RUNTIME_REFRESH_TOKEN: runtimeRefreshToken,
+				CORPORATION_SANDBOX_ID: sandbox.sandboxId,
+			},
 		});
 		return `https://${sandbox.getHost(SANDBOX_AGENT_PORT)}`;
 	} catch (error) {
