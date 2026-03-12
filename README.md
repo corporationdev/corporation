@@ -83,29 +83,17 @@ Publish the packaged runtime to npm:
 bun publish:sandbox-runtime
 ```
 
-Production sandboxes install the checked-in pinned runtime version from `packages/backend/convex/lib/sandbox-runtime.ts`. Bumping that constant rolls new and resumed sandboxes forward without rebuilding the base template.
+Production sandboxes install the checked-in pinned runtime version from `packages/backend/convex/lib/sandboxRuntime.ts`. Bumping that constant rolls new and resumed sandboxes forward without rebuilding the base template.
 
 ### Runtime Dev
 
-The default sandbox-runtime workflow is remote-first against a real E2B sandbox:
+The sandbox runtime dev loop runs against a real E2B sandbox:
 
 ```bash
-bun dev:sandbox-runtime:remote <sandbox-id>
+bun dev:sandbox-runtime <sandbox-id>
 ```
 
-That command packs the current runtime, uploads the tarball to the target sandbox, installs it into the versioned runtime prefix, relinks `/usr/local/bin/sandbox-runtime`, restarts the runtime, and tails the logs.
-
-To validate a published npm version exactly as production installs it:
-
-```bash
-bun dev:sandbox-runtime:remote <sandbox-id> --version 1.0.1 --no-watch
-```
-
-A local helper still exists for protocol debugging:
-
-```bash
-bun dev:sandbox-runtime:local --base-url http://127.0.0.1:8787 --space-slug my-space
-```
+That command builds the package staging layout locally, syncs it directly into the sandbox dev prefix, refreshes runtime dependencies only when the staged package manifest changes, relinks `/usr/local/bin/sandbox-runtime`, restarts the runtime, and tails the logs.
 
 ## Git Hooks and Formatting
 

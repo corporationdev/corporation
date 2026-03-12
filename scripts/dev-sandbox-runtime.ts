@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 
 import { watch } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import process from "node:process";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
 import {
+	buildSandboxRuntimePackage,
 	getSandboxRuntimeSourceDir,
 	getSandboxRuntimeStagingDir,
-	packSandboxRuntimePackage,
 } from "./lib/sandbox-runtime-package";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -33,10 +33,11 @@ const runtimeStderrPath = "/tmp/sandbox-runtime.stderr.log";
 const proxyLogPath = "/tmp/corporation-mitmproxy.log";
 const activeRuntimeBin = "/usr/local/bin/sandbox-runtime";
 const installRoot = "/opt/corporation/sandbox-runtime";
-const remoteTarballPath = "/tmp/corporation-sandbox-runtime.tgz";
+const installPrefix = `${installRoot}/dev-local`;
 const sandboxUser = "user";
 const sandboxWorkdir = "/workspace";
 const runtimePort = 5799;
+const runtimeDependencyHashPath = `${installPrefix}/.package-json.sha256`;
 
 function base64url(input: string) {
 	return btoa(input)
@@ -91,18 +92,34 @@ function shellEscape(value: string) {
 	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-const argv = process.argv.slice(2);
-const sandboxId = argv.find((arg, index) => {
-	if (arg.startsWith("--")) {
-		return false;
+async function sha256Hex(data: Uint8Array) {
+	const digest = await crypto.subtle.digest("SHA-256", data);
+	return Array.from(new Uint8Array(digest), (byte) =>
+		byte.toString(16).padStart(2, "0")
+	).join("");
+}
+
+async function collectFiles(dir: string): Promise<string[]> {
+	const entries = await readdir(dir, { withFileTypes: true });
+	const files: string[] = [];
+
+	for (const entry of entries) {
+		const entryPath = resolve(dir, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...(await collectFiles(entryPath)));
+			continue;
+		}
+		if (entry.isFile()) {
+			files.push(entryPath);
+		}
 	}
-	const previous = argv[index - 1];
-	return previous !== "--version";
-});
+
+	return files;
+}
+
+const argv = process.argv.slice(2);
+const sandboxId = argv.find((arg) => !arg.startsWith("--"));
 const noWatch = argv.includes("--no-watch");
-const versionFlagIndex = argv.indexOf("--version");
-const requestedVersion =
-	versionFlagIndex >= 0 ? argv[versionFlagIndex + 1]?.trim() : undefined;
 
 if (!sandboxId) {
 	console.error(
@@ -111,19 +128,8 @@ if (!sandboxId) {
 			"Usage:",
 			"  bun scripts/dev-sandbox-runtime.ts <sandbox-id>",
 			"  bun scripts/dev-sandbox-runtime.ts <sandbox-id> --no-watch",
-			"  bun scripts/dev-sandbox-runtime.ts <sandbox-id> --version <x.y.z> --no-watch",
 		].join("\n")
 	);
-	process.exit(1);
-}
-
-if (versionFlagIndex >= 0 && !requestedVersion) {
-	console.error("Missing version value after --version");
-	process.exit(1);
-}
-
-if (requestedVersion && !noWatch) {
-	console.error("--version is a one-shot validation mode. Add --no-watch.");
 	process.exit(1);
 }
 
@@ -171,9 +177,7 @@ async function getSandboxEnv(name: string) {
 		return envValue;
 	}
 
-	throw new Error(
-		`Unable to determine ${name} for sandbox-runtime remote dev.`
-	);
+	throw new Error(`Unable to determine ${name} for sandbox-runtime dev sync.`);
 }
 
 function startTailing() {
@@ -261,8 +265,89 @@ async function waitForRuntimeHealth() {
 	);
 }
 
-function createInstallCommand(input: { source: string; prefix: string }) {
-	return `mkdir -p ${shellEscape(input.prefix)} && npm install -g --prefix ${shellEscape(input.prefix)} ${shellEscape(input.source)}`;
+async function readRemoteText(path: string, user: "root" | "user" = "root") {
+	return await runSandboxCommand(
+		`cat ${shellEscape(path)} 2>/dev/null || true`,
+		{
+			timeoutMs: 5000,
+			user,
+		}
+	).then((result) => result.stdout.trim());
+}
+
+async function remoteFileExists(path: string, user: "root" | "user" = "root") {
+	try {
+		await runSandboxCommand(`test -f ${shellEscape(path)}`, {
+			timeoutMs: 5000,
+			user,
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function syncRuntimePackageFiles(stagingDir: string) {
+	const files = await collectFiles(stagingDir);
+	await runSandboxCommand(
+		[
+			`mkdir -p ${shellEscape(installPrefix)}`,
+			`rm -rf ${shellEscape(`${installPrefix}/bin`)}`,
+			`rm -rf ${shellEscape(`${installPrefix}/dist`)}`,
+			`rm -f ${shellEscape(`${installPrefix}/package.json`)}`,
+			`rm -f ${shellEscape(`${installPrefix}/README.md`)}`,
+			`rm -f ${shellEscape(`${installPrefix}/source-package.json`)}`,
+			`mkdir -p ${shellEscape(`${installPrefix}/bin`)}`,
+			`mkdir -p ${shellEscape(`${installPrefix}/dist`)}`,
+		].join(" && "),
+		{
+			timeoutMs: 10_000,
+			user: "root",
+		}
+	);
+
+	await sandbox.files.write(
+		await Promise.all(
+			files.map(async (filePath) => ({
+				path: `${installPrefix}/${relative(stagingDir, filePath)}`,
+				data: await readFile(filePath),
+			}))
+		)
+	);
+
+	await runSandboxCommand(
+		`chmod +x ${shellEscape(`${installPrefix}/bin/sandbox-runtime`)}`,
+		{
+			timeoutMs: 5000,
+			user: "root",
+		}
+	);
+}
+
+async function ensureRuntimeDependenciesInstalled(packageJsonHash: string) {
+	const [remoteHash, hasPlaywright] = await Promise.all([
+		readRemoteText(runtimeDependencyHashPath),
+		remoteFileExists(`${installPrefix}/node_modules/playwright/package.json`),
+	]);
+	if (remoteHash === packageJsonHash && hasPlaywright) {
+		return false;
+	}
+
+	await runSandboxCommand(
+		"PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --omit=dev --no-package-lock",
+		{
+			timeoutMs: 120_000,
+			cwd: installPrefix,
+			user: "root",
+		}
+	);
+	await sandbox.files.write([
+		{
+			path: runtimeDependencyHashPath,
+			data: Buffer.from(packageJsonHash, "utf8"),
+		},
+	]);
+	return true;
 }
 
 async function installAndRestartRuntime() {
@@ -274,38 +359,14 @@ async function installAndRestartRuntime() {
 		spaceSlug,
 		sandboxId,
 	});
-
-	let installPrefix = `${installRoot}/dev-local`;
-	let installSource = remoteTarballPath;
-	let installLabel = "local-tarball";
-
-	if (requestedVersion) {
-		installPrefix = `${installRoot}/${requestedVersion}`;
-		installSource = `@isaacdyor/sandbox-runtime@${requestedVersion}`;
-		installLabel = requestedVersion;
-	} else {
-		const packResult = await packSandboxRuntimePackage();
-		const tarballData = await readFile(packResult.tarballPath);
-		await sandbox.files.write([
-			{
-				path: remoteTarballPath,
-				data: tarballData,
-			},
-		]);
-		console.log(`[packed] ${packResult.tarballPath}`);
-	}
-
-	await runSandboxCommand(
-		createInstallCommand({
-			source: installSource,
-			prefix: installPrefix,
-		}),
-		{
-			timeoutMs: 120_000,
-			cwd: "/",
-			user: "root",
-		}
+	const buildResult = await buildSandboxRuntimePackage();
+	const packageJsonHash = await sha256Hex(
+		await readFile(buildResult.packageJsonPath)
 	);
+
+	await syncRuntimePackageFiles(buildResult.stagingDir);
+	const installedDependencies =
+		await ensureRuntimeDependenciesInstalled(packageJsonHash);
 	await runSandboxCommand(
 		`mkdir -p /usr/local/bin && ln -sf ${shellEscape(`${installPrefix}/bin/sandbox-runtime`)} ${shellEscape(activeRuntimeBin)}`,
 		{
@@ -347,7 +408,7 @@ async function installAndRestartRuntime() {
 
 	await waitForRuntimeHealth();
 	console.log(
-		`[synced] ${Date.now() - startedAt}ms (${installLabel} -> ${installPrefix})`
+		`[synced] ${Date.now() - startedAt}ms (direct-sync -> ${installPrefix}${installedDependencies ? ", deps refreshed" : ""})`
 	);
 }
 
