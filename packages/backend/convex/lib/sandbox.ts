@@ -110,7 +110,6 @@ export type BootServerOptions = {
 	command: string;
 	healthUrl: string;
 	workdir?: string;
-	sessionEnv?: Record<string, string>;
 	appendLog?: (chunk: string) => void;
 };
 
@@ -118,8 +117,7 @@ export async function bootServer(
 	sandbox: Sandbox,
 	opts: BootServerOptions
 ): Promise<void> {
-	const { sessionName, command, healthUrl, workdir, sessionEnv, appendLog } =
-		opts;
+	const { sessionName, command, healthUrl, workdir, appendLog } = opts;
 
 	appendLog?.(`Starting ${sessionName} (tmux session)...\n`);
 
@@ -128,14 +126,6 @@ export async function bootServer(
 		sandbox,
 		`tmux new-session -d -s ${sessionName} ${cwdFlag}${quoteShellArg(command)} \\; set-option -t ${sessionName} mouse on \\; set-option -t ${sessionName} status off`
 	);
-	if (sessionEnv) {
-		for (const [name, value] of Object.entries(sessionEnv)) {
-			await runWorkspaceCommand(
-				sandbox,
-				`tmux set-environment -t ${quoteShellArg(sessionName)} ${quoteShellArg(name)} ${quoteShellArg(value)}`
-			);
-		}
-	}
 
 	appendLog?.(`Waiting for ${sessionName} to be ready...\n`);
 

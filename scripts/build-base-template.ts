@@ -6,7 +6,6 @@
 //
 // Reads E2B_API_KEY from apps/server/.env automatically.
 
-import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import acpAgents from "@corporation/config/acp-agent-manifest";
 import { config } from "dotenv";
@@ -26,31 +25,6 @@ if (!apiKey) {
 		"Missing E2B_API_KEY — make sure apps/server/.env contains it"
 	);
 }
-
-// Build sandbox-runtime JS bundle
-console.log("Building sandbox-runtime…");
-const sandboxRuntimeDir = resolve(repoRoot, "apps/sandbox-runtime");
-const sandboxRuntimeBundleDir = resolve(sandboxRuntimeDir, "dist/runtime");
-await rm(sandboxRuntimeBundleDir, { recursive: true, force: true });
-await mkdir(sandboxRuntimeBundleDir, { recursive: true });
-const build = Bun.spawnSync([
-	"bun",
-	"build",
-	resolve(sandboxRuntimeDir, "src/index.ts"),
-	"--outdir",
-	sandboxRuntimeBundleDir,
-	"--target=bun",
-]);
-if (build.exitCode !== 0) {
-	throw new Error(
-		`sandbox-runtime build failed: ${build.stderr.toString().trim()}`
-	);
-}
-const sandboxRuntimeArtifacts = await readdir(sandboxRuntimeBundleDir);
-if (sandboxRuntimeArtifacts.length === 0) {
-	throw new Error("sandbox-runtime build produced no artifacts");
-}
-console.log("sandbox-runtime built.");
 
 const installCommands = Array.from(
 	new Set(
@@ -96,18 +70,7 @@ let template = Template({ fileContextPath: repoRoot })
 	)
 	.runCmd(
 		`mkdir -p /home/${SANDBOX_USER}/.local/bin /home/${SANDBOX_USER}/.local/share/corporation && chown -R ${SANDBOX_USER}:${SANDBOX_USER} /home/${SANDBOX_USER}/.local`
-	);
-
-for (const artifact of sandboxRuntimeArtifacts) {
-	const remoteArtifactName =
-		artifact === "index.js" ? "sandbox-runtime.js" : artifact;
-	template = template.copy(
-		`apps/sandbox-runtime/dist/runtime/${artifact}`,
-		`/usr/local/bin/${remoteArtifactName}`
-	);
-}
-
-template = template
+	)
 	.setUser(SANDBOX_USER)
 	.setWorkdir(SANDBOX_WORKDIR)
 	.runCmd(

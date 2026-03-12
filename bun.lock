@@ -95,7 +95,6 @@
         "jose": "catalog:",
         "nanoid": "catalog:",
         "octokit": "catalog:",
-        "sandbox-runtime": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {

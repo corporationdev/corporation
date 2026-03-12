@@ -66,6 +66,47 @@ bun run dev
 Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
 Your app will connect to the Convex cloud backend automatically.
 
+## Sandbox Runtime
+
+`sandbox-runtime` now ships as a packaged artifact instead of being baked into the E2B base template.
+
+Build or pack the runtime artifact locally:
+
+```bash
+bun build:sandbox-runtime
+bun pack:sandbox-runtime
+```
+
+Publish the packaged runtime to npm:
+
+```bash
+bun publish:sandbox-runtime
+```
+
+Production sandboxes install the checked-in pinned runtime version from `packages/backend/convex/lib/sandbox-runtime.ts`. Bumping that constant rolls new and resumed sandboxes forward without rebuilding the base template.
+
+### Runtime Dev
+
+The default sandbox-runtime workflow is remote-first against a real E2B sandbox:
+
+```bash
+bun dev:sandbox-runtime:remote <sandbox-id>
+```
+
+That command packs the current runtime, uploads the tarball to the target sandbox, installs it into the versioned runtime prefix, relinks `/usr/local/bin/sandbox-runtime`, restarts the runtime, and tails the logs.
+
+To validate a published npm version exactly as production installs it:
+
+```bash
+bun dev:sandbox-runtime:remote <sandbox-id> --version 1.0.1 --no-watch
+```
+
+A local helper still exists for protocol debugging:
+
+```bash
+bun dev:sandbox-runtime:local --base-url http://127.0.0.1:8787 --space-slug my-space
+```
+
 ## Git Hooks and Formatting
 
 - Format and lint fix: `bun run check`

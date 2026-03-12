@@ -52,7 +52,7 @@ function shell(cmd: string): Promise<{ stdout: string; stderr: string }> {
 export async function runDesktopMcp(): Promise<void> {
 	const server = new McpServer({
 		name: "desktop",
-		version: "1.0.0",
+		version: "1.0.1",
 	});
 
 	server.registerTool(

@@ -30,8 +30,13 @@
     "fix:force": "ultracite fix --unsafe",
     "db:generate": "turbo db:generate",
     "setup": "bun scripts/setup.ts",
+    "build:sandbox-runtime": "bun scripts/build-sandbox-runtime.ts",
+    "pack:sandbox-runtime": "bun scripts/pack-sandbox-runtime.ts",
+    "publish:sandbox-runtime": "bun scripts/publish-sandbox-runtime.ts",
     "dev:sandbox-runtime": "bun scripts/dev-sandbox-runtime.ts",
     "sandbox:create-agent-install": "bun scripts/create-agent-install-sandbox.ts",
+    "dev:sandbox-runtime:remote": "bun scripts/dev-sandbox-runtime.ts",
+    "dev:sandbox-runtime:local": "bun scripts/dev-sandbox-runtime-local.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:agents": "bun scripts/generate-acp-agents.ts",
     "auth:generate": "turbo -F @corporation/backend auth:generate"

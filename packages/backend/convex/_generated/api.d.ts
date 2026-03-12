@@ -26,6 +26,7 @@ import type * as lib_patch from "../lib/patch.js";
 import type * as lib_projectAccess from "../lib/projectAccess.js";
 import type * as lib_projectSecrets from "../lib/projectSecrets.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
+import type * as lib_sandboxRuntime from "../lib/sandboxRuntime.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
 import type * as organizations from "../organizations.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   "lib/projectAccess": typeof lib_projectAccess;
   "lib/projectSecrets": typeof lib_projectSecrets;
   "lib/sandbox": typeof lib_sandbox;
+  "lib/sandboxRuntime": typeof lib_sandboxRuntime;
   "lib/validSecrets": typeof lib_validSecrets;
   nangoWebhook: typeof nangoWebhook;
   organizations: typeof organizations;
