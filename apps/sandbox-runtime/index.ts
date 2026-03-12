@@ -1,3 +1,4 @@
+import type { RequestPermissionOutcome } from "@agentclientprotocol/sdk";
 import type { RuntimeEvent, TurnStopReason } from "./runtime-events";
 
 export type SessionId = string;
@@ -47,6 +48,11 @@ export type ResolvedStartTurnInput = {
 
 export type EventSink = (event: RuntimeEvent) => void;
 
+export type RespondToPermissionRequestInput = {
+	requestId: string;
+	outcome: RequestPermissionOutcome;
+};
+
 export type RunTurnResult = {
 	stopReason?: TurnStopReason;
 };
@@ -62,6 +68,9 @@ export type AgentDriver = {
 		emit: EventSink
 	): Promise<RunTurnResult | void>;
 	cancel?(turnId: TurnId): Promise<void>;
+	respondToPermissionRequest?(
+		input: RespondToPermissionRequestInput
+	): Promise<boolean>;
 };
 
 type SessionState = {
@@ -287,6 +296,12 @@ export class RuntimeEngine {
 			turnId,
 		});
 		return true;
+	}
+
+	async respondToPermissionRequest(
+		input: RespondToPermissionRequestInput
+	): Promise<boolean> {
+		return (await this.driver.respondToPermissionRequest?.(input)) ?? false;
 	}
 
 	getTurn(turnId: TurnId): RuntimeTurn | undefined {

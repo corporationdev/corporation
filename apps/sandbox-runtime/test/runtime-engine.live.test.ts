@@ -41,6 +41,12 @@ describe("RuntimeEngine Live", () => {
 						notify(method, params) {
 							return connection.notify(method, params);
 						},
+						respondToPermissionRequest(requestId, response) {
+							return connection.respondToPermissionRequest(
+								requestId,
+								response
+							);
+						},
 						subscribe(listener) {
 							return connection.subscribe(listener);
 						},

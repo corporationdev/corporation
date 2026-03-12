@@ -15,6 +15,7 @@ import {
 	type NewSessionResponse,
 	type PromptRequest,
 	type PromptResponse,
+	type RequestPermissionResponse,
 	type RequestPermissionRequest,
 	type ResumeSessionRequest,
 	type ResumeSessionResponse,
@@ -31,6 +32,7 @@ import type {
 	CreateSessionInput,
 	EventSink,
 	ResolvedStartTurnInput,
+	RespondToPermissionRequestInput,
 	RunTurnResult,
 	SessionDynamicConfig,
 	SessionId,
@@ -112,6 +114,10 @@ export type AcpConnection = {
 		method: typeof AGENT_METHODS.session_cancel,
 		params: CancelNotification
 	): Promise<void>;
+	respondToPermissionRequest(
+		requestId: string,
+		response: RequestPermissionResponse
+	): Promise<void>;
 	subscribe(listener: (event: AcpInboundEvent) => void): () => void;
 	close?(): Promise<void>;
 };
@@ -156,6 +162,10 @@ async function applyDynamicConfig(
 export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 	const sessions = new Map<SessionId, AcpSession>();
 	const turnToSession = new Map<TurnId, SessionId>();
+	const permissionRequests = new Map<
+		string,
+		{ sessionId: SessionId; connection: AcpConnection }
+	>();
 
 	return {
 		async createSession(input: CreateSessionInput): Promise<void> {
@@ -198,6 +208,7 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 			}
 
 			turnToSession.set(input.turnId, input.sessionId);
+			const runPermissionRequestIds = new Set<string>();
 			const unsubscribe = session.connection.subscribe((event) => {
 				switch (event.type) {
 					case "session_update":
@@ -216,6 +227,11 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 						if (event.request.sessionId !== session.acpSessionId) {
 							return;
 						}
+						runPermissionRequestIds.add(event.requestId);
+						permissionRequests.set(event.requestId, {
+							sessionId: input.sessionId,
+							connection: session.connection,
+						});
 						emit(
 							normalizeAcpPermissionRequest(
 								input.sessionId,
@@ -248,6 +264,9 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 			} finally {
 				unsubscribe();
 				turnToSession.delete(input.turnId);
+				for (const requestId of runPermissionRequestIds) {
+					permissionRequests.delete(requestId);
+				}
 			}
 		},
 
@@ -263,6 +282,21 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 			await session.connection.notify(AGENT_METHODS.session_cancel, {
 				sessionId: session.acpSessionId,
 			});
+		},
+
+		async respondToPermissionRequest(
+			input: RespondToPermissionRequestInput
+		): Promise<boolean> {
+			const pending = permissionRequests.get(input.requestId);
+			if (!pending) {
+				return false;
+			}
+
+			await pending.connection.respondToPermissionRequest(input.requestId, {
+				outcome: input.outcome,
+			});
+			permissionRequests.delete(input.requestId);
+			return true;
 		},
 	};
 }

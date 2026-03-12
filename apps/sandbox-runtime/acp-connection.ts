@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import type {
 	AGENT_METHODS,
 	CancelNotification,
+	RequestPermissionResponse,
 } from "@agentclientprotocol/sdk";
 import { CLIENT_METHODS } from "@agentclientprotocol/sdk";
 import {
@@ -278,6 +279,18 @@ export function createSpawnedAcpConnectionFactory(): AcpConnectionFactory {
 						jsonrpc: "2.0",
 						method,
 						params,
+					} satisfies AcpEnvelope);
+					return Promise.resolve();
+				},
+
+				respondToPermissionRequest(
+					requestId: string,
+					response: RequestPermissionResponse
+				): Promise<void> {
+					writeEnvelope({
+						jsonrpc: "2.0",
+						id: requestId,
+						result: response,
 					} satisfies AcpEnvelope);
 					return Promise.resolve();
 				},

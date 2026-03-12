@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	AGENT_METHODS,
 	type PromptResponse,
+	type RequestPermissionResponse,
 } from "@agentclientprotocol/sdk";
 import {
 	type AcpInboundEvent,
@@ -20,6 +21,10 @@ type RequestCall = {
 function createFakeConnection(sessionId: string) {
 	const requestCalls: RequestCall[] = [];
 	const notifyCalls: RequestCall[] = [];
+	const permissionResponses: Array<{
+		requestId: string;
+		response: RequestPermissionResponse;
+	}> = [];
 	const listeners = new Set<(event: AcpInboundEvent) => void>();
 	const connection: AcpConnection = {
 		request<M extends AcpRequestMethod>(
@@ -44,6 +49,10 @@ function createFakeConnection(sessionId: string) {
 			notifyCalls.push({ method, params });
 			return Promise.resolve();
 		},
+		respondToPermissionRequest(requestId, response) {
+			permissionResponses.push({ requestId, response });
+			return Promise.resolve();
+		},
 		subscribe(listener) {
 			listeners.add(listener);
 			return () => {
@@ -56,6 +65,7 @@ function createFakeConnection(sessionId: string) {
 		connection,
 		requestCalls,
 		notifyCalls,
+		permissionResponses,
 		emit(event: AcpInboundEvent) {
 			for (const listener of listeners) {
 				listener(event);
@@ -445,5 +455,155 @@ describe("createAcpDriver", () => {
 				params: { sessionId: "acp-1" },
 			},
 		]);
+	});
+
+	test("responds to a pending permission request on the correct ACP connection", async () => {
+		const fake = createFakeConnection("acp-1");
+		let releasePrompt!: () => void;
+		const promptFinished = new Promise<PromptResponse>((resolve) => {
+			releasePrompt = () => resolve({ stopReason: "end_turn" });
+		});
+		fake.connection.request = <M extends AcpRequestMethod>(
+			method: M,
+			params: AcpRequestMap[M]["params"]
+		): Promise<AcpRequestMap[M]["result"]> => {
+			fake.requestCalls.push({ method, params });
+			switch (method) {
+				case "initialize":
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+				case "session/new":
+					return Promise.resolve({ sessionId: "acp-1" } as AcpRequestMap[M]["result"]);
+				case AGENT_METHODS.session_prompt:
+					fake.emit({
+						type: "permission_request",
+						requestId: "perm-1",
+						request: {
+							sessionId: "acp-1",
+							options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+							toolCall: {
+								toolCallId: "tool-1",
+								title: "Read file",
+								status: "pending",
+							},
+						},
+					});
+					return promptFinished.then(
+						(result) => result as AcpRequestMap[M]["result"]
+					);
+				default:
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+			}
+		};
+
+		const driver = createAcpDriver({
+			connect() {
+				return Promise.resolve(fake.connection);
+			},
+		});
+		await driver.createSession?.({
+			sessionId: "session-1",
+			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
+			dynamicConfig: {},
+		});
+
+		const running = driver.run(
+			{
+				sessionId: "session-1",
+				turnId: "turn-1",
+				prompt: [{ type: "text", text: "hello" }],
+				dynamicConfig: {},
+			},
+			() => undefined
+		);
+		await Promise.resolve();
+
+		expect(
+			await driver.respondToPermissionRequest?.({
+				requestId: "perm-1",
+				outcome: { outcome: "selected", optionId: "opt-1" },
+			})
+		).toBe(true);
+		expect(
+			await driver.respondToPermissionRequest?.({
+				requestId: "missing",
+				outcome: { outcome: "cancelled" },
+			})
+		).toBe(false);
+
+		releasePrompt();
+		await running;
+
+		expect(fake.permissionResponses).toEqual([
+			{
+				requestId: "perm-1",
+				response: {
+					outcome: { outcome: "selected", optionId: "opt-1" },
+				},
+			},
+		]);
+	});
+
+	test("cleans up pending permission requests after the turn finishes", async () => {
+		const fake = createFakeConnection("acp-1");
+		fake.connection.request = <M extends AcpRequestMethod>(
+			method: M,
+			params: AcpRequestMap[M]["params"]
+		): Promise<AcpRequestMap[M]["result"]> => {
+			fake.requestCalls.push({ method, params });
+			switch (method) {
+				case "initialize":
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+				case "session/new":
+					return Promise.resolve({ sessionId: "acp-1" } as AcpRequestMap[M]["result"]);
+				case AGENT_METHODS.session_prompt:
+					fake.emit({
+						type: "permission_request",
+						requestId: "perm-1",
+						request: {
+							sessionId: "acp-1",
+							options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+							toolCall: {
+								toolCallId: "tool-1",
+								title: "Read file",
+								status: "pending",
+							},
+						},
+					});
+					return Promise.resolve({
+						stopReason: "end_turn",
+					} as AcpRequestMap[M]["result"]);
+				default:
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+			}
+		};
+
+		const driver = createAcpDriver({
+			connect() {
+				return Promise.resolve(fake.connection);
+			},
+		});
+		await driver.createSession?.({
+			sessionId: "session-1",
+			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
+			dynamicConfig: {},
+		});
+
+		await driver.run(
+			{
+				sessionId: "session-1",
+				turnId: "turn-1",
+				prompt: [{ type: "text", text: "hello" }],
+				dynamicConfig: {},
+			},
+			() => undefined
+		);
+
+		expect(
+			await driver.respondToPermissionRequest?.({
+				requestId: "perm-1",
+				outcome: { outcome: "selected", optionId: "opt-1" },
+			})
+		).toBe(false);
+		expect(fake.permissionResponses).toEqual([]);
 	});
 });

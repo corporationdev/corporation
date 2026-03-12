@@ -242,4 +242,45 @@ describe("RuntimeEngine", () => {
 		expect(cancelledTurnIds).toEqual([runningTurnId]);
 		expect(engine.getTurn(runningTurnId)?.status).toBe("cancelled");
 	});
+
+	test("delegates permission responses to the driver", async () => {
+		const permissionInputs: Array<{
+			requestId: string;
+			outcome: unknown;
+		}> = [];
+		const engine = new RuntimeEngine(
+			{
+				run: () => Promise.resolve(undefined),
+				respondToPermissionRequest: (input) => {
+					permissionInputs.push(input);
+					return Promise.resolve(input.requestId === "perm-1");
+				},
+			},
+			() => undefined
+		);
+
+		expect(
+			await engine.respondToPermissionRequest({
+				requestId: "perm-1",
+				outcome: { outcome: "selected", optionId: "opt-1" },
+			})
+		).toBe(true);
+		expect(
+			await engine.respondToPermissionRequest({
+				requestId: "missing",
+				outcome: { outcome: "cancelled" },
+			})
+		).toBe(false);
+
+		expect(permissionInputs).toEqual([
+			{
+				requestId: "perm-1",
+				outcome: { outcome: "selected", optionId: "opt-1" },
+			},
+			{
+				requestId: "missing",
+				outcome: { outcome: "cancelled" },
+			},
+		]);
+	});
 });
