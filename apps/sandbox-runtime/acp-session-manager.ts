@@ -175,17 +175,20 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 			}
 
 			turnToSession.set(input.turnId, input.sessionId);
+			try {
+				await applyDynamicConfig(
+					session.connection,
+					session.acpSessionId,
+					input.dynamicConfig
+				);
 
-			await applyDynamicConfig(
-				session.connection,
-				session.acpSessionId,
-				input.dynamicConfig
-			);
-
-			await session.connection.request(AGENT_METHODS.session_prompt, {
-				sessionId: session.acpSessionId,
-				prompt: input.prompt,
-			});
+				await session.connection.request(AGENT_METHODS.session_prompt, {
+					sessionId: session.acpSessionId,
+					prompt: input.prompt,
+				});
+			} finally {
+				turnToSession.delete(input.turnId);
+			}
 		},
 
 		async cancel(turnId: TurnId): Promise<void> {

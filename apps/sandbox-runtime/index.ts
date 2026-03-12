@@ -64,6 +64,10 @@ export type EventSink = (event: RuntimeEvent) => void;
 
 export type AgentDriver = {
 	createSession?(input: CreateSessionInput): Promise<void>;
+	updateSessionConfig?(
+		sessionId: SessionId,
+		dynamicConfig: SessionDynamicConfig
+	): Promise<void>;
 	run(input: ResolvedStartTurnInput, emit: EventSink): Promise<void>;
 	cancel?(turnId: TurnId): Promise<void>;
 };
@@ -128,6 +132,41 @@ function getConfigDiff(
 	return diff;
 }
 
+function cloneStaticConfig(
+	config: SessionStaticConfig
+): SessionStaticConfig {
+	return { ...config };
+}
+
+function cloneDynamicConfig(
+	config: SessionDynamicConfig
+): SessionDynamicConfig {
+	return {
+		...config,
+		...(config.configOptions
+			? { configOptions: { ...config.configOptions } }
+			: {}),
+	};
+}
+
+function mergeDynamicConfig(
+	current: SessionDynamicConfig,
+	next: SessionDynamicConfig
+): SessionDynamicConfig {
+	return {
+		...current,
+		...next,
+		...(current.configOptions || next.configOptions
+			? {
+					configOptions: {
+						...(current.configOptions ?? {}),
+						...(next.configOptions ?? {}),
+					},
+			  }
+			: {}),
+	};
+}
+
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
@@ -148,16 +187,21 @@ export class RuntimeEngine {
 			throw new Error(`Session ${input.sessionId} already exists`);
 		}
 
-		await this.driver.createSession?.(input);
+		const createSessionInput: CreateSessionInput = {
+			sessionId: input.sessionId,
+			staticConfig: cloneStaticConfig(input.staticConfig),
+			dynamicConfig: cloneDynamicConfig(input.dynamicConfig),
+		};
+		await this.driver.createSession?.(createSessionInput);
 
 		const session: SessionState = {
 			sessionId: input.sessionId,
 			activeTurnId: null,
-			staticConfig: input.staticConfig,
-			dynamicConfig: input.dynamicConfig,
+			staticConfig: cloneStaticConfig(createSessionInput.staticConfig),
+			dynamicConfig: cloneDynamicConfig(createSessionInput.dynamicConfig),
 		};
 		this.sessions.set(input.sessionId, session);
-		return session;
+		return this.getSession(input.sessionId) as RuntimeSession;
 	}
 
 	async startTurn(input: StartTurnInput): Promise<TurnId> {
@@ -177,12 +221,6 @@ export class RuntimeEngine {
 			session.dynamicConfig,
 			input.dynamicConfig
 		);
-		if (configDiff) {
-			session.dynamicConfig = {
-				...session.dynamicConfig,
-				...input.dynamicConfig,
-			};
-		}
 
 		const turnState: TurnState = {
 			turnId,
@@ -198,6 +236,14 @@ export class RuntimeEngine {
 		});
 
 		try {
+			if (configDiff) {
+				await this.driver.updateSessionConfig?.(input.sessionId, configDiff);
+				session.dynamicConfig = mergeDynamicConfig(
+					session.dynamicConfig,
+					configDiff
+				);
+			}
+
 			await this.driver.run(
 				{
 					sessionId: input.sessionId,
@@ -266,8 +312,8 @@ export class RuntimeEngine {
 		return {
 			sessionId: session.sessionId,
 			activeTurnId: session.activeTurnId,
-			staticConfig: session.staticConfig,
-			dynamicConfig: session.dynamicConfig,
+			staticConfig: cloneStaticConfig(session.staticConfig),
+			dynamicConfig: cloneDynamicConfig(session.dynamicConfig),
 		};
 	}
 
@@ -277,6 +323,9 @@ export class RuntimeEngine {
 }
 
 export const noopDriver: AgentDriver = {
+	async updateSessionConfig() {
+		await Promise.resolve();
+	},
 	async run(input, emit) {
 		emit({
 			type: "turn.progress",
