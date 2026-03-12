@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
+import { packSandboxRuntimePackage } from "../../../scripts/lib/sandbox-runtime-package";
 import { LOCAL_PROXY_LOG_PATH, LOCAL_PROXY_STDERR_PATH } from "../src/proxy";
 import { buildLocalProxyEnv, getLocalProxyConfig } from "../src/proxy-config";
 
@@ -26,7 +27,9 @@ const apiKey = process.env.E2B_API_KEY;
 const template = process.env.E2B_BASE_TEMPLATE_ID || "corporation-base";
 const runtimePort = 5799;
 const runtimeSessionName = "sandbox-runtime-test";
-const remoteBundlePath = "/tmp/sandbox-runtime.integration.js";
+const remoteTarballPath = "/tmp/corporation-sandbox-runtime.tgz";
+const remoteRuntimeBinPath = "/usr/local/bin/sandbox-runtime";
+const remoteInstallPrefix = "/opt/corporation/sandbox-runtime/test";
 const runtimeLogPath = "/tmp/sandbox-runtime.integration.log";
 const runtimeStderrPath = "/tmp/sandbox-runtime.integration.stderr.log";
 
@@ -75,24 +78,8 @@ describeIf("sandbox-runtime proxy integration", () => {
 	let tempDir: string | null = null;
 
 	beforeAll(async () => {
-		const entrypoint = resolve(packageDir, "src/index.ts");
 		tempDir = await mkdtemp(resolve(tmpdir(), "sandbox-runtime-test-"));
-		const bundleDir = resolve(tempDir, "sandbox-runtime");
-
-		await mkdir(resolve(packageDir, "dist"), { recursive: true });
-		await mkdir(bundleDir, { recursive: true });
-
-		const build = Bun.spawnSync([
-			"bun",
-			"build",
-			entrypoint,
-			"--outdir",
-			bundleDir,
-			"--target=bun",
-		]);
-		if (build.exitCode !== 0) {
-			throw new Error(build.stderr.toString().trim() || "bun build failed");
-		}
+		const packResult = await packSandboxRuntimePackage();
 
 		sandbox = await Sandbox.create(template, {
 			apiKey,
@@ -100,17 +87,17 @@ describeIf("sandbox-runtime proxy integration", () => {
 			network: { allowPublicTraffic: true },
 		});
 
-		const bundleArtifacts = await readdir(bundleDir);
-		const bundleWrites = await Promise.all(
-			bundleArtifacts.map(async (artifact) => {
-				const localPath = resolve(bundleDir, artifact);
-				const remotePath =
-					artifact === "index.js" ? remoteBundlePath : `/tmp/${artifact}`;
-				const bundleData = await readFile(localPath);
-				return { path: remotePath, data: new Blob([bundleData]) };
-			})
+		const tarballData = await readFile(packResult.tarballPath);
+		await sandbox.files.write([
+			{ path: remoteTarballPath, data: new Blob([tarballData]) },
+		]);
+		await sandbox.commands.run(
+			`npm install -g --prefix '${remoteInstallPrefix}' '${remoteTarballPath}' && mkdir -p /usr/local/bin && ln -sf '${remoteInstallPrefix}/bin/sandbox-runtime' '${remoteRuntimeBinPath}'`,
+			{
+				timeoutMs: 120_000,
+				user: "root",
+			}
 		);
-		await sandbox.files.write(bundleWrites);
 
 		await sandbox.commands.run(
 			`tmux kill-session -t ${runtimeSessionName} || true`,
@@ -128,7 +115,7 @@ describeIf("sandbox-runtime proxy integration", () => {
 			}
 		);
 		await sandbox.commands.run(
-			`tmux new-session -d -s ${runtimeSessionName} "bun ${remoteBundlePath} --host 0.0.0.0 --port ${runtimePort} >> ${runtimeLogPath} 2>> ${runtimeStderrPath}"`,
+			`tmux new-session -d -s ${runtimeSessionName} "${remoteRuntimeBinPath} --host 0.0.0.0 --port ${runtimePort} >> ${runtimeLogPath} 2>> ${runtimeStderrPath}"`,
 			{ timeoutMs: 5000 }
 		);
 

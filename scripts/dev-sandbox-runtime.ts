@@ -1,19 +1,16 @@
 #!/usr/bin/env bun
 
-/**
- * Build, sync, and (optionally) watch sandbox-runtime on a running sandbox.
- *
- * Usage:
- *   bun scripts/dev-sandbox-runtime.ts <sandbox-id>              # build + sync + watch
- *   bun scripts/dev-sandbox-runtime.ts <sandbox-id> --no-watch   # build + sync once
- */
-
-import { existsSync, watch } from "node:fs";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { watch } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import process from "node:process";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
+import {
+	getSandboxRuntimeSourceDir,
+	getSandboxRuntimeStagingDir,
+	packSandboxRuntimePackage,
+} from "./lib/sandbox-runtime-package";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 config({
@@ -28,8 +25,20 @@ config({
 });
 
 const encoder = new TextEncoder();
+const sandboxRuntimeDir = getSandboxRuntimeSourceDir();
+const sandboxRuntimeDistDir = getSandboxRuntimeStagingDir();
+const runtimeSessionName = "sandbox-agent";
+const runtimeLogPath = "/tmp/sandbox-runtime.log";
+const runtimeStderrPath = "/tmp/sandbox-runtime.stderr.log";
+const proxyLogPath = "/tmp/corporation-mitmproxy.log";
+const activeRuntimeBin = "/usr/local/bin/sandbox-runtime";
+const installRoot = "/opt/corporation/sandbox-runtime";
+const remoteTarballPath = "/tmp/corporation-sandbox-runtime.tgz";
+const sandboxUser = "user";
+const sandboxWorkdir = "/workspace";
+const runtimePort = 5799;
 
-function base64url(input: string): string {
+function base64url(input: string) {
 	return btoa(input)
 		.replaceAll("+", "-")
 		.replaceAll("/", "_")
@@ -39,11 +48,11 @@ function base64url(input: string): string {
 async function createDevRefreshToken(params: {
 	spaceSlug: string;
 	sandboxId: string;
-}): Promise<string> {
+}) {
 	const secret = process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
 	if (!secret) {
 		throw new Error(
-			"Missing CORPORATION_RUNTIME_AUTH_SECRET — set it in apps/server/.env"
+			"Missing CORPORATION_RUNTIME_AUTH_SECRET. Set it in apps/server/.env."
 		);
 	}
 
@@ -78,9 +87,22 @@ async function createDevRefreshToken(params: {
 	return `${signingInput}.${base64url(signatureBinary)}`;
 }
 
+function shellEscape(value: string) {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 const argv = process.argv.slice(2);
+const sandboxId = argv.find((arg, index) => {
+	if (arg.startsWith("--")) {
+		return false;
+	}
+	const previous = argv[index - 1];
+	return previous !== "--version";
+});
 const noWatch = argv.includes("--no-watch");
-const sandboxId = argv.find((arg) => !arg.startsWith("--"));
+const versionFlagIndex = argv.indexOf("--version");
+const requestedVersion =
+	versionFlagIndex >= 0 ? argv[versionFlagIndex + 1]?.trim() : undefined;
 
 if (!sandboxId) {
 	console.error(
@@ -89,147 +111,60 @@ if (!sandboxId) {
 			"Usage:",
 			"  bun scripts/dev-sandbox-runtime.ts <sandbox-id>",
 			"  bun scripts/dev-sandbox-runtime.ts <sandbox-id> --no-watch",
+			"  bun scripts/dev-sandbox-runtime.ts <sandbox-id> --version <x.y.z> --no-watch",
 		].join("\n")
 	);
 	process.exit(1);
 }
+
+if (versionFlagIndex >= 0 && !requestedVersion) {
+	console.error("Missing version value after --version");
+	process.exit(1);
+}
+
+if (requestedVersion && !noWatch) {
+	console.error("--version is a one-shot validation mode. Add --no-watch.");
+	process.exit(1);
+}
+
 if (!process.env.E2B_API_KEY) {
 	console.error(
-		[
-			"Missing E2B_API_KEY.",
-			"Set it in your environment or add it to apps/server/.env (the script auto-loads that file).",
-		].join("\n")
+		"Missing E2B_API_KEY. Set it in your environment or apps/server/.env."
 	);
 	process.exit(1);
 }
-
-const sandboxRuntimeDir = [
-	resolve(repoRoot, "apps/sandbox-runtime"),
-	resolve(repoRoot, "packages/sandbox-runtime"),
-].find((path) => existsSync(path));
-
-const bundleDir = resolve(sandboxRuntimeDir, "dist/runtime");
-const setupPath = resolve(sandboxRuntimeDir, "setup.sh");
-const remoteBundlePath = "/usr/local/bin/sandbox-runtime.js";
-const remoteSetupPath = "/usr/local/bin/sandbox-runtime-setup.sh";
-const runtimeLogPath = "/tmp/sandbox-runtime.log";
-const runtimeStderrPath = "/tmp/sandbox-runtime.stderr.log";
-const runtimeSessionName = "sandbox-agent";
-
-const entrypoint = resolve(sandboxRuntimeDir, "src/index.ts");
-const buildCmd = [
-	"bun",
-	"build",
-	entrypoint,
-	"--outdir",
-	bundleDir,
-	"--target=bun",
-];
 
 const sandbox = await Sandbox.connect(sandboxId);
 
 let syncing = false;
 let pendingSync = false;
-let logTailTimer: ReturnType<typeof setInterval> | null = null;
-let logOffset = 0;
-let proxyLogTailTimer: ReturnType<typeof setInterval> | null = null;
-let proxyLogOffset = 0;
-const proxyLogPath = "/tmp/corporation-mitmproxy.log";
+let tailTimer: ReturnType<typeof setInterval> | null = null;
+const logOffsets = new Map<string, number>();
 
-function shellEscape(value: string): string {
-	return `'${value.replaceAll("'", "'\\''")}'`;
+async function runSandboxCommand(
+	command: string,
+	options: Omit<
+		NonNullable<Parameters<Sandbox["commands"]["run"]>[1]>,
+		"user"
+	> & { user?: "root" | "user" } = {}
+) {
+	return await sandbox.commands.run(command, {
+		timeoutMs: options.timeoutMs,
+		cwd: options.cwd,
+		envs: options.envs,
+		user: options.user ?? "root",
+	});
 }
 
-function startTailing() {
-	logOffset = 0;
-	logTailTimer = setInterval(async () => {
-		try {
-			const result = await sandbox.commands.run(
-				"wc -c < /tmp/sandbox-runtime.log 2>/dev/null || echo 0",
-				{ timeoutMs: 3000 }
-			);
-			const size = Number.parseInt(result.stdout.trim(), 10);
-			if (size > logOffset) {
-				const chunk = await sandbox.commands.run(
-					`tail -c +${logOffset + 1} /tmp/sandbox-runtime.log`,
-					{ timeoutMs: 3000 }
-				);
-				process.stdout.write(chunk.stdout);
-				logOffset = size;
-			}
-		} catch {
-			// sandbox might be busy
-		}
-	}, 1000);
-
-	proxyLogOffset = 0;
-	proxyLogTailTimer = setInterval(async () => {
-		try {
-			const result = await sandbox.commands.run(
-				`wc -c < ${proxyLogPath} 2>/dev/null || echo 0`,
-				{ timeoutMs: 3000 }
-			);
-			const size = Number.parseInt(result.stdout.trim(), 10);
-			if (size > proxyLogOffset) {
-				const chunk = await sandbox.commands.run(
-					`tail -c +${proxyLogOffset + 1} ${proxyLogPath}`,
-					{ timeoutMs: 3000 }
-				);
-				process.stdout.write(chunk.stdout);
-				proxyLogOffset = size;
-			}
-		} catch {
-			// sandbox might be busy
-		}
-	}, 1000);
-}
-
-function stopTailing() {
-	if (logTailTimer) {
-		clearInterval(logTailTimer);
-		logTailTimer = null;
-	}
-	if (proxyLogTailTimer) {
-		clearInterval(proxyLogTailTimer);
-		proxyLogTailTimer = null;
-	}
-}
-
-async function getSandboxServerUrl(): Promise<string | null> {
-	if (process.env.CORPORATION_SERVER_URL?.trim()) {
-		return process.env.CORPORATION_SERVER_URL.trim();
-	}
-
-	const result = await sandbox.commands
-		.run("printenv CORPORATION_SERVER_URL", { timeoutMs: 5000 })
-		.then((output) => output.stdout.trim())
-		.catch(() => "");
-
-	return result || null;
-}
-
-async function getSandboxRuntimeEnv(name: string): Promise<string> {
+async function getSandboxEnv(name: string) {
 	const localValue = process.env[name]?.trim();
 	if (localValue) {
 		return localValue;
 	}
 
-	const tmuxValue = await sandbox.commands
-		.run(
-			`tmux show-environment -t ${runtimeSessionName} ${shellEscape(name)} 2>/dev/null || true`,
-			{ timeoutMs: 5000 }
-		)
-		.then((output) => output.stdout.trim())
-		.catch(() => "");
-	if (tmuxValue.startsWith(`${name}=`)) {
-		const value = tmuxValue.slice(`${name}=`.length).trim();
-		if (value) {
-			return value;
-		}
-	}
-
-	const envValue = await sandbox.commands
-		.run(`printenv ${shellEscape(name)}`, { timeoutMs: 5000 })
+	const envValue = await runSandboxCommand(`printenv ${shellEscape(name)}`, {
+		timeoutMs: 5000,
+	})
 		.then((output) => output.stdout.trim())
 		.catch(() => "");
 	if (envValue) {
@@ -237,22 +172,66 @@ async function getSandboxRuntimeEnv(name: string): Promise<string> {
 	}
 
 	throw new Error(
-		[
-			`Unable to determine ${name} for sandbox-runtime dev sync.`,
-			`Provision a fresh sandbox after the runtime auth changes, or set ${name} locally before running \`bun dev:sandbox-runtime\`.`,
-		].join("\n")
+		`Unable to determine ${name} for sandbox-runtime remote dev.`
 	);
 }
 
-async function waitForRuntimeHealth(): Promise<void> {
-	const deadline = Date.now() + 15_000;
+function startTailing() {
+	for (const path of [runtimeLogPath, runtimeStderrPath, proxyLogPath]) {
+		logOffsets.set(path, 0);
+	}
+
+	tailTimer = setInterval(async () => {
+		for (const path of [runtimeLogPath, runtimeStderrPath, proxyLogPath]) {
+			try {
+				const currentOffset = logOffsets.get(path) ?? 0;
+				const sizeResult = await runSandboxCommand(
+					`wc -c < ${shellEscape(path)} 2>/dev/null || echo 0`,
+					{ timeoutMs: 3000 }
+				);
+				const size = Number.parseInt(sizeResult.stdout.trim(), 10);
+				if (size > currentOffset) {
+					const chunk = await runSandboxCommand(
+						`tail -c +${currentOffset + 1} ${shellEscape(path)}`,
+						{ timeoutMs: 3000 }
+					);
+					process.stdout.write(chunk.stdout);
+					logOffsets.set(path, size);
+				}
+			} catch {
+				// Best effort tailing while the sandbox restarts.
+			}
+		}
+	}, 1000);
+}
+
+function stopTailing() {
+	if (tailTimer) {
+		clearInterval(tailTimer);
+		tailTimer = null;
+	}
+}
+
+function triggerSync() {
+	syncRuntime().catch((error) => {
+		console.error(
+			`[sync failed] ${error instanceof Error ? error.message : String(error)}`
+		);
+	});
+}
+
+async function waitForRuntimeHealth() {
+	const deadline = Date.now() + 20_000;
 	let lastError: unknown = null;
 
 	while (Date.now() < deadline) {
 		try {
-			await sandbox.commands.run("curl -sf http://localhost:5799/health", {
-				timeoutMs: 3000,
-			});
+			await runSandboxCommand(
+				`curl -sf http://localhost:${runtimePort}/health`,
+				{
+					timeoutMs: 3000,
+				}
+			);
 			return;
 		} catch (error) {
 			lastError = error;
@@ -260,23 +239,21 @@ async function waitForRuntimeHealth(): Promise<void> {
 		}
 	}
 
-	const tmuxSession = await sandbox.commands
-		.run(`tmux has-session -t ${runtimeSessionName}`, { timeoutMs: 3000 })
-		.then(() => "tmux session exists")
-		.catch(() => "tmux session missing");
-	const stderrOutput = await sandbox.commands
-		.run(`cat ${runtimeStderrPath}`, { timeoutMs: 3000 })
+	const stderrOutput = await runSandboxCommand(
+		`cat ${shellEscape(runtimeStderrPath)}`,
+		{
+			timeoutMs: 3000,
+		}
+	)
 		.then((result) => result.stdout.trim())
 		.catch(() => "");
-
-	const reason =
-		lastError instanceof Error
-			? lastError.message
-			: String(lastError ?? "unknown");
 	throw new Error(
 		[
-			`sandbox-runtime did not become healthy: ${reason}`,
-			tmuxSession,
+			`sandbox-runtime did not become healthy: ${
+				lastError instanceof Error
+					? lastError.message
+					: String(lastError ?? "unknown")
+			}`,
 			stderrOutput ? `stderr: ${stderrOutput}` : null,
 		]
 			.filter(Boolean)
@@ -284,7 +261,97 @@ async function waitForRuntimeHealth(): Promise<void> {
 	);
 }
 
-async function buildAndSync() {
+function createInstallCommand(input: { source: string; prefix: string }) {
+	return `mkdir -p ${shellEscape(input.prefix)} && npm install -g --prefix ${shellEscape(input.prefix)} ${shellEscape(input.source)}`;
+}
+
+async function installAndRestartRuntime() {
+	const startedAt = Date.now();
+	const serverUrl = await getSandboxEnv("CORPORATION_SERVER_URL");
+	const convexSiteUrl = await getSandboxEnv("CORPORATION_CONVEX_SITE_URL");
+	const spaceSlug = await getSandboxEnv("CORPORATION_SPACE_SLUG");
+	const refreshToken = await createDevRefreshToken({
+		spaceSlug,
+		sandboxId,
+	});
+
+	let installPrefix = `${installRoot}/dev-local`;
+	let installSource = remoteTarballPath;
+	let installLabel = "local-tarball";
+
+	if (requestedVersion) {
+		installPrefix = `${installRoot}/${requestedVersion}`;
+		installSource = `@isaacdyor/sandbox-runtime@${requestedVersion}`;
+		installLabel = requestedVersion;
+	} else {
+		const packResult = await packSandboxRuntimePackage();
+		const tarballData = await readFile(packResult.tarballPath);
+		await sandbox.files.write([
+			{
+				path: remoteTarballPath,
+				data: tarballData,
+			},
+		]);
+		console.log(`[packed] ${packResult.tarballPath}`);
+	}
+
+	await runSandboxCommand(
+		createInstallCommand({
+			source: installSource,
+			prefix: installPrefix,
+		}),
+		{
+			timeoutMs: 120_000,
+			cwd: "/",
+			user: "root",
+		}
+	);
+	await runSandboxCommand(
+		`mkdir -p /usr/local/bin && ln -sf ${shellEscape(`${installPrefix}/bin/sandbox-runtime`)} ${shellEscape(activeRuntimeBin)}`,
+		{
+			timeoutMs: 5000,
+			user: "root",
+		}
+	);
+	await runSandboxCommand(`test -x ${shellEscape(activeRuntimeBin)}`, {
+		timeoutMs: 5000,
+		user: "root",
+	});
+
+	await runSandboxCommand(
+		`tmux kill-session -t ${shellEscape(runtimeSessionName)} || true`,
+		{
+			timeoutMs: 5000,
+			cwd: sandboxWorkdir,
+			user: sandboxUser,
+		}
+	);
+	await runSandboxCommand(`fuser -k ${runtimePort}/tcp 2>/dev/null || true`, {
+		timeoutMs: 5000,
+		user: "root",
+	});
+	await runSandboxCommand(`: > ${runtimeLogPath}; : > ${runtimeStderrPath}`, {
+		timeoutMs: 3000,
+		cwd: sandboxWorkdir,
+		user: sandboxUser,
+	});
+
+	const runtimeCommand = `CORPORATION_SERVER_URL=${shellEscape(serverUrl)} CORPORATION_CONVEX_SITE_URL=${shellEscape(convexSiteUrl)} CORPORATION_SPACE_SLUG=${shellEscape(spaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${shellEscape(refreshToken)} CORPORATION_SANDBOX_ID=${shellEscape(sandboxId)} ${activeRuntimeBin} --host 0.0.0.0 --port ${runtimePort} >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}`;
+	await runSandboxCommand(
+		`tmux new-session -d -s ${shellEscape(runtimeSessionName)} -c ${shellEscape(sandboxWorkdir)} ${shellEscape(runtimeCommand)}`,
+		{
+			timeoutMs: 5000,
+			user: sandboxUser,
+		}
+	);
+
+	await waitForRuntimeHealth();
+	console.log(
+		`[synced] ${Date.now() - startedAt}ms (${installLabel} -> ${installPrefix})`
+	);
+}
+
+async function syncRuntime() {
 	if (syncing) {
 		pendingSync = true;
 		return;
@@ -293,115 +360,14 @@ async function buildAndSync() {
 	stopTailing();
 
 	try {
-		const start = Date.now();
-
-		await rm(bundleDir, { recursive: true, force: true });
-		await mkdir(bundleDir, { recursive: true });
-
-		// Build
-		const build = Bun.spawnSync(buildCmd);
-		if (build.exitCode !== 0) {
-			console.error(`[build failed] ${build.stderr.toString().trim()}`);
-			return;
-		}
-
-		// Stop running process (keep tmux session alive to preserve env)
-		await sandbox.commands.run("fuser -k 5799/tcp 2>/dev/null; true", {
-			timeoutMs: 5000,
-		});
-
-		// Upload bundle artifacts + setup script
-		const [bundleArtifacts, setupData] = await Promise.all([
-			readdir(bundleDir),
-			readFile(setupPath),
-		]);
-		const bundleWrites = await Promise.all(
-			bundleArtifacts.map(async (artifact) => {
-				const localPath = resolve(bundleDir, artifact);
-				const remotePath =
-					artifact === "index.js"
-						? remoteBundlePath
-						: `/usr/local/bin/${artifact}`;
-				return {
-					path: remotePath,
-					data: await readFile(localPath),
-				};
-			})
-		);
-		await sandbox.files.write([
-			...bundleWrites,
-			{ path: remoteSetupPath, data: setupData },
-		]);
-
-		// Run setup
-		await sandbox.commands.run(`bash ${remoteSetupPath}`, {
-			timeoutMs: 60_000,
-		});
-
-		// Truncate log and restart inside existing tmux session
-		await sandbox.commands.run(
-			`: > ${runtimeLogPath}; : > ${runtimeStderrPath}`,
-			{
-				timeoutMs: 3000,
-			}
-		);
-
-		const runtimeCmd = `bun ${shellEscape(remoteBundlePath)} --host 0.0.0.0 --port 5799 >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}`;
-
-		// Check if tmux session exists; reuse it to preserve env vars (auth token etc.)
-		const hasSession = await sandbox.commands
-			.run(`tmux has-session -t ${runtimeSessionName} 2>/dev/null`, {
-				timeoutMs: 3000,
-			})
-			.then(() => true)
-			.catch(() => false);
-
-		if (hasSession) {
-			// Respawn pane in existing session — new process inherits session env
-			// vars (auth token etc.) set via `tmux set-environment`
-			await sandbox.commands.run(
-				`tmux respawn-pane -k -t ${runtimeSessionName} ${shellEscape(runtimeCmd)}`,
-				{ timeoutMs: 5000 }
-			);
-		} else {
-			// First run or session was lost — resolve env vars and mint a fresh token
-			const runtimeServerUrl = await getSandboxServerUrl();
-			const runtimeSpaceSlug = await getSandboxRuntimeEnv(
-				"CORPORATION_SPACE_SLUG"
-			);
-			const runtimeRefreshToken = await createDevRefreshToken({
-				spaceSlug: runtimeSpaceSlug,
-				sandboxId,
-			});
-			// Create session and persist env vars for future respawn-pane reuse
-			await sandbox.commands.run(
-				`tmux new-session -d -s ${shellEscape(runtimeSessionName)} "CORPORATION_SERVER_URL=${shellEscape(runtimeServerUrl ?? "")} CORPORATION_SPACE_SLUG=${shellEscape(runtimeSpaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${shellEscape(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${shellEscape(sandboxId)} ${runtimeCmd}"`,
-				{ timeoutMs: 5000 }
-			);
-			// Persist into tmux session env so respawn-pane inherits them
-			for (const [name, value] of Object.entries({
-				CORPORATION_SERVER_URL: runtimeServerUrl ?? "",
-				CORPORATION_SPACE_SLUG: runtimeSpaceSlug,
-				CORPORATION_RUNTIME_REFRESH_TOKEN: runtimeRefreshToken,
-				CORPORATION_SANDBOX_ID: sandboxId,
-			})) {
-				await sandbox.commands.run(
-					`tmux set-environment -t ${shellEscape(runtimeSessionName)} ${shellEscape(name)} ${shellEscape(value)}`,
-					{ timeoutMs: 3000 }
-				);
-			}
-		}
-		await waitForRuntimeHealth();
-
-		const elapsed = Date.now() - start;
-		console.log(`[synced] ${elapsed}ms`);
-
+		await installAndRestartRuntime();
 		if (!noWatch) {
 			startTailing();
 		}
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : String(error);
-		console.error(`[sync failed] ${msg}`);
+		console.error(
+			`[sync failed] ${error instanceof Error ? error.message : String(error)}`
+		);
 		if (noWatch) {
 			process.exit(1);
 		}
@@ -409,32 +375,32 @@ async function buildAndSync() {
 		syncing = false;
 		if (pendingSync) {
 			pendingSync = false;
-			buildAndSync();
+			triggerSync();
 		}
 	}
 }
 
-// Initial build + sync
-await buildAndSync();
+await syncRuntime();
 
 if (noWatch) {
 	console.log("Done (--no-watch).");
 	process.exit(0);
 }
 
-// Watch for changes — debounce rapid saves
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
 console.log(
-	`[watching] ${relative(repoRoot, sandboxRuntimeDir)}/ → sandbox ${sandboxId}`
+	`[watching] ${relative(repoRoot, sandboxRuntimeDir)}/ -> sandbox ${sandboxId}`
 );
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 watch(sandboxRuntimeDir, { recursive: true }, (_event, filename) => {
 	if (!filename) {
 		return;
 	}
-	// Skip dist/ output and dotfiles
-	if (filename.startsWith("dist/") || filename.startsWith(".")) {
+	if (
+		filename.startsWith(relative(sandboxRuntimeDir, sandboxRuntimeDistDir)) ||
+		filename.startsWith("dist/") ||
+		filename.startsWith(".")
+	) {
 		return;
 	}
 
@@ -443,6 +409,6 @@ watch(sandboxRuntimeDir, { recursive: true }, (_event, filename) => {
 	}
 	debounceTimer = setTimeout(() => {
 		console.log(`[changed] ${filename}`);
-		buildAndSync();
+		triggerSync();
 	}, 200);
 });
