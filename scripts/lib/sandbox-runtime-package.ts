@@ -4,6 +4,7 @@ import { basename, resolve } from "node:path";
 const repoRoot = resolve(import.meta.dirname, "../..");
 const runtimeSourceDir = resolve(repoRoot, "apps/sandbox-runtime");
 const runtimeSourcePackageJsonPath = resolve(runtimeSourceDir, "package.json");
+const runtimeEntrypointPath = resolve(runtimeSourceDir, "index.ts");
 const stagingDir = resolve(runtimeSourceDir, "dist/npm-package");
 const packageName = "@isaacdyor/sandbox-runtime";
 
@@ -101,7 +102,7 @@ export async function buildSandboxRuntimePackage(
 		[
 			"bun",
 			"build",
-			resolve(runtimeSourceDir, "src/index.ts"),
+			runtimeEntrypointPath,
 			"--outdir",
 			resolve(stagingDir, "dist"),
 			"--target=bun",

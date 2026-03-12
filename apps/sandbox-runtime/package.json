@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./proxy": "./src/proxy.ts",
-    "./schemas": "./src/schemas.ts"
+    ".": "./index.ts",
+    "./proxy": "./legacy/src/proxy.ts",
+    "./schemas": "./legacy/src/schemas.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
