@@ -6,6 +6,11 @@ import { internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import {
+	credentialEnabledAgents,
+	restoreAgentCredentialBundle,
+	type StoredAgentCredentialBundle,
+} from "./lib/agentCredentialBundles";
+import {
 	BASE_TEMPLATE,
 	bootServer,
 	runWorkspaceCommand,
@@ -192,6 +197,30 @@ async function createSandbox(
 	});
 }
 
+async function restoreUserAgentCredentials(
+	ctx: ActionCtx,
+	sandbox: Sandbox,
+	userId: string
+) {
+	for (const agent of credentialEnabledAgents) {
+		const storedCredential = await ctx.runAction(
+			internal.agentCredentialActions.resolveForUser,
+			{
+				userId,
+				agentId: agent.id,
+			}
+		);
+		if (!storedCredential) {
+			continue;
+		}
+
+		const bundle = JSON.parse(
+			storedCredential.bundle
+		) as StoredAgentCredentialBundle;
+		await restoreAgentCredentialBundle(sandbox, bundle);
+	}
+}
+
 async function resolveSandbox(
 	ctx: ActionCtx,
 	space: Space,
@@ -238,10 +267,14 @@ async function resolveSandbox(
 		status: "creating" as const,
 	});
 
-	return await createSandbox(sourceSnapshotId, projectEnvs, {
+	const sandbox = await createSandbox(sourceSnapshotId, projectEnvs, {
 		spaceOwnerId,
 		spaceSlug: space.slug,
 	});
+
+	await restoreUserAgentCredentials(ctx, sandbox, spaceOwnerId);
+
+	return sandbox;
 }
 
 export const archiveSandbox = internalAction({

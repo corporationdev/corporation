@@ -153,9 +153,16 @@ export function spawnStdioBridge(
 	// Write agent-specific config files before spawning
 	writeAgentConfigs(agent);
 
+	const homeDir = process.env.HOME ?? "/home/user";
+	const inheritedPath =
+		process.env.PATH ??
+		"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+	const runtimePath = `${homeDir}/.local/bin:${inheritedPath}`;
+
 	const proc = Bun.spawn(cmd, {
 		env: {
 			...process.env,
+			PATH: runtimePath,
 			...buildLocalProxyEnv(),
 			IS_SANDBOX: "1",
 		},

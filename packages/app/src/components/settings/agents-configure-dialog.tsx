@@ -1,14 +1,15 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import acpAgents, {
 	type AcpAgentManifestEntry,
+	supportsAgentCredentials,
 } from "@corporation/config/acp-agent-manifest";
 import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation as useTanstackMutation } from "@tanstack/react-query";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
 	CheckIcon,
 	ChevronDownIcon,
 	CopyIcon,
-	DownloadIcon,
 	Loader2Icon,
 	RefreshCwIcon,
 } from "lucide-react";
@@ -26,16 +27,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAgentProbeState } from "@/hooks/use-agent-probe-state";
 import { useSpaceActor } from "@/hooks/use-space-actor";
 import { deriveAgentModels } from "@/lib/agent-config-options";
-import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import { cn } from "@/lib/utils";
 
 function getAgentProbeStatusLabel(
+	agent: AcpAgentManifestEntry,
 	status: AgentProbeAgent["status"] | undefined,
 	isChecking: boolean
 ) {
+	if (!supportsAgentCredentials(agent)) {
+		return "Not supported yet";
+	}
+
 	switch (status) {
 		case "verified":
-			return "Configured";
+			return "Connected";
 		case "requires_auth":
 			return "Needs auth";
 		case "error":
@@ -43,34 +48,25 @@ function getAgentProbeStatusLabel(
 		case "not_installed":
 			return "Not installed";
 		default:
-			return isChecking ? "Checking..." : null;
+			return isChecking ? "Checking..." : "Not connected";
 	}
 }
 
 function AgentListItem({
 	agent,
 	isChecking,
-	isConnected,
-	isInstalling,
-	onInstall,
 	probe,
 }: {
 	agent: AcpAgentManifestEntry;
 	isChecking: boolean;
-	isConnected: boolean;
-	isInstalling: boolean;
-	onInstall: (agent: AcpAgentManifestEntry) => void;
 	probe?: AgentProbeAgent;
 }) {
 	const [showModels, setShowModels] = useState(false);
 	const derivedModels = deriveAgentModels(probe?.configOptions);
-	const statusLabel = getAgentProbeStatusLabel(probe?.status, isChecking);
-	const showInstallButton =
-		(typeof agent.nativeInstallCommand === "string" ||
-			typeof agent.acpInstallCommand === "string") &&
-		(!probe || probe.status === "not_installed");
+	const statusLabel = getAgentProbeStatusLabel(agent, probe?.status, isChecking);
 	const models = derivedModels.models;
 	const showModelsToggle = models.length > 0;
+	const isConnected = probe?.status === "verified";
 
 	return (
 		<Collapsible onOpenChange={setShowModels} open={showModels}>
@@ -86,7 +82,7 @@ function AgentListItem({
 					<div className="min-w-0 flex-1">
 						<div className="flex items-center gap-2">
 							<span className="min-w-0 truncate text-[13px]">{agent.name}</span>
-							{probe?.status === "verified" ? (
+							{isConnected ? (
 								<CheckIcon className="size-3.5 shrink-0 text-emerald-500" />
 							) : null}
 						</div>
@@ -109,21 +105,6 @@ function AgentListItem({
 								)}
 							/>
 						</CollapsibleTrigger>
-					) : null}
-					{showInstallButton ? (
-						<button
-							className="shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-muted-foreground/20 disabled:opacity-50 group-hover:opacity-100"
-							disabled={!isConnected || isInstalling}
-							onClick={() => onInstall(agent)}
-							title={`Install ${agent.name}`}
-							type="button"
-						>
-							{isInstalling ? (
-								<Loader2Icon className="size-3.5 animate-spin" />
-							) : (
-								<DownloadIcon className="size-3.5" />
-							)}
-						</button>
 					) : null}
 				</div>
 				{probe?.error && probe.status === "error" ? (
@@ -157,26 +138,29 @@ function AgentListItem({
 export function AgentsConfigureDialog({
 	onOpenChange,
 	open,
+	storedAgents,
 }: {
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
+	storedAgents: Array<{ id: string; configOptions: unknown[] }>;
 }) {
 	const workspaceState = useQuery(api.userWorkspace.getWorkspaceState);
 	const configure = useMutation(api.userWorkspace.configure);
-	const { mutate: saveUserSpace, isPending: isSaving } =
-		useConvexTanstackMutation(api.userWorkspace.save, {
-			onSuccess: () => {
-				toast.success("Agent configuration saved");
-				onOpenChange(false);
-			},
-			onError: (error) => {
-				toast.error(error.message);
-			},
+	const saveUserSpaceAction = useAction(api.userWorkspaceActions.save);
+	const { mutateAsync: saveUserSpace, isPending: isSaving } = useTanstackMutation({
+		mutationFn: (args: {
+			agents: Array<{ id: string; configOptions: unknown[] }>;
+		}) => saveUserSpaceAction(args),
+		onSuccess: () => {
+			toast.success("Agent configuration saved");
+			onOpenChange(false);
+		},
+		onError: (error) => {
+			toast.error(error.message);
+		},
 		});
 	const [configureError, setConfigureError] = useState<string | null>(null);
-	const [installingAgentId, setInstallingAgentId] = useState<string | null>(
-		null
-	);
+	const [isVerifyingBeforeSave, setIsVerifyingBeforeSave] = useState(false);
 	const hasRequestedConfigureRef = useRef(false);
 
 	const startConfigure = useCallback(async () => {
@@ -194,7 +178,6 @@ export function AgentsConfigureDialog({
 		if (!open) {
 			hasRequestedConfigureRef.current = false;
 			setConfigureError(null);
-			setInstallingAgentId(null);
 			return;
 		}
 
@@ -220,101 +203,157 @@ export function AgentsConfigureDialog({
 		data: agentProbeData,
 		error: agentProbeError,
 		isLoading: isAgentProbeLoading,
+		isChecking: isAgentChecking,
 		refresh: refreshAgentProbe,
 	} = useAgentProbeState({
 		actor,
 		spaceSlug: agent?.slug ?? "",
 		enabled: open && isSandboxReady && isConnected,
 	});
+	const manifestById = useMemo(
+		() =>
+			new Map(
+				acpAgents.map((manifestAgent) => [manifestAgent.id, manifestAgent])
+			),
+		[]
+	);
+	const supportedAgents = useMemo(
+		() =>
+			acpAgents.filter((manifestAgent) =>
+				supportsAgentCredentials(manifestAgent)
+			),
+		[]
+	);
+	const supportedAgentIds = useMemo(
+		() => new Set(supportedAgents.map((manifestAgent) => manifestAgent.id)),
+		[supportedAgents]
+	);
+	const renderedAgents = supportedAgents;
+	const renderedAgentIds = useMemo(
+		() => renderedAgents.map((manifestAgent) => manifestAgent.id),
+		[renderedAgents]
+	);
 
-	const installAgent = useCallback(
-		async (manifestAgent: AcpAgentManifestEntry) => {
-			if (!actor.connection) {
+	const probeByManifestId = useMemo(
+		() => {
+			const merged = Object.fromEntries(
+				(agentProbeData?.agents ?? []).map((probeAgent) => [
+					probeAgent.id,
+					probeAgent,
+				])
+			) as Record<string, AgentProbeAgent>;
+
+			for (const storedAgent of storedAgents) {
+				if (merged[storedAgent.id]) {
+					continue;
+				}
+
+				const manifestAgent = manifestById.get(storedAgent.id);
+				merged[storedAgent.id] = {
+					authCheckedAt: null,
+					configOptions: storedAgent.configOptions,
+					error: null,
+					id: storedAgent.id,
+					name: manifestAgent?.name ?? storedAgent.id,
+					status: "verified",
+					verifiedAt: null,
+				};
+			}
+
+			return merged;
+		},
+		[agentProbeData?.agents, manifestById, storedAgents]
+	);
+	const handleSave = useCallback(async () => {
+		setIsVerifyingBeforeSave(true);
+		try {
+			const latestProbeResult = await refreshAgentProbe(renderedAgentIds);
+			if (!latestProbeResult) {
+				toast.error("Failed to verify agent connections");
 				return;
 			}
 
-			setInstallingAgentId(manifestAgent.id);
-			try {
-				if (manifestAgent.nativeInstallCommand) {
-					const terminalInstallCommand = [
-						'export PATH="$HOME/.local/bin:$PATH"',
-						manifestAgent.nativeInstallCommand,
-						"hash -r",
-					].join("\n");
-					await actor.connection.runCommand(terminalInstallCommand, false);
-				}
-				if (manifestAgent.acpInstallCommand) {
-					await actor.connection.runCommand(
-						manifestAgent.acpInstallCommand,
-						true
-					);
-				}
-				window.setTimeout(() => {
-					refreshAgentProbe();
-				}, 1000);
-			} catch (error) {
-				console.error("Failed to start agent install", error);
-				toast.error(`Failed to install ${manifestAgent.name}`);
-			} finally {
-				setInstallingAgentId(null);
-			}
-		},
-		[actor.connection, refreshAgentProbe]
-	);
-
-	const handleSave = useCallback(() => {
-		const agentsToSave = (agentProbeData?.agents ?? [])
+			const agentsToSave = latestProbeResult.agents
 			.filter(
 				(probe): probe is typeof probe & { configOptions: unknown[] } =>
-					probe.status === "verified" && Array.isArray(probe.configOptions)
+					probe.status === "verified" &&
+					Array.isArray(probe.configOptions) &&
+					supportedAgentIds.has(probe.id)
 			)
 			.map((probe) => ({
 				id: probe.id,
 				configOptions: probe.configOptions,
 			}));
 
-		saveUserSpace({
-			agents: agentsToSave,
-		});
-	}, [agentProbeData?.agents, saveUserSpace]);
-
-	const probeByManifestId = useMemo(
+			await saveUserSpace({
+				agents: agentsToSave,
+			});
+		} finally {
+			setIsVerifyingBeforeSave(false);
+		}
+	}, [refreshAgentProbe, renderedAgentIds, saveUserSpace, supportedAgentIds]);
+	const hasSupportedConnectedAgents = useMemo(
 		() =>
-			Object.fromEntries(
-				(agentProbeData?.agents ?? []).map((probeAgent) => [
-					probeAgent.id,
-					probeAgent,
-				])
-			),
-		[agentProbeData?.agents]
+			Object.values(probeByManifestId).some((probe) => {
+				const manifestAgent = manifestById.get(probe.id);
+				return (
+					manifestAgent !== undefined &&
+					supportsAgentCredentials(manifestAgent) &&
+					probe.status === "verified" &&
+					Array.isArray(probe.configOptions)
+				);
+			}),
+		[manifestById, probeByManifestId]
 	);
 	const showReadyState = !!agent && isSandboxReady && isConnected;
 	const showErrorState =
 		open &&
 		workspaceState !== undefined &&
 		(agent?.status === "error" || configureError !== null);
+	const sandboxId = agent?.sandboxId;
 
 	return (
 		<Dialog onOpenChange={onOpenChange} open={open}>
-			<DialogContent className="sm:max-w-7xl">
+			<DialogContent className="flex h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-7xl">
 				{showReadyState ? (
 					<>
-						<div className="flex h-[70vh] gap-4">
+						<div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
 							<div className="min-w-0 flex-1 overflow-hidden rounded-lg border">
 								<PtyTerminal actor={actor} spaceSlug={agent.slug} />
 							</div>
 
-							<div className="w-72 shrink-0 rounded-lg border bg-muted/30">
+							<div className="flex w-72 shrink-0 flex-col rounded-lg border bg-muted/30">
 								<div className="px-3 py-2.5">
 									<div className="flex items-center justify-between gap-2">
-										<h2 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-											Agents
-										</h2>
+										<div>
+											<h2 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+												Agents
+											</h2>
+											<div className="mt-1 text-muted-foreground text-xs">
+												These agents are preinstalled in every sandbox.
+											</div>
+										</div>
 										<div className="flex items-center gap-1">
-											{agent.sandboxId ? (
+											<Button
+												disabled={renderedAgentIds.length === 0}
+												onClick={() => {
+													refreshAgentProbe(renderedAgentIds);
+												}}
+												size="icon"
+												title="Refresh visible agents"
+												variant="ghost"
+											>
+												<RefreshCwIcon
+													className={cn(
+														"size-3.5",
+														isAgentProbeLoading && "animate-spin"
+													)}
+												/>
+											</Button>
+											{sandboxId ? (
 												<Button
 													onClick={() => {
-														navigator.clipboard.writeText(agent.sandboxId!);
+														navigator.clipboard.writeText(sandboxId);
 														toast.success("Sandbox ID copied");
 													}}
 													size="icon"
@@ -324,36 +363,21 @@ export function AgentsConfigureDialog({
 													<CopyIcon className="size-3" />
 												</Button>
 											) : null}
-											<Button
-												disabled={!(isConnected && isSandboxReady)}
-												onClick={() => refreshAgentProbe(true)}
-												size="icon"
-												variant="ghost"
-											>
-												<RefreshCwIcon
-													className={`size-3 ${
-														isAgentProbeLoading ? "animate-spin" : ""
-													}`}
-												/>
-											</Button>
 										</div>
 									</div>
 								</div>
-								<ScrollArea className="h-[calc(70vh-37px)]">
+								<ScrollArea className="min-h-0 flex-1">
 									<div className="flex flex-col gap-0.5 px-2 pb-2">
 										{agentProbeError ? (
 											<div className="px-2 py-1 text-muted-foreground text-xs/relaxed">
 												{agentProbeError}
 											</div>
 										) : null}
-										{acpAgents.map((manifestAgent) => (
+										{renderedAgents.map((manifestAgent) => (
 											<AgentListItem
 												agent={manifestAgent}
-												isChecking={isAgentProbeLoading}
-												isConnected={isConnected}
-												isInstalling={installingAgentId === manifestAgent.id}
+												isChecking={isAgentChecking(manifestAgent.id)}
 												key={manifestAgent.id}
-												onInstall={installAgent}
 												probe={probeByManifestId[manifestAgent.id]}
 											/>
 										))}
@@ -361,7 +385,7 @@ export function AgentsConfigureDialog({
 								</ScrollArea>
 							</div>
 						</div>
-						<div className="flex justify-end gap-2">
+						<div className="relative z-10 flex shrink-0 justify-end gap-2 border-t bg-background pt-4">
 							<Button
 								onClick={() => onOpenChange(false)}
 								size="sm"
@@ -369,8 +393,16 @@ export function AgentsConfigureDialog({
 							>
 								Close
 							</Button>
-							<Button disabled={isSaving} onClick={handleSave} size="sm">
-								{isSaving ? (
+							<Button
+								disabled={
+									isSaving || isVerifyingBeforeSave || !hasSupportedConnectedAgents
+								}
+								onClick={() => {
+									handleSave().catch(() => undefined);
+								}}
+								size="sm"
+							>
+								{isSaving || isVerifyingBeforeSave ? (
 									<>
 										<Loader2Icon className="size-4 animate-spin" />
 										Saving

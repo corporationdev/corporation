@@ -1,26 +1,19 @@
-import type { AgentProbeResponse } from "@corporation/contracts/sandbox-do";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+	AgentProbeAgent,
+	AgentProbeResponse,
+} from "@corporation/contracts/sandbox-do";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SpaceActor } from "@/lib/space-client";
 
-const RUNTIME_UNAVAILABLE_MESSAGE = "Sandbox runtime is unavailable";
-const RUNTIME_UNAVAILABLE_RETRY_MS = 2000;
-
-function isRuntimeUnavailableProbe(probe: AgentProbeResponse | undefined) {
-	if (!probe) {
-		return false;
+function mergeProbeAgents(
+	current: Record<string, AgentProbeAgent>,
+	next: AgentProbeAgent[]
+) {
+	const merged = { ...current };
+	for (const agent of next) {
+		merged[agent.id] = agent;
 	}
-
-	const agentsWithRuntimeCommands = probe.agents.filter(
-		(agent) => agent.error || agent.status === "error"
-	);
-
-	return (
-		agentsWithRuntimeCommands.length > 0 &&
-		agentsWithRuntimeCommands.every(
-			(agent) =>
-				agent.status === "error" && agent.error === RUNTIME_UNAVAILABLE_MESSAGE
-		)
-	);
+	return merged;
 }
 
 export function useAgentProbeState({
@@ -32,44 +25,82 @@ export function useAgentProbeState({
 	spaceSlug: string;
 	enabled: boolean;
 }) {
-	const queryClient = useQueryClient();
-	const probeQueryKey = [
-		"agentProbeState",
-		spaceSlug,
-		actor.connStatus === "connected" ? "connected" : "disconnected",
-	];
+	const [probeById, setProbeById] = useState<Record<string, AgentProbeAgent>>(
+		{}
+	);
+	const [checkingById, setCheckingById] = useState<Record<string, boolean>>({});
+	const [lastProbedAt, setLastProbedAt] = useState<number | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const resetScope = spaceSlug;
 
-	const { data, error, isFetching, isLoading } = useQuery<AgentProbeResponse>({
-		queryKey: probeQueryKey,
-		queryFn: async () => {
-			if (!actor.connection) {
-				throw new Error("Space connection unavailable");
+	useEffect(() => {
+		setProbeById({});
+		setCheckingById({});
+		setLastProbedAt(null);
+		setError(null);
+	}, [resetScope]);
+
+	const refresh = useCallback(
+		async (ids: string[]) => {
+			const uniqueIds = [...new Set(ids)];
+			if (
+				!enabled ||
+				uniqueIds.length === 0 ||
+				actor.connStatus !== "connected" ||
+				!actor.connection
+			) {
+				return;
 			}
-			return (await actor.connection.getAgentProbeState()) as AgentProbeResponse;
-		},
-		enabled: enabled && actor.connStatus === "connected" && !!actor.connection,
-		refetchInterval: (query) =>
-			isRuntimeUnavailableProbe(query.state.data)
-				? RUNTIME_UNAVAILABLE_RETRY_MS
-				: false,
-		refetchIntervalInBackground: true,
-	});
 
-	return {
-		data: data ?? null,
-		error:
-			error instanceof Error
-				? error.message
-				: error
-					? "Failed to load agent status"
-					: null,
-		isLoading: isLoading || isFetching,
-		refresh: (force = true) => {
-			if (force) {
-				queryClient.invalidateQueries({
-					queryKey: probeQueryKey,
+			setError(null);
+			setCheckingById((current) => ({
+				...current,
+				...Object.fromEntries(uniqueIds.map((id) => [id, true])),
+			}));
+
+			try {
+				const result = (await actor.connection.probeAgents(
+					uniqueIds
+				)) as AgentProbeResponse;
+				setProbeById((current) => mergeProbeAgents(current, result.agents));
+				setLastProbedAt(result.probedAt);
+				return result;
+			} catch (nextError) {
+				setError(
+					nextError instanceof Error
+						? nextError.message
+						: "Failed to load agent status"
+				);
+				return null;
+			} finally {
+				setCheckingById((current) => {
+					const next = { ...current };
+					for (const id of uniqueIds) {
+						delete next[id];
+					}
+					return next;
 				});
 			}
 		},
+		[actor.connection, actor.connStatus, enabled]
+	);
+
+	const data = useMemo(
+		() =>
+			lastProbedAt === null
+				? null
+				: ({
+						probedAt: lastProbedAt,
+						agents: Object.values(probeById),
+					} satisfies AgentProbeResponse),
+		[lastProbedAt, probeById]
+	);
+
+	return {
+		data,
+		error,
+		isLoading: Object.keys(checkingById).length > 0,
+		isChecking: (id: string) => checkingById[id] === true,
+		refresh,
 	};
 }

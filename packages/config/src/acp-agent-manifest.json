@@ -20,7 +20,24 @@
       "args": []
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0') >/tmp/corporation-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/corporation-acp-claude-acp.log\\n\"",
-    "installSource": "https://docs.anthropic.com/en/docs/claude-code/setup"
+    "installSource": "https://docs.anthropic.com/en/docs/claude-code/setup",
+    "credentialSupport": "supported",
+    "credentialBundle": {
+      "schemaVersion": 1,
+      "paths": [
+        {
+          "path": "$HOME/.claude.json",
+          "kind": "file",
+          "required": true
+        },
+        {
+          "path": "$HOME/.claude/.credentials.json",
+          "kind": "file",
+          "required": true
+        }
+      ]
+    },
+    "unsupportedReason": null
   },
   {
     "id": "codex-acp",
@@ -69,7 +86,19 @@
       "args": []
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @openai/codex\n(mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\") >/tmp/corporation-acp-codex-acp.log 2>&1 &\nprintf \"Preparing Codex CLI ACP runtime in the background. Logs: /tmp/corporation-acp-codex-acp.log\\n\"",
-    "installSource": "https://github.com/openai/codex"
+    "installSource": "https://github.com/openai/codex",
+    "credentialSupport": "supported",
+    "credentialBundle": {
+      "schemaVersion": 1,
+      "paths": [
+        {
+          "path": "$HOME/.codex/auth.json",
+          "kind": "file",
+          "required": true
+        }
+      ]
+    },
+    "unsupportedReason": null
   },
   {
     "id": "opencode",
@@ -116,7 +145,10 @@
       "args": ["acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/opencode/1.2.24\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/anomalyco/opencode/releases/download/v1.2.24/opencode-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/opencode\"\nln -sf \"$install_dir/opencode\" \"$HOME/.local/bin/opencode\"",
-    "installSource": "https://opencode.ai/docs"
+    "installSource": "https://opencode.ai/docs",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "cursor",
@@ -168,7 +200,10 @@
       "args": ["acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/cursor/0.1.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://anysphere-binaries.s3.amazonaws.com/lab/2026.03.05-2bf2031/linux/x64/agent-cli-package.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/dist-package/cursor-agent\"\nln -sf \"$install_dir/dist-package/cursor-agent\" \"$HOME/.local/bin/cursor-agent\"",
-    "installSource": "https://docs.cursor.com/en/cli/overview"
+    "installSource": "https://docs.cursor.com/en/cli/overview",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "gemini",
@@ -192,20 +227,23 @@
       "args": ["--experimental-acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @google/gemini-cli",
-    "installSource": "https://github.com/google-gemini/gemini-cli"
+    "installSource": "https://github.com/google-gemini/gemini-cli",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "github-copilot-cli",
     "name": "GitHub Copilot",
     "description": "GitHub's AI pair programmer",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/github-copilot-cli.svg",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "repository": "https://github.com/github/copilot-cli",
     "authors": ["GitHub"],
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "@github/copilot@1.0.2",
+        "package": "@github/copilot@1.0.3",
         "args": ["--acp"]
       }
     },
@@ -216,7 +254,10 @@
       "args": ["--acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @github/copilot",
-    "installSource": "https://github.com/github/copilot-cli"
+    "installSource": "https://github.com/github/copilot-cli",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "amp-acp",
@@ -258,7 +299,10 @@
       "args": []
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\ncurl -fsSL https://ampcode.com/install.sh | bash\n(mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/acp/amp-acp/0.7.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/tao12345666333/amp-acp/releases/download/v0.7.0/amp-acp-linux-x86_64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/amp-acp\") >/tmp/corporation-acp-amp-acp.log 2>&1 &\nprintf \"Preparing Amp ACP runtime in the background. Logs: /tmp/corporation-acp-amp-acp.log\\n\"",
-    "installSource": "https://ampcode.com"
+    "installSource": "https://ampcode.com",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "pi-acp",
@@ -280,20 +324,23 @@
       "command": "$HOME/.local/share/corporation/acp/npm/pi-acp/bin/pi-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
-    "installSource": "https://github.com/badlogic/pi-mono/tree/master/packages/coding-agent"
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @mariozechner/pi-coding-agent\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/pi-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/pi-acp\" 'pi-acp@0.0.22') >/tmp/corporation-acp-pi-acp.log 2>&1 &\nprintf \"Preparing pi ACP ACP runtime in the background. Logs: /tmp/corporation-acp-pi-acp.log\\n\"",
+    "installSource": "https://github.com/badlogic/pi-mono/tree/master/packages/coding-agent",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "factory-droid",
     "name": "Factory Droid",
     "description": "Factory Droid - AI coding agent powered by Factory AI",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/factory-droid.svg",
-    "version": "0.70.0",
+    "version": "0.71.0",
     "authors": ["Factory AI"],
     "license": "proprietary",
     "distribution": {
       "npx": {
-        "package": "droid@0.70.0",
+        "package": "droid@0.71.0",
         "args": ["exec", "--output-format", "acp"],
         "env": {
           "DROID_DISABLE_AUTO_UPDATE": "true",
@@ -301,7 +348,7 @@
         }
       }
     },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.70.0'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.71.0'",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/droid",
@@ -311,8 +358,11 @@
         "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
       }
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.70.0'",
-    "installSource": null
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'droid@0.71.0'",
+    "installSource": null,
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "auggie",
@@ -342,7 +392,10 @@
       }
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @augmentcode/auggie",
-    "installSource": "https://www.augmentcode.com/guides/getting-started/installation"
+    "installSource": "https://www.augmentcode.com/guides/getting-started/installation",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "autohand",
@@ -365,7 +418,10 @@
       "args": []
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@autohandai/autohand-acp@0.2.1'",
-    "installSource": "https://github.com/autohandai/autohand-acp"
+    "installSource": "https://github.com/autohandai/autohand-acp",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "cline",
@@ -389,93 +445,10 @@
       "args": ["--acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'cline@2.6.1'",
-    "installSource": "https://github.com/cline/cline"
-  },
-  {
-    "id": "codebuddy-code",
-    "name": "Codebuddy Code",
-    "description": "Tencent Cloud's official intelligent coding tool",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/codebuddy-code.svg",
-    "version": "2.56.1",
-    "repository": "https://www.codebuddy.cn/cli/",
-    "authors": ["Tencent Cloud"],
-    "license": "Proprietary",
-    "distribution": {
-      "npx": {
-        "package": "@tencent-ai/codebuddy-code@2.56.1",
-        "args": ["--acp"]
-      }
-    },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code@2.56.1'",
-    "acpInstallCommand": null,
-    "runtimeCommand": {
-      "command": "$HOME/.local/bin/codebuddy-code",
-      "args": ["--acp"]
-    },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@tencent-ai/codebuddy-code@2.56.1'",
-    "installSource": "https://www.codebuddy.cn/cli/"
-  },
-  {
-    "id": "corust-agent",
-    "name": "Corust Agent",
-    "description": "Co-building with a seasoned Rust partner.",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/corust-agent.svg",
-    "version": "0.3.7",
-    "repository": "https://github.com/Corust-ai/corust-agent-release",
-    "authors": ["Corust AI <support@corust.ai>"],
-    "license": "GPL-3.0-or-later",
-    "distribution": {
-      "binary": {
-        "darwin-aarch64": {
-          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-darwin-arm64.tar.gz",
-          "cmd": "./corust-agent-acp"
-        },
-        "darwin-x86_64": {
-          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-darwin-x64.tar.gz",
-          "cmd": "./corust-agent-acp"
-        },
-        "linux-x86_64": {
-          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-linux-x64.tar.gz",
-          "cmd": "./corust-agent-acp"
-        },
-        "windows-x86_64": {
-          "archive": "https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-windows-x64.zip",
-          "cmd": "./corust-agent-acp.exe"
-        }
-      }
-    },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/corust-agent/0.3.7\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/corust-agent-acp\"\nln -sf \"$install_dir/corust-agent-acp\" \"$HOME/.local/bin/corust-agent-acp\"",
-    "acpInstallCommand": null,
-    "runtimeCommand": {
-      "command": "$HOME/.local/bin/corust-agent-acp",
-      "args": []
-    },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/corust-agent/0.3.7\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Corust-ai/corust-agent-release/releases/download/v0.3.7/agent-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/corust-agent-acp\"\nln -sf \"$install_dir/corust-agent-acp\" \"$HOME/.local/bin/corust-agent-acp\"",
-    "installSource": "https://github.com/Corust-ai/corust-agent-release"
-  },
-  {
-    "id": "crow-cli",
-    "name": "crow-cli",
-    "description": "Minimal ACP Native Coding Agent",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/crow-cli.svg",
-    "version": "0.1.14",
-    "repository": "https://github.com/crow-cli/crow-cli",
-    "authors": ["Thomas Wood"],
-    "license": "Apache-2.0",
-    "distribution": {
-      "uvx": {
-        "package": "crow-cli",
-        "args": ["acp"]
-      }
-    },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'crow-cli'",
-    "acpInstallCommand": null,
-    "runtimeCommand": {
-      "command": "$HOME/.local/bin/crow",
-      "args": ["acp"]
-    },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'crow-cli'",
-    "installSource": "https://github.com/crow-cli/crow-cli"
+    "installSource": "https://github.com/cline/cline",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "dimcode",
@@ -498,31 +471,10 @@
       "args": ["acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" 'dimcode@0.0.16'",
-    "installSource": null
-  },
-  {
-    "id": "fast-agent",
-    "name": "fast-agent",
-    "description": "Code and build agents with comprehensive multi-provider support",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/fast-agent.svg",
-    "version": "0.5.9",
-    "repository": "https://github.com/evalstate/fast-agent",
-    "authors": ["enquiries@fast-agent.ai"],
-    "license": "Apache 2.0",
-    "distribution": {
-      "uvx": {
-        "package": "fast-agent-acp==0.5.9",
-        "args": ["-x"]
-      }
-    },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'fast-agent-acp==0.5.9'",
-    "acpInstallCommand": null,
-    "runtimeCommand": {
-      "command": "$HOME/.local/bin/fast-agent-acp",
-      "args": ["-x"]
-    },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'fast-agent-acp==0.5.9'",
-    "installSource": "https://github.com/evalstate/fast-agent"
+    "installSource": null,
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "goose",
@@ -569,7 +521,10 @@
       "args": ["acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/goose/1.27.2\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/block/goose/releases/download/v1.27.2/goose-x86_64-unknown-linux-gnu.tar.bz2' -o \"$tmp_dir/archive\"\ntar -xjf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/goose\"\nln -sf \"$install_dir/goose\" \"$HOME/.local/bin/goose\"",
-    "installSource": "https://github.com/block/goose"
+    "installSource": "https://github.com/block/goose",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "junie",
@@ -581,70 +536,99 @@
     "authors": ["JetBrains"],
     "license": "proprietary",
     "distribution": {
-      "npx": {
-        "package": "@jetbrains/junie@888.180.0",
-        "args": ["--acp=true"]
+      "binary": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/JetBrains/junie/releases/download/888.180/junie-release-888.180-macos-aarch64.zip",
+          "cmd": "./Applications/junie.app/Contents/MacOS/junie",
+          "args": ["--acp=true"]
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/JetBrains/junie/releases/download/888.180/junie-release-888.180-macos-amd64.zip",
+          "cmd": "./Applications/junie.app/Contents/MacOS/junie",
+          "args": ["--acp=true"]
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/JetBrains/junie/releases/download/888.180/junie-release-888.180-linux-aarch64.zip",
+          "cmd": "./junie-app/bin/junie",
+          "args": ["--acp=true"]
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/JetBrains/junie/releases/download/888.180/junie-release-888.180-linux-amd64.zip",
+          "cmd": "./junie-app/bin/junie",
+          "args": ["--acp=true"]
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/JetBrains/junie/releases/download/888.180/junie-release-888.180-windows-amd64.zip",
+          "cmd": "./junie/junie.exe",
+          "args": ["--acp=true"]
+        }
       }
     },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie@888.180.0'",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/junie/888.180.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/JetBrains/junie/releases/download/888.180/junie-release-888.180-linux-amd64.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/junie-app/bin/junie\"\nln -sf \"$install_dir/junie-app/bin/junie\" \"$HOME/.local/bin/junie\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/junie",
       "args": ["--acp=true"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@jetbrains/junie@888.180.0'",
-    "installSource": "https://github.com/JetBrains/junie"
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/junie/888.180.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/JetBrains/junie/releases/download/888.180/junie-release-888.180-linux-amd64.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/junie-app/bin/junie\"\nln -sf \"$install_dir/junie-app/bin/junie\" \"$HOME/.local/bin/junie\"",
+    "installSource": "https://github.com/JetBrains/junie",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "kilo",
     "name": "Kilo",
     "description": "The open source coding agent",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/kilo.svg",
-    "version": "7.0.40",
+    "version": "7.0.41",
     "repository": "https://github.com/Kilo-Org/kilocode",
     "authors": ["Kilo Code"],
     "license": "MIT",
     "distribution": {
       "binary": {
         "darwin-aarch64": {
-          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-darwin-arm64.zip",
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.41/kilo-darwin-arm64.zip",
           "cmd": "./kilo",
           "args": ["acp"]
         },
         "darwin-x86_64": {
-          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-darwin-x64.zip",
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.41/kilo-darwin-x64.zip",
           "cmd": "./kilo",
           "args": ["acp"]
         },
         "linux-aarch64": {
-          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-linux-arm64.tar.gz",
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.41/kilo-linux-arm64.tar.gz",
           "cmd": "./kilo",
           "args": ["acp"]
         },
         "linux-x86_64": {
-          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-linux-x64.tar.gz",
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.41/kilo-linux-x64.tar.gz",
           "cmd": "./kilo",
           "args": ["acp"]
         },
         "windows-x86_64": {
-          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-windows-x64.zip",
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.0.41/kilo-windows-x64.zip",
           "cmd": "./kilo.exe",
           "args": ["acp"]
         }
       },
       "npx": {
-        "package": "@kilocode/cli@7.0.40",
+        "package": "@kilocode/cli@7.0.41",
         "args": ["acp"]
       }
     },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kilo/7.0.40\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kilo\"\nln -sf \"$install_dir/kilo\" \"$HOME/.local/bin/kilo\"",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kilo/7.0.41\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Kilo-Org/kilocode/releases/download/v7.0.41/kilo-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kilo\"\nln -sf \"$install_dir/kilo\" \"$HOME/.local/bin/kilo\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/kilo",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kilo/7.0.40\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Kilo-Org/kilocode/releases/download/v7.0.40/kilo-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kilo\"\nln -sf \"$install_dir/kilo\" \"$HOME/.local/bin/kilo\"",
-    "installSource": "https://github.com/Kilo-Org/kilocode"
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kilo/7.0.41\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/Kilo-Org/kilocode/releases/download/v7.0.41/kilo-linux-x64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kilo\"\nln -sf \"$install_dir/kilo\" \"$HOME/.local/bin/kilo\"",
+    "installSource": "https://github.com/Kilo-Org/kilocode",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "kimi",
@@ -686,31 +670,10 @@
       "args": ["acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/kimi/1.18.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/MoonshotAI/kimi-cli/releases/download/1.18.0/kimi-1.18.0-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/kimi\"\nln -sf \"$install_dir/kimi\" \"$HOME/.local/bin/kimi\"",
-    "installSource": "https://github.com/MoonshotAI/kimi-cli"
-  },
-  {
-    "id": "minion-code",
-    "name": "Minion Code",
-    "description": "An enhanced AI code assistant built on the Minion framework with rich development tools",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/minion-code.svg",
-    "version": "0.1.39",
-    "repository": "https://github.com/femto/minion-code",
-    "authors": ["femto"],
-    "license": "AGPL-3.0",
-    "distribution": {
-      "uvx": {
-        "package": "minion-code@0.1.39",
-        "args": ["acp"]
-      }
-    },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code@0.1.39'",
-    "acpInstallCommand": null,
-    "runtimeCommand": {
-      "command": "$HOME/.local/bin/minion-code",
-      "args": ["acp"]
-    },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\nuv tool install --force --bin-dir \"$HOME/.local/bin\" 'minion-code@0.1.39'",
-    "installSource": "https://github.com/femto/minion-code"
+    "installSource": "https://github.com/MoonshotAI/kimi-cli",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "mistral-vibe",
@@ -756,31 +719,10 @@
       "args": []
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/mistral-vibe/2.4.0\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/mistralai/mistral-vibe/releases/download/v2.4.0/vibe-acp-linux-x86_64-2.4.0.zip' -o \"$tmp_dir/archive\"\nunzip -q \"$tmp_dir/archive\" -d \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/vibe-acp\"\nln -sf \"$install_dir/vibe-acp\" \"$HOME/.local/bin/vibe-acp\"",
-    "installSource": "https://github.com/mistralai/mistral-vibe"
-  },
-  {
-    "id": "nova",
-    "name": "Nova",
-    "description": "Nova by Compass AI - a fully-fledged software engineer at your command",
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/nova.svg",
-    "version": "1.0.74",
-    "repository": "https://github.com/Compass-Agentic-Platform/nova",
-    "authors": ["Compass AI"],
-    "license": "proprietary",
-    "distribution": {
-      "npx": {
-        "package": "@compass-ai/nova@1.0.74",
-        "args": ["acp"]
-      }
-    },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova@1.0.74'",
-    "acpInstallCommand": null,
-    "runtimeCommand": {
-      "command": "$HOME/.local/bin/nova",
-      "args": ["acp"]
-    },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@compass-ai/nova@1.0.74'",
-    "installSource": "https://github.com/Compass-Agentic-Platform/nova"
+    "installSource": "https://github.com/mistralai/mistral-vibe",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "qoder",
@@ -803,7 +745,10 @@
       "args": ["--acp"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qoder-ai/qodercli@0.1.30'",
-    "installSource": null
+    "installSource": null,
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "qwen-code",
@@ -827,53 +772,59 @@
       "args": ["--acp", "--experimental-skills"]
     },
     "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local\" '@qwen-code/qwen-code@0.12.0'",
-    "installSource": "https://github.com/QwenLM/qwen-code"
+    "installSource": "https://github.com/QwenLM/qwen-code",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   },
   {
     "id": "stakpak",
     "name": "Stakpak",
     "description": "Open-source DevOps agent in Rust with enterprise-grade security",
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/stakpak.svg",
-    "version": "0.3.66",
+    "version": "0.3.67",
     "repository": "https://github.com/stakpak/agent",
     "authors": ["Stakpak Team <contact@stakpak.dev>"],
     "license": "Apache-2.0",
     "distribution": {
       "binary": {
         "darwin-aarch64": {
-          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-darwin-aarch64.tar.gz",
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.67/stakpak-darwin-aarch64.tar.gz",
           "cmd": "./stakpak",
           "args": ["acp"]
         },
         "darwin-x86_64": {
-          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-darwin-x86_64.tar.gz",
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.67/stakpak-darwin-x86_64.tar.gz",
           "cmd": "./stakpak",
           "args": ["acp"]
         },
         "linux-aarch64": {
-          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-linux-aarch64.tar.gz",
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.67/stakpak-linux-aarch64.tar.gz",
           "cmd": "./stakpak",
           "args": ["acp"]
         },
         "linux-x86_64": {
-          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-linux-x86_64.tar.gz",
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.67/stakpak-linux-x86_64.tar.gz",
           "cmd": "./stakpak",
           "args": ["acp"]
         },
         "windows-x86_64": {
-          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-windows-x86_64.zip",
+          "archive": "https://github.com/stakpak/agent/releases/download/v0.3.67/stakpak-windows-x86_64.zip",
           "cmd": "./stakpak.exe",
           "args": ["acp"]
         }
       }
     },
-    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/stakpak/0.3.66\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-linux-x86_64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/stakpak\"\nln -sf \"$install_dir/stakpak\" \"$HOME/.local/bin/stakpak\"",
+    "nativeInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/stakpak/0.3.67\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/stakpak/agent/releases/download/v0.3.67/stakpak-linux-x86_64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/stakpak\"\nln -sf \"$install_dir/stakpak\" \"$HOME/.local/bin/stakpak\"",
     "acpInstallCommand": null,
     "runtimeCommand": {
       "command": "$HOME/.local/bin/stakpak",
       "args": ["acp"]
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/stakpak/0.3.66\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/stakpak/agent/releases/download/v0.3.66/stakpak-linux-x86_64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/stakpak\"\nln -sf \"$install_dir/stakpak\" \"$HOME/.local/bin/stakpak\"",
-    "installSource": "https://github.com/stakpak/agent"
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nmkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/native/stakpak/0.3.67\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/stakpak/agent/releases/download/v0.3.67/stakpak-linux-x86_64.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/stakpak\"\nln -sf \"$install_dir/stakpak\" \"$HOME/.local/bin/stakpak\"",
+    "installSource": "https://github.com/stakpak/agent",
+    "credentialSupport": "unsupported",
+    "credentialBundle": null,
+    "unsupportedReason": "Credential sync is not supported yet."
   }
 ]

@@ -31,6 +31,7 @@
     "db:generate": "turbo db:generate",
     "setup": "bun scripts/setup.ts",
     "dev:sandbox-runtime": "bun scripts/dev-sandbox-runtime.ts",
+    "sandbox:create-agent-install": "bun scripts/create-agent-install-sandbox.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:agents": "bun scripts/generate-acp-agents.ts",
     "auth:generate": "turbo -F @corporation/backend auth:generate"

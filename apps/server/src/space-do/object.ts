@@ -196,10 +196,20 @@ function sameBinding(
 	return current.sandboxId === next.sandboxId;
 }
 
-function emptyAgentProbeResponse(status: "not_installed" | "error") {
-	const error = status === "error" ? "Sandbox runtime is unavailable" : null;
+function emptyAgentProbeResponse(
+	status: "not_installed" | "error",
+	options?: {
+		ids?: string[];
+		error?: string | null;
+	}
+) {
+	const error =
+		status === "error"
+			? (options?.error ?? "Sandbox runtime is unavailable")
+			: null;
 	const agents = acpAgents
 		.filter((agent) => agent.runtimeCommand)
+		.filter((agent) => !options?.ids || options.ids.includes(agent.id))
 		.map((agent) => ({
 			id: agent.id,
 			name: agent.name,
@@ -640,8 +650,8 @@ export class SpaceDurableObject extends DurableObject<Env> {
 					return null;
 				}
 			),
-			getAgentProbeState: implementer.getAgentProbeState.handler(async () => {
-				return await this.requestRuntimeProbe();
+			probeAgents: implementer.probeAgents.handler(async ({ input }) => {
+				return await this.requestRuntimeProbe(input.ids);
 			}),
 			runCommand: implementer.runCommand.handler(async ({ context, input }) => {
 				const ctx = this.createContext(context.authState, context.connectionId);
@@ -979,12 +989,14 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		});
 	}
 
-	private async requestRuntimeProbe(): Promise<AgentProbeResponse> {
+	private async requestRuntimeProbe(
+		ids: string[]
+	): Promise<AgentProbeResponse> {
 		if (!this.stateData.binding) {
-			return emptyAgentProbeResponse("not_installed");
+			return emptyAgentProbeResponse("not_installed", { ids });
 		}
 		if (!this.getActiveRuntimeSocket()) {
-			return emptyAgentProbeResponse("error");
+			return emptyAgentProbeResponse("error", { ids });
 		}
 
 		const commandId = nanoid();
@@ -1006,9 +1018,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 						{
 							type: "probe_agents",
 							commandId,
-							ids: acpAgents
-								.filter((agent) => agent.runtimeCommand)
-								.map((agent) => agent.id),
+							ids,
 						},
 						{
 							type: "probe_agents",
@@ -1024,7 +1034,10 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			}
 		).catch((error) => {
 			console.error("Failed to fetch agent probe state", error);
-			return emptyAgentProbeResponse("error");
+			return emptyAgentProbeResponse("error", {
+				ids,
+				error: error instanceof Error ? error.message : String(error),
+			});
 		});
 
 		return response;
