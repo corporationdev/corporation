@@ -1,7 +1,7 @@
 export const MCP_SESSION_CWD_ENV = "SANDBOX_RUNTIME_MCP_CWD";
 const DISABLE_SESSION_MCP_ENV = "SANDBOX_RUNTIME_DISABLE_SESSION_MCP";
 
-function getRuntimeEntrypointArgs(subcommand: "desktop" | "code") {
+function getRuntimeEntrypointArgs(subcommand: "browser" | "desktop" | "code") {
 	const runtimeEntrypoint = process.argv[1];
 	if (!runtimeEntrypoint) {
 		throw new Error("sandbox-runtime entrypoint is not available");
@@ -16,6 +16,12 @@ export function buildSessionMcpServers(cwd: string) {
 	}
 
 	return [
+		{
+			name: "browser",
+			command: process.execPath,
+			args: getRuntimeEntrypointArgs("browser"),
+			env: [],
+		},
 		{
 			name: "desktop",
 			command: process.execPath,

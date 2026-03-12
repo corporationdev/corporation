@@ -5,7 +5,11 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { z } from "zod";
+import {
+	type AgentCredentialBundle,
+	SUPPORTED_ACP_AGENTS,
+	type SupportedAcpAgentConfig,
+} from "../packages/config/src/acp-supported-agents";
 
 const REGISTRY_URL =
 	"https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -24,7 +28,7 @@ const SCOPED_PACKAGE_SPEC_RE = /^(@[^/]+\/[^@]+)(?:@(.+))?$/;
 const UNSCOPED_PACKAGE_SPEC_RE = /^([^@]+)(?:@(.+))?$/;
 const WINDOWS_SUFFIX_RE = /\.exe$/i;
 
-type ManualAgentConfig = {
+type LegacyManualAgentConfig = {
 	nativeInstallCommand?: string | null;
 	runtimeCommandOverride?: {
 		command: string;
@@ -34,17 +38,7 @@ type ManualAgentConfig = {
 	acpInstallStrategy?: "distribution" | "native";
 	acpExecutableName?: string;
 	installSource?: string;
-	credentialSupport?: "supported" | "unsupported";
-	credentialBundle?: {
-		schemaVersion: number;
-		paths: Array<{
-			path: string;
-			kind: "file" | "dir";
-			required?: boolean;
-		}>;
-		exclude?: string[];
-	} | null;
-	unsupportedReason?: string | null;
+	credentialBundle?: AgentCredentialBundle | null;
 };
 
 type GeneratedRuntimeCommand = {
@@ -59,20 +53,23 @@ type GeneratedAgent = RegistryAgent & {
 	acpInstallCommand: string | null;
 	runtimeCommand: GeneratedRuntimeCommand | null;
 	installCommand: string | null;
-	installSource: string | null;
-	credentialSupport: "supported" | "unsupported";
-	credentialBundle: NonNullable<ManualAgentConfig["credentialBundle"]> | null;
-	unsupportedReason: string | null;
+	installSource: string;
+	credentialBundle: AgentCredentialBundle;
 };
 
-const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
+// Legacy manual config retained for reference only. The generator no longer
+// uses this map; supported agents now come exclusively from
+// packages/config/src/acp-supported-agents.ts.
+export const LEGACY_MANUAL_AGENT_CONFIG: Record<
+	string,
+	LegacyManualAgentConfig
+> = {
 	"claude-acp": {
 		nativeInstallCommand:
 			'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code',
 		acpInstallStrategy: "distribution",
 		acpExecutableName: "claude-agent-acp",
 		installSource: "https://docs.anthropic.com/en/docs/claude-code/setup",
-		credentialSupport: "supported",
 		credentialBundle: {
 			schemaVersion: 1,
 			paths: [
@@ -84,19 +81,16 @@ const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 				},
 			],
 		},
-		unsupportedReason: null,
 	},
 	"codex-acp": {
 		nativeInstallCommand:
 			'npm install -g --prefix "$HOME/.local" @openai/codex',
 		acpInstallStrategy: "distribution",
 		installSource: "https://github.com/openai/codex",
-		credentialSupport: "supported",
 		credentialBundle: {
 			schemaVersion: 1,
 			paths: [{ path: "$HOME/.codex/auth.json", kind: "file", required: true }],
 		},
-		unsupportedReason: null,
 	},
 	opencode: {
 		acpInstallStrategy: "native",
@@ -155,51 +149,113 @@ const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 	},
 };
 
-const registryAgentSchema = z
-	.object({
-		id: z.string(),
-		name: z.string(),
-		description: z.string(),
-		icon: z.string().optional(),
-		version: z.string().optional(),
-		repository: z.string().optional(),
-		authors: z.array(z.string()).optional(),
-		license: z.string().optional(),
-		distribution: z
-			.object({
-				binary: z
-					.record(
-						z.string(),
-						z.object({
-							archive: z.string(),
-							cmd: z.string(),
-							args: z.array(z.string()).optional(),
-						})
-					)
-					.optional(),
-				npx: z
-					.object({
-						package: z.string(),
-						args: z.array(z.string()).optional(),
-						env: z.record(z.string(), z.string()).optional(),
-					})
-					.optional(),
-				uvx: z
-					.object({
-						package: z.string(),
-						args: z.array(z.string()).optional(),
-					})
-					.optional(),
-			})
-			.passthrough(),
-	})
-	.passthrough();
+type RegistryAgent = {
+	id: string;
+	name: string;
+	description: string;
+	icon?: string;
+	version?: string;
+	repository?: string;
+	authors?: string[];
+	license?: string;
+	distribution: {
+		binary?: Record<
+			string,
+			{
+				archive: string;
+				cmd: string;
+				args?: string[];
+			}
+		>;
+		npx?: {
+			package: string;
+			args?: string[];
+			env?: Record<string, string>;
+		};
+		uvx?: {
+			package: string;
+			args?: string[];
+		};
+		[key: string]: unknown;
+	};
+	[key: string]: unknown;
+};
 
-const registrySchema = z.object({
-	agents: z.array(registryAgentSchema),
-});
+function assertString(value: unknown, label: string): string {
+	if (typeof value !== "string") {
+		throw new Error(`Invalid ACP registry: expected ${label} to be a string`);
+	}
+	return value;
+}
 
-type RegistryAgent = z.infer<typeof registryAgentSchema>;
+function assertOptionalStringArray(
+	value: unknown,
+	label: string
+): string[] | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+		throw new Error(
+			`Invalid ACP registry: expected ${label} to be an array of strings`
+		);
+	}
+	return value;
+}
+
+function parseRegistryAgent(value: unknown): RegistryAgent {
+	if (!value || typeof value !== "object") {
+		throw new Error("Invalid ACP registry: agent entry must be an object");
+	}
+
+	const agent = value as Record<string, unknown>;
+	const distribution = agent.distribution;
+	if (!distribution || typeof distribution !== "object") {
+		throw new Error(
+			`Invalid ACP registry: agent ${String(agent.id ?? "<unknown>")} is missing distribution metadata`
+		);
+	}
+
+	return {
+		...agent,
+		id: assertString(agent.id, "agent.id"),
+		name: assertString(agent.name, "agent.name"),
+		description: assertString(agent.description, "agent.description"),
+		icon:
+			agent.icon === undefined
+				? undefined
+				: assertString(agent.icon, "agent.icon"),
+		version:
+			agent.version === undefined
+				? undefined
+				: assertString(agent.version, "agent.version"),
+		repository:
+			agent.repository === undefined
+				? undefined
+				: assertString(agent.repository, "agent.repository"),
+		authors: assertOptionalStringArray(agent.authors, "agent.authors"),
+		license:
+			agent.license === undefined
+				? undefined
+				: assertString(agent.license, "agent.license"),
+		distribution: distribution as RegistryAgent["distribution"],
+	};
+}
+
+function parseRegistry(value: unknown): { agents: RegistryAgent[] } {
+	if (!value || typeof value !== "object") {
+		throw new Error("Invalid ACP registry payload");
+	}
+
+	const payload = value as Record<string, unknown>;
+	if (!Array.isArray(payload.agents)) {
+		throw new Error("Invalid ACP registry: expected agents to be an array");
+	}
+
+	return {
+		agents: payload.agents.map(parseRegistryAgent),
+	};
+}
 
 const PINNED_ORDER = [
 	"claude-acp",
@@ -481,7 +537,7 @@ function buildInstallCommand(agent: {
 	return joinCommands(commands);
 }
 
-function getNativeInstallAndRuntime(manual: ManualAgentConfig) {
+function getNativeInstallAndRuntime(manual: SupportedAcpAgentConfig) {
 	if (manual.nativeInstallCommand || manual.runtimeCommandOverride) {
 		const runtimeCommand = manual.runtimeCommandOverride ?? null;
 		return {
@@ -496,38 +552,43 @@ function getNativeInstallAndRuntime(manual: ManualAgentConfig) {
 	};
 }
 
-function toGeneratedAgent(agent: RegistryAgent): GeneratedAgent {
-	const manual = MANUAL_AGENT_CONFIG[agent.id] ?? {};
+function toGeneratedAgent(
+	agent: RegistryAgent,
+	config: SupportedAcpAgentConfig
+): GeneratedAgent {
 	const fallbackNative = buildDistributionInstall(agent, "native");
 	const fallbackAcp = buildDistributionInstall(agent, "acp", {
-		executableName: manual.acpExecutableName,
+		executableName: config.acpExecutableName ?? undefined,
 	});
-	const manualNative = getNativeInstallAndRuntime(manual);
+	const manualNative = getNativeInstallAndRuntime(config);
 
 	const nativeInstallCommand =
 		manualNative.nativeInstallCommand ?? fallbackNative.installCommand;
 	const nativeRuntimeCommand =
 		manualNative.nativeRuntimeCommand ?? fallbackNative.runtimeCommand;
 
-	const installStrategy =
-		manual.acpInstallStrategy ??
-		(agent.id.endsWith("-acp") ? "distribution" : "native");
-	const useNativeForRuntime = installStrategy === "native";
+	const useNativeForRuntime = config.acpInstallStrategy === "native";
 	const acpInstallCommand = useNativeForRuntime
 		? null
 		: fallbackAcp.installCommand;
 	const runtimeCommand =
-		manual.runtimeCommandOverride ??
+		config.runtimeCommandOverride ??
 		(useNativeForRuntime ? nativeRuntimeCommand : fallbackAcp.runtimeCommand);
-	const credentialSupport = manual.credentialSupport ?? "unsupported";
-	const credentialBundle =
-		credentialSupport === "supported"
-			? (manual.credentialBundle ?? null)
-			: null;
-	const unsupportedReason =
-		credentialSupport === "unsupported"
-			? (manual.unsupportedReason ?? "Credential sync is not supported yet.")
-			: null;
+	const installCommand = buildInstallCommand({
+		id: agent.id,
+		name: agent.name,
+		nativeInstallCommand,
+		acpInstallCommand,
+	});
+
+	if (!runtimeCommand) {
+		throw new Error(`Supported agent ${agent.id} is missing a runtime command`);
+	}
+	if (!installCommand) {
+		throw new Error(
+			`Supported agent ${agent.id} is missing an install command`
+		);
+	}
 
 	return {
 		...agent,
@@ -535,16 +596,9 @@ function toGeneratedAgent(agent: RegistryAgent): GeneratedAgent {
 		nativeInstallCommand,
 		acpInstallCommand,
 		runtimeCommand,
-		installCommand: buildInstallCommand({
-			id: agent.id,
-			name: agent.name,
-			nativeInstallCommand,
-			acpInstallCommand,
-		}),
-		installSource: manual.installSource ?? agent.repository ?? null,
-		credentialSupport,
-		credentialBundle,
-		unsupportedReason,
+		installCommand,
+		installSource: config.installSource,
+		credentialBundle: config.credentialBundle,
 	};
 }
 
@@ -570,11 +624,19 @@ async function main() {
 		throw new Error(`Failed to fetch registry: ${response.status}`);
 	}
 
-	const data = registrySchema.parse(await response.json());
-	const agents = data.agents
-		.filter((agent) => !BLOCKED_AGENT_IDS.has(agent.id))
-		.map(toGeneratedAgent)
-		.sort(sortAgents);
+	const data = parseRegistry(await response.json());
+	const registryAgentsById = new Map(
+		data.agents
+			.filter((agent) => !BLOCKED_AGENT_IDS.has(agent.id))
+			.map((agent) => [agent.id, agent])
+	);
+	const agents = SUPPORTED_ACP_AGENTS.map((config) => {
+		const registryAgent = registryAgentsById.get(config.id);
+		if (!registryAgent) {
+			throw new Error(`Missing supported agent ${config.id} in ACP registry`);
+		}
+		return toGeneratedAgent(registryAgent, config);
+	}).sort(sortAgents);
 	const serialized = `${JSON.stringify(agents, null, "  ")}\n`;
 
 	mkdirSync(dirname(SHARED_OUTPUT_PATH), { recursive: true });

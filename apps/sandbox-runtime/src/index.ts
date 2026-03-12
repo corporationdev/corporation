@@ -20,7 +20,15 @@
 const subcommand = process.argv[2];
 if (subcommand === "mcp") {
 	const mcpName = process.argv[3];
-	if (mcpName === "desktop") {
+	if (mcpName === "browser") {
+		const { runBrowserMcp } = await import("./browser-mcp");
+		await runBrowserMcp();
+		// Keep the process alive — StdioServerTransport reads from stdin
+		// but server.connect() returns immediately. Block here so we don't
+		// fall through to the HTTP server code below.
+		// biome-ignore lint/suspicious/noEmptyBlockStatements: intentionally block forever
+		await new Promise(() => {});
+	} else if (mcpName === "desktop") {
 		const { runDesktopMcp } = await import("./desktop-mcp");
 		await runDesktopMcp();
 		// Keep the process alive — StdioServerTransport reads from stdin

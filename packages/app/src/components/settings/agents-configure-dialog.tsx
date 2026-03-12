@@ -1,7 +1,6 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import acpAgents, {
 	type AcpAgentManifestEntry,
-	supportsAgentCredentials,
 } from "@corporation/config/acp-agent-manifest";
 import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
@@ -30,14 +29,9 @@ import { deriveAgentModels } from "@/lib/agent-config-options";
 import { cn } from "@/lib/utils";
 
 function getAgentProbeStatusLabel(
-	agent: AcpAgentManifestEntry,
 	status: AgentProbeAgent["status"] | undefined,
 	isChecking: boolean
 ) {
-	if (!supportsAgentCredentials(agent)) {
-		return "Not supported yet";
-	}
-
 	switch (status) {
 		case "verified":
 			return "Connected";
@@ -63,7 +57,7 @@ function AgentListItem({
 }) {
 	const [showModels, setShowModels] = useState(false);
 	const derivedModels = deriveAgentModels(probe?.configOptions);
-	const statusLabel = getAgentProbeStatusLabel(agent, probe?.status, isChecking);
+	const statusLabel = getAgentProbeStatusLabel(probe?.status, isChecking);
 	const models = derivedModels.models;
 	const showModelsToggle = models.length > 0;
 	const isConnected = probe?.status === "verified";
@@ -147,17 +141,18 @@ export function AgentsConfigureDialog({
 	const workspaceState = useQuery(api.userWorkspace.getWorkspaceState);
 	const configure = useMutation(api.userWorkspace.configure);
 	const saveUserSpaceAction = useAction(api.userWorkspaceActions.save);
-	const { mutateAsync: saveUserSpace, isPending: isSaving } = useTanstackMutation({
-		mutationFn: (args: {
-			agents: Array<{ id: string; configOptions: unknown[] }>;
-		}) => saveUserSpaceAction(args),
-		onSuccess: () => {
-			toast.success("Agent configuration saved");
-			onOpenChange(false);
-		},
-		onError: (error) => {
-			toast.error(error.message);
-		},
+	const { mutateAsync: saveUserSpace, isPending: isSaving } =
+		useTanstackMutation({
+			mutationFn: (args: {
+				agents: Array<{ id: string; configOptions: unknown[] }>;
+			}) => saveUserSpaceAction(args),
+			onSuccess: () => {
+				toast.success("Agent configuration saved");
+				onOpenChange(false);
+			},
+			onError: (error) => {
+				toast.error(error.message);
+			},
 		});
 	const [configureError, setConfigureError] = useState<string | null>(null);
 	const [isVerifyingBeforeSave, setIsVerifyingBeforeSave] = useState(false);
@@ -217,13 +212,7 @@ export function AgentsConfigureDialog({
 			),
 		[]
 	);
-	const supportedAgents = useMemo(
-		() =>
-			acpAgents.filter((manifestAgent) =>
-				supportsAgentCredentials(manifestAgent)
-			),
-		[]
-	);
+	const supportedAgents = useMemo(() => acpAgents, []);
 	const supportedAgentIds = useMemo(
 		() => new Set(supportedAgents.map((manifestAgent) => manifestAgent.id)),
 		[supportedAgents]
@@ -234,36 +223,33 @@ export function AgentsConfigureDialog({
 		[renderedAgents]
 	);
 
-	const probeByManifestId = useMemo(
-		() => {
-			const merged = Object.fromEntries(
-				(agentProbeData?.agents ?? []).map((probeAgent) => [
-					probeAgent.id,
-					probeAgent,
-				])
-			) as Record<string, AgentProbeAgent>;
+	const probeByManifestId = useMemo(() => {
+		const merged = Object.fromEntries(
+			(agentProbeData?.agents ?? []).map((probeAgent) => [
+				probeAgent.id,
+				probeAgent,
+			])
+		) as Record<string, AgentProbeAgent>;
 
-			for (const storedAgent of storedAgents) {
-				if (merged[storedAgent.id]) {
-					continue;
-				}
-
-				const manifestAgent = manifestById.get(storedAgent.id);
-				merged[storedAgent.id] = {
-					authCheckedAt: null,
-					configOptions: storedAgent.configOptions,
-					error: null,
-					id: storedAgent.id,
-					name: manifestAgent?.name ?? storedAgent.id,
-					status: "verified",
-					verifiedAt: null,
-				};
+		for (const storedAgent of storedAgents) {
+			if (merged[storedAgent.id]) {
+				continue;
 			}
 
-			return merged;
-		},
-		[agentProbeData?.agents, manifestById, storedAgents]
-	);
+			const manifestAgent = manifestById.get(storedAgent.id);
+			merged[storedAgent.id] = {
+				authCheckedAt: null,
+				configOptions: storedAgent.configOptions,
+				error: null,
+				id: storedAgent.id,
+				name: manifestAgent?.name ?? storedAgent.id,
+				status: "verified",
+				verifiedAt: null,
+			};
+		}
+
+		return merged;
+	}, [agentProbeData?.agents, manifestById, storedAgents]);
 	const handleSave = useCallback(async () => {
 		setIsVerifyingBeforeSave(true);
 		try {
@@ -274,16 +260,16 @@ export function AgentsConfigureDialog({
 			}
 
 			const agentsToSave = latestProbeResult.agents
-			.filter(
-				(probe): probe is typeof probe & { configOptions: unknown[] } =>
-					probe.status === "verified" &&
-					Array.isArray(probe.configOptions) &&
-					supportedAgentIds.has(probe.id)
-			)
-			.map((probe) => ({
-				id: probe.id,
-				configOptions: probe.configOptions,
-			}));
+				.filter(
+					(probe): probe is typeof probe & { configOptions: unknown[] } =>
+						probe.status === "verified" &&
+						Array.isArray(probe.configOptions) &&
+						supportedAgentIds.has(probe.id)
+				)
+				.map((probe) => ({
+					id: probe.id,
+					configOptions: probe.configOptions,
+				}));
 
 			await saveUserSpace({
 				agents: agentsToSave,
@@ -298,7 +284,6 @@ export function AgentsConfigureDialog({
 				const manifestAgent = manifestById.get(probe.id);
 				return (
 					manifestAgent !== undefined &&
-					supportsAgentCredentials(manifestAgent) &&
 					probe.status === "verified" &&
 					Array.isArray(probe.configOptions)
 				);
@@ -395,7 +380,9 @@ export function AgentsConfigureDialog({
 							</Button>
 							<Button
 								disabled={
-									isSaving || isVerifyingBeforeSave || !hasSupportedConnectedAgents
+									isSaving ||
+									isVerifyingBeforeSave ||
+									!hasSupportedConnectedAgents
 								}
 								onClick={() => {
 									handleSave().catch(() => undefined);

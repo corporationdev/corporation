@@ -51,7 +51,9 @@ function getORPCFrameDirection(
 					? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
 					: new Uint8Array(data);
 		const text =
-			typeof data === "string" ? data : new TextDecoder().decode(bytes);
+			typeof data === "string"
+				? data
+				: new TextDecoder().decode(bytes ?? new Uint8Array());
 		const parsed = JSON.parse(text) as {
 			p?: { u?: unknown };
 		};

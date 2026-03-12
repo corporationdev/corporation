@@ -9,7 +9,7 @@
  */
 
 import { existsSync, watch } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import process from "node:process";
 import { config } from "dotenv";
@@ -108,7 +108,7 @@ const sandboxRuntimeDir = [
 	resolve(repoRoot, "packages/sandbox-runtime"),
 ].find((path) => existsSync(path));
 
-const bundlePath = resolve(sandboxRuntimeDir, "dist/sandbox-runtime.js");
+const bundleDir = resolve(sandboxRuntimeDir, "dist/runtime");
 const setupPath = resolve(sandboxRuntimeDir, "setup.sh");
 const remoteBundlePath = "/usr/local/bin/sandbox-runtime.js";
 const remoteSetupPath = "/usr/local/bin/sandbox-runtime-setup.sh";
@@ -121,8 +121,8 @@ const buildCmd = [
 	"bun",
 	"build",
 	entrypoint,
-	"--outfile",
-	bundlePath,
+	"--outdir",
+	bundleDir,
 	"--target=bun",
 ];
 
@@ -295,7 +295,8 @@ async function buildAndSync() {
 	try {
 		const start = Date.now();
 
-		await mkdir(resolve(sandboxRuntimeDir, "dist"), { recursive: true });
+		await rm(bundleDir, { recursive: true, force: true });
+		await mkdir(bundleDir, { recursive: true });
 
 		// Build
 		const build = Bun.spawnSync(buildCmd);
@@ -309,13 +310,26 @@ async function buildAndSync() {
 			timeoutMs: 5000,
 		});
 
-		// Upload bundle + setup script
-		const [bundleData, setupData] = await Promise.all([
-			readFile(bundlePath),
+		// Upload bundle artifacts + setup script
+		const [bundleArtifacts, setupData] = await Promise.all([
+			readdir(bundleDir),
 			readFile(setupPath),
 		]);
+		const bundleWrites = await Promise.all(
+			bundleArtifacts.map(async (artifact) => {
+				const localPath = resolve(bundleDir, artifact);
+				const remotePath =
+					artifact === "index.js"
+						? remoteBundlePath
+						: `/usr/local/bin/${artifact}`;
+				return {
+					path: remotePath,
+					data: await readFile(localPath),
+				};
+			})
+		);
 		await sandbox.files.write([
-			{ path: remoteBundlePath, data: bundleData },
+			...bundleWrites,
 			{ path: remoteSetupPath, data: setupData },
 		]);
 

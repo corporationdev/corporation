@@ -18,31 +18,6 @@ export async function getDesktopStreamUrl(
 ): Promise<string> {
 	const sandbox = await ensureSandboxConnected(c);
 
-	// Start Xvfb if not already running (connect() doesn't start the desktop)
-	try {
-		await sandbox.commands.run(`xdpyinfo -display ${DISPLAY}`);
-	} catch {
-		await sandbox.commands.run(
-			`Xvfb ${DISPLAY} -ac -screen 0 1024x768x24 -retro -dpi 96 -nolisten tcp -nolisten unix`,
-			{ background: true, timeoutMs: 0 }
-		);
-		// Wait for Xvfb to be ready
-		for (let i = 0; i < 20; i++) {
-			try {
-				await sandbox.commands.run(`xdpyinfo -display ${DISPLAY}`);
-				break;
-			} catch {
-				await new Promise((r) => setTimeout(r, 500));
-			}
-		}
-		// Start XFCE desktop session
-		await sandbox.commands.run("startxfce4", {
-			background: true,
-			timeoutMs: 0,
-			envs: { DISPLAY },
-		});
-	}
-
 	sandbox.display = DISPLAY;
 
 	// If the stream is already running, reuse it. Avoid stop/start churn,

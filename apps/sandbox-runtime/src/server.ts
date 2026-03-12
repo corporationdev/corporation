@@ -2,6 +2,7 @@
 
 import { BunRuntime } from "@effect/platform-bun";
 import { Effect, Exit, Layer, Scope } from "effect";
+import { ensureManagedBrowserStarted } from "./desktop-browser";
 import { log } from "./logging";
 import { runtimeLayer } from "./runtime-layer";
 
@@ -35,6 +36,18 @@ const main: Effect.Effect<void, Error, never> = Effect.scoped(
 		yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
 
 		yield* Layer.buildWithScope(runtimeLayer, scope);
+		const managedBrowser = yield* Effect.tryPromise({
+			try: () => ensureManagedBrowserStarted(),
+			catch: (cause) =>
+				new Error(
+					`Failed to start sandbox desktop/browser: ${
+						cause instanceof Error ? cause.message : String(cause)
+					}`
+				),
+		});
+		yield* Effect.addFinalizer(() =>
+			Effect.promise(() => managedBrowser.close())
+		);
 
 		const server = Bun.serve({
 			hostname: host,

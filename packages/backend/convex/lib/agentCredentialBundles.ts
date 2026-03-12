@@ -3,7 +3,6 @@
 import { dirname } from "node:path";
 import acpAgents, {
 	type AcpAgentManifestEntry,
-	supportsAgentCredentials,
 } from "@corporation/config/acp-agent-manifest";
 import { FileType, type Sandbox } from "e2b";
 import { SANDBOX_HOME_DIR } from "./sandbox";
@@ -21,7 +20,7 @@ export const credentialEnabledAgents = acpAgents.filter(
 		agent
 	): agent is AcpAgentManifestEntry & {
 		credentialBundle: NonNullable<AcpAgentManifestEntry["credentialBundle"]>;
-	} => supportsAgentCredentials(agent) && agent.credentialBundle !== null
+	} => agent.credentialBundle !== null
 );
 
 export const credentialEnabledAgentIds = new Set(

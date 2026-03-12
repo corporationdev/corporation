@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { config } from "dotenv";
@@ -77,16 +77,17 @@ describeIf("sandbox-runtime proxy integration", () => {
 	beforeAll(async () => {
 		const entrypoint = resolve(packageDir, "src/index.ts");
 		tempDir = await mkdtemp(resolve(tmpdir(), "sandbox-runtime-test-"));
-		const bundlePath = resolve(tempDir, "sandbox-runtime.js");
+		const bundleDir = resolve(tempDir, "sandbox-runtime");
 
 		await mkdir(resolve(packageDir, "dist"), { recursive: true });
+		await mkdir(bundleDir, { recursive: true });
 
 		const build = Bun.spawnSync([
 			"bun",
 			"build",
 			entrypoint,
-			"--outfile",
-			bundlePath,
+			"--outdir",
+			bundleDir,
 			"--target=bun",
 		]);
 		if (build.exitCode !== 0) {
@@ -99,10 +100,17 @@ describeIf("sandbox-runtime proxy integration", () => {
 			network: { allowPublicTraffic: true },
 		});
 
-		const bundleData = await readFile(bundlePath);
-		await sandbox.files.write([
-			{ path: remoteBundlePath, data: new Blob([bundleData]) },
-		]);
+		const bundleArtifacts = await readdir(bundleDir);
+		const bundleWrites = await Promise.all(
+			bundleArtifacts.map(async (artifact) => {
+				const localPath = resolve(bundleDir, artifact);
+				const remotePath =
+					artifact === "index.js" ? remoteBundlePath : `/tmp/${artifact}`;
+				const bundleData = await readFile(localPath);
+				return { path: remotePath, data: new Blob([bundleData]) };
+			})
+		);
+		await sandbox.files.write(bundleWrites);
 
 		await sandbox.commands.run(
 			`tmux kill-session -t ${runtimeSessionName} || true`,
