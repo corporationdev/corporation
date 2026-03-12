@@ -5,13 +5,19 @@ import type {
 	AGENT_METHODS,
 	CancelNotification,
 } from "@agentclientprotocol/sdk";
+import { CLIENT_METHODS } from "@agentclientprotocol/sdk";
+import {
+	zRequestPermissionRequest,
+	zSessionNotification,
+} from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
 import type { AcpEnvelope } from "@corporation/contracts/sandbox-do";
 import type {
 	AcpConnection,
 	AcpConnectionFactory,
+	AcpInboundEvent,
 	AcpRequestMap,
 	AcpRequestMethod,
-} from "./acp-session-manager";
+} from "./acp-driver";
 import { agentCommand, assertAgentCommandReady } from "./agents";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10 * 60_000;
@@ -99,6 +105,7 @@ export function createSpawnedAcpConnectionFactory(): AcpConnectionFactory {
 			});
 
 			const pendingRequests = new Map<string, PendingRequest>();
+			const eventListeners = new Set<(event: AcpInboundEvent) => void>();
 			let closed = false;
 
 			const rejectAllPending = (error: Error) => {
@@ -140,6 +147,40 @@ export function createSpawnedAcpConnectionFactory(): AcpConnectionFactory {
 						}
 						return;
 					}
+				}
+
+				if (!("method" in envelope)) {
+					return;
+				}
+
+				if (envelope.method === CLIENT_METHODS.session_update) {
+					const parsed = zSessionNotification.safeParse(envelope.params);
+					if (!parsed.success) {
+						return;
+					}
+					emitInboundEvent({
+						type: "session_update",
+						notification: parsed.data,
+					});
+					return;
+				}
+
+				if (envelope.method === CLIENT_METHODS.session_request_permission) {
+					const parsed = zRequestPermissionRequest.safeParse(envelope.params);
+					if (!parsed.success || responseId === null) {
+						return;
+					}
+					emitInboundEvent({
+						type: "permission_request",
+						requestId: responseId,
+						request: parsed.data,
+					});
+				}
+			};
+
+			const emitInboundEvent = (event: AcpInboundEvent): void => {
+				for (const listener of eventListeners) {
+					listener(event);
 				}
 			};
 
@@ -239,6 +280,13 @@ export function createSpawnedAcpConnectionFactory(): AcpConnectionFactory {
 						params,
 					} satisfies AcpEnvelope);
 					return Promise.resolve();
+				},
+
+				subscribe(listener: (event: AcpInboundEvent) => void): () => void {
+					eventListeners.add(listener);
+					return () => {
+						eventListeners.delete(listener);
+					};
 				},
 
 				close(): Promise<void> {

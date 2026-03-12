@@ -3,8 +3,8 @@ import {
 	type CreateSessionInput,
 	type ResolvedStartTurnInput,
 	RuntimeEngine,
-	type RuntimeEvent,
 } from "../index";
+import type { RuntimeEvent } from "../runtime-events";
 
 function createDeferred() {
 	let resolve!: () => void;

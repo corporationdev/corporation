@@ -1,3 +1,5 @@
+import type { RuntimeEvent, TurnStopReason } from "./runtime-events";
+
 export type SessionId = string;
 export type TurnId = string;
 
@@ -43,24 +45,11 @@ export type ResolvedStartTurnInput = {
 	dynamicConfig: SessionDynamicConfig;
 };
 
-export type RuntimeEvent =
-	| { type: "turn.started"; sessionId: SessionId; turnId: TurnId }
-	| {
-			type: "turn.progress";
-			sessionId: SessionId;
-			turnId: TurnId;
-			message: string;
-	  }
-	| { type: "turn.completed"; sessionId: SessionId; turnId: TurnId }
-	| {
-			type: "turn.failed";
-			sessionId: SessionId;
-			turnId: TurnId;
-			error: string;
-	  }
-	| { type: "turn.cancelled"; sessionId: SessionId; turnId: TurnId };
-
 export type EventSink = (event: RuntimeEvent) => void;
+
+export type RunTurnResult = {
+	stopReason?: TurnStopReason;
+};
 
 export type AgentDriver = {
 	createSession?(input: CreateSessionInput): Promise<void>;
@@ -68,7 +57,10 @@ export type AgentDriver = {
 		sessionId: SessionId,
 		dynamicConfig: SessionDynamicConfig
 	): Promise<void>;
-	run(input: ResolvedStartTurnInput, emit: EventSink): Promise<void>;
+	run(
+		input: ResolvedStartTurnInput,
+		emit: EventSink
+	): Promise<RunTurnResult | void>;
 	cancel?(turnId: TurnId): Promise<void>;
 };
 
@@ -93,6 +85,8 @@ export type RuntimeSession = Readonly<{
 }>;
 
 export type RuntimeTurn = Readonly<TurnState>;
+
+export type { RuntimeEvent, TurnStopReason } from "./runtime-events";
 
 function getConfigDiff(
 	current: SessionDynamicConfig,
@@ -242,7 +236,7 @@ export class RuntimeEngine {
 				);
 			}
 
-			await this.driver.run(
+			const runResult = await this.driver.run(
 				{
 					sessionId: input.sessionId,
 					turnId,
@@ -257,6 +251,9 @@ export class RuntimeEngine {
 					type: "turn.completed",
 					sessionId: input.sessionId,
 					turnId,
+					...(runResult?.stopReason
+						? { stopReason: runResult.stopReason }
+						: {}),
 				});
 			}
 		} catch (error) {
@@ -326,11 +323,18 @@ export const noopDriver: AgentDriver = {
 	},
 	async run(input, emit) {
 		emit({
-			type: "turn.progress",
+			type: "output.delta",
 			sessionId: input.sessionId,
 			turnId: input.turnId,
-			message: "noop driver ran",
+			channel: "assistant",
+			content: {
+				type: "text",
+				text: "noop driver ran",
+			},
 		});
 		await Promise.resolve();
+		return {
+			stopReason: "end_turn",
+		};
 	},
 };

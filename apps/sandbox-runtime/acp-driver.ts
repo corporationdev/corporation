@@ -15,8 +15,10 @@ import {
 	type NewSessionResponse,
 	type PromptRequest,
 	type PromptResponse,
+	type RequestPermissionRequest,
 	type ResumeSessionRequest,
 	type ResumeSessionResponse,
+	type SessionNotification,
 	type SetSessionConfigOptionRequest,
 	type SetSessionConfigOptionResponse,
 	type SetSessionModelRequest,
@@ -29,10 +31,15 @@ import type {
 	CreateSessionInput,
 	EventSink,
 	ResolvedStartTurnInput,
+	RunTurnResult,
 	SessionDynamicConfig,
 	SessionId,
 	TurnId,
 } from "./index";
+import {
+	normalizeAcpPermissionRequest,
+	normalizeAcpSessionUpdate,
+} from "./acp-event-normalizer";
 
 const ACP_PROTOCOL_VERSION = 2;
 
@@ -85,6 +92,17 @@ export type AcpRequestMap = {
 
 export type AcpRequestMethod = keyof AcpRequestMap;
 
+export type AcpInboundEvent =
+	| {
+			type: "session_update";
+			notification: SessionNotification;
+	  }
+	| {
+			type: "permission_request";
+			requestId: string;
+			request: RequestPermissionRequest;
+	  };
+
 export type AcpConnection = {
 	request<M extends AcpRequestMethod>(
 		method: M,
@@ -94,6 +112,7 @@ export type AcpConnection = {
 		method: typeof AGENT_METHODS.session_cancel,
 		params: CancelNotification
 	): Promise<void>;
+	subscribe(listener: (event: AcpInboundEvent) => void): () => void;
 	close?(): Promise<void>;
 };
 
@@ -169,13 +188,46 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 			});
 		},
 
-		async run(input: ResolvedStartTurnInput, _emit: EventSink): Promise<void> {
+		async run(
+			input: ResolvedStartTurnInput,
+			emit: EventSink
+		): Promise<RunTurnResult> {
 			const session = sessions.get(input.sessionId);
 			if (!session) {
 				throw new Error(`ACP session not found for ${input.sessionId}`);
 			}
 
 			turnToSession.set(input.turnId, input.sessionId);
+			const unsubscribe = session.connection.subscribe((event) => {
+				switch (event.type) {
+					case "session_update":
+						if (event.notification.sessionId !== session.acpSessionId) {
+							return;
+						}
+						emit(
+							normalizeAcpSessionUpdate(
+								input.sessionId,
+								input.turnId,
+								event.notification.update
+							)
+						);
+						return;
+					case "permission_request":
+						if (event.request.sessionId !== session.acpSessionId) {
+							return;
+						}
+						emit(
+							normalizeAcpPermissionRequest(
+								input.sessionId,
+								input.turnId,
+								event.requestId,
+								event.request
+							)
+						);
+						return;
+				}
+			});
+
 			try {
 				await applyDynamicConfig(
 					session.connection,
@@ -183,11 +235,18 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 					input.dynamicConfig
 				);
 
-				await session.connection.request(AGENT_METHODS.session_prompt, {
+				const result = await session.connection.request(
+					AGENT_METHODS.session_prompt,
+					{
 					sessionId: session.acpSessionId,
 					prompt: input.prompt,
-				});
+					}
+				);
+				return {
+					stopReason: result.stopReason,
+				};
 			} finally {
+				unsubscribe();
 				turnToSession.delete(input.turnId);
 			}
 		},

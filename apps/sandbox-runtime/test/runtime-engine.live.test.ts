@@ -9,8 +9,9 @@ import {
 	type AcpConnection,
 	type AcpConnectionFactory,
 	createAcpDriver,
-} from "../acp-session-manager";
-import { RuntimeEngine, type RuntimeEvent } from "../index";
+} from "../acp-driver";
+import { RuntimeEngine } from "../index";
+import type { RuntimeEvent } from "../runtime-events";
 
 const LIVE_AGENT = process.env.ACP_LIVE_AGENT?.trim();
 const LIVE_MODEL = process.env.ACP_LIVE_MODEL?.trim();
@@ -18,7 +19,7 @@ const LIVE_CWD = process.env.ACP_LIVE_CWD?.trim() || process.cwd();
 
 describe("RuntimeEngine Live", () => {
 	if (LIVE_AGENT) {
-		test("creates a real ACP session and runs a real prompt through the runtime engine", async () => {
+		test("sends a real message and emits turn plus session events through the runtime engine", async () => {
 			const baseFactory = createSpawnedAcpConnectionFactory();
 			const liveConnections: AcpConnection[] = [];
 			const events: RuntimeEvent[] = [];
@@ -39,6 +40,9 @@ describe("RuntimeEngine Live", () => {
 						},
 						notify(method, params) {
 							return connection.notify(method, params);
+						},
+						subscribe(listener) {
+							return connection.subscribe(listener);
 						},
 						close() {
 							return connection.close?.() ?? Promise.resolve();
@@ -77,10 +81,33 @@ describe("RuntimeEngine Live", () => {
 
 				expect(turnId).toBeString();
 				expect(engine.getTurn(turnId)?.status).toBe("completed");
-				expect(events).toEqual([
-					{ type: "turn.started", sessionId, turnId },
-					{ type: "turn.completed", sessionId, turnId },
-				]);
+				expect(events.length).toBeGreaterThanOrEqual(3);
+				expect(events[0]).toEqual({
+					type: "turn.started",
+					sessionId,
+					turnId,
+				});
+
+				const streamedEvents = events.filter(
+					(event) =>
+						event.type !== "turn.started" && event.type !== "turn.completed"
+				);
+				expect(streamedEvents.length).toBeGreaterThan(0);
+				expect(
+					streamedEvents.some(
+						(event) =>
+							event.type === "output.delta" &&
+							event.channel === "assistant" &&
+							event.content.type === "text" &&
+							event.content.text.length > 0
+					)
+				).toBe(true);
+				expect(events.at(-1)).toEqual({
+					type: "turn.completed",
+					sessionId,
+					turnId,
+					stopReason: "end_turn",
+				});
 				expect(promptResponse).toBeDefined();
 				expect(promptResponse?.stopReason).toBe("end_turn");
 			} finally {
@@ -94,7 +121,7 @@ describe("RuntimeEngine Live", () => {
 	} else {
 		// biome-ignore lint/suspicious/noSkippedTests: this integration test is opt-in via ACP_LIVE_AGENT
 		test.skip(
-			"creates a real ACP session and runs a real prompt through the runtime engine",
+			"sends a real message and emits turn plus session events through the runtime engine",
 			() => undefined
 		);
 	}

@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { AGENT_METHODS } from "@agentclientprotocol/sdk";
 import {
+	AGENT_METHODS,
+	type PromptResponse,
+} from "@agentclientprotocol/sdk";
+import {
+	type AcpInboundEvent,
 	type AcpConnection,
 	type AcpConnectionFactory,
 	type AcpRequestMap,
 	type AcpRequestMethod,
 	createAcpDriver,
-} from "../acp-session-manager";
+} from "../acp-driver";
 
 type RequestCall = {
 	method: string;
@@ -16,6 +20,7 @@ type RequestCall = {
 function createFakeConnection(sessionId: string) {
 	const requestCalls: RequestCall[] = [];
 	const notifyCalls: RequestCall[] = [];
+	const listeners = new Set<(event: AcpInboundEvent) => void>();
 	const connection: AcpConnection = {
 		request<M extends AcpRequestMethod>(
 			method: M,
@@ -27,6 +32,10 @@ function createFakeConnection(sessionId: string) {
 					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 				case "session/new":
 					return Promise.resolve({ sessionId } as AcpRequestMap[M]["result"]);
+				case AGENT_METHODS.session_prompt:
+					return Promise.resolve({
+						stopReason: "end_turn",
+					} as AcpRequestMap[M]["result"]);
 				default:
 					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 			}
@@ -35,9 +44,24 @@ function createFakeConnection(sessionId: string) {
 			notifyCalls.push({ method, params });
 			return Promise.resolve();
 		},
+		subscribe(listener) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
 	};
 
-	return { connection, requestCalls, notifyCalls };
+	return {
+		connection,
+		requestCalls,
+		notifyCalls,
+		emit(event: AcpInboundEvent) {
+			for (const listener of listeners) {
+				listener(event);
+			}
+		},
+	};
 }
 
 describe("createAcpDriver", () => {
@@ -139,6 +163,227 @@ describe("createAcpDriver", () => {
 				params: {
 					sessionId: "acp-1",
 					prompt: [{ type: "text", text: "hello" }],
+				},
+			},
+		]);
+	});
+
+	test("run maps ACP inbound events into normalized runtime events", async () => {
+		const fake = createFakeConnection("acp-1");
+		const events: unknown[] = [];
+		let releasePrompt!: () => void;
+		const promptFinished = new Promise<PromptResponse>((resolve) => {
+			releasePrompt = () => {
+				resolve({ stopReason: "end_turn" });
+			};
+		});
+		fake.connection.request = <M extends AcpRequestMethod>(
+			method: M,
+			params: AcpRequestMap[M]["params"]
+		): Promise<AcpRequestMap[M]["result"]> => {
+			fake.requestCalls.push({ method, params });
+			switch (method) {
+				case "initialize":
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+				case "session/new":
+					return Promise.resolve({ sessionId: "acp-1" } as AcpRequestMap[M]["result"]);
+				case AGENT_METHODS.session_prompt:
+					fake.emit({
+						type: "session_update",
+						notification: {
+							sessionId: "acp-1",
+							update: {
+								sessionUpdate: "agent_message_chunk",
+								content: {
+									type: "text",
+									text: "READY",
+								},
+							},
+						},
+					});
+					fake.emit({
+						type: "session_update",
+						notification: {
+							sessionId: "acp-1",
+							update: {
+								sessionUpdate: "plan",
+								entries: [
+									{
+										content: "Answer the user",
+										priority: "high",
+										status: "in_progress",
+									},
+								],
+							},
+						},
+					});
+					fake.emit({
+						type: "session_update",
+						notification: {
+							sessionId: "acp-1",
+							update: {
+								sessionUpdate: "current_mode_update",
+								currentModeId: "fast",
+							},
+						},
+					});
+					fake.emit({
+						type: "session_update",
+						notification: {
+							sessionId: "acp-1",
+							update: {
+								sessionUpdate: "config_option_update",
+								configOptions: [
+									{
+										type: "select",
+										id: "effort",
+										name: "Effort",
+										currentValue: "high",
+										options: [{ name: "High", value: "high" }],
+									},
+								],
+							},
+						},
+					});
+					fake.emit({
+						type: "session_update",
+						notification: {
+							sessionId: "acp-1",
+							update: {
+								sessionUpdate: "session_info_update",
+								title: "Session title",
+								updatedAt: "2026-03-12T12:00:00Z",
+							},
+						},
+					});
+					fake.emit({
+						type: "session_update",
+						notification: {
+							sessionId: "acp-1",
+							update: {
+								sessionUpdate: "usage_update",
+								used: 50,
+								size: 100,
+								cost: { amount: 0.01, currency: "USD" },
+							},
+						},
+					});
+					fake.emit({
+						type: "permission_request",
+						requestId: "perm-1",
+						request: {
+							sessionId: "acp-1",
+							options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+							toolCall: {
+								toolCallId: "tool-1",
+								title: "Read file",
+								status: "pending",
+							},
+						},
+					});
+					return promptFinished.then(
+						(result) => result as AcpRequestMap[M]["result"]
+					);
+				default:
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+			}
+		};
+
+		const driver = createAcpDriver({
+			connect() {
+				return Promise.resolve(fake.connection);
+			},
+		});
+		await driver.createSession?.({
+			sessionId: "session-1",
+			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
+			dynamicConfig: {},
+		});
+
+		const running = driver.run(
+			{
+				sessionId: "session-1",
+				turnId: "turn-1",
+				prompt: [{ type: "text", text: "hello" }],
+				dynamicConfig: {},
+			},
+			(event) => {
+				events.push(event);
+			}
+		);
+
+		releasePrompt();
+		const result = await running;
+
+		expect(result).toEqual({ stopReason: "end_turn" });
+		expect(events).toEqual([
+			{
+				type: "output.delta",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				channel: "assistant",
+				content: {
+					type: "text",
+					text: "READY",
+				},
+			},
+			{
+				type: "plan.updated",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				entries: [
+					{
+						content: "Answer the user",
+						priority: "high",
+						status: "in_progress",
+					},
+				],
+			},
+			{
+				type: "session.mode.updated",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				modeId: "fast",
+			},
+			{
+				type: "session.config.updated",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				configOptions: [
+					{
+						type: "select",
+						id: "effort",
+						name: "Effort",
+						currentValue: "high",
+						options: [{ name: "High", value: "high" }],
+					},
+				],
+			},
+			{
+				type: "session.info.updated",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				title: "Session title",
+				updatedAt: "2026-03-12T12:00:00Z",
+			},
+			{
+				type: "usage.updated",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				used: 50,
+				size: 100,
+				cost: { amount: 0.01, currency: "USD" },
+			},
+			{
+				type: "permission.requested",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				requestId: "perm-1",
+				options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+				toolCall: {
+					toolCallId: "tool-1",
+					title: "Read file",
+					status: "pending",
 				},
 			},
 		]);
