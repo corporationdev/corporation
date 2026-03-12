@@ -89,7 +89,7 @@ function runBun(
 export async function runCodeMcp(): Promise<void> {
 	const server = new McpServer({
 		name: "code",
-		version: "1.0.0",
+		version: "1.0.1",
 	});
 
 	server.registerTool(

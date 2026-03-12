@@ -98,7 +98,7 @@ That command packs the current runtime, uploads the tarball to the target sandbo
 To validate a published npm version exactly as production installs it:
 
 ```bash
-bun dev:sandbox-runtime:remote <sandbox-id> --version 1.0.0 --no-watch
+bun dev:sandbox-runtime:remote <sandbox-id> --version 1.0.1 --no-watch
 ```
 
 A local helper still exists for protocol debugging:

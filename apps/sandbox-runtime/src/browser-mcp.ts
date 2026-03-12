@@ -178,7 +178,7 @@ export async function runBrowserMcp(): Promise<void> {
 
 	const server = new McpServer({
 		name: "browser",
-		version: "1.0.0",
+		version: "1.0.1",
 	});
 
 	server.registerTool(

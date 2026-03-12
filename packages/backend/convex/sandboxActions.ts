@@ -18,7 +18,7 @@ import {
 	SANDBOX_AGENT_SESSION_NAME,
 	SANDBOX_WORKDIR,
 } from "./lib/sandbox";
-import { ensureSandboxRuntimeInstalled } from "./lib/sandbox-runtime";
+import { ensureSandboxRuntimeInstalled } from "./lib/sandboxRuntime";
 
 type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
 

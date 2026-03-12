@@ -13,6 +13,7 @@ type BuildSandboxRuntimePackageOptions = {
 
 type SandboxRuntimeSourcePackage = {
 	version: string;
+	dependencies?: Record<string, string>;
 };
 
 export function getSandboxRuntimeSourceDir() {
@@ -40,10 +41,25 @@ export async function readSandboxRuntimeVersion() {
 	return version;
 }
 
+async function readSandboxRuntimeSourcePackage() {
+	return (await Bun.file(
+		runtimeSourcePackageJsonPath
+	).json()) as SandboxRuntimeSourcePackage;
+}
+
 function buildBinScript() {
 	return `#!/usr/bin/env sh
 set -eu
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_PATH="$0"
+while [ -L "$SCRIPT_PATH" ]; do
+	SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
+	LINK_TARGET="$(readlink -- "$SCRIPT_PATH")"
+	case "$LINK_TARGET" in
+		/*) SCRIPT_PATH="$LINK_TARGET" ;;
+		*) SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET" ;;
+	esac
+done
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
 PACKAGE_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 exec bun "$PACKAGE_DIR/dist/index.js" "$@"
 `;
@@ -64,7 +80,18 @@ This package is built from \`apps/sandbox-runtime\` in the monorepo and is inten
 export async function buildSandboxRuntimePackage(
 	options: BuildSandboxRuntimePackageOptions = {}
 ) {
-	const version = options.version ?? (await readSandboxRuntimeVersion());
+	const sourcePackage = await readSandboxRuntimeSourcePackage();
+	const version = options.version ?? sourcePackage.version?.trim();
+	if (!version) {
+		throw new Error(
+			`Missing version in ${basename(runtimeSourcePackageJsonPath)}`
+		);
+	}
+	const publishedDependencies = Object.fromEntries(
+		Object.entries(sourcePackage.dependencies ?? {}).filter(
+			([name]) => name === "playwright"
+		)
+	);
 
 	await rm(stagingDir, { recursive: true, force: true });
 	await mkdir(resolve(stagingDir, "dist"), { recursive: true });
@@ -78,6 +105,10 @@ export async function buildSandboxRuntimePackage(
 			"--outdir",
 			resolve(stagingDir, "dist"),
 			"--target=bun",
+			"--external",
+			"playwright",
+			"--external",
+			"playwright-core",
 		],
 		{
 			cwd: repoRoot,
@@ -116,6 +147,7 @@ export async function buildSandboxRuntimePackage(
 				bin: {
 					"sandbox-runtime": "./bin/sandbox-runtime",
 				},
+				dependencies: publishedDependencies,
 				files: ["bin", "dist", "README.md"],
 			},
 			null,
