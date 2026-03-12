@@ -34,6 +34,17 @@ type ManualAgentConfig = {
 	acpInstallStrategy?: "distribution" | "native";
 	acpExecutableName?: string;
 	installSource?: string;
+	credentialSupport?: "supported" | "unsupported";
+	credentialBundle?: {
+		schemaVersion: number;
+		paths: Array<{
+			path: string;
+			kind: "file" | "dir";
+			required?: boolean;
+		}>;
+		exclude?: string[];
+	} | null;
+	unsupportedReason?: string | null;
 };
 
 type GeneratedRuntimeCommand = {
@@ -49,6 +60,9 @@ type GeneratedAgent = RegistryAgent & {
 	runtimeCommand: GeneratedRuntimeCommand | null;
 	installCommand: string | null;
 	installSource: string | null;
+	credentialSupport: "supported" | "unsupported";
+	credentialBundle: NonNullable<ManualAgentConfig["credentialBundle"]> | null;
+	unsupportedReason: string | null;
 };
 
 const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
@@ -58,12 +72,20 @@ const MANUAL_AGENT_CONFIG: Record<string, ManualAgentConfig> = {
 		acpInstallStrategy: "distribution",
 		acpExecutableName: "claude-agent-acp",
 		installSource: "https://docs.anthropic.com/en/docs/claude-code/setup",
+		credentialSupport: "unsupported",
+		credentialBundle: null,
+		unsupportedReason:
+			"Remote credential sync is not supported yet for this agent's current auth modes.",
 	},
 	"codex-acp": {
 		nativeInstallCommand:
 			'npm install -g --prefix "$HOME/.local" @openai/codex',
 		acpInstallStrategy: "distribution",
 		installSource: "https://github.com/openai/codex",
+		credentialSupport: "unsupported",
+		credentialBundle: null,
+		unsupportedReason:
+			"Remote credential sync is not supported yet for this agent's current auth modes.",
 	},
 	opencode: {
 		acpInstallStrategy: "native",
@@ -179,6 +201,14 @@ const PINNED_ORDER = [
 	"pi-acp",
 	"factory-droid",
 ];
+const BLOCKED_AGENT_IDS = new Set([
+	"nova",
+	"minion-code",
+	"crow-cli",
+	"corust-agent",
+	"codebuddy-code",
+	"fast-agent",
+]);
 
 function packageSpecSchema(value: string) {
 	const scopedMatch = value.match(SCOPED_PACKAGE_SPEC_RE);
@@ -478,6 +508,13 @@ function toGeneratedAgent(agent: RegistryAgent): GeneratedAgent {
 	const runtimeCommand =
 		manual.runtimeCommandOverride ??
 		(useNativeForRuntime ? nativeRuntimeCommand : fallbackAcp.runtimeCommand);
+	const credentialSupport = manual.credentialSupport ?? "unsupported";
+	const credentialBundle =
+		credentialSupport === "supported" ? (manual.credentialBundle ?? null) : null;
+	const unsupportedReason =
+		credentialSupport === "unsupported"
+			? (manual.unsupportedReason ?? "Credential sync is not supported yet.")
+			: null;
 
 	return {
 		...agent,
@@ -492,6 +529,9 @@ function toGeneratedAgent(agent: RegistryAgent): GeneratedAgent {
 			acpInstallCommand,
 		}),
 		installSource: manual.installSource ?? agent.repository ?? null,
+		credentialSupport,
+		credentialBundle,
+		unsupportedReason,
 	};
 }
 
@@ -518,7 +558,10 @@ async function main() {
 	}
 
 	const data = registrySchema.parse(await response.json());
-	const agents = data.agents.map(toGeneratedAgent).sort(sortAgents);
+	const agents = data.agents
+		.filter((agent) => !BLOCKED_AGENT_IDS.has(agent.id))
+		.map(toGeneratedAgent)
+		.sort(sortAgents);
 	const serialized = `${JSON.stringify(agents, null, "  ")}\n`;
 
 	mkdirSync(dirname(SHARED_OUTPUT_PATH), { recursive: true });

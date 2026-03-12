@@ -1,6 +1,7 @@
 import { api } from "@corporation/backend/convex/_generated/api";
 import acpAgents, {
 	type AcpAgentManifestEntry,
+	supportsAgentCredentials,
 } from "@corporation/config/acp-agent-manifest";
 import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
 import { useMutation, useQuery } from "convex/react";
@@ -30,9 +31,14 @@ import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import { cn } from "@/lib/utils";
 
 function getAgentProbeStatusLabel(
+	agent: AcpAgentManifestEntry,
 	status: AgentProbeAgent["status"] | undefined,
 	isChecking: boolean
 ) {
+	if (!supportsAgentCredentials(agent)) {
+		return "Not supported yet";
+	}
+
 	switch (status) {
 		case "verified":
 			return "Configured";
@@ -64,8 +70,10 @@ function AgentListItem({
 }) {
 	const [showModels, setShowModels] = useState(false);
 	const derivedModels = deriveAgentModels(probe?.configOptions);
-	const statusLabel = getAgentProbeStatusLabel(probe?.status, isChecking);
+	const isSupported = supportsAgentCredentials(agent);
+	const statusLabel = getAgentProbeStatusLabel(agent, probe?.status, isChecking);
 	const showInstallButton =
+		isSupported &&
 		(typeof agent.nativeInstallCommand === "string" ||
 			typeof agent.acpInstallCommand === "string") &&
 		(!probe || probe.status === "not_installed");
@@ -74,7 +82,12 @@ function AgentListItem({
 
 	return (
 		<Collapsible onOpenChange={setShowModels} open={showModels}>
-			<div className="group rounded-md transition-colors hover:bg-muted/70">
+			<div
+				className={cn(
+					"group rounded-md transition-colors",
+					isSupported ? "hover:bg-muted/70" : "opacity-60"
+				)}
+			>
 				<div className="flex items-center gap-2 px-2 py-2">
 					<img
 						alt={agent.name}
@@ -129,6 +142,10 @@ function AgentListItem({
 				{probe?.error && probe.status === "error" ? (
 					<div className="px-2 pb-2 text-muted-foreground text-xs/relaxed">
 						{probe.error}
+					</div>
+				) : !isSupported ? (
+					<div className="px-2 pb-2 text-muted-foreground text-xs/relaxed">
+						{agent.unsupportedReason ?? "Credential sync is not supported yet."}
 					</div>
 				) : null}
 				{showModelsToggle ? (
@@ -226,10 +243,24 @@ export function AgentsConfigureDialog({
 		spaceSlug: agent?.slug ?? "",
 		enabled: open && isSandboxReady && isConnected,
 	});
+	const manifestById = useMemo(
+		() =>
+			new Map(acpAgents.map((manifestAgent) => [manifestAgent.id, manifestAgent])),
+		[]
+	);
+	const supportedAgentIds = useMemo(
+		() =>
+			new Set(
+				acpAgents
+					.filter((manifestAgent) => supportsAgentCredentials(manifestAgent))
+					.map((manifestAgent) => manifestAgent.id)
+			),
+		[]
+	);
 
 	const installAgent = useCallback(
 		async (manifestAgent: AcpAgentManifestEntry) => {
-			if (!actor.connection) {
+			if (!actor.connection || !supportsAgentCredentials(manifestAgent)) {
 				return;
 			}
 
@@ -266,7 +297,9 @@ export function AgentsConfigureDialog({
 		const agentsToSave = (agentProbeData?.agents ?? [])
 			.filter(
 				(probe): probe is typeof probe & { configOptions: unknown[] } =>
-					probe.status === "verified" && Array.isArray(probe.configOptions)
+					probe.status === "verified" &&
+					Array.isArray(probe.configOptions) &&
+					supportedAgentIds.has(probe.id)
 			)
 			.map((probe) => ({
 				id: probe.id,
@@ -276,7 +309,7 @@ export function AgentsConfigureDialog({
 		saveUserSpace({
 			agents: agentsToSave,
 		});
-	}, [agentProbeData?.agents, saveUserSpace]);
+	}, [agentProbeData?.agents, saveUserSpace, supportedAgentIds]);
 
 	const probeByManifestId = useMemo(
 		() =>
@@ -287,6 +320,19 @@ export function AgentsConfigureDialog({
 				])
 			),
 		[agentProbeData?.agents]
+	);
+	const hasSupportedVerifiedAgents = useMemo(
+		() =>
+			(agentProbeData?.agents ?? []).some((probe) => {
+				const manifestAgent = manifestById.get(probe.id);
+				return (
+					manifestAgent !== undefined &&
+					supportsAgentCredentials(manifestAgent) &&
+					probe.status === "verified" &&
+					Array.isArray(probe.configOptions)
+				);
+			}),
+		[agentProbeData?.agents, manifestById]
 	);
 	const showReadyState = !!agent && isSandboxReady && isConnected;
 	const showErrorState =
@@ -307,9 +353,14 @@ export function AgentsConfigureDialog({
 							<div className="w-72 shrink-0 rounded-lg border bg-muted/30">
 								<div className="px-3 py-2.5">
 									<div className="flex items-center justify-between gap-2">
-										<h2 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-											Agents
-										</h2>
+										<div>
+											<h2 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+												Agents
+											</h2>
+											<div className="mt-1 text-muted-foreground text-xs">
+												Only explicitly supported agents can be saved.
+											</div>
+										</div>
 										<div className="flex items-center gap-1">
 											{agent.sandboxId ? (
 												<Button
@@ -369,7 +420,11 @@ export function AgentsConfigureDialog({
 							>
 								Close
 							</Button>
-							<Button disabled={isSaving} onClick={handleSave} size="sm">
+							<Button
+								disabled={isSaving || !hasSupportedVerifiedAgents}
+								onClick={handleSave}
+								size="sm"
+							>
 								{isSaving ? (
 									<>
 										<Loader2Icon className="size-4 animate-spin" />

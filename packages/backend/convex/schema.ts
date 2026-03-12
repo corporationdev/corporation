@@ -95,6 +95,18 @@ export default defineSchema(
 		})
 			.index("by_user", ["userId"])
 			.index("by_user_and_agent", ["userId", "agentId"]),
+		agentCredentials: defineTable({
+			userId: v.string(),
+			agentId: v.string(),
+			encryptedBundle: v.string(),
+			iv: v.string(),
+			schemaVersion: v.number(),
+			lastSyncedAt: v.optional(v.number()),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		})
+			.index("by_user", ["userId"])
+			.index("by_user_and_agent", ["userId", "agentId"]),
 		secrets: defineTable({
 			userId: v.string(),
 			projectId: v.id("projects"),

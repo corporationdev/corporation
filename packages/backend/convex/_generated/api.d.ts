@@ -9,6 +9,8 @@
  */
 
 import type * as agentConfig from "../agentConfig.js";
+import type * as agentCredentialActions from "../agentCredentialActions.js";
+import type * as agentCredentials from "../agentCredentials.js";
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
 import type * as functions from "../functions.js";
@@ -44,6 +46,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   agentConfig: typeof agentConfig;
+  agentCredentialActions: typeof agentCredentialActions;
+  agentCredentials: typeof agentCredentials;
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
   functions: typeof functions;
