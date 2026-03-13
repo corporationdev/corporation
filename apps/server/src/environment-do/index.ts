@@ -6,6 +6,7 @@ import type {
 import type {
 	EnvironmentRuntimeCommand,
 	EnvironmentRuntimeCommandResponse,
+	EnvironmentRuntimeStreamItemsMessage,
 } from "@corporation/contracts/environment-runtime";
 import { createLogger } from "@corporation/logger";
 import { drizzle } from "drizzle-orm/durable-sqlite";
@@ -159,6 +160,30 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				offset: entry.subscription.offset,
 			});
 		}
+	}
+
+	private async handleRuntimeStreamItems(
+		message: EnvironmentRuntimeStreamItemsMessage
+	): Promise<void> {
+		const result = await forwardStreamItemsToSubscriber({
+			actorId: this.ctx.id.toString(),
+			bindings: this.env as unknown as EnvironmentDoCallbackBindings,
+			log,
+			message,
+			subscription: this.streamSubscriptions.get(message.stream),
+		});
+		if (!(result && result.ok)) {
+			return;
+		}
+
+		this.streamSubscriptions.ack({
+			stream: message.stream,
+			offset: result.value.committedOffset,
+		});
+		await this.subscriptionStore.updatePersistedOffset({
+			stream: message.stream,
+			offset: result.value.committedOffset,
+		});
 	}
 
 	private async restorePersistedState(): Promise<void> {
@@ -337,13 +362,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			return;
 		}
 
-		void forwardStreamItemsToSubscriber({
-			actorId: this.ctx.id.toString(),
-			bindings: this.env as unknown as EnvironmentDoCallbackBindings,
-			log,
-			message: streamItems,
-			subscription: this.streamSubscriptions.get(streamItems.stream),
-		});
+		void this.handleRuntimeStreamItems(streamItems);
 	}
 
 	webSocketClose(

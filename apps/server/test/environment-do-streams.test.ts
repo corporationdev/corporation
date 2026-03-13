@@ -1,9 +1,15 @@
-import { env, runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { EnvironmentDurableObject } from "../src/environment-do";
 import type { TestStreamConsumerDurableObject } from "../src/test-stream-consumer-do";
 
 const RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
+
+type RuntimeSocketHarness = {
+	socket: WebSocket;
+	send: (payload: Record<string, unknown>) => void;
+	waitForMessage: () => Promise<Record<string, unknown>>;
+};
 
 function createRuntimeAuthHeader() {
 	return JSON.stringify({
@@ -21,7 +27,7 @@ function createRuntimeAuthHeader() {
 
 async function connectRuntimeSocket(
 	stub: DurableObjectStub<EnvironmentDurableObject>
-) {
+): Promise<RuntimeSocketHarness> {
 	const response = await stub.fetch("http://fake/runtime/socket", {
 		headers: {
 			Upgrade: "websocket",
@@ -33,21 +39,34 @@ async function connectRuntimeSocket(
 	const runtimeSocket = response.webSocket;
 	expect(runtimeSocket).toBeTruthy();
 	runtimeSocket?.accept();
-	return runtimeSocket!;
-}
+	const queue: Record<string, unknown>[] = [];
+	const waiters: Array<(message: Record<string, unknown>) => void> = [];
 
-async function waitForSocketMessage(
-	socket: WebSocket
-): Promise<Record<string, unknown>> {
-	return await new Promise((resolve) => {
-		socket.addEventListener(
-			"message",
-			(event) => {
-				resolve(JSON.parse(String(event.data)) as Record<string, unknown>);
-			},
-			{ once: true }
-		);
+	runtimeSocket!.addEventListener("message", (event) => {
+		const message = JSON.parse(String(event.data)) as Record<string, unknown>;
+		const waiter = waiters.shift();
+		if (waiter) {
+			waiter(message);
+			return;
+		}
+		queue.push(message);
 	});
+
+	return {
+		socket: runtimeSocket!,
+		send(payload) {
+			runtimeSocket!.send(JSON.stringify(payload));
+		},
+		waitForMessage() {
+			const message = queue.shift();
+			if (message) {
+				return Promise.resolve(message);
+			}
+			return new Promise((resolve) => {
+				waiters.push(resolve);
+			});
+		},
+	};
 }
 
 async function getReceivedStreamItems(
@@ -59,6 +78,17 @@ async function getReceivedStreamItems(
 		throw new Error("Expected received stream items snapshot");
 	}
 	return result.value.deliveries;
+}
+
+async function setConsumerAckEnabled(input: {
+	stub: DurableObjectStub<TestStreamConsumerDurableObject>;
+	enabled: boolean;
+}) {
+	const result = await input.stub.setAckEnabled({ enabled: input.enabled });
+	expect(result).toEqual({
+		ok: true,
+		value: {},
+	});
 }
 
 async function waitForReceivedStreamItems(input: {
@@ -131,7 +161,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 			},
 		});
 
-		await expect(waitForSocketMessage(runtimeSocket)).resolves.toEqual({
+		await expect(runtimeSocket.waitForMessage()).resolves.toEqual({
 			type: "subscribe_stream",
 			stream: "session:session-1",
 			offset: "5",
@@ -292,7 +322,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		const consumerStub = env.TEST_STREAM_CONSUMER_DO.get(
 			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-persisted")
 		);
-		const initialSubscribeMessagePromise = waitForSocketMessage(runtimeSocket);
+		const initialSubscribeMessagePromise = runtimeSocket.waitForMessage();
 
 		await expect(
 			stub.subscribeStream({
@@ -317,14 +347,13 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		});
 
 		const reconnectedRuntimeSocket = await connectRuntimeSocket(stub);
-		await expect(waitForSocketMessage(reconnectedRuntimeSocket)).resolves.toEqual({
+		await expect(reconnectedRuntimeSocket.waitForMessage()).resolves.toEqual({
 			type: "subscribe_stream",
 			stream: "session:session-1",
 			offset: "5",
 		});
 
-		reconnectedRuntimeSocket.send(
-			JSON.stringify({
+		reconnectedRuntimeSocket.send({
 				type: "stream_items",
 				stream: "session:session-1",
 				items: [
@@ -352,8 +381,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				nextOffset: "7",
 				upToDate: true,
 				streamClosed: false,
-			})
-		);
+			});
 
 		await expect(
 			waitForReceivedStreamItems({
@@ -393,6 +421,200 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		]);
 	});
 
+	it("advances the persisted offset after a downstream ack", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("stream-ack-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+		const consumerStub = env.TEST_STREAM_CONSUMER_DO.get(
+			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-ack")
+		);
+
+		await expect(
+			stub.subscribeStream({
+				stream: "session:session-1",
+				offset: "5",
+				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-ack",
+					},
+					requesterId: "requester-1",
+				},
+			})
+		).resolves.toEqual({
+			ok: true,
+			value: {},
+		});
+		await expect(runtimeSocket.waitForMessage()).resolves.toEqual({
+			type: "subscribe_stream",
+			stream: "session:session-1",
+			offset: "5",
+		});
+
+		runtimeSocket.send({
+				type: "stream_items",
+				stream: "session:session-1",
+				items: [
+					{
+						offset: "6",
+						eventId: "event-6",
+						createdAt: 123,
+						event: { type: "turn.started" },
+					},
+					{
+						offset: "7",
+						eventId: "event-7",
+						createdAt: 124,
+						event: { type: "turn.completed" },
+					},
+				],
+				nextOffset: "7",
+				upToDate: true,
+				streamClosed: false,
+			});
+
+		await waitForReceivedStreamItems({
+			stub: consumerStub,
+			expectedCount: 1,
+		});
+
+		const reconnectedRuntimeSocket = await connectRuntimeSocket(stub);
+		await expect(reconnectedRuntimeSocket.waitForMessage()).resolves.toEqual({
+			type: "subscribe_stream",
+			stream: "session:session-1",
+			offset: "7",
+		});
+	});
+
+	it("replays unacked events from the previous persisted offset after reconnect", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("stream-no-ack-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+		const consumerStub = env.TEST_STREAM_CONSUMER_DO.get(
+			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-no-ack")
+		);
+
+		await setConsumerAckEnabled({
+			stub: consumerStub,
+			enabled: false,
+		});
+
+		await expect(
+			stub.subscribeStream({
+				stream: "session:session-1",
+				offset: "5",
+				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-no-ack",
+					},
+					requesterId: "requester-1",
+				},
+			})
+		).resolves.toEqual({
+			ok: true,
+			value: {},
+		});
+		await expect(runtimeSocket.waitForMessage()).resolves.toEqual({
+			type: "subscribe_stream",
+			stream: "session:session-1",
+			offset: "5",
+		});
+
+		const replayBatch = {
+			type: "stream_items",
+			stream: "session:session-1",
+			items: [
+				{
+					offset: "6",
+					eventId: "event-6",
+					createdAt: 123,
+					event: { type: "turn.started" },
+				},
+				{
+					offset: "7",
+					eventId: "event-7",
+					createdAt: 124,
+					event: { type: "turn.completed" },
+				},
+			],
+			nextOffset: "7",
+			upToDate: true,
+			streamClosed: false,
+		};
+
+		runtimeSocket.send(replayBatch);
+
+		await waitForReceivedStreamItems({
+			stub: consumerStub,
+			expectedCount: 1,
+		});
+
+		await setConsumerAckEnabled({
+			stub: consumerStub,
+			enabled: true,
+		});
+
+		const reconnectedRuntimeSocket = await connectRuntimeSocket(stub);
+		await expect(reconnectedRuntimeSocket.waitForMessage()).resolves.toEqual({
+			type: "subscribe_stream",
+			stream: "session:session-1",
+			offset: "5",
+		});
+
+		reconnectedRuntimeSocket.send(replayBatch);
+
+		await expect(
+			waitForReceivedStreamItems({
+				stub: consumerStub,
+				expectedCount: 2,
+			})
+		).resolves.toEqual([
+			{
+				stream: "session:session-1",
+				requesterId: "requester-1",
+				items: [
+					{
+						offset: "6",
+						eventId: "event-6",
+						createdAt: 123,
+						event: { type: "turn.started" },
+					},
+					{
+						offset: "7",
+						eventId: "event-7",
+						createdAt: 124,
+						event: { type: "turn.completed" },
+					},
+				],
+				nextOffset: "7",
+				upToDate: true,
+				streamClosed: false,
+			},
+			{
+				stream: "session:session-1",
+				requesterId: "requester-1",
+				items: [
+					{
+						offset: "6",
+						eventId: "event-6",
+						createdAt: 123,
+						event: { type: "turn.started" },
+					},
+					{
+						offset: "7",
+						eventId: "event-7",
+						createdAt: 124,
+						event: { type: "turn.completed" },
+					},
+				],
+				nextOffset: "7",
+				upToDate: true,
+				streamClosed: false,
+			},
+		]);
+	});
+
 	it("routes stream_items to the registered subscriber", async () => {
 		const id = env.ENVIRONMENT_DO.idFromName("stream-delivery-user");
 		const stub = env.ENVIRONMENT_DO.get(id);
@@ -418,8 +640,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 			value: {},
 		});
 
-		runtimeSocket.send(
-			JSON.stringify({
+		runtimeSocket.send({
 				type: "stream_items",
 				stream: "session:session-1",
 				items: [
@@ -437,8 +658,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				nextOffset: "1",
 				upToDate: true,
 				streamClosed: false,
-			})
-		);
+			});
 
 		await expect(
 			waitForReceivedStreamItems({
@@ -476,8 +696,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-miss")
 		);
 
-		runtimeSocket.send(
-			JSON.stringify({
+		runtimeSocket.send({
 				type: "stream_items",
 				stream: "session:missing",
 				items: [
@@ -491,8 +710,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				nextOffset: "1",
 				upToDate: true,
 				streamClosed: false,
-			})
-		);
+			});
 
 		await expect(getReceivedStreamItems(consumerStub)).resolves.toEqual([]);
 	});
@@ -531,8 +749,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 			},
 		});
 
-		runtimeSocket.send(
-			JSON.stringify({
+		runtimeSocket.send({
 				type: "stream_items",
 				stream: "session:session-1",
 				items: [
@@ -541,10 +758,8 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				nextOffset: "1",
 				upToDate: true,
 				streamClosed: false,
-			})
-		);
-		runtimeSocket.send(
-			JSON.stringify({
+			});
+		runtimeSocket.send({
 				type: "stream_items",
 				stream: "session:session-2",
 				items: [
@@ -553,8 +768,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				nextOffset: "1",
 				upToDate: true,
 				streamClosed: false,
-			})
-		);
+			});
 
 		await expect(
 			waitForReceivedStreamItems({ stub: firstConsumer, expectedCount: 1 })

@@ -68,4 +68,17 @@ export class EnvironmentSubscriptionStore {
 			.delete(environmentStreamSubscriptions)
 			.where(eq(environmentStreamSubscriptions.stream, stream));
 	}
+
+	async updatePersistedOffset(input: {
+		stream: string;
+		offset: EnvironmentStreamOffset;
+	}): Promise<void> {
+		await this.db
+			.update(environmentStreamSubscriptions)
+			.set({
+				lastPersistedOffset: input.offset,
+				updatedAt: Date.now(),
+			})
+			.where(eq(environmentStreamSubscriptions.stream, input.stream));
+	}
 }

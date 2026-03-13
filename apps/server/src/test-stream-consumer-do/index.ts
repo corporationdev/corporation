@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
-	EnvironmentStreamConsumer,
 	EnvironmentRpcResult,
+	EnvironmentStreamConsumer,
 	EnvironmentStreamDelivery,
+	EnvironmentStreamDeliveryAck,
 } from "@corporation/contracts/environment-do";
 
 function okResult<T>(value: T): EnvironmentRpcResult<T> {
@@ -17,12 +18,24 @@ export class TestStreamConsumerDurableObject
 	implements EnvironmentStreamConsumer
 {
 	private readonly deliveries: EnvironmentStreamDelivery[] = [];
+	private ackEnabled = true;
 
 	receiveEnvironmentStreamItems(
 		input: EnvironmentStreamDelivery
-	): EnvironmentRpcResult<{}> {
+	): EnvironmentRpcResult<EnvironmentStreamDeliveryAck> {
 		this.deliveries.push(input);
-		return okResult({});
+		if (!this.ackEnabled) {
+			return {
+				ok: false,
+				error: {
+					code: "runtime_request_send_failed",
+					message: "Consumer intentionally withheld ack",
+				},
+			};
+		}
+		return okResult({
+			committedOffset: input.nextOffset,
+		});
 	}
 
 	getReceivedStreamItems(): EnvironmentRpcResult<{
@@ -31,5 +44,10 @@ export class TestStreamConsumerDurableObject
 		return okResult({
 			deliveries: [...this.deliveries],
 		});
+	}
+
+	setAckEnabled(input: { enabled: boolean }): EnvironmentRpcResult<{}> {
+		this.ackEnabled = input.enabled;
+		return okResult({});
 	}
 }

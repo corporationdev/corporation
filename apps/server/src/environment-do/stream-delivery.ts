@@ -1,4 +1,6 @@
 import type {
+	EnvironmentRpcResult,
+	EnvironmentStreamDeliveryAck,
 	EnvironmentStreamConsumer,
 } from "@corporation/contracts/environment-do";
 import type { EnvironmentRuntimeStreamItemsMessage as RuntimeStreamItemsMessage } from "@corporation/contracts/environment-runtime";
@@ -28,9 +30,9 @@ export async function forwardStreamItemsToSubscriber(input: {
 	log: StreamDeliveryLogger;
 	message: RuntimeStreamItemsMessage;
 	subscription: EnvironmentStreamSubscriptionState | null;
-}): Promise<void> {
+}): Promise<EnvironmentRpcResult<EnvironmentStreamDeliveryAck> | null> {
 	if (!input.subscription) {
-		return;
+		return null;
 	}
 
 	const consumer = getStreamConsumerStub(input.bindings, input.subscription);
@@ -44,7 +46,7 @@ export async function forwardStreamItemsToSubscriber(input: {
 			},
 			"missing stream consumer binding"
 		);
-		return;
+		return null;
 	}
 
 	const result = await consumer.receiveEnvironmentStreamItems({
@@ -67,4 +69,6 @@ export async function forwardStreamItemsToSubscriber(input: {
 			"stream consumer rejected stream items"
 		);
 	}
+
+	return result;
 }

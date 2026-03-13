@@ -1,5 +1,6 @@
 import type {
 	EnvironmentRpcResult,
+	EnvironmentStreamOffset,
 	EnvironmentUnsubscribeStreamInput,
 } from "@corporation/contracts/environment-do";
 import type {
@@ -82,5 +83,16 @@ export class StreamSubscriptions {
 	unsubscribe(input: EnvironmentUnsubscribeStreamInput): EnvironmentRpcResult<{}> {
 		this.subscriptions.delete(input.stream);
 		return okResult({});
+	}
+
+	ack(input: { stream: string; offset: EnvironmentStreamOffset }): void {
+		const existing = this.subscriptions.get(input.stream);
+		if (!existing) {
+			return;
+		}
+		this.subscriptions.set(input.stream, {
+			...existing,
+			offset: input.offset,
+		});
 	}
 }

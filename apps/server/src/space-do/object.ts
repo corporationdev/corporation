@@ -4,7 +4,10 @@ import type {
 	EnvironmentStreamDelivery,
 } from "@corporation/contracts/environment-do";
 import type { EnvironmentRuntimeCommandResponse } from "@corporation/contracts/environment-runtime";
-import type { CreateSessionInput } from "@corporation/contracts/orpc/browser-space";
+import type {
+	CreateSessionInput,
+	CreateSessionResult,
+} from "@corporation/contracts/orpc/browser-space";
 import { eq } from "drizzle-orm";
 import {
 	type DrizzleSqliteDODatabase,
@@ -13,11 +16,7 @@ import {
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { getEnvironmentStub } from "../environment-do/stub";
 import bundledMigrations from "./db/migrations";
-import {
-	type SpaceSessionRow as SessionRow,
-	schema,
-	sessions,
-} from "./db/schema";
+import { schema, sessions } from "./db/schema";
 
 export type {
 	RuntimeEventRow,
@@ -38,6 +37,15 @@ function getRuntimeCommandError(
 		return null;
 	}
 	return response.error;
+}
+
+function createSessionErrorResult(message: string): CreateSessionResult {
+	return {
+		ok: false,
+		error: {
+			message,
+		},
+	};
 }
 
 export class SpaceDurableObject extends DurableObject<Env> {
@@ -62,7 +70,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		return this.db;
 	}
 
-	async createSession(input: CreateSessionInput): Promise<SessionRow> {
+	async createSession(input: CreateSessionInput): Promise<CreateSessionResult> {
 		const db = await this.getDb();
 		const now = Date.now();
 		const streamKey = `session:${input.sessionId}`;
@@ -128,7 +136,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 					updatedAt: Date.now(),
 				})
 				.where(eq(sessions.id, input.sessionId));
-			throw new Error(commandResult.error.message);
+			return createSessionErrorResult(commandResult.error.message);
 		}
 
 		const commandError = getRuntimeCommandError(commandResult.value.response);
@@ -141,7 +149,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 					updatedAt: Date.now(),
 				})
 				.where(eq(sessions.id, input.sessionId));
-			throw new Error(commandError);
+			return createSessionErrorResult(commandError);
 		}
 
 		const subscribeResult = await environment.subscribeStream({
@@ -164,7 +172,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 					updatedAt: Date.now(),
 				})
 				.where(eq(sessions.id, input.sessionId));
-			throw new Error(subscribeResult.error.message);
+			return createSessionErrorResult(subscribeResult.error.message);
 		}
 
 		await db
@@ -180,15 +188,24 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			where: eq(sessions.id, input.sessionId),
 		});
 		if (!session) {
-			throw new Error(`Session ${input.sessionId} was not persisted`);
+			return createSessionErrorResult(
+				`Session ${input.sessionId} was not persisted`
+			);
 		}
-		return session;
+		return {
+			ok: true,
+			value: {
+				session,
+			},
+		};
 	}
 
 	receiveEnvironmentStreamItems(
-		_input: EnvironmentStreamDelivery
-	): EnvironmentRpcResult<Record<never, never>> {
-		return okResult({});
+		input: EnvironmentStreamDelivery
+	): EnvironmentRpcResult<{ committedOffset: string }> {
+		return okResult({
+			committedOffset: input.nextOffset,
+		});
 	}
 
 	async fetch(_request: Request): Promise<Response> {

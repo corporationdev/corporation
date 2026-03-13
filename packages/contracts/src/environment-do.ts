@@ -81,8 +81,14 @@ export type EnvironmentStreamDelivery = Readonly<{
 	upToDate: boolean;
 }>;
 
+export type EnvironmentStreamDeliveryAck = Readonly<{
+	committedOffset: EnvironmentStreamOffset;
+}>;
+
 export interface EnvironmentStreamConsumer {
 	receiveEnvironmentStreamItems(
 		input: EnvironmentStreamDelivery
-	): Promise<EnvironmentRpcResult<{}>> | EnvironmentRpcResult<{}>;
+	):
+		| Promise<EnvironmentRpcResult<EnvironmentStreamDeliveryAck>>
+		| EnvironmentRpcResult<EnvironmentStreamDeliveryAck>;
 }
