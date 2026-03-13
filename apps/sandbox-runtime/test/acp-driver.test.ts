@@ -12,6 +12,7 @@ import {
 	type AcpRequestMethod,
 	createAcpDriver,
 } from "../acp-driver";
+import type { RuntimeEvent } from "../runtime-events";
 
 type RequestCall = {
 	method: string;
@@ -146,6 +147,7 @@ describe("createAcpDriver", () => {
 			{
 				sessionId: "session-1",
 				turnId: "turn-1",
+				assistantMessageId: "assistant-1",
 				prompt: [{ type: "text", text: "hello" }],
 				dynamicConfig: {
 					modeId: "fast",
@@ -178,9 +180,9 @@ describe("createAcpDriver", () => {
 		]);
 	});
 
-	test("run maps ACP inbound events into normalized runtime events", async () => {
+	test("run maps ACP inbound events into runtime events", async () => {
 		const fake = createFakeConnection("acp-1");
-		const events: unknown[] = [];
+		const events: RuntimeEvent[] = [];
 		let releasePrompt!: () => void;
 		const promptFinished = new Promise<PromptResponse>((resolve) => {
 			releasePrompt = () => {
@@ -336,6 +338,7 @@ describe("createAcpDriver", () => {
 			{
 				sessionId: "session-1",
 				turnId: "turn-1",
+				assistantMessageId: "assistant-1",
 				prompt: [{ type: "text", text: "hello" }],
 				dynamicConfig: {},
 			},
@@ -350,31 +353,38 @@ describe("createAcpDriver", () => {
 		expect(result).toEqual({ stopReason: "end_turn" });
 		expect(events).toEqual([
 			{
-				type: "output.delta",
-				sessionId: "session-1",
-				turnId: "turn-1",
-				channel: "assistant",
-				content: {
+				type: "message.part.updated",
+				part: {
+					id: expect.any(String),
+					sessionId: "session-1",
+					messageId: "assistant-1",
 					type: "text",
 					text: "READY",
 				},
 			},
 			{
-				type: "output.delta",
+				type: "message.part.delta",
 				sessionId: "session-1",
-				turnId: "turn-1",
-				channel: "assistant",
-				content: {
-					type: "audio",
+				messageId: "assistant-1",
+				partId: expect.any(String),
+				field: "text",
+				delta: "READY",
+			},
+			{
+				type: "message.part.updated",
+				part: {
+					id: expect.any(String),
+					sessionId: "session-1",
+					messageId: "assistant-1",
+					type: "file",
 					mimeType: "audio/mpeg",
-					data: "base64-audio",
+					uri: "data:audio/mpeg;base64,base64-audio",
 				},
 			},
 			{
-				type: "plan.updated",
+				type: "todo.updated",
 				sessionId: "session-1",
-				turnId: "turn-1",
-				entries: [
+				todos: [
 					{
 						content: "Answer the user",
 						priority: "high",
@@ -385,13 +395,11 @@ describe("createAcpDriver", () => {
 			{
 				type: "session.mode.updated",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				modeId: "fast",
 			},
 			{
 				type: "session.config.updated",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				configOptions: [
 					{
 						type: "select",
@@ -405,34 +413,34 @@ describe("createAcpDriver", () => {
 			{
 				type: "session.info.updated",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				title: "Session title",
 				updatedAt: "2026-03-12T12:00:00Z",
 			},
 			{
 				type: "usage.updated",
 				sessionId: "session-1",
-				turnId: "turn-1",
-				used: 50,
-				size: 100,
-				cost: { amount: 0.01, currency: "USD" },
+				usage: {
+					used: 50,
+					size: 100,
+					cost: { amount: 0.01, currency: "USD" },
+				},
 			},
 			{
 				type: "permission.requested",
-				sessionId: "session-1",
-				turnId: "turn-1",
-				requestId: "perm-1",
-				options: [
-					{
-						kind: "allow_once",
-						optionId: "opt-1",
-						name: "Allow once",
-					},
-				],
-				toolCall: {
+				request: {
+					id: "perm-1",
+					sessionId: "session-1",
+					permission: "Read file",
+					options: [
+						{
+							kind: "allow_once",
+							optionId: "opt-1",
+							name: "Allow once",
+						},
+					],
+					always: [],
+					messageId: "assistant-1",
 					toolCallId: "tool-1",
-					title: "Read file",
-					status: "pending",
 				},
 			},
 		]);
@@ -444,21 +452,24 @@ describe("createAcpDriver", () => {
 		const promptFinished = new Promise<void>((resolve) => {
 			releasePrompt = resolve;
 		});
-		fake.connection.request = async <M extends AcpRequestMethod>(
+		fake.connection.request = <M extends AcpRequestMethod>(
 			method: M,
 			params: AcpRequestMap[M]["params"]
 		): Promise<AcpRequestMap[M]["result"]> => {
 			fake.requestCalls.push({ method, params });
 			switch (method) {
 				case "initialize":
-					return {} as AcpRequestMap[M]["result"];
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 				case "session/new":
-					return { sessionId: "acp-1" } as AcpRequestMap[M]["result"];
+					return Promise.resolve({
+						sessionId: "acp-1",
+					} as AcpRequestMap[M]["result"]);
 				case AGENT_METHODS.session_prompt:
-					await promptFinished;
-					return {} as AcpRequestMap[M]["result"];
+					return promptFinished.then(
+						() => ({ stopReason: "end_turn" }) as AcpRequestMap[M]["result"]
+					);
 				default:
-					return {} as AcpRequestMap[M]["result"];
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 			}
 		};
 
@@ -477,6 +488,7 @@ describe("createAcpDriver", () => {
 			{
 				sessionId: "session-1",
 				turnId: "turn-1",
+				assistantMessageId: "assistant-1",
 				prompt: [{ type: "text", text: "wait" }],
 				dynamicConfig: {},
 			},
@@ -521,7 +533,11 @@ describe("createAcpDriver", () => {
 						request: {
 							sessionId: "acp-1",
 							options: [
-								{ kind: "allow_once", optionId: "opt-1", name: "Allow once" },
+								{
+									kind: "allow_once",
+									optionId: "opt-1",
+									name: "Allow once",
+								},
 							],
 							toolCall: {
 								toolCallId: "tool-1",
@@ -553,6 +569,7 @@ describe("createAcpDriver", () => {
 			{
 				sessionId: "session-1",
 				turnId: "turn-1",
+				assistantMessageId: "assistant-1",
 				prompt: [{ type: "text", text: "hello" }],
 				dynamicConfig: {},
 			},
@@ -607,7 +624,11 @@ describe("createAcpDriver", () => {
 						request: {
 							sessionId: "acp-1",
 							options: [
-								{ kind: "allow_once", optionId: "opt-1", name: "Allow once" },
+								{
+									kind: "allow_once",
+									optionId: "opt-1",
+									name: "Allow once",
+								},
 							],
 							toolCall: {
 								toolCallId: "tool-1",
@@ -639,6 +660,7 @@ describe("createAcpDriver", () => {
 			{
 				sessionId: "session-1",
 				turnId: "turn-1",
+				assistantMessageId: "assistant-1",
 				prompt: [{ type: "text", text: "hello" }],
 				dynamicConfig: {},
 			},

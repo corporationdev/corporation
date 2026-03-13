@@ -1,9 +1,12 @@
-import crypto from "node:crypto";
 import { describe, expect, test } from "bun:test";
-import {
-	AGENT_METHODS,
-	type PromptResponse,
-} from "@agentclientprotocol/sdk";
+import crypto from "node:crypto";
+import { AGENT_METHODS, type PromptResponse } from "@agentclientprotocol/sdk";
+import type {
+	AssistantMessage,
+	Event as RuntimeEvent,
+	TextPart,
+	UserMessage,
+} from "@opencode-ai/sdk/v2";
 import { createSpawnedAcpConnectionFactory } from "../acp-connection";
 import {
 	type AcpConnection,
@@ -11,7 +14,6 @@ import {
 	createAcpDriver,
 } from "../acp-driver";
 import { RuntimeEngine } from "../index";
-import type { RuntimeEvent } from "../runtime-events";
 
 const LIVE_AGENT = process.env.ACP_LIVE_AGENT?.trim();
 const LIVE_MODEL = process.env.ACP_LIVE_MODEL?.trim();
@@ -19,7 +21,7 @@ const LIVE_CWD = process.env.ACP_LIVE_CWD?.trim() || process.cwd();
 
 describe("RuntimeEngine Live", () => {
 	if (LIVE_AGENT) {
-		test("sends a real message and emits turn plus session events through the runtime engine", async () => {
+		test("session.prompt emits OpenCode-shaped events through the runtime engine", async () => {
 			const baseFactory = createSpawnedAcpConnectionFactory();
 			const liveConnections: AcpConnection[] = [];
 			const events: RuntimeEvent[] = [];
@@ -42,10 +44,7 @@ describe("RuntimeEngine Live", () => {
 							return connection.notify(method, params);
 						},
 						respondToPermissionRequest(requestId, response) {
-							return connection.respondToPermissionRequest(
-								requestId,
-								response
-							);
+							return connection.respondToPermissionRequest(requestId, response);
 						},
 						subscribe(listener) {
 							return connection.subscribe(listener);
@@ -66,18 +65,23 @@ describe("RuntimeEngine Live", () => {
 			const sessionId = `live-session-${crypto.randomUUID()}`;
 
 			try {
-				await engine.createSession({
+				const created = await engine.session.create({
 					sessionId,
-					staticConfig: {
-						agent: LIVE_AGENT,
-						cwd: LIVE_CWD,
-					},
-					dynamicConfig: LIVE_MODEL ? { modelId: LIVE_MODEL } : {},
+					agent: LIVE_AGENT,
+					directory: LIVE_CWD,
+					...(LIVE_MODEL
+						? {
+								model: {
+									providerID: LIVE_AGENT,
+									modelID: LIVE_MODEL,
+								},
+							}
+						: {}),
 				});
 
-				const turnId = await engine.startTurn({
+				const result = await engine.session.prompt({
 					sessionId,
-					prompt: [
+					parts: [
 						{
 							type: "text",
 							text: "Reply with exactly the word READY. Do not use tools, do not read files, and do not request permissions.",
@@ -85,50 +89,119 @@ describe("RuntimeEngine Live", () => {
 					],
 				});
 
-				expect(turnId).toBeString();
-				expect(engine.getTurn(turnId)?.status).toBe("completed");
-				expect(events.length).toBeGreaterThanOrEqual(3);
-				expect(events[0]).toEqual({
-					type: "turn.started",
-					sessionId,
-					turnId,
-				});
+				expect(created.id).toBe(sessionId);
+				expect(result.sessionId).toBe(sessionId);
+				expect(result.messageId).toEqual(expect.any(String));
+				expect(result.completedAt).toEqual(expect.any(Number));
+				expect(promptResponse?.stopReason).toBe("end_turn");
 
-				const streamedEvents = events.filter(
-					(event) =>
-						event.type !== "turn.started" && event.type !== "turn.completed"
+				expect(events[0]).toEqual({
+					type: "session.created",
+					properties: {
+						info: {
+							id: sessionId,
+							slug: sessionId,
+							projectID: LIVE_CWD,
+							directory: LIVE_CWD,
+							title: created.title,
+							version: "v1",
+							time: {
+								created: expect.any(Number),
+								updated: expect.any(Number),
+							},
+						},
+					},
+				});
+				expect(events.some((event) => event.type === "session.updated")).toBe(
+					true
 				);
-				expect(streamedEvents.length).toBeGreaterThan(0);
 				expect(
-					streamedEvents.some(
+					events.some(
 						(event) =>
-							event.type === "output.delta" &&
-							event.channel === "assistant" &&
-							event.content.type === "text" &&
-							event.content.text.length > 0
+							event.type === "session.status" &&
+							event.properties.sessionID === sessionId &&
+							event.properties.status.type === "busy"
 					)
 				).toBe(true);
-				expect(events.at(-1)).toEqual({
-					type: "turn.completed",
-					sessionId,
-					turnId,
-					stopReason: "end_turn",
-				});
-				expect(promptResponse).toBeDefined();
-				expect(promptResponse?.stopReason).toBe("end_turn");
+				expect(
+					events.some(
+						(event) =>
+							event.type === "session.status" &&
+							event.properties.sessionID === sessionId &&
+							event.properties.status.type === "idle"
+					)
+				).toBe(true);
+				expect(
+					events.some(
+						(event) =>
+							event.type === "session.idle" &&
+							event.properties.sessionID === sessionId
+					)
+				).toBe(true);
+
+				const userMessages = events.filter(
+					(
+						event
+					): event is Extract<RuntimeEvent, { type: "message.updated" }> =>
+						event.type === "message.updated" &&
+						event.properties.info.role === "user"
+				);
+				const assistantMessages = events.filter(
+					(
+						event
+					): event is Extract<RuntimeEvent, { type: "message.updated" }> =>
+						event.type === "message.updated" &&
+						event.properties.info.role === "assistant"
+				);
+				const assistantParts = events.filter(
+					(
+						event
+					): event is Extract<RuntimeEvent, { type: "message.part.updated" }> =>
+						event.type === "message.part.updated" &&
+						event.properties.part.messageID === result.messageId
+				);
+
+				expect(userMessages.length).toBeGreaterThanOrEqual(1);
+				expect(assistantMessages.length).toBeGreaterThanOrEqual(2);
+				expect(assistantParts.length).toBeGreaterThan(0);
+				expect(
+					assistantParts.some(
+						(event) =>
+							event.properties.part.type === "text" &&
+							event.properties.part.text.length > 0
+					)
+				).toBe(true);
+
+				const finalAssistantMessage = assistantMessages.at(-1)?.properties
+					.info as AssistantMessage | undefined;
+				expect(finalAssistantMessage?.id).toBe(result.messageId);
+				expect(finalAssistantMessage?.finish).toBe("end_turn");
+
+				const userMessage = userMessages.at(-1)?.properties.info as
+					| UserMessage
+					| undefined;
+				expect(userMessage?.sessionID).toBe(sessionId);
+				expect(userMessage?.agent).toBe(LIVE_AGENT);
+
+				const lastAssistantTextPart = assistantParts.findLast(
+					(event) => event.properties.part.type === "text"
+				)?.properties.part as TextPart | undefined;
+				expect(lastAssistantTextPart).toBeDefined();
+				expect(lastAssistantTextPart?.text.length).toBeGreaterThan(0);
+				if (lastAssistantTextPart) {
+					expect(result.parts).toContainEqual(lastAssistantTextPart);
+				}
 			} finally {
 				await Promise.all(
-					liveConnections.map((connection) =>
-						connection.close?.() ?? Promise.resolve()
+					liveConnections.map(
+						(connection) => connection.close?.() ?? Promise.resolve()
 					)
 				);
 			}
 		});
 	} else {
 		// biome-ignore lint/suspicious/noSkippedTests: this integration test is opt-in via ACP_LIVE_AGENT
-		test.skip(
-			"sends a real message and emits turn plus session events through the runtime engine",
-			() => undefined
-		);
+		test.skip("session.prompt emits OpenCode-shaped events through the runtime engine", () =>
+			undefined);
 	}
 });

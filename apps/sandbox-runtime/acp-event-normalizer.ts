@@ -1,32 +1,44 @@
 import type {
 	AvailableCommand,
 	ContentBlock,
-	Diff,
-	EmbeddedResource,
 	RequestPermissionRequest,
 	SessionConfigOption,
 	SessionConfigSelectGroup,
 	SessionConfigSelectOption,
 	SessionUpdate,
-	Terminal,
 	ToolCall,
 	ToolCallContent,
 	ToolCallLocation,
 	ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
-import type { SessionId, TurnId } from "./index";
+import type { RuntimeEvent } from "./runtime-events";
 import type {
 	RuntimeAvailableCommand,
 	RuntimeContent,
-	RuntimeEvent,
-	RuntimePermissionOption,
+	RuntimeMessagePart,
+	RuntimePermissionRequest,
 	RuntimeSessionConfigOption,
 	RuntimeSessionConfigOptionGroup,
 	RuntimeSessionConfigOptionValue,
-	RuntimeToolCall,
+	RuntimeTodo,
 	RuntimeToolContent,
 	RuntimeToolLocation,
-} from "./runtime-events";
+	RuntimeToolPart,
+	RuntimeToolState,
+} from "./runtime-types";
+
+export type AcpEventProjectionState = {
+	textPart: Extract<RuntimeMessagePart, { type: "text" }> | null;
+	reasoningPart: Extract<RuntimeMessagePart, { type: "reasoning" }> | null;
+	toolParts: Map<string, RuntimeToolPart>;
+	todos: RuntimeTodo[];
+};
+
+export type NormalizedAcpEvents = RuntimeEvent[];
+
+function toDataUrl(mimeType: string, data: string): string {
+	return `data:${mimeType};base64,${data}`;
+}
 
 function normalizeContent(content: ContentBlock): RuntimeContent {
 	switch (content.type) {
@@ -39,7 +51,7 @@ function normalizeContent(content: ContentBlock): RuntimeContent {
 			return {
 				type: "image",
 				mimeType: content.mimeType,
-				...(content.uri !== undefined ? { uri: content.uri } : {}),
+				uri: content.uri ?? "",
 			};
 		case "audio":
 			return {
@@ -52,17 +64,37 @@ function normalizeContent(content: ContentBlock): RuntimeContent {
 				type: "resource_link",
 				uri: content.uri,
 				name: content.name,
-				...(content.title !== undefined ? { title: content.title } : {}),
-				...(content.description !== undefined
+				...(content.title != null ? { title: content.title } : {}),
+				...(content.description != null
 					? { description: content.description }
 					: {}),
-				...(content.mimeType !== undefined
+				...(content.mimeType != null
 					? { mimeType: content.mimeType }
 					: {}),
-				...(content.size !== undefined ? { size: content.size } : {}),
+				...(content.size != null ? { size: content.size } : {}),
 			};
-		case "resource":
-			return normalizeEmbeddedResource(content);
+		case "resource": {
+			const resource = content.resource;
+			if ("text" in resource) {
+				return {
+					type: "resource",
+					uri: resource.uri,
+					...(resource.mimeType != null
+						? { mimeType: resource.mimeType }
+						: {}),
+					text: resource.text,
+				};
+			}
+
+			return {
+				type: "resource",
+				uri: resource.uri,
+				...(resource.mimeType != null
+					? { mimeType: resource.mimeType }
+					: {}),
+				blob: resource.blob,
+			};
+		}
 		default: {
 			const exhaustiveCheck: never = content;
 			throw new Error(
@@ -72,30 +104,64 @@ function normalizeContent(content: ContentBlock): RuntimeContent {
 	}
 }
 
-function normalizeEmbeddedResource(content: EmbeddedResource): RuntimeContent {
-	const resource = content.resource;
-	if ("text" in resource) {
-		return {
-			type: "resource",
-			uri: resource.uri,
-			...(resource.mimeType !== undefined
-				? { mimeType: resource.mimeType }
-				: {}),
-			text: resource.text,
-		};
+function toFilePart(
+	sessionId: string,
+	messageId: string,
+	content: RuntimeContent
+): Extract<RuntimeMessagePart, { type: "file" }> {
+	switch (content.type) {
+		case "image":
+			return {
+				id: crypto.randomUUID(),
+				sessionId,
+				messageId,
+				type: "file",
+				mimeType: content.mimeType,
+				uri: content.uri,
+			};
+		case "audio":
+			return {
+				id: crypto.randomUUID(),
+				sessionId,
+				messageId,
+				type: "file",
+				mimeType: content.mimeType,
+				uri: toDataUrl(content.mimeType, content.data),
+			};
+		case "resource_link":
+			return {
+				id: crypto.randomUUID(),
+				sessionId,
+				messageId,
+				type: "file",
+				mimeType: content.mimeType ?? "application/octet-stream",
+				uri: content.uri,
+				...(content.name ? { filename: content.name } : {}),
+			};
+		case "resource":
+			return {
+				id: crypto.randomUUID(),
+				sessionId,
+				messageId,
+				type: "file",
+				mimeType: content.mimeType ?? "application/octet-stream",
+				uri:
+					content.text !== undefined
+						? toDataUrl(
+								content.mimeType ?? "text/plain",
+								btoa(content.text)
+							)
+						: toDataUrl(
+								content.mimeType ?? "application/octet-stream",
+								content.blob ?? ""
+							),
+			};
+		default:
+			throw new Error(`Cannot convert ${content.type} to a file part`);
 	}
-
-	return {
-		type: "resource",
-		uri: resource.uri,
-		...(resource.mimeType !== undefined ? { mimeType: resource.mimeType } : {}),
-		blob: resource.blob,
-	};
 }
 
-function normalizeToolLocation(
-	location: ToolCallLocation
-): RuntimeToolLocation {
+function normalizeToolLocation(location: ToolCallLocation): RuntimeToolLocation {
 	return {
 		path: location.path,
 		...(location.line !== undefined ? { line: location.line } : {}),
@@ -110,9 +176,17 @@ function normalizeToolContent(content: ToolCallContent): RuntimeToolContent {
 				content: normalizeContent(content.content),
 			};
 		case "diff":
-			return normalizeDiff(content);
+			return {
+				type: "diff",
+				path: content.path,
+				newText: content.newText,
+				...(content.oldText !== undefined ? { oldText: content.oldText } : {}),
+			};
 		case "terminal":
-			return normalizeTerminal(content);
+			return {
+				type: "terminal",
+				terminalId: content.terminalId,
+			};
 		default: {
 			const exhaustiveCheck: never = content;
 			throw new Error(
@@ -122,56 +196,124 @@ function normalizeToolContent(content: ToolCallContent): RuntimeToolContent {
 	}
 }
 
-function normalizeDiff(content: Diff): RuntimeToolContent {
-	return {
-		type: "diff",
-		path: content.path,
-		newText: content.newText,
-		...(content.oldText !== undefined ? { oldText: content.oldText } : {}),
-	};
+function toToolMetadata(update: ToolCall | ToolCallUpdate) {
+	const locations = update.locations?.map(normalizeToolLocation);
+	const content = update.content?.map(normalizeToolContent);
+	return locations || content || update.kind
+		? {
+				...(update.kind ? { kind: update.kind } : {}),
+				...(locations ? { locations } : {}),
+				...(content ? { content } : {}),
+			}
+		: undefined;
 }
 
-function normalizeTerminal(content: Terminal): RuntimeToolContent {
-	return {
-		type: "terminal",
-		terminalId: content.terminalId,
-	};
+function toToolState(update: ToolCall | ToolCallUpdate): RuntimeToolState {
+	const input =
+		typeof update.rawInput === "object" && update.rawInput !== null
+			? (update.rawInput as Record<string, unknown>)
+			: {};
+	const metadata = toToolMetadata(update);
+
+	switch (update.status) {
+		case "pending":
+			return {
+				status: "pending",
+				input,
+				raw: JSON.stringify(update.rawInput ?? {}),
+			};
+		case "in_progress":
+			return {
+				status: "running",
+				input,
+				...(update.title ? { title: update.title } : {}),
+				startedAt: Date.now(),
+				...(metadata ? { metadata } : {}),
+			};
+		case "completed":
+			return {
+				status: "completed",
+				input,
+				title: update.title ?? "Tool",
+				output:
+					typeof update.rawOutput === "string"
+						? update.rawOutput
+						: JSON.stringify(update.rawOutput ?? {}),
+				startedAt: Date.now(),
+				endedAt: Date.now(),
+				...(metadata ? { metadata } : {}),
+			};
+		case "failed":
+			return {
+				status: "error",
+				input,
+				error:
+					typeof update.rawOutput === "string"
+						? update.rawOutput
+						: JSON.stringify(update.rawOutput ?? {}),
+				startedAt: Date.now(),
+				endedAt: Date.now(),
+				...(metadata ? { metadata } : {}),
+			};
+		default:
+			return {
+				status: "pending",
+				input,
+				raw: JSON.stringify(update.rawInput ?? {}),
+			};
+	}
 }
 
-function normalizeToolCallBase(
+function updateToolPart(
+	sessionId: string,
+	messageId: string,
+	state: AcpEventProjectionState,
 	update: ToolCall | ToolCallUpdate
-): RuntimeToolCall {
-	return {
+): RuntimeToolPart {
+	const existing = state.toolParts.get(update.toolCallId);
+	const toolPart: RuntimeToolPart = {
+		id: existing?.id ?? crypto.randomUUID(),
+		sessionId,
+		messageId,
+		type: "tool",
 		toolCallId: update.toolCallId,
-		title: "title" in update ? (update.title ?? null) : null,
-		status: "status" in update ? (update.status ?? null) : null,
-		...("kind" in update ? { kind: update.kind ?? null } : {}),
-		...("locations" in update && update.locations !== undefined
+		tool: update.title ?? update.kind ?? "tool",
+		state: toToolState(update),
+		...(update.kind ||
+		update.locations ||
+		update.content ||
+		update.rawInput !== undefined ||
+		update.rawOutput !== undefined
 			? {
-					locations:
-						update.locations === null
-							? null
-							: update.locations.map(normalizeToolLocation),
+					metadata: {
+						...(update.kind ? { kind: update.kind } : {}),
+						...(update.locations
+							? {
+									locations: update.locations.map(normalizeToolLocation),
+								}
+							: {}),
+						...(update.content
+							? {
+									content: update.content.map(normalizeToolContent),
+								}
+							: {}),
+						...(update.rawInput !== undefined
+							? { rawInput: update.rawInput }
+							: {}),
+						...(update.rawOutput !== undefined
+							? { rawOutput: update.rawOutput }
+							: {}),
+					},
 				}
-			: {}),
-		...("content" in update && update.content !== undefined
-			? {
-					content:
-						update.content === null
-							? null
-							: update.content.map(normalizeToolContent),
-				}
-			: {}),
-		...("rawInput" in update && update.rawInput !== undefined
-			? { rawInput: update.rawInput }
-			: {}),
-		...("rawOutput" in update && update.rawOutput !== undefined
-			? { rawOutput: update.rawOutput }
 			: {}),
 	};
+	state.toolParts.set(update.toolCallId, toolPart);
+	return toolPart;
 }
 
-function normalizeCommand(command: AvailableCommand): RuntimeAvailableCommand {
+function normalizeAvailableCommand(
+	command: AvailableCommand
+): RuntimeAvailableCommand {
 	return {
 		name: command.name,
 		description: command.description,
@@ -179,13 +321,30 @@ function normalizeCommand(command: AvailableCommand): RuntimeAvailableCommand {
 	};
 }
 
-function normalizePermissionOption(
-	option: RequestPermissionRequest["options"][number]
-): RuntimePermissionOption {
+function normalizePermissionRequest(
+	sessionId: string,
+	messageId: string,
+	requestId: string,
+	request: RequestPermissionRequest
+): RuntimePermissionRequest {
 	return {
-		optionId: option.optionId,
-		kind: option.kind,
-		name: option.name,
+		id: requestId,
+		sessionId,
+		permission: request.toolCall?.title ?? "permission",
+		options: request.options.map((option) => ({
+			optionId: option.optionId,
+			kind: option.kind,
+			name: option.name,
+		})),
+		always: request.options
+			.filter((option) => option.kind === "allow_always")
+			.map((option) => option.name),
+		...(request.toolCall?.toolCallId
+			? {
+					messageId,
+					toolCallId: request.toolCall.toolCallId,
+				}
+			: {}),
 	};
 }
 
@@ -231,107 +390,155 @@ function normalizeSessionConfigOption(
 	};
 }
 
+export function createAcpProjectionState(): AcpEventProjectionState {
+	return {
+		textPart: null,
+		reasoningPart: null,
+		toolParts: new Map(),
+		todos: [],
+	};
+}
+
 export function normalizeAcpSessionUpdate(
-	sessionId: SessionId,
-	turnId: TurnId,
+	sessionId: string,
+	messageId: string,
+	state: AcpEventProjectionState,
 	update: SessionUpdate
-): RuntimeEvent {
+): NormalizedAcpEvents {
 	switch (update.sessionUpdate) {
-		case "user_message_chunk": {
-			const content = normalizeContent(update.content);
-			return {
-				type: "output.delta",
-				sessionId,
-				turnId,
-				channel: "user",
-				content,
-			};
-		}
+		case "user_message_chunk":
+			return [];
 		case "agent_message_chunk": {
 			const content = normalizeContent(update.content);
-			return {
-				type: "output.delta",
-				sessionId,
-				turnId,
-				channel: "assistant",
-				content,
-			};
+			if (content.type === "text") {
+				const previousText = state.textPart?.text ?? "";
+				state.textPart = {
+					id: state.textPart?.id ?? crypto.randomUUID(),
+					sessionId,
+					messageId,
+					type: "text",
+					text: previousText + content.text,
+				};
+				return [
+					{
+						type: "message.part.updated",
+						part: state.textPart,
+					},
+					{
+						type: "message.part.delta",
+						sessionId,
+						messageId,
+						partId: state.textPart.id,
+						field: "text",
+						delta: content.text,
+					},
+				];
+			}
+
+			return [
+				{
+					type: "message.part.updated",
+					part: toFilePart(sessionId, messageId, content),
+				},
+			];
 		}
 		case "agent_thought_chunk": {
 			const content = normalizeContent(update.content);
-			return {
-				type: "output.delta",
+			if (content.type !== "text") {
+				return [];
+			}
+			const previousText = state.reasoningPart?.text ?? "";
+			state.reasoningPart = {
+				id: state.reasoningPart?.id ?? crypto.randomUUID(),
 				sessionId,
-				turnId,
-				channel: "thought",
-				content,
+				messageId,
+				type: "reasoning",
+				text: previousText + content.text,
+				startedAt: state.reasoningPart?.startedAt ?? Date.now(),
 			};
+			return [
+				{
+					type: "message.part.updated",
+					part: state.reasoningPart,
+				},
+				{
+					type: "message.part.delta",
+					sessionId,
+					messageId,
+					partId: state.reasoningPart.id,
+					field: "text",
+					delta: content.text,
+				},
+			];
 		}
 		case "tool_call":
-			return {
-				type: "tool.started",
-				sessionId,
-				turnId,
-				toolCall: normalizeToolCallBase(update),
-			};
 		case "tool_call_update":
-			return {
-				type: "tool.updated",
-				sessionId,
-				turnId,
-				toolCall: normalizeToolCallBase(update),
-			};
+			return [
+				{
+					type: "message.part.updated",
+					part: updateToolPart(sessionId, messageId, state, update),
+				},
+			];
 		case "plan":
-			return {
-				type: "plan.updated",
-				sessionId,
-				turnId,
-				entries: update.entries.map((entry) => ({
-					content: entry.content,
-					priority: entry.priority,
-					status: entry.status,
-				})),
-			};
+			state.todos = update.entries.map((entry) => ({
+				content: entry.content,
+				priority: entry.priority,
+				status: entry.status,
+			}));
+			return [
+				{
+					type: "todo.updated",
+					sessionId,
+					todos: state.todos,
+				},
+			];
 		case "available_commands_update":
-			return {
-				type: "session.available_commands.updated",
-				sessionId,
-				turnId,
-				commands: update.availableCommands.map(normalizeCommand),
-			};
+			return [
+				{
+					type: "session.available_commands.updated",
+					sessionId,
+					commands: update.availableCommands.map(normalizeAvailableCommand),
+				},
+			];
 		case "current_mode_update":
-			return {
-				type: "session.mode.updated",
-				sessionId,
-				turnId,
-				modeId: update.currentModeId,
-			};
+			return [
+				{
+					type: "session.mode.updated",
+					sessionId,
+					modeId: update.currentModeId,
+				},
+			];
 		case "config_option_update":
-			return {
-				type: "session.config.updated",
-				sessionId,
-				turnId,
-				configOptions: update.configOptions.map(normalizeSessionConfigOption),
-			};
+			return [
+				{
+					type: "session.config.updated",
+					sessionId,
+					configOptions: update.configOptions.map(normalizeSessionConfigOption),
+				},
+			];
 		case "session_info_update":
-			return {
-				type: "session.info.updated",
-				sessionId,
-				turnId,
-				...(update.title !== undefined ? { title: update.title } : {}),
-				...(update.updatedAt !== undefined
-					? { updatedAt: update.updatedAt }
-					: {}),
-			};
+			return [
+				{
+					type: "session.info.updated",
+					sessionId,
+					...(update.title != null ? { title: update.title } : {}),
+					...(update.updatedAt != null
+						? { updatedAt: update.updatedAt }
+						: {}),
+				},
+			];
 		case "usage_update":
-			return {
-				type: "usage.updated",
-				sessionId,
-				turnId,
-				used: update.used,
-				size: update.size,
-				...(update.cost !== undefined ? { cost: update.cost } : {}),
-			};
+			return [
+				{
+					type: "usage.updated",
+					sessionId,
+					usage: {
+						used: update.used,
+						size: update.size,
+						...(update.cost !== undefined ? { cost: update.cost } : {}),
+					},
+				},
+			];
 		default: {
 			const exhaustiveCheck: never = update;
 			throw new Error(
@@ -342,17 +549,13 @@ export function normalizeAcpSessionUpdate(
 }
 
 export function normalizeAcpPermissionRequest(
-	sessionId: SessionId,
-	turnId: TurnId,
+	sessionId: string,
+	messageId: string,
 	requestId: string,
 	request: RequestPermissionRequest
 ): RuntimeEvent {
 	return {
 		type: "permission.requested",
-		sessionId,
-		turnId,
-		requestId,
-		options: request.options.map(normalizePermissionOption),
-		toolCall: normalizeToolCallBase(request.toolCall),
+		request: normalizePermissionRequest(sessionId, messageId, requestId, request),
 	};
 }

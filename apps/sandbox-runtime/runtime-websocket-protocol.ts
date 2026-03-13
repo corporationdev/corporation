@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { RuntimeSession, RuntimeTurn } from "./index";
 import type { RuntimeEvent } from "./runtime-events";
 import {
 	cancelTurnInputSchema,
@@ -9,6 +8,7 @@ import {
 	respondToPermissionRequestInputSchema,
 	startTurnInputSchema,
 } from "./runtime-schema";
+import type { RuntimeSession, RuntimeTurn } from "./runtime-types";
 
 export const runtimeWebSocketCommandSchema = z.discriminatedUnion("type", [
 	z.object({

@@ -3,7 +3,7 @@ import type {
 	CreateSessionInput,
 	RespondToPermissionRequestInput,
 	StartTurnInput,
-} from "./index";
+} from "./runtime-types";
 
 export const promptPartSchema = z.object({
 	type: z.literal("text"),

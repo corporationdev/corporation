@@ -46,7 +46,7 @@
     },
     "apps/sandbox-runtime": {
       "name": "sandbox-runtime",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
         "@corporation/config": "workspace:*",
@@ -65,6 +65,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@opencode-ai/sdk": "1.2.25",
         "bun-types": "latest",
         "dotenv": "catalog:",
         "e2b": "catalog:",
@@ -824,6 +825,8 @@
     "@open-draft/logger": ["@open-draft/logger@0.3.0", "", { "dependencies": { "is-node-process": "^1.2.0", "outvariant": "^1.4.0" } }, "sha512-X2g45fzhxH238HKO4xbSr7+wBS8Fvw6ixhTDuvLd5mqh6bJJCFAPwU9mPDxbcrRtfxv4u5IHCEH77BmxvXmmxQ=="],
 
     "@open-draft/until": ["@open-draft/until@2.1.0", "", {}, "sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg=="],
+
+    "@opencode-ai/sdk": ["@opencode-ai/sdk@1.2.25", "", {}, "sha512-ikuGWob48OM7LTgfXFqGOZKVOqh50FEjvtIBhXGhGowJhifmjZ+xuq/ypP8nPjTwUX73pbu1C3X9ZBWVkCN9mA=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 

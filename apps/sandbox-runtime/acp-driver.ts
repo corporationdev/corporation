@@ -15,8 +15,8 @@ import {
 	type NewSessionResponse,
 	type PromptRequest,
 	type PromptResponse,
-	type RequestPermissionResponse,
 	type RequestPermissionRequest,
+	type RequestPermissionResponse,
 	type ResumeSessionRequest,
 	type ResumeSessionResponse,
 	type SessionNotification,
@@ -27,6 +27,11 @@ import {
 	type SetSessionModeRequest,
 	type SetSessionModeResponse,
 } from "@agentclientprotocol/sdk";
+import {
+	createAcpProjectionState,
+	normalizeAcpPermissionRequest,
+	normalizeAcpSessionUpdate,
+} from "./acp-event-normalizer";
 import type {
 	AgentDriver,
 	CreateSessionInput,
@@ -37,11 +42,7 @@ import type {
 	SessionDynamicConfig,
 	SessionId,
 	TurnId,
-} from "./index";
-import {
-	normalizeAcpPermissionRequest,
-	normalizeAcpSessionUpdate,
-} from "./acp-event-normalizer";
+} from "./runtime-types";
 
 const ACP_PROTOCOL_VERSION = 2;
 
@@ -209,19 +210,24 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 
 			turnToSession.set(input.turnId, input.sessionId);
 			const runPermissionRequestIds = new Set<string>();
+			const projectionState = createAcpProjectionState();
 			const unsubscribe = session.connection.subscribe((event) => {
 				switch (event.type) {
 					case "session_update":
 						if (event.notification.sessionId !== session.acpSessionId) {
 							return;
 						}
-						emit(
-							normalizeAcpSessionUpdate(
+						{
+							const normalized = normalizeAcpSessionUpdate(
 								input.sessionId,
-								input.turnId,
+								input.assistantMessageId,
+								projectionState,
 								event.notification.update
-							)
-						);
+							);
+							for (const runtimeEvent of normalized) {
+								emit(runtimeEvent);
+							}
+						}
 						return;
 					case "permission_request":
 						if (event.request.sessionId !== session.acpSessionId) {
@@ -235,11 +241,13 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 						emit(
 							normalizeAcpPermissionRequest(
 								input.sessionId,
-								input.turnId,
+								input.assistantMessageId,
 								event.requestId,
 								event.request
 							)
 						);
+						return;
+					default:
 						return;
 				}
 			});
@@ -254,8 +262,8 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 				const result = await session.connection.request(
 					AGENT_METHODS.session_prompt,
 					{
-					sessionId: session.acpSessionId,
-					prompt: input.prompt,
+						sessionId: session.acpSessionId,
+						prompt: input.prompt,
 					}
 				);
 				return {

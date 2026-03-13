@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import {
-	type CreateSessionInput,
-	type ResolvedStartTurnInput,
-	RuntimeEngine,
-} from "../index";
 import type { RuntimeEvent } from "../runtime-events";
+import { RuntimeEngine } from "../index";
+import type {
+	CreateSessionInput,
+	ResolvedStartTurnInput,
+} from "../runtime-types";
 
 function createDeferred() {
 	let resolve!: () => void;
@@ -15,8 +15,9 @@ function createDeferred() {
 }
 
 describe("RuntimeEngine", () => {
-	test("creates a session and returns cloned config state", async () => {
+	test("session.create creates a session resource and emits session.created", async () => {
 		const driverCreates: CreateSessionInput[] = [];
+		const events: RuntimeEvent[] = [];
 		const engine = new RuntimeEngine(
 			{
 				createSession: (input) => {
@@ -25,21 +26,23 @@ describe("RuntimeEngine", () => {
 				},
 				run: () => Promise.resolve(undefined),
 			},
-			() => undefined
+			(event) => {
+				events.push(event);
+			}
 		);
 
-		const input: CreateSessionInput = {
+		const created = await engine.session.create({
 			sessionId: "session-1",
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {
-				modelId: "sonnet",
-				configOptions: { effort: "high" },
+			title: "Repo Session",
+			agent: "claude",
+			directory: "/workspace/repo",
+			model: {
+				providerID: "anthropic",
+				modelID: "sonnet",
 			},
-		};
-
-		const created = await engine.createSession(input);
-		input.staticConfig.agent = "codex";
-		input.dynamicConfig.configOptions = { effort: "low" };
+			mode: "fast",
+			configOptions: { effort: "high" },
+		});
 
 		expect(driverCreates).toEqual([
 			{
@@ -47,169 +50,137 @@ describe("RuntimeEngine", () => {
 				staticConfig: { agent: "claude", cwd: "/workspace/repo" },
 				dynamicConfig: {
 					modelId: "sonnet",
+					modeId: "fast",
 					configOptions: { effort: "high" },
 				},
 			},
 		]);
 		expect(created).toEqual({
-			sessionId: "session-1",
-			activeTurnId: null,
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {
-				modelId: "sonnet",
-				configOptions: { effort: "high" },
+			id: "session-1",
+			title: "Repo Session",
+			directory: "/workspace/repo",
+			agent: "claude",
+			model: {
+				providerID: "anthropic",
+				modelID: "sonnet",
 			},
+			mode: "fast",
+			configOptions: { effort: "high" },
+			activeTurnId: null,
+			status: "idle",
+			createdAt: expect.any(Number),
+			updatedAt: expect.any(Number),
 		});
-		expect(engine.getSession("session-1")).toEqual(created);
+		expect(engine.session.get("session-1")).toEqual(created);
+		expect(events).toEqual([
+			{
+				type: "session.created",
+				session: created,
+			},
+		]);
 	});
 
-	test("rejects a second turn while the same session is already running", async () => {
+	test("session.prompt emits runtime message and session events", async () => {
 		const blocker = createDeferred();
-		const events: RuntimeEvent[] = [];
 		const driverCalls: ResolvedStartTurnInput[] = [];
+		const events: RuntimeEvent[] = [];
 		const engine = new RuntimeEngine(
 			{
-				run: async (input) => {
+				run: async (input, emit) => {
 					driverCalls.push(input);
+					emit({
+						type: "message.part.updated",
+						part: {
+							id: "assistant-part-1",
+							sessionId: input.sessionId,
+							messageId: input.assistantMessageId,
+							type: "text",
+							text: "READY",
+						},
+					});
+					emit({
+						type: "message.part.delta",
+						sessionId: input.sessionId,
+						messageId: input.assistantMessageId,
+						partId: "assistant-part-1",
+						field: "text",
+						delta: "READY",
+					});
 					await blocker.promise;
-					return undefined;
+					return { stopReason: "end_turn" };
 				},
 			},
 			(event) => {
 				events.push(event);
 			}
 		);
-		await engine.createSession({
+
+		await engine.session.create({
 			sessionId: "session-1",
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {},
+			agent: "claude",
+			directory: "/workspace/repo",
+			model: {
+				providerID: "anthropic",
+				modelID: "sonnet",
+			},
 		});
 
-		const firstTurn = engine.startTurn({
+		const running = engine.session.prompt({
 			sessionId: "session-1",
-			prompt: [{ type: "text", text: "hello" }],
+			parts: [{ type: "text", text: "hello" }],
 		});
 
 		await expect(
-			engine.startTurn({
+			engine.session.prompt({
 				sessionId: "session-1",
-				prompt: [{ type: "text", text: "again" }],
+				parts: [{ type: "text", text: "again" }],
 			})
 		).rejects.toThrow("Session session-1 already has active turn");
 
 		blocker.resolve();
-		const turnId = await firstTurn;
+		const result = await running;
 
+		expect(result.sessionId).toBe("session-1");
+		expect(result.messageId).toEqual(expect.any(String));
+		expect(result.stopReason).toBe("end_turn");
+		expect(result.completedAt).toEqual(expect.any(Number));
+		expect(result.parts).toEqual([
+			{
+				id: "assistant-part-1",
+				sessionId: "session-1",
+				messageId: result.messageId,
+				type: "text",
+				text: "READY",
+			},
+		]);
 		expect(driverCalls).toEqual([
 			{
 				sessionId: "session-1",
-				turnId,
+				turnId: expect.any(String),
+				assistantMessageId: result.messageId,
 				prompt: [{ type: "text", text: "hello" }],
 				dynamicConfig: {},
 			},
 		]);
-		expect(events).toEqual([
-			{ type: "turn.started", sessionId: "session-1", turnId },
-			{ type: "turn.completed", sessionId: "session-1", turnId },
+		expect(events.map((event) => event.type)).toEqual([
+			"session.created",
+			"session.updated",
+			"message.updated",
+			"message.part.updated",
+			"message.updated",
+			"session.status",
+			"message.part.updated",
+			"message.part.delta",
+			"message.updated",
+			"session.status",
+			"session.idle",
 		]);
 	});
 
-	test("applies config diffs before run and preserves them even if prompt execution fails", async () => {
-		const configUpdates: Array<{ sessionId: string; dynamicConfig: unknown }> =
-			[];
-		const engine = new RuntimeEngine(
-			{
-				updateSessionConfig: (sessionId, dynamicConfig) => {
-					configUpdates.push({ sessionId, dynamicConfig });
-					return Promise.resolve();
-				},
-				run: () => Promise.reject(new Error("prompt failed")),
-			},
-			() => undefined
-		);
-		await engine.createSession({
-			sessionId: "session-1",
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {
-				modelId: "sonnet",
-				configOptions: { effort: "high", verbosity: "low" },
-			},
-		});
-
-		await expect(
-			engine.startTurn({
-				sessionId: "session-1",
-				prompt: [{ type: "text", text: "switch" }],
-				dynamicConfig: {
-					modeId: "fast",
-					configOptions: { effort: "medium" },
-				},
-			})
-		).rejects.toThrow("prompt failed");
-
-		expect(configUpdates).toEqual([
-			{
-				sessionId: "session-1",
-				dynamicConfig: {
-					modeId: "fast",
-					configOptions: { effort: "medium" },
-				},
-			},
-		]);
-		expect(engine.getSession("session-1")).toEqual({
-			sessionId: "session-1",
-			activeTurnId: null,
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {
-				modelId: "sonnet",
-				modeId: "fast",
-				configOptions: { effort: "medium", verbosity: "low" },
-			},
-		});
-	});
-
-	test("does not mutate session config if applying the diff fails", async () => {
-		const engine = new RuntimeEngine(
-			{
-				updateSessionConfig: () => Promise.reject(new Error("config failed")),
-				run: () => Promise.resolve(undefined),
-			},
-			() => undefined
-		);
-		await engine.createSession({
-			sessionId: "session-1",
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {
-				modelId: "sonnet",
-				configOptions: { effort: "high", verbosity: "low" },
-			},
-		});
-
-		await expect(
-			engine.startTurn({
-				sessionId: "session-1",
-				prompt: [{ type: "text", text: "switch" }],
-				dynamicConfig: {
-					modeId: "fast",
-					configOptions: { effort: "medium" },
-				},
-			})
-		).rejects.toThrow("config failed");
-
-		expect(engine.getSession("session-1")).toEqual({
-			sessionId: "session-1",
-			activeTurnId: null,
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {
-				modelId: "sonnet",
-				configOptions: { effort: "high", verbosity: "low" },
-			},
-		});
-	});
-
-	test("routes cancellation to the driver for an active turn", async () => {
+	test("session.abort routes cancellation for the active session", async () => {
 		const blocker = createDeferred();
 		const cancelledTurnIds: string[] = [];
+		const events: RuntimeEvent[] = [];
 		const engine = new RuntimeEngine(
 			{
 				run: async () => {
@@ -221,38 +192,62 @@ describe("RuntimeEngine", () => {
 					return Promise.resolve();
 				},
 			},
-			() => undefined
+			(event) => {
+				events.push(event);
+			}
 		);
-		await engine.createSession({
+
+		await engine.session.create({
 			sessionId: "session-1",
-			staticConfig: { agent: "claude", cwd: "/workspace/repo" },
-			dynamicConfig: {},
+			agent: "claude",
+			directory: "/workspace/repo",
+			model: {
+				providerID: "anthropic",
+				modelID: "sonnet",
+			},
 		});
 
-		const turnPromise = engine.startTurn({
+		const running = engine.session.prompt({
 			sessionId: "session-1",
-			prompt: [{ type: "text", text: "wait" }],
+			parts: [{ type: "text", text: "wait" }],
 		});
-		const turnId = engine.getActiveTurnId("session-1");
-		expect(turnId).toBeString();
-		const runningTurnId = turnId as string;
 
-		expect(await engine.cancelTurn(runningTurnId)).toBe(true);
+		expect(await engine.session.abort({ sessionId: "session-1" })).toBe(true);
 		blocker.resolve();
-		await turnPromise;
+		await running;
 
-		expect(cancelledTurnIds).toEqual([runningTurnId]);
-		expect(engine.getTurn(runningTurnId)?.status).toBe("cancelled");
+		expect(cancelledTurnIds).toEqual([expect.any(String)]);
+		expect(events.some((event) => event.type === "session.idle")).toBe(true);
 	});
 
-	test("delegates permission responses to the driver", async () => {
+	test("permission.reply resolves using the stored permission id", async () => {
 		const permissionInputs: Array<{
 			requestId: string;
 			outcome: unknown;
 		}> = [];
 		const engine = new RuntimeEngine(
 			{
-				run: () => Promise.resolve(undefined),
+				run: (_input, emit) => {
+					emit({
+						type: "permission.requested",
+						request: {
+							id: "perm-1",
+							sessionId: "session-1",
+							permission: "Read file",
+							options: [
+								{
+									kind: "allow_once",
+									optionId: "opt-1",
+									name: "Allow once",
+								},
+							],
+							always: [],
+							messageId: "msg-1",
+							toolCallId: "tool-1",
+						},
+					});
+					return Promise.resolve(undefined);
+				},
 				respondToPermissionRequest: (input) => {
 					permissionInputs.push(input);
 					return Promise.resolve(input.requestId === "perm-1");
@@ -261,27 +256,35 @@ describe("RuntimeEngine", () => {
 			() => undefined
 		);
 
+		await engine.session.create({
+			sessionId: "session-1",
+			agent: "claude",
+			directory: "/workspace/repo",
+			model: {
+				providerID: "anthropic",
+				modelID: "sonnet",
+			},
+		});
+
+		await engine.session.prompt({
+			sessionId: "session-1",
+			parts: [{ type: "text", text: "hello" }],
+		});
+
 		expect(
-			await engine.respondToPermissionRequest({
+			await engine.permission.reply({
 				requestId: "perm-1",
-				outcome: { outcome: "selected", optionId: "opt-1" },
+				reply: "once",
 			})
 		).toBe(true);
-		expect(
-			await engine.respondToPermissionRequest({
-				requestId: "missing",
-				outcome: { outcome: "cancelled" },
-			})
-		).toBe(false);
 
 		expect(permissionInputs).toEqual([
 			{
 				requestId: "perm-1",
-				outcome: { outcome: "selected", optionId: "opt-1" },
-			},
-			{
-				requestId: "missing",
-				outcome: { outcome: "cancelled" },
+				outcome: {
+					outcome: "selected",
+					optionId: "opt-1",
+				},
 			},
 		]);
 	});
