@@ -96,6 +96,35 @@ async function createTransportHarness(dbPath: string): Promise<{
 	};
 }
 
+async function createReconnectHarness(dbPath: string): Promise<{
+	handle: Awaited<ReturnType<typeof openRuntimeDatabase>>;
+	runtime: RuntimeEngine;
+	sockets: FakeSocket[];
+	transport: ReturnType<typeof createWebSocketRuntimeTransport>;
+}> {
+	const handle = await openRuntimeDatabase({ path: dbPath });
+	const runtime = new RuntimeEngine(noopDriver);
+	const sockets: FakeSocket[] = [];
+	const transport = createWebSocketRuntimeTransport({
+		store: new RuntimeMessageStore(handle.db),
+		url: "ws://runtime.test/socket",
+		runtime,
+		reconnectDelayMs: 0,
+		createSocket() {
+			const socket = new FakeSocket();
+			sockets.push(socket);
+			return socket;
+		},
+	});
+
+	return {
+		handle,
+		runtime,
+		sockets,
+		transport,
+	};
+}
+
 async function dispatchCreateSessionAndPrompt(
 	socket: FakeSocket
 ): Promise<void> {
@@ -336,6 +365,110 @@ describe("createWebSocketRuntimeTransport", () => {
 			});
 			await startPromise;
 			expect(started).toBe(true);
+		} finally {
+			harness.handle.close();
+			await testDb.cleanup();
+		}
+	});
+
+	test("reconnects automatically after websocket close and preserves events emitted while disconnected", async () => {
+		const testDb = await createTestDatabasePath();
+		const harness = await createReconnectHarness(testDb.dbPath);
+
+		try {
+			const startPromise = harness.transport.start();
+			expect(harness.sockets).toHaveLength(1);
+			expect(harness.sockets[0]?.sent).toEqual([
+				{
+					type: "hello",
+					runtime: "sandbox-runtime",
+				},
+			]);
+			harness.sockets[0]?.receive({
+				type: "hello_ack",
+				connectionId: "connection-1",
+				connectedAt: 123,
+			});
+			await startPromise;
+
+			await harness.runtime.createSession({
+				sessionId: "session-1",
+				agent: "claude",
+				cwd: "/workspace/repo",
+			});
+
+			harness.sockets[0]?.close();
+			await harness.runtime.prompt({
+				sessionId: "session-1",
+				prompt: [{ type: "text", text: "hello after disconnect" }],
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(harness.sockets).toHaveLength(2);
+			expect(harness.sockets[1]?.sent).toEqual([
+				{
+					type: "hello",
+					runtime: "sandbox-runtime",
+				},
+			]);
+
+			harness.sockets[1]?.receive({
+				type: "hello_ack",
+				connectionId: "connection-2",
+				connectedAt: 124,
+			});
+			harness.sockets[1]?.receive({
+				type: "subscribe_stream",
+				stream: "session:session-1",
+				offset: "-1",
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(harness.sockets[1]?.sent).toEqual([
+				{
+					type: "hello",
+					runtime: "sandbox-runtime",
+				},
+				{
+					type: "stream_items",
+					stream: "session:session-1",
+					items: [
+						{
+							offset: "1",
+							eventId: expect.any(String),
+							commandId: undefined,
+							createdAt: expect.any(Number),
+							event: expect.objectContaining({
+								type: "turn.started",
+								sessionId: "session-1",
+							}),
+						},
+						{
+							offset: "2",
+							eventId: expect.any(String),
+							commandId: undefined,
+							createdAt: expect.any(Number),
+							event: expect.objectContaining({
+								type: "output.delta",
+								sessionId: "session-1",
+							}),
+						},
+						{
+							offset: "3",
+							eventId: expect.any(String),
+							commandId: undefined,
+							createdAt: expect.any(Number),
+							event: expect.objectContaining({
+								type: "turn.completed",
+								sessionId: "session-1",
+							}),
+						},
+					],
+					nextOffset: "3",
+					upToDate: true,
+					streamClosed: false,
+				},
+			]);
 		} finally {
 			harness.handle.close();
 			await testDb.cleanup();

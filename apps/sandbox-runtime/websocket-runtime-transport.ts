@@ -49,16 +49,22 @@ export function createWebSocketRuntimeTransport(options: {
 	url: string;
 	runtime: RuntimeEngine;
 	createSocket?: WebSocketLikeFactory;
+	reconnectDelayMs?: number;
 }): RuntimeWebSocketTransport {
 	const createSocket =
 		options.createSocket ?? ((url) => new WebSocket(url) as WebSocketLike);
+	const reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
 	let socket: WebSocketLike | null = null;
+	let socketReady = false;
+	let stopped = false;
+	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	let unsubscribe: (() => void) | null = null;
 	let commandQueue = Promise.resolve();
 	let activeCommandId: string | undefined;
+	let started = false;
 
 	const send = (message: RuntimeWebSocketOutgoingMessage): void => {
-		if (!(socket && socket.readyState === SOCKET_OPEN)) {
+		if (!(socket && socket.readyState === SOCKET_OPEN && socketReady)) {
 			return;
 		}
 		socket.send(JSON.stringify(message));
@@ -257,25 +263,69 @@ export function createWebSocketRuntimeTransport(options: {
 		});
 	};
 
-	return {
-		start(): Promise<void> {
-			if (socket) {
-				return Promise.resolve();
-			}
+	const clearReconnectTimer = (): void => {
+		if (!reconnectTimer) {
+			return;
+		}
+		clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+	};
 
-			socket = createSocket(options.url);
+	const scheduleReconnect = (): void => {
+		if (stopped || reconnectTimer || socket) {
+			return;
+		}
+		reconnectTimer = setTimeout(() => {
+			reconnectTimer = null;
+			void connectSocket();
+		}, reconnectDelayMs);
+	};
+
+	const cleanupSocket = (currentSocket: WebSocketLike): void => {
+		if (socket !== currentSocket) {
+			return;
+		}
+		socket = null;
+		socketReady = false;
+		if (started) {
+			scheduleReconnect();
+		}
+	};
+
+	const connectSocket = (): Promise<void> => {
+		const currentSocket = createSocket(options.url);
+		socket = currentSocket;
+		socketReady = false;
+
+		return new Promise<void>((resolve, reject) => {
+			let settled = false;
 			let helloAckReceived = false;
-			let onHelloAck: (() => void) | null = null;
-			unsubscribe = options.runtime.subscribe((event) => {
-				sendStoredEvent(
-					options.store.appendEvent({
-						commandId: activeCommandId,
-						event,
+
+			const finish = (callback: () => void) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				callback();
+			};
+
+			const sendHello = () => {
+				if (!(socket === currentSocket && currentSocket.readyState === SOCKET_OPEN)) {
+					return;
+				}
+				currentSocket.send(
+					JSON.stringify({
+						type: "hello",
+						runtime: "sandbox-runtime",
 					})
 				);
-			});
+			};
 
-			socket.addEventListener("message", (event) => {
+			currentSocket.addEventListener("message", (event) => {
+				if (socket !== currentSocket) {
+					return;
+				}
+
 				const payload =
 					typeof event.data === "string"
 						? event.data
@@ -284,7 +334,9 @@ export function createWebSocketRuntimeTransport(options: {
 				const helloAck = runtimeWebSocketHelloAckSchema.safeParse(message);
 				if (helloAck.success) {
 					helloAckReceived = true;
-					onHelloAck?.();
+					socketReady = true;
+					started = true;
+					finish(resolve);
 					return;
 				}
 				const subscribeStream =
@@ -302,75 +354,66 @@ export function createWebSocketRuntimeTransport(options: {
 					.catch(() => undefined);
 			});
 
-			const cleanup = () => {
-				unsubscribe?.();
-				unsubscribe = null;
-				socket = null;
-			};
-
-			socket.addEventListener("close", cleanup);
-			socket.addEventListener("error", cleanup);
-
-			const sendHello = () => {
-				send({
-					type: "hello",
-					runtime: "sandbox-runtime",
-				});
-			};
-
-			return new Promise<void>((resolve, reject) => {
-				let settled = false;
-
-				const finish = (callback: () => void) => {
-					if (settled) {
-						return;
-					}
-					settled = true;
-					callback();
-				};
-
-				const cleanupHandshake = () => {
-					onHelloAck = null;
-				};
-
-				onHelloAck = () => {
-					cleanupHandshake();
-					finish(() => resolve());
-				};
-
-				socket!.addEventListener("error", () => {
-					cleanupHandshake();
-					finish(() => reject(new Error("WebSocket connection failed")));
-				});
-				socket!.addEventListener("close", () => {
-					cleanupHandshake();
+			currentSocket.addEventListener("close", () => {
+				const shouldReject = !started && !helloAckReceived;
+				cleanupSocket(currentSocket);
+				if (shouldReject) {
 					finish(() =>
-						reject(new Error("WebSocket closed before hello acknowledgement"))
+						reject(
+							new Error("WebSocket closed before hello acknowledgement")
+						)
 					);
-				});
+				}
+			});
 
-				if (socket!.readyState === SOCKET_OPEN) {
-					sendHello();
-					if (helloAckReceived) {
-						onHelloAck();
-					}
+			currentSocket.addEventListener("error", () => {
+				const shouldReject = !started && !helloAckReceived;
+				cleanupSocket(currentSocket);
+				if (shouldReject) {
+					finish(() => reject(new Error("WebSocket connection failed")));
+				}
+			});
+
+			if (currentSocket.readyState === SOCKET_OPEN) {
+				sendHello();
+				return;
+			}
+
+			currentSocket.addEventListener("open", () => {
+				if (socket !== currentSocket) {
 					return;
 				}
-
-				socket!.addEventListener("open", () => {
-					sendHello();
-					if (helloAckReceived) {
-						onHelloAck?.();
-					}
-				});
+				sendHello();
 			});
+		});
+	};
+
+	return {
+		start(): Promise<void> {
+			if (socket) {
+				return Promise.resolve();
+			}
+			stopped = false;
+			clearReconnectTimer();
+			unsubscribe ??= options.runtime.subscribe((event) => {
+				sendStoredEvent(
+					options.store.appendEvent({
+						commandId: activeCommandId,
+						event,
+					})
+				);
+			});
+			return connectSocket();
 		},
 
 		close(): Promise<void> {
-			unsubscribe?.();
-			unsubscribe = null;
+			stopped = true;
+			clearReconnectTimer();
 			const current = socket;
 			socket = null;
+			socketReady = false;
+			unsubscribe?.();
+			unsubscribe = null;
 			current?.close();
 			return Promise.resolve();
 		},
