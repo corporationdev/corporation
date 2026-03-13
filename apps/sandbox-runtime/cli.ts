@@ -10,6 +10,10 @@ import {
 	loginWithBrowser,
 	resolveRuntimeWebSocketUrl,
 } from "./auth";
+import {
+	getDefaultRuntimeDatabasePath,
+	openRuntimeDatabase,
+} from "./db";
 import { RuntimeEngine } from "./index";
 import { createWebSocketRuntimeTransport } from "./websocket-runtime-transport";
 
@@ -58,6 +62,10 @@ async function runConnectCommand(args: string[]): Promise<void> {
 	const { values } = parseArgs({
 		args,
 		options: {
+			"db-path": {
+				type: "string",
+				default: getDefaultRuntimeDatabasePath(),
+			},
 			url: { type: "string" },
 			"server-url": { type: "string", default: getDefaultServerUrl() },
 			token: { type: "string", default: getDefaultRefreshToken() },
@@ -75,6 +83,9 @@ async function runConnectCommand(args: string[]): Promise<void> {
 		serverUrl: values["server-url"]?.trim() || undefined,
 		url: values.url?.trim() || undefined,
 	});
+	const runtimeDatabase = await openRuntimeDatabase({
+		path: values["db-path"]?.trim() || undefined,
+	});
 
 	const factory = createSpawnedAcpConnectionFactory();
 	const driver = createAcpDriver(factory);
@@ -86,12 +97,18 @@ async function runConnectCommand(args: string[]): Promise<void> {
 		createSocket,
 	});
 
-	await transport.start();
+	try {
+		await transport.start();
+	} catch (error) {
+		runtimeDatabase.close();
+		throw error;
+	}
 	console.log("Runtime connected");
 
 	const shutdown = async () => {
 		console.log("Shutting down...");
 		await transport.close();
+		runtimeDatabase.close();
 		process.exit(0);
 	};
 

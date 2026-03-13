@@ -51,6 +51,7 @@ coverage
 # Misc
 *.tgz
 .cache
+.drizzle
 tmp
 temp
 

@@ -58,6 +58,7 @@
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
         "chromium-bidi": "^15.0.0",
+        "drizzle-orm": "catalog:",
         "effect": "catalog:",
         "hono": "catalog:",
         "jose": "catalog:",
@@ -67,6 +68,7 @@
       "devDependencies": {
         "bun-types": "latest",
         "dotenv": "catalog:",
+        "drizzle-kit": "catalog:",
         "e2b": "catalog:",
         "typescript": "catalog:",
       },

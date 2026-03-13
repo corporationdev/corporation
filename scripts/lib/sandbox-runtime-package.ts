@@ -96,6 +96,7 @@ export async function buildSandboxRuntimePackage(
 
 	await rm(stagingDir, { recursive: true, force: true });
 	await mkdir(resolve(stagingDir, "dist"), { recursive: true });
+	await mkdir(resolve(stagingDir, "dist/db"), { recursive: true });
 	await mkdir(resolve(stagingDir, "bin"), { recursive: true });
 
 	const build = Bun.spawnSync(
@@ -126,6 +127,11 @@ export async function buildSandboxRuntimePackage(
 	if (!distArtifacts.includes("index.js")) {
 		throw new Error("sandbox-runtime build did not produce dist/index.js");
 	}
+	await cp(
+		resolve(runtimeSourceDir, "db/migrations"),
+		resolve(stagingDir, "dist/db/migrations"),
+		{ recursive: true }
+	);
 
 	await writeFile(
 		resolve(stagingDir, "bin/sandbox-runtime"),
