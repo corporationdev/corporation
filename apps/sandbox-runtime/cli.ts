@@ -3,80 +3,87 @@
 import { parseArgs } from "node:util";
 import { createSpawnedAcpConnectionFactory } from "./acp-connection";
 import { createAcpDriver } from "./acp-driver";
+import {
+	getDefaultCredentialsPath,
+	getDefaultRefreshToken,
+	getDefaultServerUrl,
+	loginWithBrowser,
+	resolveRuntimeWebSocketUrl,
+} from "./auth";
 import { RuntimeEngine } from "./index";
-import type { WebSocketLike } from "./websocket-runtime-transport";
 import { createWebSocketRuntimeTransport } from "./websocket-runtime-transport";
 
-type AuthConfig = {
-	method: "refresh";
-	token: string;
-	refreshUrl: string;
-};
+type Command = "connect" | "login";
 
-async function refreshAccessToken(config: AuthConfig): Promise<string> {
-	const response = await fetch(config.refreshUrl, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ refreshToken: config.token }),
-	});
-	if (!response.ok) {
-		throw new Error(`Token refresh failed: ${response.status}`);
+function getCommandAndArgs(argv: string[]): {
+	command: Command;
+	args: string[];
+} {
+	const [maybeCommand, ...rest] = argv;
+	if (maybeCommand === "login" || maybeCommand === "connect") {
+		return { command: maybeCommand, args: rest };
 	}
-	const body = (await response.json()) as { accessToken: string };
-	return body.accessToken;
+	return { command: "connect", args: argv };
 }
 
-function createAuthenticatedSocket(
-	url: string,
-	accessToken: string
-): WebSocketLike {
-	return new WebSocket(url, {
-		headers: { Authorization: `Bearer ${accessToken}` },
-	} as never) as WebSocketLike;
+function createSocket(url: string): WebSocket {
+	return new WebSocket(url) as WebSocket;
 }
 
-async function main(): Promise<void> {
+async function runLoginCommand(args: string[]): Promise<void> {
 	const { values } = parseArgs({
+		args,
 		options: {
-			url: { type: "string" },
-			"auth-method": { type: "string", default: "refresh" },
-			token: { type: "string" },
-			"refresh-url": { type: "string" },
+			"server-url": { type: "string", default: getDefaultServerUrl() },
+			"credentials-path": {
+				type: "string",
+				default: getDefaultCredentialsPath(),
+			},
 		},
 		strict: true,
 	});
 
-	if (!values.url) {
-		throw new Error("--url is required (WebSocket endpoint)");
+	const serverUrl = values["server-url"]?.trim();
+	if (!serverUrl) {
+		throw new Error("--server-url is required for login");
 	}
 
-	let createSocket: ((url: string) => WebSocketLike) | undefined;
+	await loginWithBrowser({
+		credentialsPath: values["credentials-path"],
+		serverUrl,
+	});
+}
 
-	if (values.token) {
-		if (values["auth-method"] !== "refresh") {
-			throw new Error(`Unsupported auth method: ${values["auth-method"]}`);
-		}
-		if (!values["refresh-url"]) {
-			throw new Error("--refresh-url is required for refresh auth method");
-		}
+async function runConnectCommand(args: string[]): Promise<void> {
+	const { values } = parseArgs({
+		args,
+		options: {
+			url: { type: "string" },
+			"server-url": { type: "string", default: getDefaultServerUrl() },
+			token: { type: "string", default: getDefaultRefreshToken() },
+			"credentials-path": {
+				type: "string",
+				default: getDefaultCredentialsPath(),
+			},
+		},
+		strict: true,
+	});
 
-		const authConfig: AuthConfig = {
-			method: "refresh",
-			token: values.token,
-			refreshUrl: values["refresh-url"],
-		};
-		const accessToken = await refreshAccessToken(authConfig);
-		createSocket = (url) => createAuthenticatedSocket(url, accessToken);
-	}
+	const websocketUrl = await resolveRuntimeWebSocketUrl({
+		credentialsPath: values["credentials-path"],
+		refreshToken: values.token?.trim() || undefined,
+		serverUrl: values["server-url"]?.trim() || undefined,
+		url: values.url?.trim() || undefined,
+	});
 
 	const factory = createSpawnedAcpConnectionFactory();
 	const driver = createAcpDriver(factory);
 	const engine = new RuntimeEngine(driver);
 
 	const transport = createWebSocketRuntimeTransport({
-		url: values.url,
+		url: websocketUrl,
 		runtime: engine,
-		...(createSocket ? { createSocket } : {}),
+		createSocket,
 	});
 
 	await transport.start();
@@ -90,6 +97,15 @@ async function main(): Promise<void> {
 
 	process.on("SIGINT", shutdown);
 	process.on("SIGTERM", shutdown);
+}
+
+async function main(): Promise<void> {
+	const { command, args } = getCommandAndArgs(process.argv.slice(2));
+	if (command === "login") {
+		await runLoginCommand(args);
+		return;
+	}
+	await runConnectCommand(args);
 }
 
 main().catch((error) => {

@@ -21,6 +21,7 @@ export type RuntimeContext = {
 		CORPORATION_CONVEX_URL: string;
 		CORPORATION_CONVEX_SITE_URL: string;
 		CORPORATION_SERVER_URL: string;
+		CORPORATION_WEB_URL: string;
 	};
 	convexSyncEnv: {
 		CORPORATION_WEB_URL: string;
@@ -57,6 +58,7 @@ export function resolveRuntimeContext(
 				CORPORATION_CONVEX_URL: CONVEX_URL,
 				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
+				CORPORATION_WEB_URL: "http://localhost:3001",
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: "http://localhost:3001",
@@ -88,6 +90,7 @@ export function resolveRuntimeContext(
 				CORPORATION_CONVEX_URL: CONVEX_URL,
 				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
+				CORPORATION_WEB_URL: "http://localhost:3001",
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: "http://localhost:3001",
@@ -128,6 +131,7 @@ export function resolveRuntimeContext(
 				CORPORATION_CONVEX_URL: CONVEX_URL,
 				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
+				CORPORATION_WEB_URL: `https://${stage}.corporation.dev`,
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: `https://${stage}.corporation.dev`,
@@ -153,6 +157,7 @@ export function resolveRuntimeContext(
 				CORPORATION_CONVEX_URL: CONVEX_URL,
 				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				CORPORATION_SERVER_URL: SERVER_URL,
+				CORPORATION_WEB_URL: "https://app.corporation.dev",
 			},
 			convexSyncEnv: {
 				CORPORATION_WEB_URL: "https://app.corporation.dev",

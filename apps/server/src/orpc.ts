@@ -9,7 +9,10 @@ import {
 	getIntegrationConnection,
 	listIntegrations,
 } from "./services/integrations";
-import { createRuntimeAuthSession } from "./services/runtime-auth";
+import {
+	createRuntimeAuthSession,
+	createRuntimeRefreshToken,
+} from "./services/runtime-auth";
 import { getSpaceStubWithAuth } from "./services/session-stream";
 
 type WorkerORPCContext = {
@@ -120,6 +123,14 @@ export const workerHttpRouter = workerHttpImplementer.router({
 			}),
 	},
 	runtimeAuth: {
+		createRefreshToken: workerHttpImplementer.runtimeAuth.createRefreshToken
+			.use(requireBrowserAuth)
+			.handler(async ({ context, input }) => {
+				return await createRuntimeRefreshToken(context.env, {
+					clientId: input.clientId,
+					userId: context.jwtPayload.sub,
+				});
+			}),
 		createSession: workerHttpImplementer.runtimeAuth.createSession.handler(
 			async ({ context, input }) => {
 				try {

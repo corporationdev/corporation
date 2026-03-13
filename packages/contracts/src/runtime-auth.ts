@@ -43,6 +43,21 @@ export type RuntimeAuthSessionRequest = z.infer<
 	typeof runtimeAuthSessionRequestSchema
 >;
 
+export const runtimeRefreshTokenRequestSchema = z.object({
+	clientId: z.string().min(1),
+});
+export type RuntimeRefreshTokenRequest = z.infer<
+	typeof runtimeRefreshTokenRequestSchema
+>;
+
+export const runtimeRefreshTokenResponseSchema = z.object({
+	refreshToken: z.string().min(1),
+	expiresAt: z.number().int().positive(),
+});
+export type RuntimeRefreshTokenResponse = z.infer<
+	typeof runtimeRefreshTokenResponseSchema
+>;
+
 export const runtimeAuthSessionResponseSchema = z.object({
 	accessToken: z.string().min(1),
 	websocketUrl: z.url(),

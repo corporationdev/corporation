@@ -1,6 +1,4 @@
-import {
-	verifyRuntimeAccessToken,
-} from "@corporation/contracts/runtime-auth";
+import { verifyRuntimeAccessToken } from "@corporation/contracts/runtime-auth";
 import { runtimeAuthSessionRequestSchema } from "@corporation/contracts/runtime-auth";
 import { Hono } from "hono";
 import { createRuntimeAuthSession } from "./services/runtime-auth";
@@ -14,11 +12,53 @@ type RuntimeAppEnv = {
 	Bindings: {
 		CORPORATION_RUNTIME_AUTH_SECRET?: string;
 		CORPORATION_SERVER_URL?: string;
+		CORPORATION_WEB_URL?: string;
 		USER_DO: UserStubBinding;
 	};
 };
 
+function isLoopbackCallbackUrl(value: string): boolean {
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "http:") {
+			return false;
+		}
+		return (
+			url.hostname === "127.0.0.1" ||
+			url.hostname === "localhost" ||
+			url.hostname === "[::1]" ||
+			url.hostname === "::1"
+		);
+	} catch {
+		return false;
+	}
+}
+
 export const runtimeApp = new Hono<RuntimeAppEnv>()
+	.get("/login", async (c) => {
+		const callbackUrl = c.req.query("callbackUrl")?.trim();
+		const clientId = c.req.query("clientId")?.trim();
+		const state = c.req.query("state")?.trim();
+		if (!(callbackUrl && clientId && state)) {
+			return c.text("Missing login parameters", 400);
+		}
+		if (!isLoopbackCallbackUrl(callbackUrl)) {
+			return c.text("Invalid callback URL", 400);
+		}
+
+		const webUrl = c.env.CORPORATION_WEB_URL?.trim();
+		if (!webUrl) {
+			return c.text("Runtime login is not configured", 500);
+		}
+
+		const redirectUrl = new URL("/runtime-login", webUrl);
+		redirectUrl.search = new URLSearchParams({
+			callbackUrl,
+			clientId,
+			state,
+		}).toString();
+		return c.redirect(redirectUrl.toString(), 302);
+	})
 	.post("/auth/session", async (c) => {
 		const body = runtimeAuthSessionRequestSchema.safeParse(
 			await c.req.json().catch(() => null)
@@ -27,11 +67,11 @@ export const runtimeApp = new Hono<RuntimeAppEnv>()
 			return c.json({ error: body.error.message }, 400);
 		}
 		try {
-				return c.json(
-					await createRuntimeAuthSession(c.env, c.req.url, {
-						refreshToken: body.data.refreshToken,
-					})
-				);
+			return c.json(
+				await createRuntimeAuthSession(c.env, c.req.url, {
+					refreshToken: body.data.refreshToken,
+				})
+			);
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : "Runtime auth failed";

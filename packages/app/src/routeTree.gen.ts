@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RuntimeLoginRouteImport } from './routes/runtime-login'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
@@ -25,6 +26,11 @@ import { Route as AuthenticatedSettingsProjectsIndexRouteImport } from './routes
 import { Route as AuthenticatedSettingsProjectsNewRouteImport } from './routes/_authenticated/settings/projects/new'
 import { Route as AuthenticatedSettingsProjectsProjectIdIndexRouteImport } from './routes/_authenticated/settings/projects/$projectId.index'
 
+const RuntimeLoginRoute = RuntimeLoginRouteImport.update({
+  id: '/runtime-login',
+  path: '/runtime-login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
   id: '/accept-invitation',
   path: '/accept-invitation',
@@ -110,6 +116,7 @@ const AuthenticatedSettingsProjectsProjectIdIndexRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/runtime-login': typeof RuntimeLoginRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/runtime-login': typeof RuntimeLoginRoute
   '/login': typeof PublicLoginRoute
   '/signup': typeof PublicSignupRoute
   '/settings/agents': typeof AuthenticatedSettingsAgentsRoute
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_public': typeof PublicRouteWithChildren
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/runtime-login': typeof RuntimeLoginRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_public/login': typeof PublicLoginRoute
   '/_public/signup': typeof PublicSignupRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accept-invitation'
+    | '/runtime-login'
     | '/settings'
     | '/login'
     | '/signup'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/accept-invitation'
+    | '/runtime-login'
     | '/login'
     | '/signup'
     | '/settings/agents'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/_public'
     | '/accept-invitation'
+    | '/runtime-login'
     | '/_authenticated/settings'
     | '/_public/login'
     | '/_public/signup'
@@ -207,10 +219,18 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   PublicRoute: typeof PublicRouteWithChildren
   AcceptInvitationRoute: typeof AcceptInvitationRoute
+  RuntimeLoginRoute: typeof RuntimeLoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/runtime-login': {
+      id: '/runtime-login'
+      path: '/runtime-login'
+      fullPath: '/runtime-login'
+      preLoaderRoute: typeof RuntimeLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/accept-invitation': {
       id: '/accept-invitation'
       path: '/accept-invitation'
@@ -380,6 +400,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   PublicRoute: PublicRouteWithChildren,
   AcceptInvitationRoute: AcceptInvitationRoute,
+  RuntimeLoginRoute: RuntimeLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
