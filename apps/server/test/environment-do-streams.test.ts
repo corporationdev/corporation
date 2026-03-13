@@ -285,10 +285,14 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		});
 	});
 
-	it("restores persisted subscriptions after in-memory state is cleared", async () => {
+	it("re-subscribes persisted streams after runtime reconnect and routes replayed events from the stored offset", async () => {
 		const id = env.ENVIRONMENT_DO.idFromName("stream-persisted-user");
 		const stub = env.ENVIRONMENT_DO.get(id);
-		await connectRuntimeSocket(stub);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+		const consumerStub = env.TEST_STREAM_CONSUMER_DO.get(
+			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-persisted")
+		);
+		const initialSubscribeMessagePromise = waitForSocketMessage(runtimeSocket);
 
 		await expect(
 			stub.subscribeStream({
@@ -297,7 +301,7 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				subscriber: {
 					callback: {
 						binding: "TEST_STREAM_CONSUMER_DO",
-						name: "consumer-1",
+						name: "consumer-persisted",
 					},
 					requesterId: "requester-1",
 				},
@@ -306,65 +310,87 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 			ok: true,
 			value: {},
 		});
-
-		const snapshotResult = await runInDurableObject(stub, async (instance) => {
-			const environment = instance as unknown as EnvironmentDurableObject & {
-				streamSubscriptions: {
-					clear(): void;
-					hydrate(
-						subscriptions: Array<{
-							stream: string;
-							subscription: {
-								offset: string;
-								subscriber: {
-									requesterId: string;
-									callback: {
-										binding: string;
-										name: string;
-									};
-								};
-							};
-						}>
-					): void;
-				};
-				subscriptionStore: {
-					list(): Promise<
-						Array<{
-							stream: string;
-							subscription: {
-								offset: string;
-								subscriber: {
-									requesterId: string;
-									callback: {
-										binding: string;
-										name: string;
-									};
-								};
-							};
-						}>
-					>;
-				};
-			};
-			environment.streamSubscriptions.clear();
-			environment.streamSubscriptions.hydrate(
-				await environment.subscriptionStore.list()
-			);
-			return environment.getStreamSubscriptionsSnapshot();
+		await expect(initialSubscribeMessagePromise).resolves.toEqual({
+			type: "subscribe_stream",
+			stream: "session:session-1",
+			offset: "5",
 		});
 
-		expect(snapshotResult).toEqual({
-			ok: true,
-			value: {
-				subscriptions: [
+		const reconnectedRuntimeSocket = await connectRuntimeSocket(stub);
+		await expect(waitForSocketMessage(reconnectedRuntimeSocket)).resolves.toEqual({
+			type: "subscribe_stream",
+			stream: "session:session-1",
+			offset: "5",
+		});
+
+		reconnectedRuntimeSocket.send(
+			JSON.stringify({
+				type: "stream_items",
+				stream: "session:session-1",
+				items: [
 					{
-						stream: "session:session-1",
-						requesterId: "requester-1",
-						callbackBinding: "TEST_STREAM_CONSUMER_DO",
-						callbackName: "consumer-1",
+						offset: "6",
+						eventId: "event-6",
+						createdAt: 123,
+						event: {
+							type: "turn.started",
+							sessionId: "session-1",
+							turnId: "turn-6",
+						},
+					},
+					{
+						offset: "7",
+						eventId: "event-7",
+						createdAt: 124,
+						event: {
+							type: "turn.completed",
+							sessionId: "session-1",
+							turnId: "turn-6",
+						},
 					},
 				],
+				nextOffset: "7",
+				upToDate: true,
+				streamClosed: false,
+			})
+		);
+
+		await expect(
+			waitForReceivedStreamItems({
+				stub: consumerStub,
+				expectedCount: 1,
+			})
+		).resolves.toEqual([
+			{
+				stream: "session:session-1",
+				requesterId: "requester-1",
+				items: [
+					{
+						offset: "6",
+						eventId: "event-6",
+						createdAt: 123,
+						event: {
+							type: "turn.started",
+							sessionId: "session-1",
+							turnId: "turn-6",
+						},
+					},
+					{
+						offset: "7",
+						eventId: "event-7",
+						createdAt: 124,
+						event: {
+							type: "turn.completed",
+							sessionId: "session-1",
+							turnId: "turn-6",
+						},
+					},
+				],
+				nextOffset: "7",
+				upToDate: true,
+				streamClosed: false,
 			},
-		});
+		]);
 	});
 
 	it("routes stream_items to the registered subscriber", async () => {

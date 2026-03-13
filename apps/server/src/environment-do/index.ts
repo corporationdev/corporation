@@ -88,12 +88,15 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		const db = drizzle(this.ctx.storage, { schema });
 		await migrate(db, bundledMigrations);
 		this.subscriptionStore = new EnvironmentSubscriptionStore(db);
-		this.streamSubscriptions.hydrate(await this.subscriptionStore.list());
-		this.rebuildConnectionsFromHibernation();
+		await this.restorePersistedState();
 	}
 
 	private clearStreamSubscriptions(): void {
 		this.streamSubscriptions.clear();
+	}
+
+	private async restorePersistedSubscriptionsFromStore(): Promise<void> {
+		this.streamSubscriptions.hydrate(await this.subscriptionStore.list());
 	}
 
 	private rebuildConnectionsFromHibernation(): void {
@@ -132,6 +135,42 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		for (const entry of sockets.slice(1)) {
 			entry.socket.close(1012, "Superseded by newer runtime connection");
 		}
+	}
+
+	private sendSubscribeStreamToRuntime(input: {
+		stream: string;
+		offset: EnvironmentSubscribeStreamInput["offset"];
+	}): void {
+		const activeRuntime = this.getActiveRuntimeSocket();
+		if (!activeRuntime) {
+			return;
+		}
+		activeRuntime.socket.send(
+			JSON.stringify({
+				type: "subscribe_stream",
+				stream: input.stream,
+				offset: input.offset,
+			})
+		);
+	}
+
+	private resubscribePersistedStreamsIfRuntimeConnected(): void {
+		if (this.activeRuntimeConnectionId === null) {
+			return;
+		}
+
+		for (const entry of this.streamSubscriptions.list()) {
+			this.sendSubscribeStreamToRuntime({
+				stream: entry.stream,
+				offset: entry.subscription.offset,
+			});
+		}
+	}
+
+	private async restorePersistedState(): Promise<void> {
+		await this.restorePersistedSubscriptionsFromStore();
+		this.rebuildConnectionsFromHibernation();
+		this.resubscribePersistedStreamsIfRuntimeConnected();
 	}
 
 	private toRuntimeConnectionSnapshot(
@@ -209,7 +248,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	private handleRuntimeSocketUpgrade(request: Request): Response {
+	private async handleRuntimeSocketUpgrade(request: Request): Promise<Response> {
 		const runtimeAuth = parseRuntimeAuthHeader(
 			request.headers.get(SPACE_RUNTIME_AUTH_HEADER)
 		);
@@ -236,6 +275,8 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		this.clearStreamSubscriptions();
 		this.runtimeConnections.set(attachment.connectionId, attachment);
 		this.closeSupersededRuntimeSockets(attachment.connectionId);
+		await this.restorePersistedSubscriptionsFromStore();
+		this.resubscribePersistedStreamsIfRuntimeConnected();
 
 		log.info(
 			{
@@ -257,7 +298,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		await this.ready;
 		const url = new URL(request.url);
 		if (url.pathname === "/runtime/socket") {
-			return this.handleRuntimeSocketUpgrade(request);
+			return await this.handleRuntimeSocketUpgrade(request);
 		}
 		return new Response("Not found", { status: 404 });
 	}
@@ -425,19 +466,8 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		await this.ready;
 		const result = this.streamSubscriptions.subscribe({
 			activeRuntimeConnected: this.activeRuntimeConnectionId !== null,
-			forwardToRuntime: ({ stream, offset }) => {
-				const activeRuntime = this.getActiveRuntimeSocket();
-				if (!activeRuntime) {
-					return;
-				}
-				activeRuntime.socket.send(
-					JSON.stringify({
-						type: "subscribe_stream",
-						stream,
-						offset,
-					})
-				);
-			},
+			forwardToRuntime: ({ stream, offset }) =>
+				this.sendSubscribeStreamToRuntime({ stream, offset }),
 			subscription: input,
 		});
 		if (result.ok) {

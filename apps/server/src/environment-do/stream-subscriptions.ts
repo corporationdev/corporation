@@ -33,6 +33,16 @@ export class StreamSubscriptions {
 		return this.subscriptions.get(stream) ?? null;
 	}
 
+	list(): Array<{
+		stream: string;
+		subscription: EnvironmentStreamSubscriptionState;
+	}> {
+		return [...this.subscriptions.entries()].map(([stream, subscription]) => ({
+			stream,
+			subscription,
+		}));
+	}
+
 	getSnapshot(): EnvironmentStreamSubscriptionSnapshot[] {
 		return [...this.subscriptions.entries()]
 			.sort(([left], [right]) => left.localeCompare(right))
