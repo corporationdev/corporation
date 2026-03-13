@@ -7,19 +7,19 @@ type RuntimeAuthState = {
 	claims: RuntimeAccessTokenClaims;
 };
 
-type UserStub = {
+type EnvironmentStub = {
 	fetch: (request: Request) => Promise<Response>;
 };
 
-export type UserStubBinding = {
-	getByName: (name: string) => UserStub;
+export type EnvironmentStubBinding = {
+	getByName: (name: string) => EnvironmentStub;
 };
 
-export function getUserStub(
-	userDo: UserStubBinding,
-	userId: string
-): UserStub {
-	return userDo.getByName(userId);
+export function getEnvironmentStub(
+	environmentDo: EnvironmentStubBinding,
+	environmentKey: string
+): EnvironmentStub {
+	return environmentDo.getByName(environmentKey);
 }
 
 export function createRuntimeForwardHeaders(opts: {

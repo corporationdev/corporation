@@ -48,8 +48,8 @@ const spaceDO = DurableObjectNamespace("space-do", {
 	className: "SpaceDurableObject",
 	sqlite: true,
 });
-const userDO = DurableObjectNamespace("user-do", {
-	className: "UserDurableObject",
+const environmentDO = DurableObjectNamespace("environment-do", {
+	className: "EnvironmentDurableObject",
 });
 const serverHostname =
 	envTier === "dev" ? getStageServerHostname(stage) : undefined;
@@ -138,7 +138,7 @@ export const server = await Worker("agent-server", {
 		),
 		...runtime.serverBindings,
 		SPACE_DO: spaceDO,
-		USER_DO: userDO,
+		ENVIRONMENT_DO: environmentDO,
 	},
 	dev: {
 		port: 3000,

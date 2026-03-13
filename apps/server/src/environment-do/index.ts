@@ -4,8 +4,9 @@ import { createLogger } from "@corporation/logger";
 
 const RUNTIME_SOCKET_TAG = "runtime";
 const SPACE_RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
+const TEST_DEBUG_HEADER = "x-corporation-test-debug";
 
-const log = createLogger("user-do");
+const log = createLogger("environment-do");
 
 type RuntimeConnectionAuthState = {
 	authToken: string;
@@ -17,6 +18,19 @@ type RuntimeSocketAttachment = {
 	connectedAt: number;
 	lastSeenAt: number | null;
 	auth: RuntimeConnectionAuthState;
+};
+
+export type RuntimeConnectionSnapshot = {
+	connectionId: string;
+	connectedAt: number;
+	lastSeenAt: number | null;
+	userId: string;
+	clientId: string;
+};
+
+export type EnvironmentDoRuntimeConnectionsSnapshot = {
+	connectionCount: number;
+	connections: RuntimeConnectionSnapshot[];
 };
 
 function parseRuntimeAuthHeader(
@@ -40,7 +54,7 @@ function compareRuntimeAttachments(left: RuntimeSocketAttachment, right: Runtime
 	return right.connectionId.localeCompare(left.connectionId);
 }
 
-export class UserDurableObject extends DurableObject<Env> {
+export class EnvironmentDurableObject extends DurableObject<Env> {
 	private readonly ready: Promise<void>;
 	private readonly runtimeConnections = new Map<string, RuntimeSocketAttachment>();
 
@@ -85,6 +99,23 @@ export class UserDurableObject extends DurableObject<Env> {
 		}
 	}
 
+	getRuntimeConnectionsSnapshot(): EnvironmentDoRuntimeConnectionsSnapshot {
+		const connections = [...this.runtimeConnections.values()]
+			.sort(compareRuntimeAttachments)
+			.map((attachment) => ({
+				connectionId: attachment.connectionId,
+				connectedAt: attachment.connectedAt,
+				lastSeenAt: attachment.lastSeenAt,
+				userId: attachment.auth.claims.sub,
+				clientId: attachment.auth.claims.sandboxId,
+			}));
+
+		return {
+			connectionCount: connections.length,
+			connections,
+		};
+	}
+
 	private handleRuntimeSocketUpgrade(request: Request): Response {
 		const runtimeAuth = parseRuntimeAuthHeader(
 			request.headers.get(SPACE_RUNTIME_AUTH_HEADER)
@@ -125,11 +156,22 @@ export class UserDurableObject extends DurableObject<Env> {
 		});
 	}
 
+	private handleDebugRuntimeConnections(request: Request): Response {
+		if (request.headers.get(TEST_DEBUG_HEADER) !== "1") {
+			return new Response("Not found", { status: 404 });
+		}
+
+		return Response.json(this.getRuntimeConnectionsSnapshot());
+	}
+
 	async fetch(request: Request): Promise<Response> {
 		await this.ready;
 		const url = new URL(request.url);
 		if (url.pathname === "/runtime/socket") {
 			return this.handleRuntimeSocketUpgrade(request);
+		}
+		if (url.pathname === "/debug/runtime-connections") {
+			return this.handleDebugRuntimeConnections(request);
 		}
 		return new Response("Not found", { status: 404 });
 	}

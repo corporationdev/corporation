@@ -4,16 +4,16 @@ import { Hono } from "hono";
 import { createRuntimeAuthSession } from "./services/runtime-auth";
 import {
 	createRuntimeForwardHeaders,
-	getUserStub,
-	type UserStubBinding,
-} from "./user-do/stub";
+	getEnvironmentStub,
+	type EnvironmentStubBinding,
+} from "./environment-do/stub";
 
 type RuntimeAppEnv = {
 	Bindings: {
 		CORPORATION_RUNTIME_AUTH_SECRET?: string;
 		CORPORATION_SERVER_URL?: string;
 		CORPORATION_WEB_URL?: string;
-		USER_DO: UserStubBinding;
+		ENVIRONMENT_DO: EnvironmentStubBinding;
 	};
 };
 
@@ -96,8 +96,8 @@ export const runtimeApp = new Hono<RuntimeAppEnv>()
 			headers: c.req.raw.headers,
 		});
 
-		return await getUserStub(c.env.USER_DO, claims.sub).fetch(
-			new Request("http://user/runtime/socket", {
+		return await getEnvironmentStub(c.env.ENVIRONMENT_DO, claims.sub).fetch(
+			new Request("http://environment/runtime/socket", {
 				method: c.req.raw.method,
 				headers,
 			})

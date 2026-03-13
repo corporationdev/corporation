@@ -6,6 +6,7 @@ import { handleORPCRequest } from "./orpc";
 import { proxyApp } from "./proxy";
 import { runtimeApp } from "./runtime";
 import { streamApp } from "./stream";
+import { testApp } from "./test";
 
 const apiApp = new Hono<{ Bindings: Env }>()
 	.use(
@@ -35,6 +36,7 @@ const apiApp = new Hono<{ Bindings: Env }>()
 	.route("/github", githubApp)
 	.route("/proxy", proxyApp)
 	.route("/runtime", runtimeApp)
+	.route("/test", testApp)
 	.route("/spaces", streamApp);
 
 const app = new Hono<{ Bindings: Env }>().route("/api", apiApp);
