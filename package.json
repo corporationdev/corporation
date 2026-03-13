@@ -34,6 +34,8 @@
     "pack:sandbox-runtime": "bun scripts/pack-sandbox-runtime.ts",
     "publish:sandbox-runtime": "bun scripts/publish-sandbox-runtime.ts",
     "dev:sandbox-runtime": "bun scripts/dev-sandbox-runtime.ts",
+    "dev:runtime-cli": "bun apps/sandbox-runtime/cli.ts",
+    "dev:runtime-server": "bun apps/sandbox-runtime/dev-server.ts",
     "sandbox:create-agent-install": "bun scripts/create-agent-install-sandbox.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:agents": "bun scripts/generate-acp-agents.ts",

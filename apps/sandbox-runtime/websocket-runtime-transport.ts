@@ -17,6 +17,7 @@ export type WebSocketLike = {
 	readyState: number;
 	send(data: string): void;
 	close(code?: number, reason?: string): void;
+	addEventListener(type: "open", listener: (event: Event) => void): void;
 	addEventListener(
 		type: "message",
 		listener: (event: SocketMessageEvent) => void
@@ -173,7 +174,17 @@ export function createWebSocketRuntimeTransport(options: {
 
 			socket.addEventListener("close", cleanup);
 			socket.addEventListener("error", cleanup);
-			return Promise.resolve();
+
+			if (socket.readyState === SOCKET_OPEN) {
+				return Promise.resolve();
+			}
+
+			return new Promise<void>((resolve, reject) => {
+				socket!.addEventListener("open", () => resolve());
+				socket!.addEventListener("error", () =>
+					reject(new Error("WebSocket connection failed"))
+				);
+			});
 		},
 
 		close(): Promise<void> {

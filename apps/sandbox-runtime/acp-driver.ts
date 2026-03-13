@@ -174,28 +174,33 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 			}
 
 			const connection = await factory.connect(input.staticConfig.agent);
-			await connection.request("initialize", {
-				protocolVersion: ACP_PROTOCOL_VERSION,
-				clientInfo: {
-					name: "sandbox-runtime",
-					version: "v1",
-				},
-			});
-			const created = await connection.request("session/new", {
-				cwd: input.staticConfig.cwd,
-				mcpServers: [],
-			});
+			try {
+				await connection.request("initialize", {
+					protocolVersion: ACP_PROTOCOL_VERSION,
+					clientInfo: {
+						name: "sandbox-runtime",
+						version: "v1",
+					},
+				});
+				const created = await connection.request("session/new", {
+					cwd: input.staticConfig.cwd,
+					mcpServers: [],
+				});
 
-			await applyDynamicConfig(
-				connection,
-				created.sessionId,
-				input.dynamicConfig
-			);
+				await applyDynamicConfig(
+					connection,
+					created.sessionId,
+					input.dynamicConfig
+				);
 
-			sessions.set(input.sessionId, {
-				acpSessionId: created.sessionId,
-				connection,
-			});
+				sessions.set(input.sessionId, {
+					acpSessionId: created.sessionId,
+					connection,
+				});
+			} catch (error) {
+				await connection.close?.().catch(() => undefined);
+				throw error;
+			}
 		},
 
 		async run(

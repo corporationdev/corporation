@@ -25,6 +25,7 @@ function createFakeConnection(sessionId: string) {
 		requestId: string;
 		response: RequestPermissionResponse;
 	}> = [];
+	let closeCalls = 0;
 	const listeners = new Set<(event: AcpInboundEvent) => void>();
 	const connection: AcpConnection = {
 		request<M extends AcpRequestMethod>(
@@ -59,6 +60,10 @@ function createFakeConnection(sessionId: string) {
 				listeners.delete(listener);
 			};
 		},
+		close() {
+			closeCalls += 1;
+			return Promise.resolve();
+		},
 	};
 
 	return {
@@ -66,6 +71,9 @@ function createFakeConnection(sessionId: string) {
 		requestCalls,
 		notifyCalls,
 		permissionResponses,
+		get closeCalls() {
+			return closeCalls;
+		},
 		emit(event: AcpInboundEvent) {
 			for (const listener of listeners) {
 				listener(event);
@@ -176,6 +184,42 @@ describe("createAcpDriver", () => {
 				},
 			},
 		]);
+	});
+
+	test("closes the ACP connection if session bootstrap fails", async () => {
+		const fake = createFakeConnection("acp-1");
+		fake.connection.request = <M extends AcpRequestMethod>(
+			method: M,
+			params: AcpRequestMap[M]["params"]
+		): Promise<AcpRequestMap[M]["result"]> => {
+			fake.requestCalls.push({ method, params });
+			switch (method) {
+				case "initialize":
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+				case "session/new":
+					return Promise.reject(
+						new Error("session bootstrap failed")
+					) as Promise<AcpRequestMap[M]["result"]>;
+				default:
+					return Promise.resolve({} as AcpRequestMap[M]["result"]);
+			}
+		};
+
+		const driver = createAcpDriver({
+			connect() {
+				return Promise.resolve(fake.connection);
+			},
+		});
+
+		await expect(
+			driver.createSession?.({
+				sessionId: "session-1",
+				staticConfig: { agent: "claude", cwd: "/workspace/repo" },
+				dynamicConfig: {},
+			})
+		).rejects.toThrow("session bootstrap failed");
+
+		expect(fake.closeCalls).toBe(1);
 	});
 
 	test("run maps ACP inbound events into normalized runtime events", async () => {
