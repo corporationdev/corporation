@@ -57,6 +57,19 @@ export const sendMessageInputSchema = z.object({
 	modelId: z.string().min(1),
 });
 
+export const createSessionInputSchema = z.object({
+	sessionId: z.string().min(1),
+	environmentId: z.string().min(1),
+	spaceName: z.string().min(1),
+	title: z.string().optional(),
+	agent: z.string().min(1),
+	cwd: z.string().min(1),
+	model: z.string().optional(),
+	mode: z.string().optional(),
+	configOptions: z.record(z.string(), z.string()).optional(),
+});
+export type CreateSessionInput = z.infer<typeof createSessionInputSchema>;
+
 export const cancelSessionInputSchema = z.object({
 	sessionId: z.string().min(1),
 });

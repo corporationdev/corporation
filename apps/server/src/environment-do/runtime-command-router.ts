@@ -1,10 +1,12 @@
 import type {
 	EnvironmentRpcError,
 	EnvironmentRpcResult,
+} from "@corporation/contracts/environment-do";
+import type {
 	EnvironmentRuntimeCommand,
 	EnvironmentRuntimeCommandResponse,
-	RuntimeSocketAttachment,
-} from "./types";
+} from "@corporation/contracts/environment-runtime";
+import type { RuntimeSocketAttachment } from "./types";
 import { errorResult, okResult } from "./types";
 
 const RUNTIME_REQUEST_TIMEOUT_MS = 30_000;

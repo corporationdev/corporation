@@ -1,8 +1,10 @@
 import type {
+	EnvironmentStreamConsumer,
+} from "@corporation/contracts/environment-do";
+import type { EnvironmentRuntimeStreamItemsMessage as RuntimeStreamItemsMessage } from "@corporation/contracts/environment-runtime";
+import type {
 	EnvironmentDoCallbackBindings,
 	EnvironmentStreamSubscriptionState,
-	RuntimeStreamItemsMessage,
-	StreamConsumerStub,
 } from "./types";
 
 type StreamDeliveryLogger = {
@@ -12,7 +14,7 @@ type StreamDeliveryLogger = {
 function getStreamConsumerStub(
 	bindings: EnvironmentDoCallbackBindings,
 	subscription: EnvironmentStreamSubscriptionState
-): StreamConsumerStub | null {
+): EnvironmentStreamConsumer | null {
 	const binding = bindings[subscription.subscriber.callback.binding];
 	if (!binding) {
 		return null;

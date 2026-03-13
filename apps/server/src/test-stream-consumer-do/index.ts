@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
+	EnvironmentStreamConsumer,
 	EnvironmentRpcResult,
 	EnvironmentStreamDelivery,
-} from "../environment-do";
+} from "@corporation/contracts/environment-do";
 
 function okResult<T>(value: T): EnvironmentRpcResult<T> {
 	return {
@@ -11,7 +12,10 @@ function okResult<T>(value: T): EnvironmentRpcResult<T> {
 	};
 }
 
-export class TestStreamConsumerDurableObject extends DurableObject {
+export class TestStreamConsumerDurableObject
+	extends DurableObject
+	implements EnvironmentStreamConsumer
+{
 	private readonly deliveries: EnvironmentStreamDelivery[] = [];
 
 	receiveEnvironmentStreamItems(

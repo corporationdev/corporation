@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
+import type { EnvironmentStreamOffset } from "@corporation/contracts/environment-do";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import { environmentStreamSubscriptions } from "./db/schema";
 import type {
 	EnvironmentPersistedStreamSubscription,
-	EnvironmentStreamOffset,
 	EnvironmentStreamSubscriptionState,
 } from "./types";
 

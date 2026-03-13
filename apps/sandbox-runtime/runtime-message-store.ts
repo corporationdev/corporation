@@ -1,4 +1,8 @@
 import { and, eq, gte, sql } from "drizzle-orm";
+import type {
+	EnvironmentRuntimeCommand as RuntimeWebSocketCommand,
+	EnvironmentRuntimeCommandResponse as RuntimeWebSocketResponse,
+} from "@corporation/contracts/environment-runtime";
 import type { RuntimeDatabase } from "./db";
 import {
 	type RuntimeCommandReceiptRow,
@@ -7,11 +11,6 @@ import {
 	runtimeEventLog,
 } from "./db/schema";
 import type { RuntimeEvent } from "./runtime-events";
-import type {
-	RuntimeWebSocketCommand,
-	RuntimeWebSocketResponse,
-} from "./runtime-websocket-protocol";
-
 export type RuntimeEventEnvelope = {
 	commandId?: string;
 	createdAt: number;

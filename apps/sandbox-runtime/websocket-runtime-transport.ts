@@ -1,20 +1,20 @@
 /* global WebSocket */
 
+import {
+	environmentRuntimeCommandSchema as runtimeWebSocketCommandSchema,
+	environmentRuntimeHelloAckSchema as runtimeWebSocketHelloAckSchema,
+	environmentRuntimeSubscribeStreamSchema as runtimeWebSocketSubscribeStreamSchema,
+} from "@corporation/contracts/environment-runtime";
+import type {
+	EnvironmentRuntimeCommand as RuntimeWebSocketCommand,
+	EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage,
+	EnvironmentRuntimeSubscribeStream as RuntimeWebSocketSubscribeStream,
+} from "@corporation/contracts/environment-runtime";
 import type { RuntimeEngine } from "./index";
 import {
 	getCommandId,
 	type RuntimeMessageStore,
 } from "./runtime-message-store";
-import type {
-	RuntimeWebSocketCommand,
-	RuntimeWebSocketOutgoingMessage,
-	RuntimeWebSocketSubscribeStream,
-} from "./runtime-websocket-protocol";
-import {
-	runtimeWebSocketCommandSchema,
-	runtimeWebSocketHelloAckSchema,
-	runtimeWebSocketSubscribeStreamSchema,
-} from "./runtime-websocket-protocol";
 
 const SOCKET_OPEN = 1;
 

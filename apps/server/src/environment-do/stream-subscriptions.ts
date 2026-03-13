@@ -1,9 +1,11 @@
 import type {
 	EnvironmentRpcResult,
+	EnvironmentUnsubscribeStreamInput,
+} from "@corporation/contracts/environment-do";
+import type {
 	EnvironmentStreamSubscriptionSnapshot,
 	EnvironmentStreamSubscriptionState,
 	EnvironmentSubscribeStreamInput,
-	EnvironmentUnsubscribeStreamInput,
 } from "./types";
 import { errorResult, okResult } from "./types";
 
