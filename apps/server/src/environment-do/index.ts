@@ -29,6 +29,9 @@ export type RuntimeConnectionSnapshot = {
 };
 
 export type EnvironmentDoRuntimeConnectionsSnapshot = {
+	activeConnection: RuntimeConnectionSnapshot | null;
+	activeConnectionId: string | null;
+	connected: boolean;
 	connectionCount: number;
 	connections: RuntimeConnectionSnapshot[];
 };
@@ -85,6 +88,7 @@ function parseRuntimeHelloMessage(
 
 export class EnvironmentDurableObject extends DurableObject<Env> {
 	private readonly ready: Promise<void>;
+	private activeRuntimeConnectionId: string | null = null;
 	private readonly runtimeConnections = new Map<string, RuntimeSocketAttachment>();
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -101,6 +105,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 	private rebuildConnectionsFromHibernation() {
 		this.runtimeConnections.clear();
+		this.activeRuntimeConnectionId = null;
 		const sockets = this.ctx
 			.getWebSockets(RUNTIME_SOCKET_TAG)
 			.map((socket) => ({
@@ -120,26 +125,66 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				compareRuntimeAttachments(left.attachment, right.attachment)
 			);
 
-		for (const entry of sockets) {
-			this.runtimeConnections.set(
-				entry.attachment.connectionId,
-				entry.attachment
-			);
+		const active = sockets[0];
+		if (!active) {
+			return;
 		}
+
+		this.activeRuntimeConnectionId = active.attachment.connectionId;
+		this.runtimeConnections.set(
+			active.attachment.connectionId,
+			active.attachment
+		);
+
+		for (const entry of sockets.slice(1)) {
+			entry.socket.close(1012, "Superseded by newer runtime connection");
+		}
+	}
+
+	private toRuntimeConnectionSnapshot(
+		attachment: RuntimeSocketAttachment
+	): RuntimeConnectionSnapshot {
+		return {
+			connectionId: attachment.connectionId,
+			connectedAt: attachment.connectedAt,
+			lastSeenAt: attachment.lastSeenAt,
+			userId: attachment.auth.claims.sub,
+			clientId: attachment.auth.claims.sandboxId,
+		};
+	}
+
+	private closeSupersededRuntimeSockets(activeConnectionId: string): void {
+		for (const socket of this.ctx.getWebSockets(RUNTIME_SOCKET_TAG)) {
+			const attachment =
+				socket.deserializeAttachment() as RuntimeSocketAttachment | null;
+			if (!(attachment && attachment.connectionId !== activeConnectionId)) {
+				continue;
+			}
+
+			this.runtimeConnections.delete(attachment.connectionId);
+			socket.close(1012, "Superseded by newer runtime connection");
+		}
+	}
+
+	hasConnectedRuntime(): boolean {
+		return this.activeRuntimeConnectionId !== null;
 	}
 
 	getRuntimeConnectionsSnapshot(): EnvironmentDoRuntimeConnectionsSnapshot {
 		const connections = [...this.runtimeConnections.values()]
 			.sort(compareRuntimeAttachments)
-			.map((attachment) => ({
-				connectionId: attachment.connectionId,
-				connectedAt: attachment.connectedAt,
-				lastSeenAt: attachment.lastSeenAt,
-				userId: attachment.auth.claims.sub,
-				clientId: attachment.auth.claims.sandboxId,
-			}));
+			.map((attachment) => this.toRuntimeConnectionSnapshot(attachment));
+		const activeConnectionAttachment =
+			(this.activeRuntimeConnectionId
+				? this.runtimeConnections.get(this.activeRuntimeConnectionId) ?? null
+				: null) ?? null;
 
 		return {
+			activeConnection: activeConnectionAttachment
+				? this.toRuntimeConnectionSnapshot(activeConnectionAttachment)
+				: null,
+			activeConnectionId: this.activeRuntimeConnectionId,
+			connected: activeConnectionAttachment !== null,
 			connectionCount: connections.length,
 			connections,
 		};
@@ -167,7 +212,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 		server.serializeAttachment(attachment);
 		this.ctx.acceptWebSocket(server, [RUNTIME_SOCKET_TAG]);
+		this.activeRuntimeConnectionId = attachment.connectionId;
+		this.runtimeConnections.clear();
 		this.runtimeConnections.set(attachment.connectionId, attachment);
+		this.closeSupersededRuntimeSockets(attachment.connectionId);
 
 		log.info(
 			{
@@ -247,6 +295,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		}
 
 		this.runtimeConnections.delete(attachment.connectionId);
+		if (this.activeRuntimeConnectionId === attachment.connectionId) {
+			this.rebuildConnectionsFromHibernation();
+		}
 		log.info(
 			{
 				actorId: this.ctx.id.toString(),
@@ -263,6 +314,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			ws.deserializeAttachment() as RuntimeSocketAttachment | null;
 		if (attachment) {
 			this.runtimeConnections.delete(attachment.connectionId);
+			if (this.activeRuntimeConnectionId === attachment.connectionId) {
+				this.rebuildConnectionsFromHibernation();
+			}
 		}
 		log.error(
 			{
