@@ -49,8 +49,3 @@ export const getSessionInputSchema = z.object({
 	sessionId: z.string().min(1),
 });
 export type GetSessionInput = z.infer<typeof getSessionInputSchema>;
-
-export const getTurnInputSchema = z.object({
-	turnId: z.string().min(1),
-});
-export type GetTurnInput = z.infer<typeof getTurnInputSchema>;

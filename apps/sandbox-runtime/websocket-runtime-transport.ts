@@ -4,11 +4,14 @@ import type { RuntimeEngine } from "./index";
 import type {
 	RuntimeWebSocketCommand,
 	RuntimeWebSocketOutgoingMessage,
+	RuntimeWebSocketSubscribeStream,
 } from "./runtime-websocket-protocol";
 import {
 	runtimeWebSocketCommandSchema,
 	runtimeWebSocketHelloAckSchema,
+	runtimeWebSocketSubscribeStreamSchema,
 } from "./runtime-websocket-protocol";
+import { RuntimeMessageStore, getCommandId } from "./runtime-message-store";
 
 const SOCKET_OPEN = 1;
 
@@ -39,6 +42,7 @@ export type RuntimeWebSocketTransport = {
 };
 
 export function createWebSocketRuntimeTransport(options: {
+	store: RuntimeMessageStore;
 	url: string;
 	runtime: RuntimeEngine;
 	createSocket?: WebSocketLikeFactory;
@@ -48,6 +52,7 @@ export function createWebSocketRuntimeTransport(options: {
 	let socket: WebSocketLike | null = null;
 	let unsubscribe: (() => void) | null = null;
 	let commandQueue = Promise.resolve();
+	let activeCommandId: string | undefined;
 
 	const send = (message: RuntimeWebSocketOutgoingMessage): void => {
 		if (!(socket && socket.readyState === SOCKET_OPEN)) {
@@ -56,72 +61,174 @@ export function createWebSocketRuntimeTransport(options: {
 		socket.send(JSON.stringify(message));
 	};
 
+	const sendStreamItems = (input: {
+		items: ReturnType<RuntimeMessageStore["appendEvent"]>[];
+		stream: string;
+		streamClosed?: boolean;
+		upToDate: boolean;
+	}): void => {
+		const nextOffset =
+			input.items.at(-1)?.offset ?? options.store.getCurrentOffset(input.stream);
+		send({
+			type: "stream_items",
+			stream: input.stream,
+			items: input.items.map((item) => ({
+				offset: item.offset,
+				eventId: item.eventId,
+				commandId: item.commandId,
+				createdAt: item.createdAt,
+				event: item.event,
+			})),
+			nextOffset,
+			upToDate: input.upToDate,
+			streamClosed: input.streamClosed ?? false,
+		});
+	};
+
+	const sendStoredEvent = (
+		event: ReturnType<RuntimeMessageStore["appendEvent"]>
+	): void => {
+		send({
+			type: "stream_items",
+			stream: event.streamKey,
+			items: [
+				{
+					offset: event.offset,
+					eventId: event.eventId,
+					commandId: event.commandId,
+					createdAt: event.createdAt,
+					event: event.event,
+				},
+			],
+			nextOffset: event.offset,
+			upToDate: true,
+			streamClosed: false,
+		});
+	};
+
+	const sendDuplicateResponse = (command: RuntimeWebSocketCommand): boolean => {
+		const duplicateState = options.store.beginCommand(command);
+		if (duplicateState.kind === "new") {
+			return false;
+		}
+
+		if (
+			duplicateState.receipt.status === "completed" &&
+			duplicateState.receipt.result
+		) {
+			send({
+				type: "response",
+				requestId: command.requestId,
+				ok: true,
+				result: duplicateState.receipt.result as Exclude<
+					RuntimeWebSocketOutgoingMessage,
+					{ type: "stream_items" | "hello" }
+				> extends { type: "response"; ok: true; result: infer Result }
+					? Result
+					: never,
+			});
+			return true;
+		}
+
+		if (duplicateState.receipt.status === "failed") {
+			send({
+				type: "response",
+				requestId: command.requestId,
+				ok: false,
+				error:
+					duplicateState.receipt.error ??
+					`Command ${command.requestId} failed previously`,
+			});
+			return true;
+		}
+
+		send({
+			type: "response",
+			requestId: command.requestId,
+			ok: false,
+			error: `Command ${command.requestId} is already in progress`,
+		});
+		return true;
+	};
+
 	const handleCommand = async (
 		command: RuntimeWebSocketCommand
 	): Promise<void> => {
+		if (sendDuplicateResponse(command)) {
+			return;
+		}
+
+		const commandId = getCommandId(command);
+		activeCommandId = commandId;
+
 		try {
 			switch (command.type) {
-				case "create_session":
+				case "create_session": {
+					const result = {
+						session: await options.runtime.createSession(command.input),
+					};
+					options.store.completeCommand(commandId, result);
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
-						result: {
-							session: await options.runtime.createSession(command.input),
-						},
+						result,
 					});
 					return;
-				case "prompt":
+				}
+				case "prompt": {
+					const result = {
+						turnId: await options.runtime.prompt(command.input),
+					};
+					options.store.completeCommand(commandId, result);
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
-						result: {
-							turnId: await options.runtime.prompt(command.input),
-						},
+						result,
 					});
 					return;
-				case "abort":
+				}
+				case "abort": {
+					const result = {
+						aborted: await options.runtime.abort(command.input.sessionId),
+					};
+					options.store.completeCommand(commandId, result);
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
-						result: {
-							aborted: await options.runtime.abort(command.input.sessionId),
-						},
+						result,
 					});
 					return;
-				case "respond_to_permission":
+				}
+				case "respond_to_permission": {
+					const result = {
+						handled: await options.runtime.respondToPermission(command.input),
+					};
+					options.store.completeCommand(commandId, result);
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
-						result: {
-							handled: await options.runtime.respondToPermission(command.input),
-						},
+						result,
 					});
 					return;
-				case "get_session":
+				}
+				case "get_session": {
+					const result = {
+						session:
+							options.runtime.getSession(command.input.sessionId) ?? null,
+					};
+					options.store.completeCommand(commandId, result);
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
-						result: {
-							session:
-								options.runtime.getSession(command.input.sessionId) ?? null,
-						},
+						result,
 					});
 					return;
-				case "get_turn":
-					send({
-						type: "response",
-						requestId: command.requestId,
-						ok: true,
-						result: {
-							turn: options.runtime.getTurn(command.input.turnId) ?? null,
-						},
-					});
-					return;
+				}
 				default: {
 					const exhaustiveCheck: never = command;
 					throw new Error(
@@ -130,13 +237,35 @@ export function createWebSocketRuntimeTransport(options: {
 				}
 			}
 		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : String(error);
+			options.store.failCommand(commandId, message);
 			send({
 				type: "response",
 				requestId: command.requestId,
 				ok: false,
-				error: error instanceof Error ? error.message : String(error),
+				error: message,
 			});
+		} finally {
+			if (activeCommandId === commandId) {
+				activeCommandId = undefined;
+			}
 		}
+	};
+
+	const handleSubscribeStream = (
+		message: RuntimeWebSocketSubscribeStream
+	): void => {
+		const items = options.store.getEventsAfterOffset({
+			streamKey: message.stream,
+			offset: message.offset,
+		});
+		sendStreamItems({
+			stream: message.stream,
+			items,
+			upToDate: true,
+			streamClosed: false,
+		});
 	};
 
 	return {
@@ -149,10 +278,12 @@ export function createWebSocketRuntimeTransport(options: {
 			let helloAckReceived = false;
 			let onHelloAck: (() => void) | null = null;
 			unsubscribe = options.runtime.subscribe((event) => {
-				send({
-					type: "runtime_event",
-					event,
-				});
+				sendStoredEvent(
+					options.store.appendEvent({
+						commandId: activeCommandId,
+						event,
+					})
+				);
 			});
 
 			socket.addEventListener("message", (event) => {
@@ -165,6 +296,12 @@ export function createWebSocketRuntimeTransport(options: {
 				if (helloAck.success) {
 					helloAckReceived = true;
 					onHelloAck?.();
+					return;
+				}
+				const subscribeStream =
+					runtimeWebSocketSubscribeStreamSchema.safeParse(message);
+				if (subscribeStream.success) {
+					handleSubscribeStream(subscribeStream.data);
 					return;
 				}
 				const parsed = runtimeWebSocketCommandSchema.safeParse(message);

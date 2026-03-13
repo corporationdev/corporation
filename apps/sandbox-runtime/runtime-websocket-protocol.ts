@@ -1,11 +1,11 @@
 import { z } from "zod";
-import type { RuntimeSession, RuntimeTurn } from "./index";
+import type { RuntimeSession } from "./index";
+import type { RuntimeStreamOffset } from "./runtime-message-store";
 import type { RuntimeEvent } from "./runtime-events";
 import {
 	abortInputSchema,
 	createSessionInputSchema,
 	getSessionInputSchema,
-	getTurnInputSchema,
 	promptInputSchema,
 	respondToPermissionInputSchema,
 } from "./runtime-schema";
@@ -36,11 +36,6 @@ export const runtimeWebSocketCommandSchema = z.discriminatedUnion("type", [
 		requestId: z.string().min(1),
 		input: getSessionInputSchema,
 	}),
-	z.object({
-		type: z.literal("get_turn"),
-		requestId: z.string().min(1),
-		input: getTurnInputSchema,
-	}),
 ]);
 export type RuntimeWebSocketCommand = z.infer<
 	typeof runtimeWebSocketCommandSchema
@@ -63,6 +58,19 @@ export type RuntimeWebSocketHelloAck = z.infer<
 	typeof runtimeWebSocketHelloAckSchema
 >;
 
+export const runtimeWebSocketSubscribeStreamSchema = z.object({
+	type: z.literal("subscribe_stream"),
+	stream: z.string().min(1),
+	offset: z.union([
+		z.literal("-1"),
+		z.literal("now"),
+		z.string().regex(/^\d+$/),
+	]),
+});
+export type RuntimeWebSocketSubscribeStream = z.infer<
+	typeof runtimeWebSocketSubscribeStreamSchema
+>;
+
 export type RuntimeWebSocketResponse =
 	| {
 			type: "response";
@@ -73,8 +81,7 @@ export type RuntimeWebSocketResponse =
 				| { turnId: string }
 				| { aborted: boolean }
 				| { handled: boolean }
-				| { session: RuntimeSession | null }
-				| { turn: RuntimeTurn | null };
+				| { session: RuntimeSession | null };
 	  }
 	| {
 			type: "response";
@@ -83,16 +90,29 @@ export type RuntimeWebSocketResponse =
 			error: string;
 	  };
 
-export type RuntimeWebSocketEventMessage = {
-	type: "runtime_event";
+export type RuntimeWebSocketStreamItem = {
+	offset: RuntimeStreamOffset;
+	eventId: string;
+	commandId?: string;
+	createdAt: number;
 	event: RuntimeEvent;
+};
+
+export type RuntimeWebSocketStreamItemsMessage = {
+	type: "stream_items";
+	stream: string;
+	items: RuntimeWebSocketStreamItem[];
+	nextOffset: RuntimeStreamOffset;
+	upToDate: boolean;
+	streamClosed: boolean;
 };
 
 export type RuntimeWebSocketIncomingMessage =
 	| RuntimeWebSocketCommand
-	| RuntimeWebSocketHelloAck;
+	| RuntimeWebSocketHelloAck
+	| RuntimeWebSocketSubscribeStream;
 
 export type RuntimeWebSocketOutgoingMessage =
 	| RuntimeWebSocketHello
 	| RuntimeWebSocketResponse
-	| RuntimeWebSocketEventMessage;
+	| RuntimeWebSocketStreamItemsMessage;

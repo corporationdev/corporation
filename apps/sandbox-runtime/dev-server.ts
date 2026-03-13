@@ -27,9 +27,9 @@ const server = Bun.serve({
 					requestId?: string;
 				};
 
-				// Echo back runtime events to the console
-				if (parsed.type === "runtime_event") {
-					console.log("[server] runtime event:", text);
+				// Echo back stream frames to the console
+				if (parsed.type === "stream_items") {
+					console.log("[server] stream items:", text);
 					return;
 				}
 

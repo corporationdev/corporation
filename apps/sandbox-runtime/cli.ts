@@ -15,6 +15,7 @@ import {
 	openRuntimeDatabase,
 } from "./db";
 import { RuntimeEngine } from "./index";
+import { RuntimeMessageStore } from "./runtime-message-store";
 import { createWebSocketRuntimeTransport } from "./websocket-runtime-transport";
 
 type Command = "connect" | "login";
@@ -90,8 +91,10 @@ async function runConnectCommand(args: string[]): Promise<void> {
 	const factory = createSpawnedAcpConnectionFactory();
 	const driver = createAcpDriver(factory);
 	const engine = new RuntimeEngine(driver);
+	const store = new RuntimeMessageStore(runtimeDatabase.db);
 
 	const transport = createWebSocketRuntimeTransport({
+		store,
 		url: websocketUrl,
 		runtime: engine,
 		createSocket,
