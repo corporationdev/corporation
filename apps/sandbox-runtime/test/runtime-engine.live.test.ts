@@ -1,9 +1,6 @@
-import crypto from "node:crypto";
 import { describe, expect, test } from "bun:test";
-import {
-	AGENT_METHODS,
-	type PromptResponse,
-} from "@agentclientprotocol/sdk";
+import crypto from "node:crypto";
+import { AGENT_METHODS, type PromptResponse } from "@agentclientprotocol/sdk";
 import { createSpawnedAcpConnectionFactory } from "../acp-connection";
 import {
 	type AcpConnection,
@@ -42,10 +39,7 @@ describe("RuntimeEngine Live", () => {
 							return connection.notify(method, params);
 						},
 						respondToPermissionRequest(requestId, response) {
-							return connection.respondToPermissionRequest(
-								requestId,
-								response
-							);
+							return connection.respondToPermissionRequest(requestId, response);
 						},
 						subscribe(listener) {
 							return connection.subscribe(listener);
@@ -68,14 +62,12 @@ describe("RuntimeEngine Live", () => {
 			try {
 				await engine.createSession({
 					sessionId,
-					staticConfig: {
-						agent: LIVE_AGENT,
-						cwd: LIVE_CWD,
-					},
-					dynamicConfig: LIVE_MODEL ? { modelId: LIVE_MODEL } : {},
+					agent: LIVE_AGENT,
+					cwd: LIVE_CWD,
+					...(LIVE_MODEL ? { model: LIVE_MODEL } : {}),
 				});
 
-				const turnId = await engine.startTurn({
+				const turnId = await engine.prompt({
 					sessionId,
 					prompt: [
 						{
@@ -118,17 +110,15 @@ describe("RuntimeEngine Live", () => {
 				expect(promptResponse?.stopReason).toBe("end_turn");
 			} finally {
 				await Promise.all(
-					liveConnections.map((connection) =>
-						connection.close?.() ?? Promise.resolve()
+					liveConnections.map(
+						(connection) => connection.close?.() ?? Promise.resolve()
 					)
 				);
 			}
 		});
 	} else {
 		// biome-ignore lint/suspicious/noSkippedTests: this integration test is opt-in via ACP_LIVE_AGENT
-		test.skip(
-			"sends a real message and emits turn plus session events through the runtime engine",
-			() => undefined
-		);
+		test.skip("sends a real message and emits turn plus session events through the runtime engine", () =>
+			undefined);
 	}
 });

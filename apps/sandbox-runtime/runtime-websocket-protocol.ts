@@ -2,12 +2,12 @@ import { z } from "zod";
 import type { RuntimeSession, RuntimeTurn } from "./index";
 import type { RuntimeEvent } from "./runtime-events";
 import {
-	cancelTurnInputSchema,
+	abortInputSchema,
 	createSessionInputSchema,
 	getSessionInputSchema,
 	getTurnInputSchema,
-	respondToPermissionRequestInputSchema,
-	startTurnInputSchema,
+	promptInputSchema,
+	respondToPermissionInputSchema,
 } from "./runtime-schema";
 
 export const runtimeWebSocketCommandSchema = z.discriminatedUnion("type", [
@@ -17,19 +17,19 @@ export const runtimeWebSocketCommandSchema = z.discriminatedUnion("type", [
 		input: createSessionInputSchema,
 	}),
 	z.object({
-		type: z.literal("start_turn"),
+		type: z.literal("prompt"),
 		requestId: z.string().min(1),
-		input: startTurnInputSchema,
+		input: promptInputSchema,
 	}),
 	z.object({
-		type: z.literal("cancel_turn"),
+		type: z.literal("abort"),
 		requestId: z.string().min(1),
-		input: cancelTurnInputSchema,
+		input: abortInputSchema,
 	}),
 	z.object({
-		type: z.literal("respond_to_permission_request"),
+		type: z.literal("respond_to_permission"),
 		requestId: z.string().min(1),
-		input: respondToPermissionRequestInputSchema,
+		input: respondToPermissionInputSchema,
 	}),
 	z.object({
 		type: z.literal("get_session"),
@@ -54,7 +54,7 @@ export type RuntimeWebSocketResponse =
 			result:
 				| { session: RuntimeSession }
 				| { turnId: string }
-				| { cancelled: boolean }
+				| { aborted: boolean }
 				| { handled: boolean }
 				| { session: RuntimeSession | null }
 				| { turn: RuntimeTurn | null };

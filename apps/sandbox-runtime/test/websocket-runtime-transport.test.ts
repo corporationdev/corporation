@@ -61,18 +61,14 @@ describe("createWebSocketRuntimeTransport", () => {
 			requestId: "req-1",
 			input: {
 				sessionId: "session-1",
-				staticConfig: {
-					agent: "claude",
-					cwd: "/workspace/repo",
-				},
-				dynamicConfig: {
-					modelId: "sonnet",
-				},
+				agent: "claude",
+				cwd: "/workspace/repo",
+				model: "sonnet",
 			},
 		});
 
 		socket.receive({
-			type: "start_turn",
+			type: "prompt",
 			requestId: "req-2",
 			input: {
 				sessionId: "session-1",
@@ -91,13 +87,10 @@ describe("createWebSocketRuntimeTransport", () => {
 					session: {
 						sessionId: "session-1",
 						activeTurnId: null,
-						staticConfig: {
-							agent: "claude",
-							cwd: "/workspace/repo",
-						},
-						dynamicConfig: {
-							modelId: "sonnet",
-						},
+						agent: "claude",
+						cwd: "/workspace/repo",
+						model: "sonnet",
+						configOptions: {},
 					},
 				},
 			},
@@ -156,7 +149,7 @@ describe("createWebSocketRuntimeTransport", () => {
 		await transport.start();
 
 		socket.receive({
-			type: "start_turn",
+			type: "prompt",
 			requestId: "req-1",
 			input: {
 				sessionId: "missing",

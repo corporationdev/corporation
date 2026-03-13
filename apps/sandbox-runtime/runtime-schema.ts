@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type {
 	CreateSessionInput,
+	PromptInput,
 	RespondToPermissionRequestInput,
-	StartTurnInput,
 } from "./index";
 
 export const promptPartSchema = z.object({
@@ -10,35 +10,29 @@ export const promptPartSchema = z.object({
 	text: z.string(),
 });
 
-export const sessionStaticConfigSchema = z.object({
-	agent: z.string().min(1),
-	cwd: z.string().min(1),
-});
-
-export const sessionDynamicConfigSchema = z.object({
-	modelId: z.string().optional(),
-	modeId: z.string().optional(),
-	configOptions: z.record(z.string(), z.string()).optional(),
-});
-
 export const createSessionInputSchema = z.object({
 	sessionId: z.string().min(1),
-	staticConfig: sessionStaticConfigSchema,
-	dynamicConfig: sessionDynamicConfigSchema,
+	agent: z.string().min(1),
+	cwd: z.string().min(1),
+	model: z.string().optional(),
+	mode: z.string().optional(),
+	configOptions: z.record(z.string(), z.string()).optional(),
 }) satisfies z.ZodType<CreateSessionInput>;
 
-export const startTurnInputSchema = z.object({
+export const promptInputSchema = z.object({
 	sessionId: z.string().min(1),
 	prompt: z.array(promptPartSchema),
-	dynamicConfig: sessionDynamicConfigSchema.optional(),
-}) satisfies z.ZodType<StartTurnInput>;
+	model: z.string().optional(),
+	mode: z.string().optional(),
+	configOptions: z.record(z.string(), z.string()).optional(),
+}) satisfies z.ZodType<PromptInput>;
 
-export const cancelTurnInputSchema = z.object({
-	turnId: z.string().min(1),
+export const abortInputSchema = z.object({
+	sessionId: z.string().min(1),
 });
-export type CancelTurnInput = z.infer<typeof cancelTurnInputSchema>;
+export type AbortInput = z.infer<typeof abortInputSchema>;
 
-export const respondToPermissionRequestInputSchema = z.object({
+export const respondToPermissionInputSchema = z.object({
 	requestId: z.string().min(1),
 	outcome: z.union([
 		z.object({

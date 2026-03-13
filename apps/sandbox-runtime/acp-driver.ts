@@ -15,8 +15,8 @@ import {
 	type NewSessionResponse,
 	type PromptRequest,
 	type PromptResponse,
-	type RequestPermissionResponse,
 	type RequestPermissionRequest,
+	type RequestPermissionResponse,
 	type ResumeSessionRequest,
 	type ResumeSessionResponse,
 	type SessionNotification,
@@ -27,9 +27,13 @@ import {
 	type SetSessionModeRequest,
 	type SetSessionModeResponse,
 } from "@agentclientprotocol/sdk";
+import {
+	normalizeAcpPermissionRequest,
+	normalizeAcpSessionUpdate,
+} from "./acp-event-normalizer";
 import type {
 	AgentDriver,
-	CreateSessionInput,
+	DriverCreateSessionInput,
 	EventSink,
 	ResolvedStartTurnInput,
 	RespondToPermissionRequestInput,
@@ -38,10 +42,6 @@ import type {
 	SessionId,
 	TurnId,
 } from "./index";
-import {
-	normalizeAcpPermissionRequest,
-	normalizeAcpSessionUpdate,
-} from "./acp-event-normalizer";
 
 const ACP_PROTOCOL_VERSION = 2;
 
@@ -168,7 +168,7 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 	>();
 
 	return {
-		async createSession(input: CreateSessionInput): Promise<void> {
+		async createSession(input: DriverCreateSessionInput): Promise<void> {
 			if (sessions.has(input.sessionId)) {
 				throw new Error(`ACP session already exists for ${input.sessionId}`);
 			}
@@ -254,8 +254,8 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 				const result = await session.connection.request(
 					AGENT_METHODS.session_prompt,
 					{
-					sessionId: session.acpSessionId,
-					prompt: input.prompt,
+						sessionId: session.acpSessionId,
+						prompt: input.prompt,
 					}
 				);
 				return {

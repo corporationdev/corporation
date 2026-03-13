@@ -67,35 +67,33 @@ export function createWebSocketRuntimeTransport(options: {
 						},
 					});
 					return;
-				case "start_turn":
+				case "prompt":
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
 						result: {
-							turnId: await options.runtime.startTurn(command.input),
+							turnId: await options.runtime.prompt(command.input),
 						},
 					});
 					return;
-				case "cancel_turn":
+				case "abort":
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
 						result: {
-							cancelled: await options.runtime.cancelTurn(command.input.turnId),
+							aborted: await options.runtime.abort(command.input.sessionId),
 						},
 					});
 					return;
-				case "respond_to_permission_request":
+				case "respond_to_permission":
 					send({
 						type: "response",
 						requestId: command.requestId,
 						ok: true,
 						result: {
-							handled: await options.runtime.respondToPermissionRequest(
-								command.input
-							),
+							handled: await options.runtime.respondToPermission(command.input),
 						},
 					});
 					return;

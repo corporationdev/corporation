@@ -16,6 +16,8 @@ export type PromptPart = {
 	text: string;
 };
 
+// --- Driver SPI types (used by AgentDriver implementations) ---
+
 export type SessionStaticConfig = {
 	agent: string;
 	cwd: string;
@@ -27,16 +29,10 @@ export type SessionDynamicConfig = {
 	configOptions?: Record<string, string>;
 };
 
-export type CreateSessionInput = {
+export type DriverCreateSessionInput = {
 	sessionId: SessionId;
 	staticConfig: SessionStaticConfig;
 	dynamicConfig: SessionDynamicConfig;
-};
-
-export type StartTurnInput = {
-	sessionId: SessionId;
-	prompt: PromptPart[];
-	dynamicConfig?: SessionDynamicConfig;
 };
 
 export type ResolvedStartTurnInput = {
@@ -58,7 +54,7 @@ export type RunTurnResult = {
 };
 
 export type AgentDriver = {
-	createSession?(input: CreateSessionInput): Promise<void>;
+	createSession?(input: DriverCreateSessionInput): Promise<void>;
 	updateSessionConfig?(
 		sessionId: SessionId,
 		dynamicConfig: SessionDynamicConfig
@@ -71,6 +67,25 @@ export type AgentDriver = {
 	respondToPermissionRequest?(
 		input: RespondToPermissionRequestInput
 	): Promise<boolean>;
+};
+
+// --- Public API types (used by RuntimeEngine consumers) ---
+
+export type CreateSessionInput = {
+	sessionId: SessionId;
+	agent: string;
+	cwd: string;
+	model?: string;
+	mode?: string;
+	configOptions?: Record<string, string>;
+};
+
+export type PromptInput = {
+	sessionId: SessionId;
+	prompt: PromptPart[];
+	model?: string;
+	mode?: string;
+	configOptions?: Record<string, string>;
 };
 
 type SessionState = {
@@ -89,8 +104,11 @@ type TurnState = {
 export type RuntimeSession = Readonly<{
 	sessionId: SessionId;
 	activeTurnId: TurnId | null;
-	staticConfig: Readonly<SessionStaticConfig>;
-	dynamicConfig: Readonly<SessionDynamicConfig>;
+	agent: string;
+	cwd: string;
+	model?: string;
+	mode?: string;
+	configOptions: Readonly<Record<string, string>>;
 }>;
 
 export type RuntimeTurn = Readonly<TurnState>;
@@ -209,24 +227,36 @@ export class RuntimeEngine {
 			throw new Error(`Session ${input.sessionId} already exists`);
 		}
 
-		const createSessionInput: CreateSessionInput = {
-			sessionId: input.sessionId,
-			staticConfig: cloneStaticConfig(input.staticConfig),
-			dynamicConfig: cloneDynamicConfig(input.dynamicConfig),
+		const staticConfig: SessionStaticConfig = {
+			agent: input.agent,
+			cwd: input.cwd,
 		};
-		await this.driver.createSession?.(createSessionInput);
+		const dynamicConfig: SessionDynamicConfig = {
+			...(input.model !== undefined ? { modelId: input.model } : {}),
+			...(input.mode !== undefined ? { modeId: input.mode } : {}),
+			...(input.configOptions !== undefined
+				? { configOptions: { ...input.configOptions } }
+				: {}),
+		};
+
+		const driverInput: DriverCreateSessionInput = {
+			sessionId: input.sessionId,
+			staticConfig: cloneStaticConfig(staticConfig),
+			dynamicConfig: cloneDynamicConfig(dynamicConfig),
+		};
+		await this.driver.createSession?.(driverInput);
 
 		const session: SessionState = {
 			sessionId: input.sessionId,
 			activeTurnId: null,
-			staticConfig: cloneStaticConfig(createSessionInput.staticConfig),
-			dynamicConfig: cloneDynamicConfig(createSessionInput.dynamicConfig),
+			staticConfig: cloneStaticConfig(staticConfig),
+			dynamicConfig: cloneDynamicConfig(dynamicConfig),
 		};
 		this.sessions.set(input.sessionId, session);
 		return this.getSession(input.sessionId) as RuntimeSession;
 	}
 
-	async startTurn(input: StartTurnInput): Promise<TurnId> {
+	async prompt(input: PromptInput): Promise<TurnId> {
 		const session = this.sessions.get(input.sessionId);
 		if (!session) {
 			throw new Error(`Session ${input.sessionId} does not exist`);
@@ -239,10 +269,14 @@ export class RuntimeEngine {
 
 		const turnId: TurnId = crypto.randomUUID();
 
-		const configDiff = getConfigDiff(
-			session.dynamicConfig,
-			input.dynamicConfig
-		);
+		const incomingConfig: SessionDynamicConfig = {
+			...(input.model !== undefined ? { modelId: input.model } : {}),
+			...(input.mode !== undefined ? { modeId: input.mode } : {}),
+			...(input.configOptions !== undefined
+				? { configOptions: { ...input.configOptions } }
+				: {}),
+		};
+		const configDiff = getConfigDiff(session.dynamicConfig, incomingConfig);
 
 		const turnState: TurnState = {
 			turnId,
@@ -303,7 +337,13 @@ export class RuntimeEngine {
 		return turnId;
 	}
 
-	async cancelTurn(turnId: TurnId): Promise<boolean> {
+	async abort(sessionId: SessionId): Promise<boolean> {
+		const session = this.sessions.get(sessionId);
+		if (!session?.activeTurnId) {
+			return false;
+		}
+
+		const turnId = session.activeTurnId;
 		const turnState = this.turns.get(turnId);
 		if (!turnState || turnState.status !== "running") {
 			return false;
@@ -313,13 +353,13 @@ export class RuntimeEngine {
 		turnState.status = "cancelled";
 		this.emit({
 			type: "turn.cancelled",
-			sessionId: turnState.sessionId,
+			sessionId,
 			turnId,
 		});
 		return true;
 	}
 
-	async respondToPermissionRequest(
+	async respondToPermission(
 		input: RespondToPermissionRequestInput
 	): Promise<boolean> {
 		return (await this.driver.respondToPermissionRequest?.(input)) ?? false;
@@ -343,8 +383,15 @@ export class RuntimeEngine {
 		return {
 			sessionId: session.sessionId,
 			activeTurnId: session.activeTurnId,
-			staticConfig: cloneStaticConfig(session.staticConfig),
-			dynamicConfig: cloneDynamicConfig(session.dynamicConfig),
+			agent: session.staticConfig.agent,
+			cwd: session.staticConfig.cwd,
+			...(session.dynamicConfig.modelId !== undefined
+				? { model: session.dynamicConfig.modelId }
+				: {}),
+			...(session.dynamicConfig.modeId !== undefined
+				? { mode: session.dynamicConfig.modeId }
+				: {}),
+			configOptions: { ...(session.dynamicConfig.configOptions ?? {}) },
 		};
 	}
 
