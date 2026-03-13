@@ -28,6 +28,9 @@ export const testApp = new Hono<TestAppEnv>()
 			c.env.ENVIRONMENT_DO,
 			environmentKey
 		).getRuntimeConnectionsSnapshot();
+		if (!snapshot.ok) {
+			return c.json({ error: snapshot.error.message }, 500);
+		}
 
-		return c.json(snapshot);
+		return c.json(snapshot.value.snapshot);
 	});

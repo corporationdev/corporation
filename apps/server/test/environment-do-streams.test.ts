@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { EnvironmentDurableObject } from "../src/environment-do";
+import type { TestStreamConsumerDurableObject } from "../src/test-stream-consumer-do";
 
 const RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
 
@@ -49,6 +50,32 @@ async function waitForSocketMessage(
 	});
 }
 
+async function getReceivedStreamItems(
+	stub: DurableObjectStub<TestStreamConsumerDurableObject>
+) {
+	const result = await stub.getReceivedStreamItems();
+	expect(result.ok).toBe(true);
+	if (!result.ok) {
+		throw new Error("Expected received stream items snapshot");
+	}
+	return result.value.deliveries;
+}
+
+async function waitForReceivedStreamItems(input: {
+	expectedCount: number;
+	stub: DurableObjectStub<TestStreamConsumerDurableObject>;
+}) {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < 2_000) {
+		const deliveries = await getReceivedStreamItems(input.stub);
+		if (deliveries.length === input.expectedCount) {
+			return deliveries;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error("Timed out waiting for received stream items");
+}
+
 describe("EnvironmentDurableObject stream subscriptions", () => {
 	it("registers a stream subscriber", async () => {
 		const id = env.ENVIRONMENT_DO.idFromName("stream-register-user");
@@ -60,6 +87,10 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				stream: "session:session-1",
 				offset: "-1",
 				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-1",
+					},
 					requesterId: "requester-1",
 				},
 			})
@@ -75,6 +106,8 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 					{
 						stream: "session:session-1",
 						requesterId: "requester-1",
+						callbackBinding: "TEST_STREAM_CONSUMER_DO",
+						callbackName: "consumer-1",
 					},
 				],
 			},
@@ -90,6 +123,10 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 			stream: "session:session-1",
 			offset: "5",
 			subscriber: {
+				callback: {
+					binding: "TEST_STREAM_CONSUMER_DO",
+					name: "consumer-1",
+				},
 				requesterId: "requester-1",
 			},
 		});
@@ -114,6 +151,10 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				stream: "session:session-1",
 				offset: "-1",
 				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-1",
+					},
 					requesterId: "requester-1",
 				},
 			})
@@ -142,6 +183,10 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				stream: "session:session-1",
 				offset: "-1",
 				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-1",
+					},
 					requesterId: "requester-1",
 				},
 			})
@@ -197,6 +242,10 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				stream: "session:session-1",
 				offset: "-1",
 				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-1",
+					},
 					requesterId: "requester-1",
 				},
 			})
@@ -209,6 +258,10 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 				stream: "session:session-1",
 				offset: "now",
 				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-2",
+					},
 					requesterId: "requester-2",
 				},
 			})
@@ -224,9 +277,204 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 					{
 						stream: "session:session-1",
 						requesterId: "requester-2",
+						callbackBinding: "TEST_STREAM_CONSUMER_DO",
+						callbackName: "consumer-2",
 					},
 				],
 			},
 		});
+	});
+
+	it("routes stream_items to the registered subscriber", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("stream-delivery-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+		const consumerStub = env.TEST_STREAM_CONSUMER_DO.get(
+			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-delivery")
+		);
+
+		await expect(
+			stub.subscribeStream({
+				stream: "session:session-1",
+				offset: "-1",
+				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-delivery",
+					},
+					requesterId: "requester-1",
+				},
+			})
+		).resolves.toEqual({
+			ok: true,
+			value: {},
+		});
+
+		runtimeSocket.send(
+			JSON.stringify({
+				type: "stream_items",
+				stream: "session:session-1",
+				items: [
+					{
+						offset: "1",
+						eventId: "event-1",
+						createdAt: 123,
+						event: {
+							type: "turn.started",
+							sessionId: "session-1",
+							turnId: "turn-1",
+						},
+					},
+				],
+				nextOffset: "1",
+				upToDate: true,
+				streamClosed: false,
+			})
+		);
+
+		await expect(
+			waitForReceivedStreamItems({
+				stub: consumerStub,
+				expectedCount: 1,
+			})
+		).resolves.toEqual([
+			{
+				stream: "session:session-1",
+				requesterId: "requester-1",
+				items: [
+					{
+						offset: "1",
+						eventId: "event-1",
+						createdAt: 123,
+						event: {
+							type: "turn.started",
+							sessionId: "session-1",
+							turnId: "turn-1",
+						},
+					},
+				],
+				nextOffset: "1",
+				upToDate: true,
+				streamClosed: false,
+			},
+		]);
+	});
+
+	it("does not route stream_items for an unsubscribed stream", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("stream-miss-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+		const consumerStub = env.TEST_STREAM_CONSUMER_DO.get(
+			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-miss")
+		);
+
+		runtimeSocket.send(
+			JSON.stringify({
+				type: "stream_items",
+				stream: "session:missing",
+				items: [
+					{
+						offset: "1",
+						eventId: "event-1",
+						createdAt: 123,
+						event: { type: "noop" },
+					},
+				],
+				nextOffset: "1",
+				upToDate: true,
+				streamClosed: false,
+			})
+		);
+
+		await expect(getReceivedStreamItems(consumerStub)).resolves.toEqual([]);
+	});
+
+	it("routes different streams to different subscribers", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("stream-multi-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+		const firstConsumer = env.TEST_STREAM_CONSUMER_DO.get(
+			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-a")
+		);
+		const secondConsumer = env.TEST_STREAM_CONSUMER_DO.get(
+			env.TEST_STREAM_CONSUMER_DO.idFromName("consumer-b")
+		);
+
+		await stub.subscribeStream({
+			stream: "session:session-1",
+			offset: "-1",
+			subscriber: {
+				callback: {
+					binding: "TEST_STREAM_CONSUMER_DO",
+					name: "consumer-a",
+				},
+				requesterId: "requester-a",
+			},
+		});
+		await stub.subscribeStream({
+			stream: "session:session-2",
+			offset: "-1",
+			subscriber: {
+				callback: {
+					binding: "TEST_STREAM_CONSUMER_DO",
+					name: "consumer-b",
+				},
+				requesterId: "requester-b",
+			},
+		});
+
+		runtimeSocket.send(
+			JSON.stringify({
+				type: "stream_items",
+				stream: "session:session-1",
+				items: [
+					{ offset: "1", eventId: "a-1", createdAt: 1, event: { type: "a" } },
+				],
+				nextOffset: "1",
+				upToDate: true,
+				streamClosed: false,
+			})
+		);
+		runtimeSocket.send(
+			JSON.stringify({
+				type: "stream_items",
+				stream: "session:session-2",
+				items: [
+					{ offset: "1", eventId: "b-1", createdAt: 2, event: { type: "b" } },
+				],
+				nextOffset: "1",
+				upToDate: true,
+				streamClosed: false,
+			})
+		);
+
+		await expect(
+			waitForReceivedStreamItems({ stub: firstConsumer, expectedCount: 1 })
+		).resolves.toEqual([
+			{
+				stream: "session:session-1",
+				requesterId: "requester-a",
+				items: [
+					{ offset: "1", eventId: "a-1", createdAt: 1, event: { type: "a" } },
+				],
+				nextOffset: "1",
+				upToDate: true,
+				streamClosed: false,
+			},
+		]);
+		await expect(
+			waitForReceivedStreamItems({ stub: secondConsumer, expectedCount: 1 })
+		).resolves.toEqual([
+			{
+				stream: "session:session-2",
+				requesterId: "requester-b",
+				items: [
+					{ offset: "1", eventId: "b-1", createdAt: 2, event: { type: "b" } },
+				],
+				nextOffset: "1",
+				upToDate: true,
+				streamClosed: false,
+			},
+		]);
 	});
 });

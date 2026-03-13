@@ -6,14 +6,21 @@
   "durable_objects": {
     "bindings": [
       { "name": "SPACE_DO", "class_name": "SpaceDurableObject" },
-      { "name": "ENVIRONMENT_DO", "class_name": "EnvironmentDurableObject" }
+      { "name": "ENVIRONMENT_DO", "class_name": "EnvironmentDurableObject" },
+      {
+        "name": "TEST_STREAM_CONSUMER_DO",
+        "class_name": "TestStreamConsumerDurableObject"
+      }
     ]
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["SpaceDurableObject"],
-      "new_classes": ["EnvironmentDurableObject"]
+      "new_classes": [
+        "EnvironmentDurableObject",
+        "TestStreamConsumerDurableObject"
+      ]
     }
   ],
   "vars": {

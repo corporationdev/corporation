@@ -1,4 +1,5 @@
 import type { EnvironmentDurableObject } from "../src/environment-do";
+import type { TestStreamConsumerDurableObject } from "../src/test-stream-consumer-do";
 
 declare module "cloudflare:test" {
 	interface ProvidedEnv {
@@ -7,5 +8,6 @@ declare module "cloudflare:test" {
 		CORPORATION_WEB_URL: string;
 		ENVIRONMENT_DO: DurableObjectNamespace<EnvironmentDurableObject>;
 		SPACE_DO: DurableObjectNamespace;
+		TEST_STREAM_CONSUMER_DO: DurableObjectNamespace<TestStreamConsumerDurableObject>;
 	}
 }
