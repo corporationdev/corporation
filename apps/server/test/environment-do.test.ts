@@ -1,6 +1,6 @@
+import type { EnvironmentDurableObject } from "../src/environment-do";
 import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { EnvironmentDurableObject } from "../src/environment-do";
 
 const RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
 
@@ -30,13 +30,6 @@ async function waitForSocketMessage(
 			{ once: true }
 		);
 	});
-}
-
-function captureRejection<T>(promise: Promise<T>): Promise<Error> {
-	return promise.then(
-		() => new Error("Expected promise to reject"),
-		(error) => (error instanceof Error ? error : new Error(String(error)))
-	);
 }
 
 async function connectRuntimeSocket(stub: DurableObjectStub<EnvironmentDurableObject>) {
@@ -83,7 +76,12 @@ describe("EnvironmentDurableObject", () => {
 
 		expect(response.status).toBe(101);
 
-		const snapshot = await stub.getRuntimeConnectionsSnapshot();
+		const snapshotResult = await stub.getRuntimeConnectionsSnapshot();
+		expect(snapshotResult.ok).toBe(true);
+		if (!snapshotResult.ok) {
+			throw new Error("Expected runtime connection snapshot");
+		}
+		const snapshot = snapshotResult.value.snapshot;
 
 		expect(snapshot.connected).toBe(true);
 		expect(snapshot.connectionCount).toBe(1);
@@ -105,7 +103,7 @@ describe("EnvironmentDurableObject", () => {
 
 		expect(response.status).toBe(101);
 
-		const snapshot = await runInDurableObject(stub, (instance) => {
+		const snapshotResult = await runInDurableObject(stub, (instance) => {
 			const environment = instance as unknown as EnvironmentDurableObject & {
 				activeRuntimeConnectionId: string | null;
 				runtimeConnections: Map<string, unknown>;
@@ -116,6 +114,11 @@ describe("EnvironmentDurableObject", () => {
 			environment.rebuildConnectionsFromHibernation();
 			return environment.getRuntimeConnectionsSnapshot();
 		});
+		expect(snapshotResult.ok).toBe(true);
+		if (!snapshotResult.ok) {
+			throw new Error("Expected runtime connection snapshot");
+		}
+		const snapshot = snapshotResult.value.snapshot;
 
 		expect(snapshot).toMatchObject({
 			connected: true,
@@ -161,11 +164,16 @@ describe("EnvironmentDurableObject", () => {
 		);
 
 		await expect(commandPromise).resolves.toEqual({
-			type: "response",
-			requestId: "req-1",
 			ok: true,
-			result: {
-				session: null,
+			value: {
+				response: {
+					type: "response",
+					requestId: "req-1",
+					ok: true,
+					result: {
+						session: null,
+					},
+				},
 			},
 		});
 	});
@@ -173,7 +181,7 @@ describe("EnvironmentDurableObject", () => {
 	it("rejects runtime commands when no runtime is connected", async () => {
 		const id = env.ENVIRONMENT_DO.idFromName("runtime-disconnected-user");
 		const stub = env.ENVIRONMENT_DO.get(id);
-		const rejection = captureRejection(
+		await expect(
 			stub.sendRuntimeCommand({
 				type: "get_session",
 				requestId: "req-disconnected",
@@ -181,10 +189,12 @@ describe("EnvironmentDurableObject", () => {
 					sessionId: "session-1",
 				},
 			})
-		);
-
-		await expect(rejection).resolves.toMatchObject({
-			message: "Runtime is not connected",
+		).resolves.toEqual({
+			ok: false,
+			error: {
+				code: "runtime_not_connected",
+				message: "Runtime is not connected",
+			},
 		});
 	});
 
@@ -193,15 +203,13 @@ describe("EnvironmentDurableObject", () => {
 		const stub = env.ENVIRONMENT_DO.get(id);
 		const runtimeSocket = await connectRuntimeSocket(stub);
 
-		const commandRejection = captureRejection(
-			stub.sendRuntimeCommand({
-				type: "get_session",
-				requestId: "req-close",
-				input: {
-					sessionId: "session-1",
-				},
-			})
-		);
+		const commandResult = stub.sendRuntimeCommand({
+			type: "get_session",
+			requestId: "req-close",
+			input: {
+				sessionId: "session-1",
+			},
+		});
 
 		await expect(waitForSocketMessage(runtimeSocket)).resolves.toEqual({
 			type: "get_session",
@@ -213,8 +221,12 @@ describe("EnvironmentDurableObject", () => {
 
 		runtimeSocket.close(1011, "runtime crashed");
 
-		await expect(commandRejection).resolves.toMatchObject({
-			message: "Runtime connection closed while request was in flight",
+		await expect(commandResult).resolves.toEqual({
+			ok: false,
+			error: {
+				code: "runtime_connection_closed",
+				message: "Runtime connection closed while request was in flight",
+			},
 		});
 	});
 
@@ -287,24 +299,34 @@ describe("EnvironmentDurableObject", () => {
 		);
 
 		await expect(firstPromise).resolves.toEqual({
-			type: "response",
-			requestId: "req-1",
 			ok: true,
-			result: {
-				session: null,
+			value: {
+				response: {
+					type: "response",
+					requestId: "req-1",
+					ok: true,
+					result: {
+						session: null,
+					},
+				},
 			},
 		});
 		await expect(secondPromise).resolves.toEqual({
-			type: "response",
-			requestId: "req-2",
 			ok: true,
-			result: {
-				session: {
-					sessionId: "session-2",
-					activeTurnId: null,
-					agent: "claude",
-					cwd: "/workspace/two",
-					configOptions: {},
+			value: {
+				response: {
+					type: "response",
+					requestId: "req-2",
+					ok: true,
+					result: {
+						session: {
+							sessionId: "session-2",
+							activeTurnId: null,
+							agent: "claude",
+							cwd: "/workspace/two",
+							configOptions: {},
+						},
+					},
 				},
 			},
 		});

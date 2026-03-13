@@ -37,6 +37,41 @@ export type EnvironmentDoRuntimeConnectionsSnapshot = {
 	connections: RuntimeConnectionSnapshot[];
 };
 
+export type EnvironmentStreamOffset = "-1" | "now" | `${number}`;
+
+export type EnvironmentStreamSubscriber = Readonly<{
+	requesterId: string;
+}>;
+
+export type EnvironmentStreamSubscriptionSnapshot = Readonly<{
+	requesterId: string;
+	stream: string;
+}>;
+
+export type EnvironmentRpcErrorCode =
+	| "runtime_connection_closed"
+	| "runtime_connection_errored"
+	| "runtime_connection_superseded"
+	| "runtime_not_connected"
+	| "runtime_request_already_pending"
+	| "runtime_request_send_failed"
+	| "runtime_request_timed_out";
+
+export type EnvironmentRpcError = Readonly<{
+	code: EnvironmentRpcErrorCode;
+	message: string;
+}>;
+
+export type EnvironmentRpcResult<T> =
+	| Readonly<{
+			ok: true;
+			value: T;
+	  }>
+	| Readonly<{
+			ok: false;
+			error: EnvironmentRpcError;
+	  }>;
+
 export type EnvironmentRuntimeSession = Readonly<{
 	sessionId: string;
 	activeTurnId: string | null;
@@ -116,6 +151,16 @@ export type EnvironmentRuntimeCommandResponse =
 			error: string;
 	  };
 
+export type EnvironmentSubscribeStreamInput = Readonly<{
+	offset: EnvironmentStreamOffset;
+	stream: string;
+	subscriber: EnvironmentStreamSubscriber;
+}>;
+
+export type EnvironmentUnsubscribeStreamInput = Readonly<{
+	stream: string;
+}>;
+
 type RuntimeHelloMessage = {
 	type: "hello";
 	runtime: "sandbox-runtime";
@@ -123,10 +168,33 @@ type RuntimeHelloMessage = {
 
 type PendingRuntimeRequest = {
 	connectionId: string;
-	reject: (error: Error) => void;
-	resolve: (response: EnvironmentRuntimeCommandResponse) => void;
+	resolve: (
+		result: EnvironmentRpcResult<{
+			response: EnvironmentRuntimeCommandResponse;
+		}>
+	) => void;
 	timeout: ReturnType<typeof setTimeout>;
 };
+
+function okResult<T>(value: T): EnvironmentRpcResult<T> {
+	return {
+		ok: true,
+		value,
+	};
+}
+
+function errorResult(
+	code: EnvironmentRpcErrorCode,
+	message: string
+): EnvironmentRpcResult<never> {
+	return {
+		ok: false,
+		error: {
+			code,
+			message,
+		},
+	};
+}
 
 function parseRuntimeAuthHeader(
 	header: string | null
@@ -225,6 +293,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		string,
 		PendingRuntimeRequest
 	>();
+	private readonly streamSubscribers = new Map<
+		string,
+		EnvironmentStreamSubscriber
+	>();
 	private readonly runtimeConnections = new Map<
 		string,
 		RuntimeSocketAttachment
@@ -295,7 +367,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 			this.rejectPendingRuntimeRequestsForConnection(
 				attachment.connectionId,
-				"Runtime connection was superseded"
+				{
+					code: "runtime_connection_superseded",
+					message: "Runtime connection was superseded",
+				}
 			);
 			this.runtimeConnections.delete(attachment.connectionId);
 			socket.close(1012, "Superseded by newer runtime connection");
@@ -328,7 +403,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 	private rejectPendingRuntimeRequestsForConnection(
 		connectionId: string,
-		message: string
+		error: EnvironmentRpcError
 	): void {
 		for (const [requestId, pending] of this.pendingRuntimeRequests) {
 			if (pending.connectionId !== connectionId) {
@@ -337,7 +412,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 			clearTimeout(pending.timeout);
 			this.pendingRuntimeRequests.delete(requestId);
-			pending.reject(new Error(message));
+			pending.resolve({
+				ok: false,
+				error,
+			});
 		}
 	}
 
@@ -455,7 +533,11 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 		clearTimeout(pending.timeout);
 		this.pendingRuntimeRequests.delete(response.requestId);
-		pending.resolve(response);
+		pending.resolve(
+			okResult({
+				response,
+			})
+		);
 	}
 
 	webSocketClose(
@@ -473,7 +555,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		this.runtimeConnections.delete(attachment.connectionId);
 		this.rejectPendingRuntimeRequestsForConnection(
 			attachment.connectionId,
-			"Runtime connection closed while request was in flight"
+			{
+				code: "runtime_connection_closed",
+				message: "Runtime connection closed while request was in flight",
+			}
 		);
 		if (this.activeRuntimeConnectionId === attachment.connectionId) {
 			this.rebuildConnectionsFromHibernation();
@@ -496,7 +581,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			this.runtimeConnections.delete(attachment.connectionId);
 			this.rejectPendingRuntimeRequestsForConnection(
 				attachment.connectionId,
-				"Runtime connection errored while request was in flight"
+				{
+					code: "runtime_connection_errored",
+					message: "Runtime connection errored while request was in flight",
+				}
 			);
 			if (this.activeRuntimeConnectionId === attachment.connectionId) {
 				this.rebuildConnectionsFromHibernation();
@@ -512,34 +600,62 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		);
 	}
 
-	hasConnectedRuntime(): boolean {
-		return this.hasConnectedRuntimeState();
+	hasConnectedRuntime(): EnvironmentRpcResult<{ connected: boolean }> {
+		return okResult({
+			connected: this.hasConnectedRuntimeState(),
+		});
 	}
 
-	getRuntimeConnectionsSnapshot(): EnvironmentDoRuntimeConnectionsSnapshot {
-		return this.buildRuntimeConnectionsSnapshot();
+	getRuntimeConnectionsSnapshot(): EnvironmentRpcResult<{
+		snapshot: EnvironmentDoRuntimeConnectionsSnapshot;
+	}> {
+		return okResult({
+			snapshot: this.buildRuntimeConnectionsSnapshot(),
+		});
+	}
+
+	getStreamSubscriptionsSnapshot(): EnvironmentRpcResult<{
+		subscriptions: EnvironmentStreamSubscriptionSnapshot[];
+	}> {
+		return okResult({
+			subscriptions: [...this.streamSubscribers.entries()]
+				.sort(([left], [right]) => left.localeCompare(right))
+				.map(([stream, subscriber]) => ({
+					stream,
+					requesterId: subscriber.requesterId,
+				})),
+		});
 	}
 
 	async sendRuntimeCommand(
 		command: EnvironmentRuntimeCommand
-	): Promise<EnvironmentRuntimeCommandResponse> {
+	): Promise<
+		EnvironmentRpcResult<{
+			response: EnvironmentRuntimeCommandResponse;
+		}>
+	> {
 		if (this.pendingRuntimeRequests.has(command.requestId)) {
-			throw new Error(
+			return errorResult(
+				"runtime_request_already_pending",
 				`Runtime request ${command.requestId} is already pending`
 			);
 		}
 
 		const activeRuntime = this.getActiveRuntimeSocket();
 		if (!activeRuntime) {
-			throw new Error("Runtime is not connected");
+			return errorResult("runtime_not_connected", "Runtime is not connected");
 		}
 
-		return await new Promise<EnvironmentRuntimeCommandResponse>(
-			(resolve, reject) => {
+		return await new Promise<
+			EnvironmentRpcResult<{
+				response: EnvironmentRuntimeCommandResponse;
+			}>
+		>((resolve) => {
 				const timeout = setTimeout(() => {
 					this.pendingRuntimeRequests.delete(command.requestId);
-					reject(
-						new Error(
+					resolve(
+						errorResult(
+							"runtime_request_timed_out",
 							`Timed out waiting for runtime response to ${command.requestId}`
 						)
 					);
@@ -548,7 +664,6 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				this.pendingRuntimeRequests.set(command.requestId, {
 					connectionId: activeRuntime.attachment.connectionId,
 					resolve,
-					reject,
 					timeout,
 				});
 
@@ -557,9 +672,40 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				} catch (error) {
 					clearTimeout(timeout);
 					this.pendingRuntimeRequests.delete(command.requestId);
-					reject(error instanceof Error ? error : new Error(String(error)));
+					resolve(
+						errorResult(
+							"runtime_request_send_failed",
+							error instanceof Error ? error.message : String(error)
+						)
+					);
 				}
 			}
 		);
+	}
+
+	subscribeStream(
+		input: EnvironmentSubscribeStreamInput
+	): EnvironmentRpcResult<{}> {
+		const activeRuntime = this.getActiveRuntimeSocket();
+		if (!activeRuntime) {
+			return errorResult("runtime_not_connected", "Runtime is not connected");
+		}
+
+		activeRuntime.socket.send(
+			JSON.stringify({
+				type: "subscribe_stream",
+				stream: input.stream,
+				offset: input.offset,
+			})
+		);
+		this.streamSubscribers.set(input.stream, input.subscriber);
+		return okResult({});
+	}
+
+	unsubscribeStream(
+		input: EnvironmentUnsubscribeStreamInput
+	): EnvironmentRpcResult<{}> {
+		this.streamSubscribers.delete(input.stream);
+		return okResult({});
 	}
 }
