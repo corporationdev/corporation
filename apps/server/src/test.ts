@@ -4,8 +4,6 @@ import {
 	type EnvironmentStubBinding,
 } from "./environment-do/stub";
 
-const TEST_DEBUG_HEADER = "x-corporation-test-debug";
-
 type TestAppEnv = {
 	Bindings: {
 		CORPORATION_ENABLE_TEST_ROUTES?: string;
@@ -26,16 +24,10 @@ export const testApp = new Hono<TestAppEnv>()
 			return c.json({ error: "Missing environmentKey" }, 400);
 		}
 
-		const response = await getEnvironmentStub(
+		const snapshot = await getEnvironmentStub(
 			c.env.ENVIRONMENT_DO,
 			environmentKey
-		).fetch(
-			new Request("http://environment/debug/runtime-connections", {
-				headers: {
-					[TEST_DEBUG_HEADER]: "1",
-				},
-			})
-		);
+		).getRuntimeConnectionsSnapshot();
 
-		return response;
+		return c.json(snapshot);
 	});

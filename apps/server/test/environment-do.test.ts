@@ -1,4 +1,5 @@
 import { env, runInDurableObject } from "cloudflare:test";
+import type { EnvironmentDurableObject } from "../src/environment-do";
 import { describe, expect, it } from "vitest";
 
 const RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
@@ -46,9 +47,7 @@ describe("EnvironmentDurableObject", () => {
 
 		expect(response.status).toBe(101);
 
-		const snapshot = await runInDurableObject(stub, (instance) =>
-			instance.getRuntimeConnectionsSnapshot()
-		);
+		const snapshot = await stub.getRuntimeConnectionsSnapshot();
 
 		expect(snapshot.connected).toBe(true);
 		expect(snapshot.connectionCount).toBe(1);
@@ -71,11 +70,10 @@ describe("EnvironmentDurableObject", () => {
 		expect(response.status).toBe(101);
 
 		const snapshot = await runInDurableObject(stub, (instance) => {
-			const environment = instance as unknown as {
+			const environment = instance as unknown as EnvironmentDurableObject & {
 				activeRuntimeConnectionId: string | null;
 				runtimeConnections: Map<string, unknown>;
 				rebuildConnectionsFromHibernation(): void;
-				getRuntimeConnectionsSnapshot(): unknown;
 			};
 			environment.activeRuntimeConnectionId = null;
 			environment.runtimeConnections.clear();

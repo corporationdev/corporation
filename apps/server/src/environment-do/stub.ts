@@ -1,4 +1,5 @@
 import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
+import type { EnvironmentDurableObject } from "./index";
 
 const SPACE_RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
 
@@ -7,13 +8,10 @@ type RuntimeAuthState = {
 	claims: RuntimeAccessTokenClaims;
 };
 
-type EnvironmentStub = {
-	fetch: (request: Request) => Promise<Response>;
-};
+export type EnvironmentStubBinding =
+	DurableObjectNamespace<EnvironmentDurableObject>;
 
-export type EnvironmentStubBinding = {
-	getByName: (name: string) => EnvironmentStub;
-};
+export type EnvironmentStub = ReturnType<EnvironmentStubBinding["getByName"]>;
 
 export function getEnvironmentStub(
 	environmentDo: EnvironmentStubBinding,

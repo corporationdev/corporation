@@ -4,7 +4,6 @@ import { createLogger } from "@corporation/logger";
 
 const RUNTIME_SOCKET_TAG = "runtime";
 const SPACE_RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
-const TEST_DEBUG_HEADER = "x-corporation-test-debug";
 
 const log = createLogger("environment-do");
 
@@ -166,11 +165,11 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		}
 	}
 
-	hasConnectedRuntime(): boolean {
+	private hasConnectedRuntimeState(): boolean {
 		return this.activeRuntimeConnectionId !== null;
 	}
 
-	getRuntimeConnectionsSnapshot(): EnvironmentDoRuntimeConnectionsSnapshot {
+	private buildRuntimeConnectionsSnapshot(): EnvironmentDoRuntimeConnectionsSnapshot {
 		const connections = [...this.runtimeConnections.values()]
 			.sort(compareRuntimeAttachments)
 			.map((attachment) => this.toRuntimeConnectionSnapshot(attachment));
@@ -233,22 +232,11 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		});
 	}
 
-	private handleDebugRuntimeConnections(request: Request): Response {
-		if (request.headers.get(TEST_DEBUG_HEADER) !== "1") {
-			return new Response("Not found", { status: 404 });
-		}
-
-		return Response.json(this.getRuntimeConnectionsSnapshot());
-	}
-
 	async fetch(request: Request): Promise<Response> {
 		await this.ready;
 		const url = new URL(request.url);
 		if (url.pathname === "/runtime/socket") {
 			return this.handleRuntimeSocketUpgrade(request);
-		}
-		if (url.pathname === "/debug/runtime-connections") {
-			return this.handleDebugRuntimeConnections(request);
 		}
 		return new Response("Not found", { status: 404 });
 	}
@@ -326,5 +314,15 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			},
 			"runtime websocket error"
 		);
+	}
+
+	async hasConnectedRuntime(): Promise<boolean> {
+		await this.ready;
+		return this.hasConnectedRuntimeState();
+	}
+
+	async getRuntimeConnectionsSnapshot(): Promise<EnvironmentDoRuntimeConnectionsSnapshot> {
+		await this.ready;
+		return this.buildRuntimeConnectionsSnapshot();
 	}
 }
