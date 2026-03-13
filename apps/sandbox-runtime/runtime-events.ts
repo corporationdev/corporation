@@ -34,7 +34,7 @@ export type RuntimeContent =
 	| {
 			type: "audio";
 			mimeType: string;
-			uri?: string | null;
+			data: string;
 	  }
 	| {
 			type: "resource_link";
@@ -129,7 +129,6 @@ export type RuntimePermissionOption = {
 	optionId: string;
 	kind: PermissionOptionKind;
 	name: string;
-	description?: string | null;
 };
 
 export type RuntimeEvent =

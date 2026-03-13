@@ -45,6 +45,7 @@ function normalizeContent(content: ContentBlock): RuntimeContent {
 			return {
 				type: "audio",
 				mimeType: content.mimeType,
+				data: content.data,
 			};
 		case "resource_link":
 			return {
@@ -55,7 +56,9 @@ function normalizeContent(content: ContentBlock): RuntimeContent {
 				...(content.description !== undefined
 					? { description: content.description }
 					: {}),
-				...(content.mimeType !== undefined ? { mimeType: content.mimeType } : {}),
+				...(content.mimeType !== undefined
+					? { mimeType: content.mimeType }
+					: {}),
 				...(content.size !== undefined ? { size: content.size } : {}),
 			};
 		case "resource":
@@ -75,7 +78,9 @@ function normalizeEmbeddedResource(content: EmbeddedResource): RuntimeContent {
 		return {
 			type: "resource",
 			uri: resource.uri,
-			...(resource.mimeType !== undefined ? { mimeType: resource.mimeType } : {}),
+			...(resource.mimeType !== undefined
+				? { mimeType: resource.mimeType }
+				: {}),
 			text: resource.text,
 		};
 	}

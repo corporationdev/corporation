@@ -66,7 +66,7 @@ export type AgentDriver = {
 	run(
 		input: ResolvedStartTurnInput,
 		emit: EventSink
-	): Promise<RunTurnResult | void>;
+	): Promise<RunTurnResult | undefined>;
 	cancel?(turnId: TurnId): Promise<void>;
 	respondToPermissionRequest?(
 		input: RespondToPermissionRequestInput
@@ -96,6 +96,12 @@ export type RuntimeSession = Readonly<{
 export type RuntimeTurn = Readonly<TurnState>;
 
 export type { RuntimeEvent, TurnStopReason } from "./runtime-events";
+export type {
+	RuntimeWebSocketTransport,
+	WebSocketLike,
+	WebSocketLikeFactory,
+} from "./websocket-runtime-transport";
+export type RuntimeEventListener = (event: RuntimeEvent) => void;
 
 function getConfigDiff(
 	current: SessionDynamicConfig,
@@ -175,13 +181,28 @@ function toErrorMessage(error: unknown): string {
 export class RuntimeEngine {
 	private readonly sessions = new Map<SessionId, SessionState>();
 	private readonly turns = new Map<TurnId, TurnState>();
+	private readonly listeners = new Set<RuntimeEventListener>();
 	private readonly driver: AgentDriver;
-	private readonly emit: EventSink;
 
-	constructor(driver: AgentDriver, emit: EventSink) {
+	constructor(driver: AgentDriver, emit?: EventSink) {
 		this.driver = driver;
-		this.emit = emit;
+		if (emit) {
+			this.listeners.add(emit);
+		}
 	}
+
+	subscribe(listener: RuntimeEventListener): () => void {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	}
+
+	private readonly emit = (event: RuntimeEvent): void => {
+		for (const listener of this.listeners) {
+			listener(event);
+		}
+	};
 
 	async createSession(input: CreateSessionInput): Promise<RuntimeSession> {
 		if (this.sessions.has(input.sessionId)) {

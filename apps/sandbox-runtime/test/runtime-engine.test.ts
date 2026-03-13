@@ -72,6 +72,7 @@ describe("RuntimeEngine", () => {
 				run: async (input) => {
 					driverCalls.push(input);
 					await blocker.promise;
+					return undefined;
 				},
 			},
 			(event) => {
@@ -213,6 +214,7 @@ describe("RuntimeEngine", () => {
 			{
 				run: async () => {
 					await blocker.promise;
+					return undefined;
 				},
 				cancel: (turnId) => {
 					cancelledTurnIds.push(turnId);

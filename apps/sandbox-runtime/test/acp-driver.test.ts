@@ -5,9 +5,9 @@ import {
 	type RequestPermissionResponse,
 } from "@agentclientprotocol/sdk";
 import {
-	type AcpInboundEvent,
 	type AcpConnection,
 	type AcpConnectionFactory,
+	type AcpInboundEvent,
 	type AcpRequestMap,
 	type AcpRequestMethod,
 	createAcpDriver,
@@ -196,7 +196,9 @@ describe("createAcpDriver", () => {
 				case "initialize":
 					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 				case "session/new":
-					return Promise.resolve({ sessionId: "acp-1" } as AcpRequestMap[M]["result"]);
+					return Promise.resolve({
+						sessionId: "acp-1",
+					} as AcpRequestMap[M]["result"]);
 				case AGENT_METHODS.session_prompt:
 					fake.emit({
 						type: "session_update",
@@ -207,6 +209,20 @@ describe("createAcpDriver", () => {
 								content: {
 									type: "text",
 									text: "READY",
+								},
+							},
+						},
+					});
+					fake.emit({
+						type: "session_update",
+						notification: {
+							sessionId: "acp-1",
+							update: {
+								sessionUpdate: "agent_message_chunk",
+								content: {
+									type: "audio",
+									mimeType: "audio/mpeg",
+									data: "base64-audio",
 								},
 							},
 						},
@@ -283,7 +299,13 @@ describe("createAcpDriver", () => {
 						requestId: "perm-1",
 						request: {
 							sessionId: "acp-1",
-							options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+							options: [
+								{
+									kind: "allow_once",
+									optionId: "opt-1",
+									name: "Allow once",
+								},
+							],
 							toolCall: {
 								toolCallId: "tool-1",
 								title: "Read file",
@@ -338,6 +360,17 @@ describe("createAcpDriver", () => {
 				},
 			},
 			{
+				type: "output.delta",
+				sessionId: "session-1",
+				turnId: "turn-1",
+				channel: "assistant",
+				content: {
+					type: "audio",
+					mimeType: "audio/mpeg",
+					data: "base64-audio",
+				},
+			},
+			{
 				type: "plan.updated",
 				sessionId: "session-1",
 				turnId: "turn-1",
@@ -389,7 +422,13 @@ describe("createAcpDriver", () => {
 				sessionId: "session-1",
 				turnId: "turn-1",
 				requestId: "perm-1",
-				options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+				options: [
+					{
+						kind: "allow_once",
+						optionId: "opt-1",
+						name: "Allow once",
+					},
+				],
 				toolCall: {
 					toolCallId: "tool-1",
 					title: "Read file",
@@ -472,14 +511,18 @@ describe("createAcpDriver", () => {
 				case "initialize":
 					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 				case "session/new":
-					return Promise.resolve({ sessionId: "acp-1" } as AcpRequestMap[M]["result"]);
+					return Promise.resolve({
+						sessionId: "acp-1",
+					} as AcpRequestMap[M]["result"]);
 				case AGENT_METHODS.session_prompt:
 					fake.emit({
 						type: "permission_request",
 						requestId: "perm-1",
 						request: {
 							sessionId: "acp-1",
-							options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+							options: [
+								{ kind: "allow_once", optionId: "opt-1", name: "Allow once" },
+							],
 							toolCall: {
 								toolCallId: "tool-1",
 								title: "Read file",
@@ -554,14 +597,18 @@ describe("createAcpDriver", () => {
 				case "initialize":
 					return Promise.resolve({} as AcpRequestMap[M]["result"]);
 				case "session/new":
-					return Promise.resolve({ sessionId: "acp-1" } as AcpRequestMap[M]["result"]);
+					return Promise.resolve({
+						sessionId: "acp-1",
+					} as AcpRequestMap[M]["result"]);
 				case AGENT_METHODS.session_prompt:
 					fake.emit({
 						type: "permission_request",
 						requestId: "perm-1",
 						request: {
 							sessionId: "acp-1",
-							options: [{ kind: "allow_once", optionId: "opt-1", name: "Allow once" }],
+							options: [
+								{ kind: "allow_once", optionId: "opt-1", name: "Allow once" },
+							],
 							toolCall: {
 								toolCallId: "tool-1",
 								title: "Read file",
