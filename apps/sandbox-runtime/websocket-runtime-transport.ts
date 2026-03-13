@@ -219,20 +219,6 @@ export function createWebSocketRuntimeTransport(options: {
 					});
 					return;
 				}
-				case "get_session": {
-					const result = {
-						session:
-							options.runtime.getSession(command.input.sessionId) ?? null,
-					};
-					options.store.completeCommand(commandId, result);
-					send({
-						type: "response",
-						requestId: command.requestId,
-						ok: true,
-						result,
-					});
-					return;
-				}
 				default: {
 					const exhaustiveCheck: never = command;
 					throw new Error(

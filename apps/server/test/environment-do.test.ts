@@ -136,7 +136,7 @@ describe("EnvironmentDurableObject", () => {
 		const runtimeSocket = await connectRuntimeSocket(stub);
 
 		const commandPromise = stub.sendRuntimeCommand({
-			type: "get_session",
+			type: "abort",
 			requestId: "req-1",
 			input: {
 				sessionId: "session-1",
@@ -145,7 +145,7 @@ describe("EnvironmentDurableObject", () => {
 
 		const outboundMessage = await waitForSocketMessage(runtimeSocket!);
 		expect(outboundMessage).toEqual({
-			type: "get_session",
+			type: "abort",
 			requestId: "req-1",
 			input: {
 				sessionId: "session-1",
@@ -158,7 +158,7 @@ describe("EnvironmentDurableObject", () => {
 				requestId: "req-1",
 				ok: true,
 				result: {
-					session: null,
+					aborted: true,
 				},
 			})
 		);
@@ -171,7 +171,7 @@ describe("EnvironmentDurableObject", () => {
 					requestId: "req-1",
 					ok: true,
 					result: {
-						session: null,
+						aborted: true,
 					},
 				},
 			},
@@ -183,7 +183,7 @@ describe("EnvironmentDurableObject", () => {
 		const stub = env.ENVIRONMENT_DO.get(id);
 		await expect(
 			stub.sendRuntimeCommand({
-				type: "get_session",
+				type: "abort",
 				requestId: "req-disconnected",
 				input: {
 					sessionId: "session-1",
@@ -204,7 +204,7 @@ describe("EnvironmentDurableObject", () => {
 		const runtimeSocket = await connectRuntimeSocket(stub);
 
 		const commandResult = stub.sendRuntimeCommand({
-			type: "get_session",
+			type: "abort",
 			requestId: "req-close",
 			input: {
 				sessionId: "session-1",
@@ -212,7 +212,7 @@ describe("EnvironmentDurableObject", () => {
 		});
 
 		await expect(waitForSocketMessage(runtimeSocket)).resolves.toEqual({
-			type: "get_session",
+			type: "abort",
 			requestId: "req-close",
 			input: {
 				sessionId: "session-1",
@@ -236,14 +236,14 @@ describe("EnvironmentDurableObject", () => {
 		const runtimeSocket = await connectRuntimeSocket(stub);
 
 		const firstPromise = stub.sendRuntimeCommand({
-			type: "get_session",
+			type: "abort",
 			requestId: "req-1",
 			input: {
 				sessionId: "session-1",
 			},
 		});
 		const secondPromise = stub.sendRuntimeCommand({
-			type: "get_session",
+			type: "abort",
 			requestId: "req-2",
 			input: {
 				sessionId: "session-2",
@@ -255,14 +255,14 @@ describe("EnvironmentDurableObject", () => {
 		expect([firstOutbound, secondOutbound]).toEqual(
 			expect.arrayContaining([
 				{
-					type: "get_session",
+					type: "abort",
 					requestId: "req-1",
 					input: {
 						sessionId: "session-1",
 					},
 				},
 				{
-					type: "get_session",
+					type: "abort",
 					requestId: "req-2",
 					input: {
 						sessionId: "session-2",
@@ -277,13 +277,7 @@ describe("EnvironmentDurableObject", () => {
 				requestId: "req-2",
 				ok: true,
 				result: {
-					session: {
-						sessionId: "session-2",
-						activeTurnId: null,
-						agent: "claude",
-						cwd: "/workspace/two",
-						configOptions: {},
-					},
+					aborted: false,
 				},
 			})
 		);
@@ -293,7 +287,7 @@ describe("EnvironmentDurableObject", () => {
 				requestId: "req-1",
 				ok: true,
 				result: {
-					session: null,
+					aborted: true,
 				},
 			})
 		);
@@ -306,7 +300,7 @@ describe("EnvironmentDurableObject", () => {
 					requestId: "req-1",
 					ok: true,
 					result: {
-						session: null,
+						aborted: true,
 					},
 				},
 			},
@@ -319,13 +313,7 @@ describe("EnvironmentDurableObject", () => {
 					requestId: "req-2",
 					ok: true,
 					result: {
-						session: {
-							sessionId: "session-2",
-							activeTurnId: null,
-							agent: "claude",
-							cwd: "/workspace/two",
-							configOptions: {},
-						},
+						aborted: false,
 					},
 				},
 			},

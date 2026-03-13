@@ -16,7 +16,9 @@ export type EnvironmentRpcErrorCode =
 	| "runtime_not_connected"
 	| "runtime_request_already_pending"
 	| "runtime_request_send_failed"
-	| "runtime_request_timed_out";
+	| "runtime_request_timed_out"
+	| "stream_invalid_payload"
+	| "stream_session_not_found";
 
 export type EnvironmentRpcError = Readonly<{
 	code: EnvironmentRpcErrorCode;

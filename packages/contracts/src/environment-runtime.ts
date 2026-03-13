@@ -43,10 +43,6 @@ export const environmentRespondToPermissionInputSchema = z.object({
 	]),
 });
 
-export const environmentGetSessionInputSchema = z.object({
-	sessionId: z.string().min(1),
-});
-
 export const environmentRuntimeCommandSchema = z.discriminatedUnion("type", [
 	z.object({
 		type: z.literal("create_session"),
@@ -67,11 +63,6 @@ export const environmentRuntimeCommandSchema = z.discriminatedUnion("type", [
 		type: z.literal("respond_to_permission"),
 		requestId: z.string().min(1),
 		input: environmentRespondToPermissionInputSchema,
-	}),
-	z.object({
-		type: z.literal("get_session"),
-		requestId: z.string().min(1),
-		input: environmentGetSessionInputSchema,
 	}),
 ]);
 export type EnvironmentRuntimeCommand = z.infer<
@@ -123,8 +114,7 @@ export type EnvironmentRuntimeCommandResponse =
 				| { session: EnvironmentRuntimeSession }
 				| { turnId: string }
 				| { aborted: boolean }
-				| { handled: boolean }
-				| { session: EnvironmentRuntimeSession | null };
+				| { handled: boolean };
 	  }
 	| {
 			type: "response";

@@ -46,7 +46,6 @@ export function getStreamKeyForCommand(
 		case "create_session":
 		case "prompt":
 		case "abort":
-		case "get_session":
 			return `session:${command.input.sessionId}`;
 		case "respond_to_permission":
 			return `permission:${command.input.requestId}`;

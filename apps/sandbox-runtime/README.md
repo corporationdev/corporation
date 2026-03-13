@@ -14,7 +14,6 @@ The current public command contract is:
 - `create_session`
 - `prompt`
 - `abort`
-- `get_session`
 - `respond_to_permission`
 
 Commands are deduped by `requestId`. If a caller retries the same command with the same `requestId`, the runtime replays the stored outcome instead of executing the command again.
