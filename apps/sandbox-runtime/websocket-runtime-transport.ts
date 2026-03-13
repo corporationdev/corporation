@@ -5,7 +5,10 @@ import type {
 	RuntimeWebSocketCommand,
 	RuntimeWebSocketOutgoingMessage,
 } from "./runtime-websocket-protocol";
-import { runtimeWebSocketCommandSchema } from "./runtime-websocket-protocol";
+import {
+	runtimeWebSocketCommandSchema,
+	runtimeWebSocketHelloAckSchema,
+} from "./runtime-websocket-protocol";
 
 const SOCKET_OPEN = 1;
 
@@ -143,6 +146,8 @@ export function createWebSocketRuntimeTransport(options: {
 			}
 
 			socket = createSocket(options.url);
+			let helloAckReceived = false;
+			let onHelloAck: (() => void) | null = null;
 			unsubscribe = options.runtime.subscribe((event) => {
 				send({
 					type: "runtime_event",
@@ -155,9 +160,14 @@ export function createWebSocketRuntimeTransport(options: {
 					typeof event.data === "string"
 						? event.data
 						: new TextDecoder().decode(event.data as ArrayBuffer);
-				const parsed = runtimeWebSocketCommandSchema.safeParse(
-					JSON.parse(payload)
-				);
+				const message = JSON.parse(payload) as unknown;
+				const helloAck = runtimeWebSocketHelloAckSchema.safeParse(message);
+				if (helloAck.success) {
+					helloAckReceived = true;
+					onHelloAck?.();
+					return;
+				}
+				const parsed = runtimeWebSocketCommandSchema.safeParse(message);
 				if (!parsed.success) {
 					return;
 				}
@@ -175,15 +185,58 @@ export function createWebSocketRuntimeTransport(options: {
 			socket.addEventListener("close", cleanup);
 			socket.addEventListener("error", cleanup);
 
-			if (socket.readyState === SOCKET_OPEN) {
-				return Promise.resolve();
-			}
+			const sendHello = () => {
+				send({
+					type: "hello",
+					runtime: "sandbox-runtime",
+				});
+			};
 
 			return new Promise<void>((resolve, reject) => {
-				socket!.addEventListener("open", () => resolve());
-				socket!.addEventListener("error", () =>
-					reject(new Error("WebSocket connection failed"))
-				);
+				let settled = false;
+
+				const finish = (callback: () => void) => {
+					if (settled) {
+						return;
+					}
+					settled = true;
+					callback();
+				};
+
+				const cleanupHandshake = () => {
+					onHelloAck = null;
+				};
+
+				onHelloAck = () => {
+					cleanupHandshake();
+					finish(() => resolve());
+				};
+
+				socket!.addEventListener("error", () => {
+					cleanupHandshake();
+					finish(() => reject(new Error("WebSocket connection failed")));
+				});
+				socket!.addEventListener("close", () => {
+					cleanupHandshake();
+					finish(() =>
+						reject(new Error("WebSocket closed before hello acknowledgement"))
+					);
+				});
+
+				if (socket!.readyState === SOCKET_OPEN) {
+					sendHello();
+					if (helloAckReceived) {
+						onHelloAck();
+					}
+					return;
+				}
+
+				socket!.addEventListener("open", () => {
+					sendHello();
+					if (helloAckReceived) {
+						onHelloAck?.();
+					}
+				});
 			});
 		},
 

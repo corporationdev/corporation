@@ -54,7 +54,19 @@ describe("createWebSocketRuntimeTransport", () => {
 			},
 		});
 
-		await transport.start();
+		const startPromise = transport.start();
+		expect(socket.sent).toEqual([
+			{
+				type: "hello",
+				runtime: "sandbox-runtime",
+			},
+		]);
+		socket.receive({
+			type: "hello_ack",
+			connectionId: "connection-1",
+			connectedAt: 123,
+		});
+		await startPromise;
 
 		socket.receive({
 			type: "create_session",
@@ -79,6 +91,10 @@ describe("createWebSocketRuntimeTransport", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(socket.sent).toEqual([
+			{
+				type: "hello",
+				runtime: "sandbox-runtime",
+			},
 			{
 				type: "response",
 				requestId: "req-1",
@@ -146,7 +162,19 @@ describe("createWebSocketRuntimeTransport", () => {
 			},
 		});
 
-		await transport.start();
+		const startPromise = transport.start();
+		expect(socket.sent).toEqual([
+			{
+				type: "hello",
+				runtime: "sandbox-runtime",
+			},
+		]);
+		socket.receive({
+			type: "hello_ack",
+			connectionId: "connection-1",
+			connectedAt: 123,
+		});
+		await startPromise;
 
 		socket.receive({
 			type: "prompt",
@@ -161,11 +189,49 @@ describe("createWebSocketRuntimeTransport", () => {
 
 		expect(socket.sent).toEqual([
 			{
+				type: "hello",
+				runtime: "sandbox-runtime",
+			},
+			{
 				type: "response",
 				requestId: "req-1",
 				ok: false,
 				error: "Session missing does not exist",
 			},
 		]);
+	});
+
+	test("waits for hello acknowledgement before considering the transport started", async () => {
+		const runtime = new RuntimeEngine(noopDriver);
+		const socket = new FakeSocket();
+		const transport = createWebSocketRuntimeTransport({
+			url: "ws://runtime.test/socket",
+			runtime,
+			createSocket() {
+				return socket;
+			},
+		});
+
+		let started = false;
+		const startPromise = transport.start().then(() => {
+			started = true;
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(socket.sent).toEqual([
+			{
+				type: "hello",
+				runtime: "sandbox-runtime",
+			},
+		]);
+		expect(started).toBe(false);
+
+		socket.receive({
+			type: "hello_ack",
+			connectionId: "connection-1",
+			connectedAt: 123,
+		});
+		await startPromise;
+		expect(started).toBe(true);
 	});
 });

@@ -36,6 +36,10 @@ describe("runtime CLI -> Worker -> Environment DO seam", () => {
 			expect(connected.connections).toHaveLength(1);
 			expect(connected.connections[0]?.userId).toBe(TEST_USER_ID);
 			expect(connected.connections[0]?.clientId).toBe(TEST_CLIENT_ID);
+			expect(connected.connections[0]?.lastSeenAt).not.toBeNull();
+			expect(connected.connections[0]?.lastSeenAt).toBeGreaterThanOrEqual(
+				connected.connections[0]?.connectedAt ?? 0
+			);
 
 			await cli.stop();
 

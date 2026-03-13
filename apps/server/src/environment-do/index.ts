@@ -33,6 +33,11 @@ export type EnvironmentDoRuntimeConnectionsSnapshot = {
 	connections: RuntimeConnectionSnapshot[];
 };
 
+type RuntimeHelloMessage = {
+	type: "hello";
+	runtime: "sandbox-runtime";
+};
+
 function parseRuntimeAuthHeader(
 	header: string | null
 ): RuntimeConnectionAuthState | null {
@@ -52,6 +57,30 @@ function compareRuntimeAttachments(left: RuntimeSocketAttachment, right: Runtime
 		return right.connectedAt - left.connectedAt;
 	}
 	return right.connectionId.localeCompare(left.connectionId);
+}
+
+function parseRuntimeHelloMessage(
+	message: string | ArrayBuffer
+): RuntimeHelloMessage | null {
+	try {
+		const payload =
+			typeof message === "string"
+				? message
+				: new TextDecoder().decode(new Uint8Array(message));
+		const parsed = JSON.parse(payload) as Record<string, unknown>;
+		if (
+			parsed.type === "hello" &&
+			parsed.runtime === "sandbox-runtime"
+		) {
+			return {
+				type: "hello",
+				runtime: "sandbox-runtime",
+			};
+		}
+		return null;
+	} catch {
+		return null;
+	}
 }
 
 export class EnvironmentDurableObject extends DurableObject<Env> {
@@ -176,7 +205,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		return new Response("Not found", { status: 404 });
 	}
 
-	webSocketMessage(ws: WebSocket, _message: string | ArrayBuffer): void {
+	webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
 		const attachment =
 			ws.deserializeAttachment() as RuntimeSocketAttachment | null;
 		if (!attachment) {
@@ -184,14 +213,25 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			return;
 		}
 
-		ws.serializeAttachment({
+		const nextAttachment = {
 			...attachment,
 			lastSeenAt: Date.now(),
-		});
-		this.runtimeConnections.set(attachment.connectionId, {
-			...attachment,
-			lastSeenAt: Date.now(),
-		});
+		};
+		ws.serializeAttachment(nextAttachment);
+		this.runtimeConnections.set(attachment.connectionId, nextAttachment);
+
+		const hello = parseRuntimeHelloMessage(message);
+		if (!hello) {
+			return;
+		}
+
+		ws.send(
+			JSON.stringify({
+				type: "hello_ack",
+				connectionId: attachment.connectionId,
+				connectedAt: attachment.connectedAt,
+			})
+		);
 	}
 
 	webSocketClose(

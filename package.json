@@ -40,6 +40,7 @@
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:agents": "bun scripts/generate-acp-agents.ts",
     "test:server": "bun run --filter @corporation/server test",
+    "test:e2e": "bun run --filter @corporation/server test:e2e",
     "auth:generate": "turbo -F @corporation/backend auth:generate"
   },
   "type": "module",

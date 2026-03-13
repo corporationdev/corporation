@@ -46,6 +46,23 @@ export type RuntimeWebSocketCommand = z.infer<
 	typeof runtimeWebSocketCommandSchema
 >;
 
+export const runtimeWebSocketHelloSchema = z.object({
+	type: z.literal("hello"),
+	runtime: z.literal("sandbox-runtime"),
+});
+export type RuntimeWebSocketHello = z.infer<
+	typeof runtimeWebSocketHelloSchema
+>;
+
+export const runtimeWebSocketHelloAckSchema = z.object({
+	type: z.literal("hello_ack"),
+	connectionId: z.string().min(1),
+	connectedAt: z.number().int().nonnegative(),
+});
+export type RuntimeWebSocketHelloAck = z.infer<
+	typeof runtimeWebSocketHelloAckSchema
+>;
+
 export type RuntimeWebSocketResponse =
 	| {
 			type: "response";
@@ -71,6 +88,11 @@ export type RuntimeWebSocketEventMessage = {
 	event: RuntimeEvent;
 };
 
+export type RuntimeWebSocketIncomingMessage =
+	| RuntimeWebSocketCommand
+	| RuntimeWebSocketHelloAck;
+
 export type RuntimeWebSocketOutgoingMessage =
+	| RuntimeWebSocketHello
 	| RuntimeWebSocketResponse
 	| RuntimeWebSocketEventMessage;
