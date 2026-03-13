@@ -9,7 +9,7 @@
     "./session-protocol": "./src/session-protocol.ts"
   },
   "scripts": {
-    "test": "bun test ./test --timeout 300000",
+    "test": "vitest run",
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts"
   },
@@ -38,9 +38,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.12.21",
     "@cloudflare/workers-types": "catalog:",
     "drizzle-kit": "catalog:",
     "typescript": "catalog:",
+    "vitest": "^3",
     "wrangler": "catalog:"
   }
 }

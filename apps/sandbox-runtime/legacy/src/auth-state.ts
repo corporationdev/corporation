@@ -70,14 +70,12 @@ function createWorkerHttpClient(
 
 async function requestRuntimeSession(): Promise<RuntimeAuthSessionResponse> {
 	const serverUrl = requireEnv("CORPORATION_SERVER_URL");
-	const spaceSlug = requireEnv("CORPORATION_SPACE_SLUG");
 	const refreshToken = requireEnv("CORPORATION_RUNTIME_REFRESH_TOKEN");
 	const client = createWorkerHttpClient(serverUrl);
 
 	const parsed = runtimeAuthSessionResponseSchema.safeParse(
 		await client.runtimeAuth.createSession(
 			{
-				spaceSlug,
 				refreshToken,
 			},
 			{

@@ -104,9 +104,7 @@ export type GetSessionStreamStateInput = z.infer<
 >;
 
 export const createRuntimeAuthSessionInputSchema =
-	runtimeAuthSessionRequestSchema.extend({
-		spaceSlug: z.string().min(1),
-	});
+	runtimeAuthSessionRequestSchema;
 export type CreateRuntimeAuthSessionInput = z.infer<
 	typeof createRuntimeAuthSessionInputSchema
 >;

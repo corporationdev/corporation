@@ -12,7 +12,6 @@ export type RuntimeClientType = z.infer<typeof runtimeClientTypeSchema>;
 
 const runtimeTokenBaseClaimsSchema = z.object({
 	sub: z.string().min(1),
-	spaceSlug: z.string().min(1),
 	sandboxId: z.string().min(1),
 	clientType: runtimeClientTypeSchema,
 });
@@ -91,7 +90,6 @@ async function signToken(
 		encoder.encode(
 			JSON.stringify({
 				sub: claims.sub,
-				spaceSlug: claims.spaceSlug,
 				sandboxId: claims.sandboxId,
 				clientType: claims.clientType,
 				tokenType: claims.tokenType,
@@ -188,7 +186,6 @@ async function verifyToken<T extends z.ZodTypeAny>(
 		}
 		const result = schema.safeParse({
 			sub: payload.sub,
-			spaceSlug: payload.spaceSlug,
 			sandboxId: payload.sandboxId,
 			clientType: payload.clientType,
 			tokenType: payload.tokenType,

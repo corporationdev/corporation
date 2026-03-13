@@ -39,6 +39,7 @@
     "sandbox:create-agent-install": "bun scripts/create-agent-install-sandbox.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:agents": "bun scripts/generate-acp-agents.ts",
+    "test:server": "bun run --filter @corporation/server test",
     "auth:generate": "turbo -F @corporation/backend auth:generate"
   },
   "type": "module",

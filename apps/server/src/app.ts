@@ -34,7 +34,7 @@ const apiApp = new Hono<{ Bindings: Env }>()
 	.route("/integrations", integrationsApp)
 	.route("/github", githubApp)
 	.route("/proxy", proxyApp)
-	.route("/spaces", runtimeApp)
+	.route("/runtime", runtimeApp)
 	.route("/spaces", streamApp);
 
 const app = new Hono<{ Bindings: Env }>().route("/api", apiApp);
