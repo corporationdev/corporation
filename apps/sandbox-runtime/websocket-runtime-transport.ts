@@ -1,6 +1,10 @@
 /* global WebSocket */
 
 import type { RuntimeEngine } from "./index";
+import {
+	getCommandId,
+	type RuntimeMessageStore,
+} from "./runtime-message-store";
 import type {
 	RuntimeWebSocketCommand,
 	RuntimeWebSocketOutgoingMessage,
@@ -11,7 +15,6 @@ import {
 	runtimeWebSocketHelloAckSchema,
 	runtimeWebSocketSubscribeStreamSchema,
 } from "./runtime-websocket-protocol";
-import { RuntimeMessageStore, getCommandId } from "./runtime-message-store";
 
 const SOCKET_OPEN = 1;
 
@@ -68,7 +71,8 @@ export function createWebSocketRuntimeTransport(options: {
 		upToDate: boolean;
 	}): void => {
 		const nextOffset =
-			input.items.at(-1)?.offset ?? options.store.getCurrentOffset(input.stream);
+			input.items.at(-1)?.offset ??
+			options.store.getCurrentOffset(input.stream);
 		send({
 			type: "stream_items",
 			stream: input.stream,
@@ -237,8 +241,7 @@ export function createWebSocketRuntimeTransport(options: {
 				}
 			}
 		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : String(error);
+			const message = error instanceof Error ? error.message : String(error);
 			options.store.failCommand(commandId, message);
 			send({
 				type: "response",

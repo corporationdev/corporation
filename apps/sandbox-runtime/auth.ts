@@ -75,7 +75,11 @@ async function writeCredentialsFile(
 	data: CredentialsFile
 ): Promise<void> {
 	await mkdir(dirname(credentialsPath), { recursive: true });
-	await writeFile(credentialsPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+	await writeFile(
+		credentialsPath,
+		`${JSON.stringify(data, null, 2)}\n`,
+		"utf8"
+	);
 }
 
 async function saveRuntimeCredentials(input: {
@@ -141,9 +145,7 @@ async function startLoginCallbackServer(expectedState: string): Promise<{
 		try {
 			const chunks: Uint8Array[] = [];
 			for await (const chunk of request) {
-				chunks.push(
-					typeof chunk === "string" ? Buffer.from(chunk) : chunk
-				);
+				chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
 			}
 			const body = Buffer.concat(chunks).toString("utf8");
 			const params = new URLSearchParams(body);
@@ -226,7 +228,9 @@ export async function loginWithBrowser(input: {
 	const clientId = crypto.randomUUID();
 	const state = crypto.randomUUID();
 	const callback = await startLoginCallbackServer(state);
-	const loginUrl = new URL(buildRuntimeApiUrl(input.serverUrl, "/api/runtime/login"));
+	const loginUrl = new URL(
+		buildRuntimeApiUrl(input.serverUrl, "/api/runtime/login")
+	);
 	loginUrl.search = new URLSearchParams({
 		callbackUrl: callback.callbackUrl,
 		clientId,

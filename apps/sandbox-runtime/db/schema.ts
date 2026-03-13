@@ -12,8 +12,7 @@ export const runtimeCommandStatusValues = [
 	"completed",
 	"failed",
 ] as const;
-export type RuntimeCommandStatus =
-	(typeof runtimeCommandStatusValues)[number];
+export type RuntimeCommandStatus = (typeof runtimeCommandStatusValues)[number];
 
 export const runtimeEventLog = sqliteTable(
 	"runtime_event_log",
@@ -55,9 +54,10 @@ export const runtimeCommandReceipts = sqliteTable(
 		input: text("input", { mode: "json" })
 			.notNull()
 			.$type<Record<string, unknown>>(),
-		result: text("result", { mode: "json" }).$type<
-			Record<string, unknown> | null
-		>(),
+		result: text("result", { mode: "json" }).$type<Record<
+			string,
+			unknown
+		> | null>(),
 		error: text("error"),
 		createdAt: integer("created_at", { mode: "number" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "number" }).notNull(),

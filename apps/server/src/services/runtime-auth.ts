@@ -13,10 +13,7 @@ import {
 const RUNTIME_REFRESH_TOKEN_TTL_SECONDS = 365 * 24 * 60 * 60;
 const RUNTIME_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
 
-function buildRuntimeSocketUrl(
-	serverUrl: string,
-	token: string
-) {
+function buildRuntimeSocketUrl(serverUrl: string, token: string) {
 	const url = new URL(serverUrl);
 	url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 	url.pathname = "/api/runtime/socket";

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import {
-	getEnvironmentStub,
 	type EnvironmentStubBinding,
+	getEnvironmentStub,
 } from "./environment-do/stub";
 
 type TestAppEnv = {

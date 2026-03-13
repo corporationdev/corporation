@@ -10,10 +10,7 @@ import {
 	loginWithBrowser,
 	resolveRuntimeWebSocketUrl,
 } from "./auth";
-import {
-	getDefaultRuntimeDatabasePath,
-	openRuntimeDatabase,
-} from "./db";
+import { getDefaultRuntimeDatabasePath, openRuntimeDatabase } from "./db";
 import { RuntimeEngine } from "./index";
 import { RuntimeMessageStore } from "./runtime-message-store";
 import { createWebSocketRuntimeTransport } from "./websocket-runtime-transport";

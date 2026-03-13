@@ -96,7 +96,9 @@ async function createTransportHarness(dbPath: string): Promise<{
 	};
 }
 
-async function dispatchCreateSessionAndPrompt(socket: FakeSocket): Promise<void> {
+async function dispatchCreateSessionAndPrompt(
+	socket: FakeSocket
+): Promise<void> {
 	socket.receive({
 		type: "create_session",
 		requestId: "req-1",

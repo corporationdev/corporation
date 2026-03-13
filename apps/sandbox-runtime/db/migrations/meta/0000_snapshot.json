@@ -75,18 +75,12 @@
       "indexes": {
         "runtime_command_receipts_stream_status_idx": {
           "name": "runtime_command_receipts_stream_status_idx",
-          "columns": [
-            "stream_key",
-            "status"
-          ],
+          "columns": ["stream_key", "status"],
           "isUnique": false
         },
         "runtime_command_receipts_stream_created_at_idx": {
           "name": "runtime_command_receipts_stream_created_at_idx",
-          "columns": [
-            "stream_key",
-            "created_at"
-          ],
+          "columns": ["stream_key", "created_at"],
           "isUnique": false
         }
       },
@@ -165,25 +159,17 @@
       "indexes": {
         "runtime_event_log_stream_sequence_unique": {
           "name": "runtime_event_log_stream_sequence_unique",
-          "columns": [
-            "stream_key",
-            "sequence"
-          ],
+          "columns": ["stream_key", "sequence"],
           "isUnique": true
         },
         "runtime_event_log_stream_created_at_idx": {
           "name": "runtime_event_log_stream_created_at_idx",
-          "columns": [
-            "stream_key",
-            "created_at"
-          ],
+          "columns": ["stream_key", "created_at"],
           "isUnique": false
         },
         "runtime_event_log_command_id_idx": {
           "name": "runtime_event_log_command_id_idx",
-          "columns": [
-            "command_id"
-          ],
+          "columns": ["command_id"],
           "isUnique": false
         }
       },

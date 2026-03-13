@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { RuntimeSession } from "./index";
-import type { RuntimeStreamOffset } from "./runtime-message-store";
 import type { RuntimeEvent } from "./runtime-events";
+import type { RuntimeStreamOffset } from "./runtime-message-store";
 import {
 	abortInputSchema,
 	createSessionInputSchema,
@@ -45,9 +45,7 @@ export const runtimeWebSocketHelloSchema = z.object({
 	type: z.literal("hello"),
 	runtime: z.literal("sandbox-runtime"),
 });
-export type RuntimeWebSocketHello = z.infer<
-	typeof runtimeWebSocketHelloSchema
->;
+export type RuntimeWebSocketHello = z.infer<typeof runtimeWebSocketHelloSchema>;
 
 export const runtimeWebSocketHelloAckSchema = z.object({
 	type: z.literal("hello_ack"),

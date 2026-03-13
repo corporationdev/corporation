@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import SignInForm from "@/components/sign-in-form";
 import Loader from "@/components/loader";
-import { authClient } from "@/lib/auth-client";
+import SignInForm from "@/components/sign-in-form";
 import { apiClient } from "@/lib/api-client";
+import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/runtime-login")({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -78,11 +78,12 @@ function RuntimeLoginPage() {
 		let cancelled = false;
 
 		void (async () => {
-				try {
-					const { refreshToken } =
-						await apiClient.runtimeAuth.createRefreshToken({
-							clientId: search.clientId,
-						});
+			try {
+				const { refreshToken } = await apiClient.runtimeAuth.createRefreshToken(
+					{
+						clientId: search.clientId,
+					}
+				);
 				if (cancelled) {
 					return;
 				}
@@ -103,13 +104,13 @@ function RuntimeLoginPage() {
 		return () => {
 			cancelled = true;
 		};
-		}, [
-			isValidRequest,
-			search.callbackUrl,
-			search.clientId,
-			search.state,
-			session?.user,
-		]);
+	}, [
+		isValidRequest,
+		search.callbackUrl,
+		search.clientId,
+		search.state,
+		session?.user,
+	]);
 
 	if (!isValidRequest) {
 		return (

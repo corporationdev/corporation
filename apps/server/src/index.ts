@@ -1,6 +1,7 @@
 import { app } from "./app";
-import { SpaceDurableObject as RawSpaceDurableObject } from "./space-do/object";
 import { EnvironmentDurableObject as RawEnvironmentDurableObject } from "./environment-do";
+import { SpaceDurableObject as RawSpaceDurableObject } from "./space-do/object";
+
 const worker = {
 	fetch(request: Request, env: Env, ctx: ExecutionContext) {
 		return app.fetch(request, env as never, ctx);

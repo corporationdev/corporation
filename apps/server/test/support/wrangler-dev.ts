@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -117,7 +117,7 @@ async function stopProcess(process: ChildProcess): Promise<void> {
 	process.kill("SIGTERM");
 	const result = await Promise.race([
 		waitForExit(process),
-		sleep(5_000).then(() => "timeout"),
+		sleep(5000).then(() => "timeout"),
 	]);
 	if (result === "timeout") {
 		process.kill("SIGKILL");

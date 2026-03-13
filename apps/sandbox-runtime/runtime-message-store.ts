@@ -1,16 +1,16 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { RuntimeDatabase } from "./db";
 import {
-	runtimeCommandReceipts,
-	runtimeEventLog,
 	type RuntimeCommandReceiptRow,
 	type RuntimeEventLogRow,
+	runtimeCommandReceipts,
+	runtimeEventLog,
 } from "./db/schema";
+import type { RuntimeEvent } from "./runtime-events";
 import type {
 	RuntimeWebSocketCommand,
 	RuntimeWebSocketResponse,
 } from "./runtime-websocket-protocol";
-import type { RuntimeEvent } from "./runtime-events";
 
 export type RuntimeEventEnvelope = {
 	commandId?: string;
@@ -226,7 +226,7 @@ export class RuntimeMessageStore {
 				)
 			)
 			.orderBy(runtimeEventLog.sequence)
-			.limit(input.limit ?? 1_000)
+			.limit(input.limit ?? 1000)
 			.all();
 
 		return rows.map((row) => this.toEventEnvelope(row));

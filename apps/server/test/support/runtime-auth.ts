@@ -1,8 +1,8 @@
+import { readFileSync } from "node:fs";
 import {
 	mintRuntimeAccessToken,
 	mintRuntimeRefreshToken,
 } from "@corporation/contracts/runtime-auth";
-import { readFileSync } from "node:fs";
 
 export const TEST_RUNTIME_AUTH_SECRET = "test-secret";
 const DEFAULT_TOKEN_TTL_SECONDS = 5 * 60;

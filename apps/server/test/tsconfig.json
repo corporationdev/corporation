@@ -7,9 +7,5 @@
       "node"
     ]
   },
-  "include": [
-    "../src/**/*.ts",
-    "./**/*.ts",
-    "../../../packages/env/env.d.ts"
-  ]
+  "include": ["../src/**/*.ts", "./**/*.ts", "../../../packages/env/env.d.ts"]
 }
