@@ -1,6 +1,5 @@
 import type {
 	EnvironmentRpcResult,
-	EnvironmentStreamSubscriber,
 	EnvironmentStreamSubscriptionSnapshot,
 	EnvironmentStreamSubscriptionState,
 	EnvironmentSubscribeStreamInput,
@@ -16,6 +15,18 @@ export class StreamSubscriptions {
 
 	clear(): void {
 		this.subscriptions.clear();
+	}
+
+	hydrate(
+		subscriptions: Array<{
+			stream: string;
+			subscription: EnvironmentStreamSubscriptionState;
+		}>
+	): void {
+		this.subscriptions.clear();
+		for (const entry of subscriptions) {
+			this.subscriptions.set(entry.stream, entry.subscription);
+		}
 	}
 
 	get(stream: string): EnvironmentStreamSubscriptionState | null {
@@ -45,21 +56,6 @@ export class StreamSubscriptions {
 			return errorResult("runtime_not_connected", "Runtime is not connected");
 		}
 
-		const existingSubscription = this.subscriptions.get(input.subscription.stream);
-		if (
-			existingSubscription &&
-			this.isSameSubscriber(
-				existingSubscription.subscriber,
-				input.subscription.subscriber
-			)
-		) {
-			this.subscriptions.set(input.subscription.stream, {
-				offset: input.subscription.offset,
-				subscriber: input.subscription.subscriber,
-			});
-			return okResult({});
-		}
-
 		input.forwardToRuntime({
 			stream: input.subscription.stream,
 			offset: input.subscription.offset,
@@ -74,16 +70,5 @@ export class StreamSubscriptions {
 	unsubscribe(input: EnvironmentUnsubscribeStreamInput): EnvironmentRpcResult<{}> {
 		this.subscriptions.delete(input.stream);
 		return okResult({});
-	}
-
-	private isSameSubscriber(
-		left: EnvironmentStreamSubscriber,
-		right: EnvironmentStreamSubscriber
-	): boolean {
-		return (
-			left.requesterId === right.requesterId &&
-			left.callback.binding === right.callback.binding &&
-			left.callback.name === right.callback.name
-		);
 	}
 }

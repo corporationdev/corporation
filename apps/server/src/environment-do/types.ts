@@ -195,6 +195,12 @@ export type EnvironmentStreamSubscriptionState = Readonly<{
 	subscriber: EnvironmentStreamSubscriber;
 }>;
 
+export type EnvironmentPersistedStreamSubscription = Readonly<{
+	stream: string;
+	lastPersistedOffset: EnvironmentStreamOffset;
+	subscriber: EnvironmentStreamSubscriber;
+}>;
+
 export type StreamConsumerStub = {
 	receiveEnvironmentStreamItems(
 		input: EnvironmentStreamDelivery

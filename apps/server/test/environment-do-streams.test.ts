@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { EnvironmentDurableObject } from "../src/environment-do";
 import type { TestStreamConsumerDurableObject } from "../src/test-stream-consumer-do";
@@ -279,6 +279,88 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 						requesterId: "requester-2",
 						callbackBinding: "TEST_STREAM_CONSUMER_DO",
 						callbackName: "consumer-2",
+					},
+				],
+			},
+		});
+	});
+
+	it("restores persisted subscriptions after in-memory state is cleared", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("stream-persisted-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		await connectRuntimeSocket(stub);
+
+		await expect(
+			stub.subscribeStream({
+				stream: "session:session-1",
+				offset: "5",
+				subscriber: {
+					callback: {
+						binding: "TEST_STREAM_CONSUMER_DO",
+						name: "consumer-1",
+					},
+					requesterId: "requester-1",
+				},
+			})
+		).resolves.toEqual({
+			ok: true,
+			value: {},
+		});
+
+		const snapshotResult = await runInDurableObject(stub, async (instance) => {
+			const environment = instance as unknown as EnvironmentDurableObject & {
+				streamSubscriptions: {
+					clear(): void;
+					hydrate(
+						subscriptions: Array<{
+							stream: string;
+							subscription: {
+								offset: string;
+								subscriber: {
+									requesterId: string;
+									callback: {
+										binding: string;
+										name: string;
+									};
+								};
+							};
+						}>
+					): void;
+				};
+				subscriptionStore: {
+					list(): Promise<
+						Array<{
+							stream: string;
+							subscription: {
+								offset: string;
+								subscriber: {
+									requesterId: string;
+									callback: {
+										binding: string;
+										name: string;
+									};
+								};
+							};
+						}>
+					>;
+				};
+			};
+			environment.streamSubscriptions.clear();
+			environment.streamSubscriptions.hydrate(
+				await environment.subscriptionStore.list()
+			);
+			return environment.getStreamSubscriptionsSnapshot();
+		});
+
+		expect(snapshotResult).toEqual({
+			ok: true,
+			value: {
+				subscriptions: [
+					{
+						stream: "session:session-1",
+						requesterId: "requester-1",
+						callbackBinding: "TEST_STREAM_CONSUMER_DO",
+						callbackName: "consumer-1",
 					},
 				],
 			},

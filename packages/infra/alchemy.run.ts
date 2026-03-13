@@ -50,6 +50,7 @@ const spaceDO = DurableObjectNamespace("space-do", {
 });
 const environmentDO = DurableObjectNamespace("environment-do", {
 	className: "EnvironmentDurableObject",
+	sqlite: true,
 });
 const serverHostname =
 	envTier === "dev" ? getStageServerHostname(stage) : undefined;

@@ -1,5 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import { createLogger } from "@corporation/logger";
+import { drizzle } from "drizzle-orm/durable-sqlite";
+import { migrate } from "drizzle-orm/durable-sqlite/migrator";
+import bundledMigrations from "./db/migrations";
+import { schema } from "./db/schema";
 import {
 	compareRuntimeAttachments,
 	parseRuntimeHelloMessage,
@@ -7,8 +11,9 @@ import {
 	parseRuntimeStreamItemsMessage,
 } from "./protocol";
 import { RuntimeCommandRouter } from "./runtime-command-router";
-import { forwardStreamItemsToSubscriber } from "./stream-delivery";
 import { StreamSubscriptions } from "./stream-subscriptions";
+import { forwardStreamItemsToSubscriber } from "./stream-delivery";
+import { EnvironmentSubscriptionStore } from "./subscription-store";
 import type {
 	EnvironmentDoCallbackBindings,
 	EnvironmentDoRuntimeConnectionsSnapshot,
@@ -63,14 +68,27 @@ export type {
 export class EnvironmentDurableObject extends DurableObject<Env> {
 	private activeRuntimeConnectionId: string | null = null;
 	private readonly commandRouter = new RuntimeCommandRouter();
+	private readonly ready: Promise<void>;
 	private readonly runtimeConnections = new Map<
 		string,
 		RuntimeSocketAttachment
 	>();
 	private readonly streamSubscriptions = new StreamSubscriptions();
+	private subscriptionStore!: EnvironmentSubscriptionStore;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
+		this.ready = this.initialize();
+		ctx.blockConcurrencyWhile(async () => {
+			await this.ready;
+		});
+	}
+
+	private async initialize(): Promise<void> {
+		const db = drizzle(this.ctx.storage, { schema });
+		await migrate(db, bundledMigrations);
+		this.subscriptionStore = new EnvironmentSubscriptionStore(db);
+		this.streamSubscriptions.hydrate(await this.subscriptionStore.list());
 		this.rebuildConnectionsFromHibernation();
 	}
 
@@ -145,10 +163,12 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		}
 	}
 
-	private getActiveRuntimeSocket(): {
-		socket: WebSocket;
-		attachment: RuntimeSocketAttachment;
-	} | null {
+	private getActiveRuntimeSocket():
+		| {
+				socket: WebSocket;
+				attachment: RuntimeSocketAttachment;
+		  }
+		| null {
 		const activeConnectionId = this.activeRuntimeConnectionId;
 		if (!activeConnectionId) {
 			return null;
@@ -175,7 +195,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			.map((attachment) => this.toRuntimeConnectionSnapshot(attachment));
 		const activeConnectionAttachment =
 			(this.activeRuntimeConnectionId
-				? (this.runtimeConnections.get(this.activeRuntimeConnectionId) ?? null)
+				? this.runtimeConnections.get(this.activeRuntimeConnectionId) ?? null
 				: null) ?? null;
 
 		return {
@@ -233,7 +253,8 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		});
 	}
 
-	fetch(request: Request): Response {
+	async fetch(request: Request): Promise<Response> {
+		await this.ready;
 		const url = new URL(request.url);
 		if (url.pathname === "/runtime/socket") {
 			return this.handleRuntimeSocketUpgrade(request);
@@ -346,7 +367,8 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		);
 	}
 
-	hasConnectedRuntime(): EnvironmentRpcResult<{ connected: boolean }> {
+	async hasConnectedRuntime(): Promise<EnvironmentRpcResult<{ connected: boolean }>> {
+		await this.ready;
 		return {
 			ok: true,
 			value: {
@@ -355,9 +377,12 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	getRuntimeConnectionsSnapshot(): EnvironmentRpcResult<{
-		snapshot: EnvironmentDoRuntimeConnectionsSnapshot;
-	}> {
+	async getRuntimeConnectionsSnapshot(): Promise<
+		EnvironmentRpcResult<{
+			snapshot: EnvironmentDoRuntimeConnectionsSnapshot;
+		}>
+	> {
+		await this.ready;
 		return {
 			ok: true,
 			value: {
@@ -366,9 +391,12 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	getStreamSubscriptionsSnapshot(): EnvironmentRpcResult<{
-		subscriptions: EnvironmentStreamSubscriptionSnapshot[];
-	}> {
+	async getStreamSubscriptionsSnapshot(): Promise<
+		EnvironmentRpcResult<{
+			subscriptions: EnvironmentStreamSubscriptionSnapshot[];
+		}>
+	> {
+		await this.ready;
 		return {
 			ok: true,
 			value: {
@@ -377,21 +405,25 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	sendRuntimeCommand(command: EnvironmentRuntimeCommand): Promise<
+	async sendRuntimeCommand(
+		command: EnvironmentRuntimeCommand
+	): Promise<
 		EnvironmentRpcResult<{
 			response: EnvironmentRuntimeCommandResponse;
 		}>
 	> {
+		await this.ready;
 		return this.commandRouter.sendCommand({
 			command,
 			getActiveRuntimeSocket: () => this.getActiveRuntimeSocket(),
 		});
 	}
 
-	subscribeStream(
+	async subscribeStream(
 		input: EnvironmentSubscribeStreamInput
-	): EnvironmentRpcResult<{}> {
-		return this.streamSubscriptions.subscribe({
+	): Promise<EnvironmentRpcResult<{}>> {
+		await this.ready;
+		const result = this.streamSubscriptions.subscribe({
 			activeRuntimeConnected: this.activeRuntimeConnectionId !== null,
 			forwardToRuntime: ({ stream, offset }) => {
 				const activeRuntime = this.getActiveRuntimeSocket();
@@ -408,11 +440,24 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			},
 			subscription: input,
 		});
+		if (result.ok) {
+			await this.subscriptionStore.upsert({
+				stream: input.stream,
+				lastPersistedOffset: input.offset,
+				subscriber: input.subscriber,
+			});
+		}
+		return result;
 	}
 
-	unsubscribeStream(
+	async unsubscribeStream(
 		input: EnvironmentUnsubscribeStreamInput
-	): EnvironmentRpcResult<{}> {
-		return this.streamSubscriptions.unsubscribe(input);
+	): Promise<EnvironmentRpcResult<{}>> {
+		await this.ready;
+		const result = this.streamSubscriptions.unsubscribe(input);
+		if (result.ok) {
+			await this.subscriptionStore.delete(input.stream);
+		}
+		return result;
 	}
 }
