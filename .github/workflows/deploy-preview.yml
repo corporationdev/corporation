@@ -61,7 +61,7 @@ jobs:
         working-directory: packages/backend
 
       - name: Sync Convex environment variables
-        run: bun run sync-convex-env.ts
+        run: npx convex env set --preview-name "$STAGE" --force --from-file .env
         working-directory: packages/backend
 
       - name: Restore preview data from previous deployment

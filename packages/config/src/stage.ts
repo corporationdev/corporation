@@ -3,11 +3,11 @@ import { hostname } from "node:os";
 import type {
 	EnvTier as DerivedEnvTier,
 	StageKind as DerivedStageKind,
-} from "./stage-kind";
+} from "@tendril/config/stage-kind";
 import {
 	deriveEnvTier as deriveEnvTierFromStageKind,
 	getStageKind as getStageKindFromStageKind,
-} from "./stage-kind";
+} from "@tendril/config/stage-kind";
 
 export type StageMode = "dev" | "sandbox";
 
