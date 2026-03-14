@@ -144,9 +144,9 @@ const SpaceListItem: FC<{
 	});
 	const isActive = match?.params.spaceSlug === slug;
 
-	const archiveSpace = useMutation(api.spaces.archive);
+	const updateSpace = useMutation(api.spaces.update);
 	const archiveMutation = useTanstackMutation({
-		mutationFn: () => archiveSpace({ id }),
+		mutationFn: () => updateSpace({ id, archived: true }),
 		onSuccess: () => {
 			if (isActive) {
 				navigate({ to: "/" });

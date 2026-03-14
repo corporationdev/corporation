@@ -34,7 +34,7 @@ export const Route = createFileRoute("/_authenticated/")({
 
 type ProjectListItem = FunctionReturnType<typeof api.projects.list>[number];
 type EnvironmentListItem = FunctionReturnType<
-	typeof api.environments.listForUser
+	typeof api.environments.list
 >[number];
 
 type BackingSelection =
@@ -48,7 +48,7 @@ function AuthenticatedIndex() {
 	const navigate = useNavigate();
 	const setMessage = usePendingMessageStore((s) => s.setMessage);
 	const projects = useQuery(api.projects.list);
-	const environments = useQuery(api.environments.listForUser);
+	const environments = useQuery(api.environments.list);
 	const createSpace = useMutation(api.spaces.create);
 	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
 	const attachEnvironment = useMutation(api.spaces.attachEnvironment);

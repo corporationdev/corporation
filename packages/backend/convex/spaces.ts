@@ -45,24 +45,36 @@ export const list = authedQuery({
 });
 
 export const listByProject = authedQuery({
-	args: { projectId: v.id("projects") },
-	handler: async (ctx, args) => {
-		requireProjectInActiveOrg(
-			await ctx.db.get(args.projectId),
-			ctx.activeOrganizationId,
-			"Project"
-		);
-
+	args: {},
+	handler: async (ctx) => {
 		const spaces = await ctx.db
 			.query("spaces")
-			.withIndex("by_user_and_project", (q) =>
-				q.eq("userId", ctx.userId).eq("projectId", args.projectId)
-			)
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
 			.collect();
 
-		return spaces
+		const activeSpaces = spaces
 			.filter((s) => !s.archived)
 			.sort((a, b) => b.updatedAt - a.updatedAt);
+
+		const projectIds = [...new Set(activeSpaces.map((s) => s.projectId))];
+		const projects = (
+			await asyncMap(projectIds, (id) => ctx.db.get(id))
+		).filter((p): p is Doc<"projects"> => p !== null);
+
+		return projects
+			.filter((p) => {
+				try {
+					requireProjectInActiveOrg(p, ctx.activeOrganizationId, "Project");
+					return true;
+				} catch {
+					return false;
+				}
+			})
+			.map((project) => ({
+				project,
+				spaces: activeSpaces.filter((s) => s.projectId === project._id),
+			}))
+			.filter((group) => group.spaces.length > 0);
 	},
 });
 
