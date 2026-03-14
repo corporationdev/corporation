@@ -41,7 +41,7 @@ jobs:
           env-tier: preview
 
       - name: Destroy Alchemy resources
-        run: bun run --filter @corporation/infra destroy
+        run: bun run --filter @tendril/infra destroy
 
       - name: Delete Convex preview deployment
         if: ${{ always() }}

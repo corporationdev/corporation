@@ -1,7 +1,7 @@
-import { api } from "@corporation/backend/convex/_generated/api";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
 import { useMutation as useConvexMutation } from "convex/react";
 import { Check, Github, Search } from "lucide-react";
 import { useState } from "react";

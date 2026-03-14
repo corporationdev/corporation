@@ -2,8 +2,8 @@ import type {
 	EnvironmentRpcResult,
 	EnvironmentStreamConsumer,
 	EnvironmentStreamDeliveryAck,
-} from "@corporation/contracts/environment-do";
-import type { EnvironmentRuntimeStreamItemsMessage as RuntimeStreamItemsMessage } from "@corporation/contracts/environment-runtime";
+} from "@tendril/contracts/environment-do";
+import type { EnvironmentRuntimeStreamItemsMessage as RuntimeStreamItemsMessage } from "@tendril/contracts/environment-runtime";
 import type {
 	EnvironmentDoCallbackBindings,
 	EnvironmentStreamSubscriptionState,

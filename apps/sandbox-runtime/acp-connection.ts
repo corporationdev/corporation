@@ -11,7 +11,7 @@ import {
 	zRequestPermissionRequest,
 	zSessionNotification,
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
-import type { AcpEnvelope } from "@corporation/contracts/sandbox-do";
+import type { AcpEnvelope } from "@tendril/contracts/sandbox-do";
 import type {
 	AcpConnection,
 	AcpConnectionFactory,

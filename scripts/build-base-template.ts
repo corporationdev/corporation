@@ -7,7 +7,7 @@
 // Reads E2B_API_KEY from apps/server/.env automatically.
 
 import { resolve } from "node:path";
-import acpAgents from "@corporation/config/acp-agent-manifest";
+import acpAgents from "@tendril/config/acp-agent-manifest";
 import { config } from "dotenv";
 import { defaultBuildLogger, Template } from "e2b";
 
@@ -69,7 +69,7 @@ let template = Template({ fileContextPath: repoRoot })
 		`mkdir -p ${SANDBOX_WORKDIR} && chown ${SANDBOX_USER}:${SANDBOX_USER} ${SANDBOX_WORKDIR}`
 	)
 	.runCmd(
-		`mkdir -p /home/${SANDBOX_USER}/.local/bin /home/${SANDBOX_USER}/.local/share/corporation && chown -R ${SANDBOX_USER}:${SANDBOX_USER} /home/${SANDBOX_USER}/.local`
+		`mkdir -p /home/${SANDBOX_USER}/.local/bin /home/${SANDBOX_USER}/.local/share/tendril && chown -R ${SANDBOX_USER}:${SANDBOX_USER} /home/${SANDBOX_USER}/.local`
 	)
 	.setUser(SANDBOX_USER)
 	.setWorkdir(SANDBOX_WORKDIR)
@@ -88,14 +88,14 @@ for (const command of installCommands) {
 
 console.log("Building base template…");
 
-const result = await Template.build(template, "corporation-base", {
+const result = await Template.build(template, "tendril-base", {
 	apiKey,
 	onBuildLogs: defaultBuildLogger(),
 });
 
 console.log("\nTemplate built successfully!");
 console.log("Template ID:", result.templateId);
-console.log("Alias:      ", "corporation-base");
+console.log("Alias:      ", "tendril-base");
 console.log(
 	"\nSet E2B_BASE_TEMPLATE_ID in your environment to use this template for snapshot builds."
 );

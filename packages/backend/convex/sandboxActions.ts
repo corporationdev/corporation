@@ -70,20 +70,20 @@ export const provisionForSpace = internalAction({
 				externalSandboxId: e2bSandbox.sandboxId,
 			});
 
-			// 2. Install corporation CLI
-			await runWorkspaceCommand(e2bSandbox, "npm install -g corporation", {
+			// 2. Install tendril CLI
+			await runWorkspaceCommand(e2bSandbox, "npm install -g tendril", {
 				cwd: SANDBOX_WORKDIR,
 			});
 
 			// 3. Auth (mock for now)
-			await runWorkspaceCommand(e2bSandbox, "corporation auth mock-token", {
+			await runWorkspaceCommand(e2bSandbox, "tendril auth mock-token", {
 				cwd: SANDBOX_WORKDIR,
 			});
 
 			// 4. Connect to environment
 			await runWorkspaceCommand(
 				e2bSandbox,
-				`corporation connect ${environment.connectionId}`,
+				`tendril connect ${environment.connectionId}`,
 				{ cwd: SANDBOX_WORKDIR }
 			);
 

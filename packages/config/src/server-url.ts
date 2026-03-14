@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { getStageKind } from "@corporation/config/stage";
+import { getStageKind } from "@tendril/config/stage";
 
-const ROOT_DOMAIN = "corporation.dev";
+const ROOT_DOMAIN = "tendril.sh";
 const SERVER_LABEL_PREFIX = "server-";
 const MAX_DNS_LABEL_LENGTH = 63;
 const HASH_LENGTH = 8;

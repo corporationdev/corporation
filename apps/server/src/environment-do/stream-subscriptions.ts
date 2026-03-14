@@ -2,7 +2,7 @@ import type {
 	EnvironmentRpcResult,
 	EnvironmentStreamOffset,
 	EnvironmentUnsubscribeStreamInput,
-} from "@corporation/contracts/environment-do";
+} from "@tendril/contracts/environment-do";
 import type {
 	EmptyResult,
 	EnvironmentStreamSubscriptionSnapshot,

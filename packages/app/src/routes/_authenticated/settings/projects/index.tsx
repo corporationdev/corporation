@@ -1,6 +1,6 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { Github, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";

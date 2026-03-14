@@ -1,11 +1,11 @@
 import type {
 	EnvironmentRpcError,
 	EnvironmentRpcResult,
-} from "@corporation/contracts/environment-do";
+} from "@tendril/contracts/environment-do";
 import type {
 	EnvironmentRuntimeCommand,
 	EnvironmentRuntimeCommandResponse,
-} from "@corporation/contracts/environment-runtime";
+} from "@tendril/contracts/environment-runtime";
 import type { RuntimeSocketAttachment } from "./types";
 import { errorResult, okResult } from "./types";
 

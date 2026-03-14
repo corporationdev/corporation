@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AgentSelectorOption } from "@/lib/agent-config-options";
 
-const STORAGE_KEY = "corporation:agent-model-selection";
+const STORAGE_KEY = "tendril:agent-model-selection";
 const STORAGE_VERSION = 1;
 
 type StoredSelection = {

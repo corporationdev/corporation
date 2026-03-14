@@ -1,5 +1,5 @@
 {
-  "name": "@corporation/infra",
+  "name": "@tendril/infra",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "dotenv": "catalog:"
   },
   "devDependencies": {
-    "@corporation/config": "workspace:*",
+    "@tendril/config": "workspace:*",
     "@types/node": "catalog:",
     "alchemy": "catalog:",
     "typescript": "catalog:"

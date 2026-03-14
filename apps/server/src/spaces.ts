@@ -1,7 +1,7 @@
 import {
 	createSessionInputSchema,
 	respondToPermissionInputSchema,
-} from "@corporation/contracts/browser-space";
+} from "@tendril/contracts/browser-space";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthVariables, authMiddleware } from "./auth";

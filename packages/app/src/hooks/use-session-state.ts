@@ -1,7 +1,7 @@
-import type { SessionStreamFrame } from "@corporation/contracts/browser-do";
-import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
+import type { SessionStreamFrame } from "@tendril/contracts/browser-do";
+import { env } from "@tendril/env/web";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {

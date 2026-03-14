@@ -20,7 +20,6 @@ function slugifyOrganizationName(name: string, userId: string) {
 }
 
 const webUrl = process.env.WEB_URL ?? "";
-const convexSiteUrl = process.env.CONVEX_SITE_URL;
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
 	Boolean
@@ -64,14 +63,14 @@ async function sendOrganizationInvitationEmail(data: {
 	const inviterName = data.inviter.user.name?.trim() || data.inviter.user.email;
 	const subject = `${inviterName} invited you to join ${data.organization.name}`;
 	const text = [
-		`${inviterName} invited you to join ${data.organization.name} on corporation.`,
+		`${inviterName} invited you to join ${data.organization.name} on tendril.`,
 		"",
 		`Role: ${data.role}`,
 		`Accept invitation: ${invitationUrl.toString()}`,
 	].join("\n");
 	const html = `
 		<div style="font-family: sans-serif; line-height: 1.6; color: #111827;">
-			<p><strong>${inviterName}</strong> invited you to join <strong>${data.organization.name}</strong> on corporation.</p>
+			<p><strong>${inviterName}</strong> invited you to join <strong>${data.organization.name}</strong> on tendril.</p>
 			<p>Role: <strong>${data.role}</strong></p>
 			<p>
 				<a href="${invitationUrl.toString()}" style="display: inline-block; padding: 10px 14px; background: #111827; color: #ffffff; text-decoration: none;">
@@ -131,7 +130,6 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 
 export function createAuthOptions(ctx: GenericCtx<DataModel>) {
 	return {
-		...(convexSiteUrl ? { baseURL: `${convexSiteUrl}/api/auth` } : {}),
 		trustedOrigins,
 		database: authComponent.adapter(ctx),
 		databaseHooks: {

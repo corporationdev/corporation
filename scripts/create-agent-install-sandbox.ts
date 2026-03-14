@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import acpAgents from "@corporation/config/acp-agent-manifest";
+import acpAgents from "@tendril/config/acp-agent-manifest";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
 
@@ -17,7 +17,7 @@ config({
 });
 
 const apiKey = process.env.E2B_API_KEY;
-const template = process.env.E2B_BASE_TEMPLATE_ID || "corporation-base";
+const template = process.env.E2B_BASE_TEMPLATE_ID || "tendril-base";
 const installConcurrency = Math.max(
 	1,
 	Number.parseInt(process.env.AGENT_INSTALL_CONCURRENCY || "4", 10) || 4

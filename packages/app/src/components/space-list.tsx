@@ -1,7 +1,7 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation as useTanstackMutation } from "@tanstack/react-query";
 import { useMatch, useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -12,7 +12,7 @@ import { SpaceContextMenu } from "@/components/space-context-menu";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const RECENT_PROJECT_STORAGE_KEY = "corporation:recent-project";
+const RECENT_PROJECT_STORAGE_KEY = "tendril:recent-project";
 
 type GroupedSpaceListItem = FunctionReturnType<
 	typeof api.spaces.listByProject

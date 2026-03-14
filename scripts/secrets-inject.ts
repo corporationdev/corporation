@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { deriveEnvTier, resolveStage } from "@corporation/config/stage";
+import { deriveEnvTier, resolveStage } from "@tendril/config/stage";
 import { $ } from "bun";
 import { parse as parseDotEnv } from "dotenv";
 
@@ -28,7 +28,7 @@ if (useSandbox && useDev) {
 const stage = resolveStage(useSandbox ? "sandbox" : "dev");
 const tier = deriveEnvTier(stage);
 
-const tempDirectory = mkdtempSync(join(tmpdir(), "corporation-op-"));
+const tempDirectory = mkdtempSync(join(tmpdir(), "tendril-op-"));
 const resolvedTemplatePath = resolve(tempDirectory, ".env.resolved");
 
 const template = readFileSync(templatePath, "utf8");

@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "catalog:",
-    "@corporation/config": "workspace:*",
-    "@corporation/contracts": "workspace:*",
+    "@tendril/config": "workspace:*",
+    "@tendril/contracts": "workspace:*",
     "@effect/platform-bun": "catalog:",
     "@hono/zod-validator": "^0.7.6",
     "@modelcontextprotocol/sdk": "^1.12.1",

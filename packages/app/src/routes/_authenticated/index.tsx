@@ -1,6 +1,6 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -35,7 +35,7 @@ type BackingSelection =
 	| { type: "sandbox" }
 	| { type: "existing"; environmentId: Id<"environments"> };
 
-const RECENT_PROJECT_STORAGE_KEY = "corporation:recent-project";
+const RECENT_PROJECT_STORAGE_KEY = "tendril:recent-project";
 const SANDBOX_KEY = "sandbox";
 
 function AuthenticatedIndex() {

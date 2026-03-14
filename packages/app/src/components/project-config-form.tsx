@@ -1,7 +1,7 @@
 import {
 	validateSecretName as validateName,
 	validateSecretValue as validateValue,
-} from "@corporation/shared/secrets";
+} from "@tendril/shared/secrets";
 import { PencilLine, Plus, Trash2, X } from "lucide-react";
 import type React from "react";
 import { useState } from "react";

@@ -29,7 +29,7 @@ type RuntimeRefreshTokenResponse = {
 
 const DEFAULT_CREDENTIALS_PATH = join(
 	homedir(),
-	".corporation",
+	".tendril",
 	"credentials.json"
 );
 

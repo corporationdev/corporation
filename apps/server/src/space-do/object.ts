@@ -2,8 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import type {
 	SessionStreamFrame,
 	SessionStreamState,
-} from "@corporation/contracts/browser-do";
-import { sessionEventSchema } from "@corporation/contracts/browser-do";
+} from "@tendril/contracts/browser-do";
+import { sessionEventSchema } from "@tendril/contracts/browser-do";
 import type {
 	AbortSessionInput,
 	CreateSessionInput,
@@ -12,14 +12,14 @@ import type {
 	PromptSessionInput,
 	RespondToPermissionInput,
 	SpaceSessionRow,
-} from "@corporation/contracts/browser-space";
+} from "@tendril/contracts/browser-space";
 import type {
 	EnvironmentRpcErrorCode,
 	EnvironmentRpcResult,
 	EnvironmentStreamDelivery,
 	EnvironmentStreamDeliveryAck,
-} from "@corporation/contracts/environment-do";
-import type { EnvironmentRuntimeCommandResponse } from "@corporation/contracts/environment-runtime";
+} from "@tendril/contracts/environment-do";
+import type { EnvironmentRuntimeCommandResponse } from "@tendril/contracts/environment-runtime";
 import { eq, isNull } from "drizzle-orm";
 import {
 	type DrizzleSqliteDODatabase,

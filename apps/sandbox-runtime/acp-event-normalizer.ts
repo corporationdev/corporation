@@ -25,7 +25,7 @@ import type {
 	SessionEvent,
 	ToolContent,
 	ToolLocation,
-} from "@corporation/contracts/session-event";
+} from "@tendril/contracts/session-event";
 
 function normalizeContent(content: ContentBlock): Content {
 	switch (content.type) {

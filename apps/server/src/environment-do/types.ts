@@ -6,8 +6,8 @@ import type {
 	EnvironmentStreamSubscriber as SharedEnvironmentStreamSubscriber,
 	EnvironmentStreamSubscriptionSnapshot as SharedEnvironmentStreamSubscriptionSnapshot,
 	EnvironmentSubscribeStreamInput as SharedEnvironmentSubscribeStreamInput,
-} from "@corporation/contracts/environment-do";
-import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
+} from "@tendril/contracts/environment-do";
+import type { RuntimeAccessTokenClaims } from "@tendril/contracts/runtime-auth";
 
 export type RuntimeConnectionAuthState = {
 	authToken: string;

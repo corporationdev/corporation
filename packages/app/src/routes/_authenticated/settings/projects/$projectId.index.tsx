@@ -1,8 +1,9 @@
 // biome-ignore-all lint/style/useFilenamingConvention: TanStack Router uses `$` for dynamic route params
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowLeft, LaptopIcon, Loader2, Trash2 } from "lucide-react";

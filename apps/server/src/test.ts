@@ -1,4 +1,4 @@
-import type { CreateSessionInput } from "@corporation/contracts/browser-space";
+import type { CreateSessionInput } from "@tendril/contracts/browser-space";
 import { Hono } from "hono";
 import {
 	type EnvironmentStubBinding,

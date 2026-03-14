@@ -2,7 +2,7 @@ import type {
 	RequestPermissionOutcome,
 	StopReason,
 } from "@agentclientprotocol/sdk";
-import type { SessionEvent } from "@corporation/contracts/session-event";
+import type { SessionEvent } from "@tendril/contracts/session-event";
 
 export type SessionId = string;
 export type TurnId = string;
@@ -116,7 +116,7 @@ export type RuntimeSession = Readonly<{
 
 export type RuntimeTurn = Readonly<TurnState>;
 
-export type { SessionEvent } from "@corporation/contracts/session-event";
+export type { SessionEvent } from "@tendril/contracts/session-event";
 export type {
 	RuntimeWebSocketTransport,
 	WebSocketLike,

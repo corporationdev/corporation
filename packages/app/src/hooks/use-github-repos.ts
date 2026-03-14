@@ -1,5 +1,5 @@
-import { api } from "@corporation/backend/convex/_generated/api";
 import { useQuery } from "@tanstack/react-query";
+import { api } from "@tendril/backend/convex/_generated/api";
 import { useQuery as useConvexQuery } from "convex/react";
 import { type GitHubRepository, listGitHubRepos } from "@/lib/api-client";
 

@@ -1,4 +1,4 @@
-import type { SessionStreamState } from "@corporation/contracts/browser-do";
+import type { SessionStreamState } from "@tendril/contracts/browser-do";
 import { getSpaceStub } from "../space-do/stub";
 
 type StreamReadResult = {

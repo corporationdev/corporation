@@ -5,4 +5,4 @@ export type {
 	SessionStreamEventFrame,
 	SessionStreamFrame,
 	SessionStreamState,
-} from "@corporation/contracts/browser-do";
+} from "@tendril/contracts/browser-do";

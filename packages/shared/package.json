@@ -1,5 +1,5 @@
 {
-  "name": "@corporation/shared",
+  "name": "@tendril/shared",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@corporation/config": "workspace:*",
+    "@tendril/config": "workspace:*",
     "typescript": "catalog:"
   }
 }

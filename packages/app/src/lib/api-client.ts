@@ -1,11 +1,11 @@
-import type { SessionStreamState } from "@corporation/contracts/browser-do";
+import type { SessionStreamState } from "@tendril/contracts/browser-do";
 import type {
 	CreateSessionInput,
 	CreateSessionResult,
 	SpaceSessionRow,
-} from "@corporation/contracts/browser-space";
-import { env } from "@corporation/env/web";
-import type { AppType } from "@corporation/server/app";
+} from "@tendril/contracts/browser-space";
+import { env } from "@tendril/env/web";
+import type { AppType } from "@tendril/server/app";
 import { hc } from "hono/client";
 import { authClient } from "./auth-client";
 import { toAbsoluteUrl } from "./url";

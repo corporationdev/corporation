@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import type { AcpAgentManifestEntry } from "@corporation/config/acp-agent-manifest";
-import acpAgentManifest from "@corporation/config/acp-agent-manifest";
+import type { AcpAgentManifestEntry } from "@tendril/config/acp-agent-manifest";
+import acpAgentManifest from "@tendril/config/acp-agent-manifest";
 
 const HOME_DIR = process.env.HOME || "/home/user";
 

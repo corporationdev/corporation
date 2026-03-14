@@ -1,6 +1,6 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import { ArchiveIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FC, type ReactNode, useEffect, useRef, useState } from "react";

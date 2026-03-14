@@ -1,5 +1,5 @@
-import { api } from "@corporation/backend/convex/_generated/api";
 import { useMatch, useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useQuery } from "convex/react";
 import { HistoryIcon, PanelRightIcon, PlusIcon } from "lucide-react";
@@ -23,7 +23,7 @@ import { WorkspacePanel } from "@/components/workspace-panel/workspace-panel";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
 import { cn } from "@/lib/utils";
 
-const WORKSPACE_PANEL_OPEN_KEY = "corporation:workspace-panel-open";
+const WORKSPACE_PANEL_OPEN_KEY = "tendril:workspace-panel-open";
 
 export function SpaceLayout() {
 	const match = useMatch({ from: "/_authenticated/space_/$spaceSlug" });

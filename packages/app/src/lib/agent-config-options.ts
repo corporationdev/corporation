@@ -1,5 +1,5 @@
-import acpAgents from "@corporation/config/acp-agent-manifest";
-import type { AgentProbeAgent } from "@corporation/contracts/sandbox-do";
+import acpAgents from "@tendril/config/acp-agent-manifest";
+import type { AgentProbeAgent } from "@tendril/contracts/sandbox-do";
 
 type DerivedAgentModel = {
 	id: string;

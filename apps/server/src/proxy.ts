@@ -1,6 +1,6 @@
-import { resolveProxyIntegrationForUrl } from "@corporation/config/proxy-integrations";
-import { verifyRuntimeAccessToken } from "@corporation/contracts/runtime-auth";
 import { Nango } from "@nangohq/node";
+import { resolveProxyIntegrationForUrl } from "@tendril/config/proxy-integrations";
+import { verifyRuntimeAccessToken } from "@tendril/contracts/runtime-auth";
 import { Hono } from "hono";
 import { z } from "zod";
 import { verifyAuthToken } from "./auth";

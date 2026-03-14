@@ -2,7 +2,7 @@ import {
 	runtimeAuthSessionRequestSchema,
 	runtimeRefreshTokenRequestSchema,
 	verifyRuntimeAccessToken,
-} from "@corporation/contracts/runtime-auth";
+} from "@tendril/contracts/runtime-auth";
 import { Hono } from "hono";
 import { verifyAuthToken } from "./auth";
 import {

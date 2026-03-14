@@ -1,4 +1,4 @@
-import type { EnvironmentStreamOffset } from "@corporation/contracts/environment-do";
+import type { EnvironmentStreamOffset } from "@tendril/contracts/environment-do";
 import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import { environmentStreamSubscriptions } from "./db/schema";

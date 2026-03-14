@@ -1,8 +1,8 @@
 import type {
 	EnvironmentRuntimeCommand as RuntimeWebSocketCommand,
 	EnvironmentRuntimeCommandResponse as RuntimeWebSocketResponse,
-} from "@corporation/contracts/environment-runtime";
-import type { SessionEvent } from "@corporation/contracts/session-event";
+} from "@tendril/contracts/environment-runtime";
+import type { SessionEvent } from "@tendril/contracts/session-event";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { RuntimeDatabase } from "./db";
 import {

@@ -21,8 +21,8 @@ const SHARED_OUTPUT_PATH = resolve(
 
 const SANDBOX_HOME = "$HOME";
 const USER_BIN_DIR = `${SANDBOX_HOME}/.local/bin`;
-const NATIVE_ROOT_DIR = `${SANDBOX_HOME}/.local/share/corporation/native`;
-const ACP_ROOT_DIR = `${SANDBOX_HOME}/.local/share/corporation/acp`;
+const NATIVE_ROOT_DIR = `${SANDBOX_HOME}/.local/share/tendril/native`;
+const ACP_ROOT_DIR = `${SANDBOX_HOME}/.local/share/tendril/acp`;
 const ACP_PLATFORM = "linux-x86_64";
 const SCOPED_PACKAGE_SPEC_RE = /^(@[^/]+\/[^@]+)(?:@(.+))?$/;
 const UNSCOPED_PACKAGE_SPEC_RE = /^([^@]+)(?:@(.+))?$/;
@@ -527,10 +527,10 @@ function buildInstallCommand(agent: {
 		`export PATH="${USER_BIN_DIR}:$PATH"`,
 		agent.nativeInstallCommand,
 		agent.acpInstallCommand
-			? `(${agent.acpInstallCommand}) >/tmp/corporation-acp-${agent.id}.log 2>&1 &`
+			? `(${agent.acpInstallCommand}) >/tmp/tendril-acp-${agent.id}.log 2>&1 &`
 			: null,
 		agent.acpInstallCommand
-			? `printf "Preparing ${agent.name} ACP runtime in the background. Logs: /tmp/corporation-acp-${agent.id}.log\\n"`
+			? `printf "Preparing ${agent.name} ACP runtime in the background. Logs: /tmp/tendril-acp-${agent.id}.log\\n"`
 			: null,
 	];
 

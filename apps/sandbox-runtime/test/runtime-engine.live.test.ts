@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import crypto from "node:crypto";
 import { AGENT_METHODS, type PromptResponse } from "@agentclientprotocol/sdk";
-import type { SessionEvent } from "@corporation/contracts/session-event";
+import type { SessionEvent } from "@tendril/contracts/session-event";
 import { createSpawnedAcpConnectionFactory } from "../acp-connection";
 import {
 	type AcpConnection,

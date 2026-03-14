@@ -16,8 +16,8 @@ type ProjectDetails = {
 
 const DEFAULT_API_BASE_URL = "https://api.convex.dev/v1";
 const DEFAULT_ENV_FILE = ".env";
-const CONVEX_TEAM_SLUG = "corporation";
-const CONVEX_PROJECT_SLUG = "corporation";
+const CONVEX_TEAM_SLUG = "tendril";
+const CONVEX_PROJECT_SLUG = "tendril";
 
 const argv = process.argv.slice(2);
 const clearAll = argv.includes("--all");

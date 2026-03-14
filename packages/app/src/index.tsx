@@ -1,7 +1,7 @@
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
-import { env } from "@corporation/env/web";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
+import { env } from "@tendril/env/web";
 import { ConvexReactClient } from "convex/react";
 
 import Loader from "@/components/loader";

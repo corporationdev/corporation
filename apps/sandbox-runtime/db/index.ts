@@ -9,7 +9,7 @@ import { schema } from "./schema";
 
 const DEFAULT_RUNTIME_DATABASE_PATH = join(
 	homedir(),
-	".corporation",
+	".tendril",
 	"sandbox-runtime",
 	"runtime.sqlite"
 );

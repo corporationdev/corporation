@@ -1,4 +1,4 @@
-# corporation
+# tendril
 
 ## Env Setup
 
@@ -102,7 +102,7 @@ That command builds the package staging layout locally, syncs it directly into t
 ## Project Structure
 
 ```
-corporation/
+tendril/
 ├── apps/
 │   ├── web/         # Frontend application (React + TanStack Router)
 ├── packages/

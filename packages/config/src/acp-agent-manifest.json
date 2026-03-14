@@ -14,12 +14,12 @@
     },
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/claude-acp.svg",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0'",
+    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/tendril/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/tendril/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0'",
     "runtimeCommand": {
-      "command": "$HOME/.local/share/corporation/acp/npm/claude-acp/bin/claude-agent-acp",
+      "command": "$HOME/.local/share/tendril/acp/npm/claude-acp/bin/claude-agent-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/corporation/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/corporation/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0') >/tmp/corporation-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/corporation-acp-claude-acp.log\\n\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/tendril/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/tendril/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0') >/tmp/tendril-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/tendril-acp-claude-acp.log\\n\"",
     "installSource": "https://docs.anthropic.com/en/docs/claude-code/setup",
     "credentialBundle": {
       "schemaVersion": 1,
@@ -78,12 +78,12 @@
     },
     "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/codex-acp.svg",
     "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @openai/codex",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\"",
+    "acpInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/tendril/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\"",
     "runtimeCommand": {
-      "command": "$HOME/.local/share/corporation/acp/codex-acp/0.9.5/codex-acp",
+      "command": "$HOME/.local/share/tendril/acp/codex-acp/0.9.5/codex-acp",
       "args": []
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @openai/codex\n(mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/corporation/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\") >/tmp/corporation-acp-codex-acp.log 2>&1 &\nprintf \"Preparing Codex CLI ACP runtime in the background. Logs: /tmp/corporation-acp-codex-acp.log\\n\"",
+    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @openai/codex\n(mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/tendril/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\") >/tmp/tendril-acp-codex-acp.log 2>&1 &\nprintf \"Preparing Codex CLI ACP runtime in the background. Logs: /tmp/tendril-acp-codex-acp.log\\n\"",
     "installSource": "https://github.com/openai/codex",
     "credentialBundle": {
       "schemaVersion": 1,

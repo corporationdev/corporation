@@ -4,7 +4,7 @@ import { $ } from "bun";
 
 const envLineRegex = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)/;
 const DEV_DEPLOYMENT = "dev:hip-impala-208";
-const DEV_DEPLOY_KEY_OP_REFERENCE = "op://corporation-dev/Convex/deploy-key";
+const DEV_DEPLOY_KEY_OP_REFERENCE = "op://tendril-dev/Convex/deploy-key";
 const IGNORE_DEPLOY_KEY = "<ignore_deploy_key>";
 
 const repoRoot = resolve(import.meta.dirname, "..");

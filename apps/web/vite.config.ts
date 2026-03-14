@@ -1,7 +1,7 @@
 import path from "node:path";
-import { resolveRuntimeContext } from "@corporation/config/runtime";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import { resolveRuntimeContext } from "@tendril/config/runtime";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 

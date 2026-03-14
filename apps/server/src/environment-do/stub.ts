@@ -1,4 +1,4 @@
-import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
+import type { RuntimeAccessTokenClaims } from "@tendril/contracts/runtime-auth";
 import type { EnvironmentDurableObject } from "./index";
 
 const SPACE_RUNTIME_AUTH_HEADER = "x-space-runtime-auth";

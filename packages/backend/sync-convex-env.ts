@@ -1,19 +1,21 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolveRuntimeContext } from "@corporation/config/runtime";
-import { getStageKind } from "@corporation/config/stage";
+import { resolveRuntimeContext } from "@tendril/config/runtime";
+import { getStageKind } from "@tendril/config/stage";
 import { parse as parseDotEnv } from "dotenv";
 
 const envFilePath = resolve(import.meta.dirname, ".env");
 const exampleEnvPath = resolve(import.meta.dirname, ".env.example");
 
-// Local: read values from .env. CI: read keys from .env.example, values from process.env.
-const source = existsSync(envFilePath) ? envFilePath : exampleEnvPath;
-const keys = Object.keys(parseDotEnv(readFileSync(source, "utf8")));
+// Sync only documented backend secrets. Local values may come from .env; CI uses process.env.
+const localEnv = existsSync(envFilePath)
+	? parseDotEnv(readFileSync(envFilePath, "utf8"))
+	: {};
+const keys = Object.keys(parseDotEnv(readFileSync(exampleEnvPath, "utf8")));
 const secretsEnv: Record<string, string> = {};
 for (const key of keys) {
-	const value = process.env[key];
+	const value = process.env[key] ?? localEnv[key];
 	if (value) {
 		secretsEnv[key] = value;
 	}

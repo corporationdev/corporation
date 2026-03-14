@@ -1,7 +1,7 @@
 import {
 	validateSecretName,
 	validateSecretValue,
-} from "@corporation/shared/secrets";
+} from "@tendril/shared/secrets";
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";

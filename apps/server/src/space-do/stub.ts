@@ -1,4 +1,4 @@
-import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
+import type { RuntimeAccessTokenClaims } from "@tendril/contracts/runtime-auth";
 import type { JWTPayload } from "../auth";
 import type { SpaceDurableObject } from "./object";
 

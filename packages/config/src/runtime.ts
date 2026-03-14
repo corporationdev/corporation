@@ -1,5 +1,5 @@
-import { getStageServerUrl } from "@corporation/config/server-url";
-import { getStageKind } from "@corporation/config/stage";
+import { getStageServerUrl } from "@tendril/config/server-url";
+import { getStageKind } from "@tendril/config/stage";
 
 type ResolveRuntimeContextOptions = {
 	allowMissingPreviewConvex?: boolean;
@@ -25,7 +25,6 @@ export type RuntimeContext = {
 	};
 	convexSyncEnv: {
 		WEB_URL: string;
-		CONVEX_SITE_URL: string;
 		SERVER_URL: string;
 		EMAIL_FROM: string;
 	};
@@ -62,9 +61,8 @@ export function resolveRuntimeContext(
 			},
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
-				CONVEX_SITE_URL,
 				SERVER_URL,
-				EMAIL_FROM: "dev@corporation.dev",
+				EMAIL_FROM: "dev@tendril.sh",
 			},
 		};
 	}
@@ -94,9 +92,8 @@ export function resolveRuntimeContext(
 			},
 			convexSyncEnv: {
 				WEB_URL: "http://localhost:3001",
-				CONVEX_SITE_URL,
 				SERVER_URL,
-				EMAIL_FROM: "sandbox@corporation.dev",
+				EMAIL_FROM: "sandbox@tendril.sh",
 			},
 		};
 	}
@@ -131,13 +128,12 @@ export function resolveRuntimeContext(
 				CONVEX_URL,
 				CONVEX_SITE_URL,
 				SERVER_URL,
-				WEB_URL: `https://${stage}.corporation.dev`,
+				WEB_URL: `https://${stage}.tendril.sh`,
 			},
 			convexSyncEnv: {
-				WEB_URL: `https://${stage}.corporation.dev`,
-				CONVEX_SITE_URL,
+				WEB_URL: `https://${stage}.tendril.sh`,
 				SERVER_URL,
-				EMAIL_FROM: "preview@corporation.dev",
+				EMAIL_FROM: "preview@tendril.sh",
 			},
 		};
 	}
@@ -157,13 +153,12 @@ export function resolveRuntimeContext(
 				CONVEX_URL,
 				CONVEX_SITE_URL,
 				SERVER_URL,
-				WEB_URL: "https://app.corporation.dev",
+				WEB_URL: "https://app.tendril.sh",
 			},
 			convexSyncEnv: {
-				WEB_URL: "https://app.corporation.dev",
-				CONVEX_SITE_URL,
+				WEB_URL: "https://app.tendril.sh",
 				SERVER_URL,
-				EMAIL_FROM: "hello@corporation.dev",
+				EMAIL_FROM: "hello@tendril.sh",
 			},
 		};
 	}

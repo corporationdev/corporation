@@ -1,8 +1,8 @@
-import { api } from "@corporation/backend/convex/_generated/api";
+import { createFileRoute } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
 import acpAgents, {
 	type AcpAgentManifestEntry,
-} from "@corporation/config/acp-agent-manifest";
-import { createFileRoute } from "@tanstack/react-router";
+} from "@tendril/config/acp-agent-manifest";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";

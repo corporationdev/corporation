@@ -2,13 +2,13 @@ import { DurableObject } from "cloudflare:workers";
 import type {
 	EnvironmentRpcResult,
 	EnvironmentUnsubscribeStreamInput,
-} from "@corporation/contracts/environment-do";
+} from "@tendril/contracts/environment-do";
 import type {
 	EnvironmentRuntimeCommand,
 	EnvironmentRuntimeCommandResponse,
 	EnvironmentRuntimeStreamItemsMessage,
-} from "@corporation/contracts/environment-runtime";
-import { createLogger } from "@corporation/logger";
+} from "@tendril/contracts/environment-runtime";
+import { createLogger } from "@tendril/logger";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import bundledMigrations from "./db/migrations";

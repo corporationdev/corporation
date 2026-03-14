@@ -79,7 +79,7 @@ jobs:
         if: steps.export-preview.outcome != 'success' || steps.restore-preview.outcome != 'success'
         continue-on-error: true
         run: |
-          CONVEX_DEV_DEPLOY_KEY=$(op read "op://corporation-dev/Convex/deploy-key")
+          CONVEX_DEV_DEPLOY_KEY=$(op read "op://tendril-dev/Convex/deploy-key")
           CONVEX_DEPLOY_KEY="$CONVEX_DEV_DEPLOY_KEY" npx convex export --path /tmp/seed.zip
           zip -d /tmp/seed.zip '_components/betterAuth/jwks/*' '_components/betterAuth/session/*' || test $? -eq 12
           npx convex import /tmp/seed.zip \
@@ -91,14 +91,14 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
       - name: Deploy Alchemy (Cloudflare Workers + Web)
-        run: bun run --filter @corporation/infra deploy
+        run: bun run --filter @tendril/infra deploy
 
       - name: Comment PR - Success
         if: success()
         uses: actions/github-script@v7
         with:
           script: |
-            const webUrl = 'https://${{ env.STAGE }}.corporation.dev';
+            const webUrl = 'https://${{ env.STAGE }}.tendril.sh';
             const commentBody = [
               '## Preview Deployment',
               '',

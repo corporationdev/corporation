@@ -6,7 +6,7 @@ import {
 	runtimeAuthSessionResponseSchema,
 	runtimeRefreshTokenResponseSchema,
 	verifyRuntimeRefreshToken,
-} from "@corporation/contracts/runtime-auth";
+} from "@tendril/contracts/runtime-auth";
 
 const RUNTIME_REFRESH_TOKEN_TTL_SECONDS = 365 * 24 * 60 * 60;
 const RUNTIME_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;

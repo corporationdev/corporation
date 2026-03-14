@@ -3,10 +3,10 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "corporation",
+      "name": "tendril",
       "devDependencies": {
         "@biomejs/biome": "2.4.4",
-        "@corporation/config": "workspace:*",
+        "@tendril/config": "workspace:*",
         "@types/bun": "^1.3.9",
         "@types/node": "catalog:",
         "dotenv": "catalog:",
@@ -20,8 +20,8 @@
       "name": "desktop",
       "version": "0.0.0",
       "dependencies": {
-        "@corporation/app": "workspace:*",
-        "@corporation/env": "workspace:*",
+        "@tendril/app": "workspace:*",
+        "@tendril/env": "workspace:*",
         "@tanstack/react-query": "catalog:",
         "dotenv": "catalog:",
         "electron": "catalog:",
@@ -30,7 +30,7 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "catalog:",
-        "@corporation/config": "workspace:*",
+        "@tendril/config": "workspace:*",
         "@tailwindcss/vite": "catalog:",
         "@tanstack/router-plugin": "catalog:",
         "@types/node": "catalog:",
@@ -49,8 +49,8 @@
       "version": "1.0.1",
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
-        "@corporation/config": "workspace:*",
-        "@corporation/contracts": "workspace:*",
+        "@tendril/config": "workspace:*",
+        "@tendril/contracts": "workspace:*",
         "@effect/platform-bun": "catalog:",
         "@hono/zod-validator": "^0.7.6",
         "@modelcontextprotocol/sdk": "^1.12.1",
@@ -74,15 +74,15 @@
       },
     },
     "apps/server": {
-      "name": "@corporation/server",
+      "name": "@tendril/server",
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
         "@ai-sdk/anthropic": "catalog:",
-        "@corporation/backend": "workspace:*",
-        "@corporation/config": "workspace:*",
-        "@corporation/contracts": "workspace:*",
-        "@corporation/env": "workspace:*",
-        "@corporation/logger": "workspace:*",
+        "@tendril/backend": "workspace:*",
+        "@tendril/config": "workspace:*",
+        "@tendril/contracts": "workspace:*",
+        "@tendril/env": "workspace:*",
+        "@tendril/logger": "workspace:*",
         "@e2b/desktop": "catalog:",
         "@hono/zod-openapi": "catalog:",
         "@nangohq/node": "catalog:",
@@ -109,8 +109,8 @@
       "name": "web",
       "version": "0.0.0",
       "dependencies": {
-        "@corporation/app": "workspace:*",
-        "@corporation/config": "workspace:*",
+        "@tendril/app": "workspace:*",
+        "@tendril/config": "workspace:*",
         "react": "catalog:",
         "react-dom": "catalog:",
       },
@@ -129,17 +129,17 @@
       },
     },
     "packages/app": {
-      "name": "@corporation/app",
+      "name": "@tendril/app",
       "version": "0.0.0",
       "dependencies": {
         "@base-ui/react": "^1.2.0",
         "@convex-dev/better-auth": "catalog:",
-        "@corporation/backend": "workspace:*",
-        "@corporation/config": "workspace:*",
-        "@corporation/contracts": "workspace:*",
-        "@corporation/env": "workspace:*",
-        "@corporation/server": "workspace:*",
-        "@corporation/shared": "workspace:*",
+        "@tendril/backend": "workspace:*",
+        "@tendril/config": "workspace:*",
+        "@tendril/contracts": "workspace:*",
+        "@tendril/env": "workspace:*",
+        "@tendril/server": "workspace:*",
+        "@tendril/shared": "workspace:*",
         "@durable-streams/client": "^0.2.1",
         "@fontsource-variable/geist": "^5.2.8",
         "@radix-ui/react-slot": "catalog:",
@@ -179,12 +179,12 @@
       },
     },
     "packages/backend": {
-      "name": "@corporation/backend",
+      "name": "@tendril/backend",
       "version": "1.0.0",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@convex-dev/better-auth": "catalog:",
-        "@corporation/shared": "workspace:*",
+        "@tendril/shared": "workspace:*",
         "@nangohq/node": "catalog:",
         "ai": "catalog:",
         "better-auth": "catalog:",
@@ -198,29 +198,29 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@corporation/config": "workspace:*",
+        "@tendril/config": "workspace:*",
         "@types/node": "catalog:",
         "typescript": "catalog:",
       },
     },
     "packages/config": {
-      "name": "@corporation/config",
+      "name": "@tendril/config",
       "version": "0.0.0",
     },
     "packages/contracts": {
-      "name": "@corporation/contracts",
+      "name": "@tendril/contracts",
       "version": "0.0.0",
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@corporation/config": "workspace:*",
+        "@tendril/config": "workspace:*",
         "typescript": "catalog:",
       },
     },
     "packages/env": {
-      "name": "@corporation/env",
+      "name": "@tendril/env",
       "version": "0.0.0",
       "dependencies": {
         "@t3-oss/env-core": "catalog:",
@@ -228,43 +228,43 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@corporation/config": "workspace:*",
-        "@corporation/infra": "workspace:*",
+        "@tendril/config": "workspace:*",
+        "@tendril/infra": "workspace:*",
         "typescript": "catalog:",
       },
     },
     "packages/infra": {
-      "name": "@corporation/infra",
+      "name": "@tendril/infra",
       "dependencies": {
         "dotenv": "catalog:",
       },
       "devDependencies": {
-        "@corporation/config": "workspace:*",
+        "@tendril/config": "workspace:*",
         "@types/node": "catalog:",
         "alchemy": "catalog:",
         "typescript": "catalog:",
       },
     },
     "packages/logger": {
-      "name": "@corporation/logger",
+      "name": "@tendril/logger",
       "version": "0.0.0",
       "dependencies": {
         "pino": "catalog:",
         "pino-pretty": "catalog:",
       },
       "devDependencies": {
-        "@corporation/config": "workspace:*",
+        "@tendril/config": "workspace:*",
         "typescript": "catalog:",
       },
     },
     "packages/shared": {
-      "name": "@corporation/shared",
+      "name": "@tendril/shared",
       "version": "0.0.0",
       "dependencies": {
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@corporation/config": "workspace:*",
+        "@tendril/config": "workspace:*",
         "typescript": "catalog:",
       },
     },
@@ -540,23 +540,23 @@
 
     "@convex-dev/better-auth": ["@convex-dev/better-auth@0.10.13", "", { "dependencies": { "@better-auth/passkey": "1.4.9", "@better-fetch/fetch": "^1.1.18", "common-tags": "^1.8.2", "convex-helpers": "^0.1.95", "jose": "^6.1.0", "remeda": "^2.32.0", "semver": "^7.7.3", "type-fest": "^4.39.1", "zod": "^4.0.0" }, "peerDependencies": { "better-auth": ">=1.4.9 <1.5.0", "convex": "^1.25.0", "react": "^18.3.1 || ^19.0.0" } }, "sha512-ll59IxdJrefJkKcH667aWt0S5Z0vPNiW2EixWlsdz0h4qdm31J8dxwxO9aDIaeqnE+m1iJ0mUwRedTgYcxQxiQ=="],
 
-    "@corporation/app": ["@corporation/app@workspace:packages/app"],
+    "@tendril/app": ["@tendril/app@workspace:packages/app"],
 
-    "@corporation/backend": ["@corporation/backend@workspace:packages/backend"],
+    "@tendril/backend": ["@tendril/backend@workspace:packages/backend"],
 
-    "@corporation/config": ["@corporation/config@workspace:packages/config"],
+    "@tendril/config": ["@tendril/config@workspace:packages/config"],
 
-    "@corporation/contracts": ["@corporation/contracts@workspace:packages/contracts"],
+    "@tendril/contracts": ["@tendril/contracts@workspace:packages/contracts"],
 
-    "@corporation/env": ["@corporation/env@workspace:packages/env"],
+    "@tendril/env": ["@tendril/env@workspace:packages/env"],
 
-    "@corporation/infra": ["@corporation/infra@workspace:packages/infra"],
+    "@tendril/infra": ["@tendril/infra@workspace:packages/infra"],
 
-    "@corporation/logger": ["@corporation/logger@workspace:packages/logger"],
+    "@tendril/logger": ["@tendril/logger@workspace:packages/logger"],
 
-    "@corporation/server": ["@corporation/server@workspace:apps/server"],
+    "@tendril/server": ["@tendril/server@workspace:apps/server"],
 
-    "@corporation/shared": ["@corporation/shared@workspace:packages/shared"],
+    "@tendril/shared": ["@tendril/shared@workspace:packages/shared"],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 

@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolveRuntimeContext } from "@corporation/config/runtime";
-import { getStageServerHostname } from "@corporation/config/server-url";
-import { deriveEnvTier } from "@corporation/config/stage";
+import { resolveRuntimeContext } from "@tendril/config/runtime";
+import { getStageServerHostname } from "@tendril/config/server-url";
+import { deriveEnvTier } from "@tendril/config/stage";
 import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
@@ -37,7 +37,7 @@ const runtime = resolveRuntimeContext(stage, {
 	allowMissingPreviewConvex,
 });
 
-const app = await alchemy("corporation", {
+const app = await alchemy("tendril", {
 	stage,
 	stateStore: process.env.CI
 		? (scope) => new CloudflareStateStore(scope)
@@ -104,7 +104,7 @@ if (serverTunnel && app.local) {
 if (serverHostname) {
 	await Ruleset("agent-server-proxy-bypass", {
 		apiToken: alchemy.secret(process.env.CLOUDFLARE_API_TOKEN),
-		zone: "corporation.dev",
+		zone: "tendril.sh",
 		phase: "http_request_firewall_custom",
 		name: `agent-server-proxy-bypass-${stage}`,
 		description:
@@ -150,10 +150,10 @@ if (serverHostname) {
 // Resolve custom domain for deployed stages
 function getWebDomain(): string | undefined {
 	if (envTier === "prod") {
-		return "app.corporation.dev";
+		return "app.tendril.sh";
 	}
 	if (envTier === "preview") {
-		return `${stage}.corporation.dev`;
+		return `${stage}.tendril.sh`;
 	}
 	return undefined;
 }

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import {
 	mintRuntimeAccessToken,
 	mintRuntimeRefreshToken,
-} from "@corporation/contracts/runtime-auth";
+} from "@tendril/contracts/runtime-auth";
 
 export const TEST_RUNTIME_AUTH_SECRET = "test-secret";
 const DEFAULT_TOKEN_TTL_SECONDS = 5 * 60;

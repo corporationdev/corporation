@@ -3,7 +3,7 @@
 import { dirname } from "node:path";
 import acpAgents, {
 	type AcpAgentManifestEntry,
-} from "@corporation/config/acp-agent-manifest";
+} from "@tendril/config/acp-agent-manifest";
 import { FileType, type Sandbox } from "e2b";
 import { SANDBOX_HOME_DIR } from "./sandbox";
 

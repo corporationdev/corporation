@@ -4,7 +4,7 @@ import type {
 	EnvironmentStreamConsumer,
 	EnvironmentStreamDelivery,
 	EnvironmentStreamDeliveryAck,
-} from "@corporation/contracts/environment-do";
+} from "@tendril/contracts/environment-do";
 
 type EmptyResult = Record<PropertyKey, never>;
 

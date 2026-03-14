@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SessionEvent } from "@corporation/contracts/session-event";
+import type { SessionEvent } from "@tendril/contracts/session-event";
 import {
 	type CreateSessionInput,
 	type ResolvedStartTurnInput,
