@@ -37,7 +37,7 @@ jobs:
         working-directory: packages/backend
 
       - name: Sync Convex environment variables
-        run: bun run sync-convex-env.ts
+        run: npx convex env set --prod --force --from-file .env
         working-directory: packages/backend
 
       - name: Deploy Alchemy (Cloudflare Workers + Web)
