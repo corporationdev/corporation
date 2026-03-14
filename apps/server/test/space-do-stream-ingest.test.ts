@@ -239,7 +239,7 @@ describe("SpaceDurableObject stream ingest", () => {
 			-1,
 			200,
 			true,
-			1_000
+			1000
 		);
 
 		await new Promise((resolve) => setTimeout(resolve, 50));

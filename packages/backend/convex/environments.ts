@@ -1,4 +1,4 @@
-import { ConvexError, v } from "convex/values";
+import { ConvexError, type Value, v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
@@ -50,7 +50,7 @@ export async function createEnvironment(
 		name: string;
 		status: "connected" | "disconnected";
 		type?: "persistent" | "sandbox";
-		metadata?: Record<string, any>;
+		metadata?: Record<string, Value>;
 	}
 ) {
 	const now = Date.now();

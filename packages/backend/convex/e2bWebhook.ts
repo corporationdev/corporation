@@ -57,7 +57,7 @@ export const handleWebhook = internalAction({
 		body: v.string(),
 		signature: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (_ctx, args) => {
 		const e2bWebhookSecret = process.env.E2B_WEBHOOK_SECRET;
 		if (!e2bWebhookSecret) {
 			throw new Error("Missing E2B_WEBHOOK_SECRET env var");

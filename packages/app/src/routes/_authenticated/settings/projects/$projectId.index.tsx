@@ -166,28 +166,9 @@ function formatTime(timestamp: number): string {
 
 function SnapshotList({ project }: { project: Project }) {
 	const updateProject = useMutation(api.projects.update);
-	const { mutate: rebuildFromRepo, isPending: isRebuilding } =
-		useConvexTanstackMutation(api.snapshot.buildInitialSnapshot, {
-			onSuccess: () => {
-				toast.success("Project snapshot rebuild started");
-			},
-			onError: (error) => {
-				toast.error(error.message);
-			},
-		});
 
 	return (
 		<div className="flex flex-col gap-2">
-			<div className="flex justify-end">
-				<Button
-					disabled={isRebuilding}
-					onClick={() => rebuildFromRepo({ projectId: project._id })}
-					size="sm"
-					variant="outline"
-				>
-					{isRebuilding ? "Rebuilding..." : "Rebuild Project Snapshot"}
-				</Button>
-			</div>
 			{project.snapshots.map((snapshot) => {
 				const isDefault = snapshot._id === project.defaultSnapshotId;
 				const statusDot =
