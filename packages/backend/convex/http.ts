@@ -90,7 +90,6 @@ http.route({
 					userId: body.userId as string,
 					clientId: body.clientId as string,
 					name: body.name as string,
-					metadata: body.metadata as Record<string, string> | undefined,
 				}
 			);
 			return Response.json({ environmentId });

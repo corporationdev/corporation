@@ -210,16 +210,6 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
 							existingOrganizations[0]?.id ??
 							null;
 
-						if (activeOrganizationId) {
-							await requireRunMutationCtx(ctx).runMutation(
-								internal.organizations.ensureOrgBaseProject,
-								{
-									organizationId: activeOrganizationId,
-									userId: session.userId,
-								}
-							);
-						}
-
 						if (
 							activeOrganizationId &&
 							activeOrganizationId !== session.activeOrganizationId

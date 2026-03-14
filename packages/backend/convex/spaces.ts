@@ -7,19 +7,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { buildConvexPatch } from "./lib/patch";
 import { requireProjectInActiveOrg } from "./lib/projectAccess";
-import {
-	sandboxStatusValidator,
-	spaceBootstrapSourceValidator,
-} from "./schema";
-
-type SandboxBootstrapInput =
-	| {
-			bootstrapSource?: "snapshot";
-			snapshotId?: Id<"snapshots">;
-	  }
-	| {
-			bootstrapSource: "base-template";
-	  };
+import { sandboxStatusValidator } from "./schema";
 
 type CreateSpaceInput = {
 	slug: string;
@@ -33,7 +21,6 @@ type SandboxUpdatePatch = {
 	status?: Doc<"sandboxes">["status"];
 	externalSandboxId?: string;
 	snapshotId?: Id<"snapshots">;
-	bootstrapSource?: Doc<"sandboxes">["bootstrapSource"];
 	error?: string;
 };
 
@@ -51,8 +38,7 @@ async function requireOwnedSpace(
 	const project = requireProjectInActiveOrg(
 		await ctx.db.get(space.projectId),
 		ctx.activeOrganizationId,
-		"Space",
-		{ allowBase: true }
+		"Space"
 	);
 
 	return { space, project };
@@ -60,14 +46,12 @@ async function requireOwnedSpace(
 
 async function requireProjectAccess(
 	ctx: QueryCtx & { activeOrganizationId: string | null },
-	projectId: Id<"projects">,
-	options?: { allowBase?: boolean }
+	projectId: Id<"projects">
 ): Promise<Doc<"projects">> {
 	return requireProjectInActiveOrg(
 		await ctx.db.get(projectId),
 		ctx.activeOrganizationId,
-		"Project",
-		options
+		"Project"
 	);
 }
 
@@ -224,34 +208,20 @@ export async function createSpaceRecord(
 export async function ensureSandboxRecordForSpace(
 	ctx: MutationCtx,
 	space: Doc<"spaces">,
-	project: Doc<"projects">,
-	options?: SandboxBootstrapInput
+	project: Doc<"projects">
 ): Promise<Id<"sandboxes">> {
-	const bootstrapSource = options?.bootstrapSource ?? "snapshot";
-	const requestedSnapshotId =
-		options && "snapshotId" in options ? options.snapshotId : undefined;
-	const snapshotId =
-		bootstrapSource === "snapshot"
-			? (requestedSnapshotId ??
-				(await requireDefaultSnapshotIdForProject(ctx, project)))
-			: undefined;
+	const snapshotId = await requireDefaultSnapshotIdForProject(ctx, project);
 
 	const existingSandbox = await getSandboxForSpace(ctx, space._id);
 	if (existingSandbox) {
-		const hasSnapshotChanged =
-			bootstrapSource === "snapshot" &&
-			existingSandbox.snapshotId !== snapshotId;
-		const hasBootstrapChanged =
-			existingSandbox.bootstrapSource !== bootstrapSource;
+		const hasSnapshotChanged = existingSandbox.snapshotId !== snapshotId;
 		const shouldReprovision =
 			hasSnapshotChanged ||
-			hasBootstrapChanged ||
 			(existingSandbox.status !== "running" &&
 				existingSandbox.status !== "creating");
 
-		if (hasSnapshotChanged || hasBootstrapChanged) {
+		if (hasSnapshotChanged) {
 			await ctx.db.patch(existingSandbox._id, {
-				bootstrapSource,
 				snapshotId,
 				updatedAt: Date.now(),
 			});
@@ -288,7 +258,6 @@ export async function ensureSandboxRecordForSpace(
 		spaceId: space._id,
 		status: "provisioning",
 		snapshotId,
-		bootstrapSource,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -351,7 +320,7 @@ export const listByProject = authedQuery({
 					q.eq("organizationId", activeOrganizationId)
 				)
 				.collect()
-		).filter((project) => project.kind === "standard");
+		);
 
 		const spacesByProject = new Map<Id<"projects">, Doc<"spaces">[]>();
 		const projectSpaces = await asyncMap(projects, async (project) => ({
@@ -491,12 +460,11 @@ export const internalUpdateSandbox = internalMutation({
 		status: v.optional(sandboxStatusValidator),
 		externalSandboxId: v.optional(v.string()),
 		snapshotId: v.optional(v.id("snapshots")),
-		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		error: v.optional(v.union(v.string(), v.null())),
 	},
 	handler: async (ctx, args) => {
 		const patch = buildConvexPatch<SandboxUpdatePatch, typeof args>(args, {
-			assign: ["status", "externalSandboxId", "snapshotId", "bootstrapSource"],
+			assign: ["status", "externalSandboxId", "snapshotId"],
 			clearable: ["error"],
 		});
 

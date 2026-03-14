@@ -16,16 +16,6 @@ export const sandboxStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const projectKindValidator = v.union(
-	v.literal("standard"),
-	v.literal("base")
-);
-
-export const spaceBootstrapSourceValidator = v.union(
-	v.literal("snapshot"),
-	v.literal("base-template")
-);
-
 export const environmentStatusValidator = v.union(
 	v.literal("connected"),
 	v.literal("disconnected"),
@@ -48,7 +38,6 @@ export default defineSchema(
 		projects: defineTable({
 			userId: v.string(),
 			organizationId: v.string(),
-			kind: projectKindValidator,
 			name: v.string(),
 			githubRepoId: v.optional(v.number()),
 			githubOwner: v.optional(v.string()),
@@ -60,7 +49,6 @@ export default defineSchema(
 		})
 			.index("by_user", ["userId"])
 			.index("by_organization", ["organizationId"])
-			.index("by_organization_and_kind", ["organizationId", "kind"])
 			.index("by_organization_and_github_repo", [
 				"organizationId",
 				"githubRepoId",
@@ -87,7 +75,6 @@ export default defineSchema(
 			externalSandboxId: v.optional(v.string()),
 			status: sandboxStatusValidator,
 			snapshotId: v.optional(v.id("snapshots")),
-			bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 			error: v.optional(v.string()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
@@ -138,7 +125,6 @@ export default defineSchema(
 			name: v.string(),
 			status: environmentStatusValidator,
 			error: v.optional(v.string()),
-			metadata: v.optional(v.record(v.string(), v.string())),
 			lastConnectedAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),

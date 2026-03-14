@@ -30,7 +30,6 @@ import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_sandboxRuntime from "../lib/sandboxRuntime.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as nangoWebhook from "../nangoWebhook.js";
-import type * as organizations from "../organizations.js";
 import type * as projects from "../projects.js";
 import type * as sandboxActions from "../sandboxActions.js";
 import type * as secretActions from "../secretActions.js";
@@ -39,8 +38,6 @@ import type * as snapshot from "../snapshot.js";
 import type * as snapshotActions from "../snapshotActions.js";
 import type * as spaceBranchActions from "../spaceBranchActions.js";
 import type * as spaces from "../spaces.js";
-import type * as userWorkspace from "../userWorkspace.js";
-import type * as userWorkspaceActions from "../userWorkspaceActions.js";
 
 import type {
   ApiFromModules,
@@ -71,7 +68,6 @@ declare const fullApi: ApiFromModules<{
   "lib/sandboxRuntime": typeof lib_sandboxRuntime;
   "lib/validSecrets": typeof lib_validSecrets;
   nangoWebhook: typeof nangoWebhook;
-  organizations: typeof organizations;
   projects: typeof projects;
   sandboxActions: typeof sandboxActions;
   secretActions: typeof secretActions;
@@ -80,8 +76,6 @@ declare const fullApi: ApiFromModules<{
   snapshotActions: typeof snapshotActions;
   spaceBranchActions: typeof spaceBranchActions;
   spaces: typeof spaces;
-  userWorkspace: typeof userWorkspace;
-  userWorkspaceActions: typeof userWorkspaceActions;
 }>;
 
 /**

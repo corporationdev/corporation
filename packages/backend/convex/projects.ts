@@ -23,27 +23,9 @@ function requireActiveOrganization(
 
 function requireOrgProjectAccess(
 	activeOrganizationId: string | null,
-	project: Doc<"projects">,
-	options?: { allowBase?: boolean }
+	project: Doc<"projects">
 ): Doc<"projects"> {
-	return requireProjectInActiveOrg(
-		project,
-		activeOrganizationId,
-		"Project",
-		options
-	);
-}
-
-async function getOrgBaseProject(
-	ctx: MutationCtx,
-	organizationId: string
-): Promise<Doc<"projects"> | null> {
-	return await ctx.db
-		.query("projects")
-		.withIndex("by_organization_and_kind", (q) =>
-			q.eq("organizationId", organizationId).eq("kind", "base")
-		)
-		.unique();
+	return requireProjectInActiveOrg(project, activeOrganizationId, "Project");
 }
 
 function validateSecretRecord(secrets: Record<string, string>): void {
@@ -78,7 +60,7 @@ export const list = authedQuery({
 					q.eq("organizationId", organizationId)
 				)
 				.collect()
-		).filter((project) => project.kind === "standard");
+		);
 	},
 });
 
@@ -141,14 +123,9 @@ export const create = authedMutation({
 				)
 				.first();
 
-			if (existing && existing.kind === "standard") {
+			if (existing) {
 				throw new ConvexError("Repository already connected to a project");
 			}
-		}
-
-		const baseProject = await getOrgBaseProject(ctx, organizationId);
-		if (!baseProject) {
-			throw new ConvexError("Organization base project is not ready yet");
 		}
 
 		const now = Date.now();
@@ -156,7 +133,6 @@ export const create = authedMutation({
 		const projectId = await ctx.db.insert("projects", {
 			userId: ctx.userId,
 			organizationId,
-			kind: "standard",
 			name: args.name,
 			githubRepoId: args.githubRepoId,
 			githubOwner: args.githubOwner,
@@ -327,15 +303,4 @@ export const internalGetByGithubRepoId = internalQuery({
 			)
 			.collect();
 	},
-});
-
-export const internalGetOrgBaseProject = internalQuery({
-	args: { organizationId: v.string() },
-	handler: async (ctx, args) =>
-		await ctx.db
-			.query("projects")
-			.withIndex("by_organization_and_kind", (q) =>
-				q.eq("organizationId", args.organizationId).eq("kind", "base")
-			)
-			.unique(),
 });

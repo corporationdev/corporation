@@ -11,7 +11,6 @@ import {
 	type StoredAgentCredentialBundle,
 } from "./lib/agentCredentialBundles";
 import {
-	BASE_TEMPLATE,
 	bootServer,
 	runWorkspaceCommand,
 	SANDBOX_AGENT_PORT,
@@ -242,21 +241,16 @@ async function resolveSandbox(
 		}
 	}
 
-	const sourceSnapshotId =
-		sandboxRecord.bootstrapSource === "base-template"
-			? BASE_TEMPLATE
-			: await (async () => {
-					if (!sandboxRecord.snapshotId) {
-						throw new Error("Sandbox snapshot is not set");
-					}
-					const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
-						id: sandboxRecord.snapshotId,
-					});
-					if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
-						throw new Error("Sandbox snapshot is not ready");
-					}
-					return snapshot.externalSnapshotId;
-				})();
+	if (!sandboxRecord.snapshotId) {
+		throw new Error("Sandbox snapshot is not set");
+	}
+	const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
+		id: sandboxRecord.snapshotId,
+	});
+	if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
+		throw new Error("Sandbox snapshot is not ready");
+	}
+	const sourceSnapshotId = snapshot.externalSnapshotId;
 
 	await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
 		id: sandboxRecord._id,

@@ -22,7 +22,6 @@ export const connectAction = internalAction({
 		userId: v.string(),
 		clientId: v.string(),
 		name: v.string(),
-		metadata: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args): Promise<string> => {
 		await ctx.runAction(internal.environments.verifyInternalApiKey, {
@@ -55,7 +54,6 @@ export const connect = internalMutation({
 		userId: v.string(),
 		clientId: v.string(),
 		name: v.string(),
-		metadata: v.optional(v.record(v.string(), v.string())),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -71,7 +69,6 @@ export const connect = internalMutation({
 			await ctx.db.patch(existing._id, {
 				status: "connected",
 				name: args.name,
-				metadata: args.metadata,
 				lastConnectedAt: now,
 				updatedAt: now,
 				error: undefined,
@@ -84,7 +81,6 @@ export const connect = internalMutation({
 			clientId: args.clientId,
 			name: args.name,
 			status: "connected",
-			metadata: args.metadata,
 			lastConnectedAt: now,
 			createdAt: now,
 			updatedAt: now,
