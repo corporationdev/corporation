@@ -12,7 +12,9 @@ import type * as agentConfig from "../agentConfig.js";
 import type * as agentCredentialActions from "../agentCredentialActions.js";
 import type * as agentCredentials from "../agentCredentials.js";
 import type * as auth from "../auth.js";
+import type * as backings from "../backings.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
+import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
@@ -31,6 +33,7 @@ import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as projects from "../projects.js";
 import type * as secretActions from "../secretActions.js";
 import type * as secrets from "../secrets.js";
+import type * as spaces from "../spaces.js";
 
 import type {
   ApiFromModules,
@@ -43,7 +46,9 @@ declare const fullApi: ApiFromModules<{
   agentCredentialActions: typeof agentCredentialActions;
   agentCredentials: typeof agentCredentials;
   auth: typeof auth;
+  backings: typeof backings;
   e2bWebhook: typeof e2bWebhook;
+  environments: typeof environments;
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
@@ -62,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   secretActions: typeof secretActions;
   secrets: typeof secrets;
+  spaces: typeof spaces;
 }>;
 
 /**

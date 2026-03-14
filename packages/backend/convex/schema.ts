@@ -48,7 +48,7 @@ export default defineSchema(
 			userId: v.string(),
 			slug: v.string(),
 			projectId: v.id("projects"),
-			activeBindingId: v.optional(v.id("spaceBindings")),
+			activeBackingId: v.optional(v.id("backings")),
 			name: v.string(),
 			archived: v.optional(v.boolean()),
 			createdAt: v.number(),
@@ -109,7 +109,7 @@ export default defineSchema(
 			.index("by_user", ["userId"])
 			.index("by_user_and_agent", ["userId", "agentId"]),
 
-		spaceBindings: defineTable({
+		backings: defineTable({
 			spaceId: v.id("spaces"),
 			environmentId: v.id("environments"),
 			createdAt: v.number(),
