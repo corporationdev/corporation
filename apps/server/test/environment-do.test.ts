@@ -9,7 +9,7 @@ function createRuntimeAuthHeader() {
 		authToken: "runtime-token",
 		claims: {
 			sub: "user-1",
-			sandboxId: "sandbox-1",
+			clientId: "sandbox-1",
 			clientType: "sandbox_runtime",
 			tokenType: "access",
 			aud: "space-runtime-access",

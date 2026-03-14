@@ -45,7 +45,7 @@ export async function createRuntimeAuthSession(
 	const accessToken = await mintRuntimeAccessToken(
 		{
 			sub: claims.sub,
-			sandboxId: claims.sandboxId,
+			clientId: claims.clientId,
 			exp: expiresAtSeconds,
 		},
 		secret
@@ -78,7 +78,7 @@ export async function createRuntimeRefreshToken(
 	const refreshToken = await mintRuntimeRefreshToken(
 		{
 			sub: input.userId,
-			sandboxId: input.clientId,
+			clientId: input.clientId,
 			exp: expiresAtSeconds,
 		},
 		secret

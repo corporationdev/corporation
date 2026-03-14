@@ -120,15 +120,18 @@ export default defineSchema(
 			.index("by_user_and_agent", ["userId", "agentId"]),
 		environments: defineTable({
 			userId: v.string(),
+			clientId: v.string(),
 			kind: environmentKindValidator,
 			name: v.string(),
 			status: environmentStatusValidator,
 			error: v.optional(v.string()),
 			metadata: v.optional(v.record(v.string(), v.string())),
+			lastConnectedAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
+			.index("by_user_and_clientId", ["userId", "clientId"])
 			.index("by_user_and_kind", ["userId", "kind"])
 			.index("by_user_and_status", ["userId", "status"]),
 

@@ -200,7 +200,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			connectedAt: attachment.connectedAt,
 			lastSeenAt: attachment.lastSeenAt,
 			userId: attachment.auth.claims.sub,
-			clientId: attachment.auth.claims.sandboxId,
+			clientId: attachment.auth.claims.clientId,
 		};
 	}
 
@@ -302,7 +302,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				actorId: this.ctx.id.toString(),
 				connectionId: attachment.connectionId,
 				userId: runtimeAuth.claims.sub,
-				sandboxId: runtimeAuth.claims.sandboxId,
+				clientId: runtimeAuth.claims.clientId,
 			},
 			"accepted runtime websocket"
 		);
