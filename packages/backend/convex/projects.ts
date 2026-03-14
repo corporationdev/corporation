@@ -263,14 +263,19 @@ const del = authedMutation({
 		]);
 
 		for (const space of spaces) {
-			// TODO: migrate to use environments table
-			const spaceSandboxId = (space as Record<string, unknown>).sandboxId as
-				| string
-				| undefined;
-			if (spaceSandboxId) {
-				await ctx.scheduler.runAfter(0, internal.sandboxActions.deleteSandbox, {
-					sandboxId: spaceSandboxId,
-				});
+			const sandbox = await ctx.db
+				.query("sandboxes")
+				.withIndex("by_space", (q) => q.eq("spaceId", space._id))
+				.unique();
+			if (sandbox) {
+				if (sandbox.externalSandboxId) {
+					await ctx.scheduler.runAfter(
+						0,
+						internal.sandboxActions.deleteSandbox,
+						{ sandboxId: sandbox.externalSandboxId }
+					);
+				}
+				await ctx.db.delete(sandbox._id);
 			}
 			await ctx.db.delete(space._id);
 		}

@@ -2,16 +2,18 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useLocalStorage } from "@uidotdev/usehooks";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
+	BoxIcon,
 	ChevronDownIcon,
-	ClockFadingIcon,
 	FolderIcon,
+	LaptopIcon,
 	Loader2Icon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AgentModelPicker } from "@/components/agent-model-picker";
 import { ChatInput } from "@/components/chat/chat-input";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
@@ -30,23 +32,39 @@ export const Route = createFileRoute("/_authenticated/")({
 	component: AuthenticatedIndex,
 });
 
+type ProjectListItem = FunctionReturnType<typeof api.projects.list>[number];
+type EnvironmentListItem = FunctionReturnType<
+	typeof api.environments.listForUser
+>[number];
+
+type BackingSelection =
+	| { type: "sandbox" }
+	| { type: "environment"; environmentId: Id<"environments"> };
+
+const RECENT_PROJECT_STORAGE_KEY = "corporation:recent-project";
+const DEFAULT_BACKING_KEY = "sandbox";
+
 function AuthenticatedIndex() {
 	const navigate = useNavigate();
-	const setSpace = usePendingMessageStore((s) => s.setSpace);
 	const setMessage = usePendingMessageStore((s) => s.setMessage);
 	const projects = useQuery(api.projects.list);
+	const environments = useQuery(api.environments.listForUser);
+	const createSpace = useMutation(api.spaces.create);
+	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
+	const attachEnvironment = useMutation(api.spaces.attachEnvironment);
 	const agentConfigs = useQuery(api.agentConfig.list);
 	const agentOptions = useMemo(
 		() => deriveAgentSelectorOptions(agentConfigs),
 		[agentConfigs]
 	);
-	const [selectedSnapshotId, setSelectedSnapshotId] =
-		useState<Id<"snapshots"> | null>(null);
 	const [input, setInput] = useState("");
 	const { agent, modelId, setAgent, setModelId } =
 		usePersistedAgentModelSelection(agentOptions);
+	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [selectedProjectId, setSelectedProjectId] =
-		useLocalStorage<Id<"projects"> | null>("corporation:recent-project", null);
+		useLocalStorage<Id<"projects"> | null>(RECENT_PROJECT_STORAGE_KEY, null);
+	const [selectedBackingKey, setSelectedBackingKey] =
+		useState(DEFAULT_BACKING_KEY);
 
 	useEffect(() => {
 		if (!projects) {
@@ -67,6 +85,27 @@ function AuthenticatedIndex() {
 		});
 	}, [projects, setSelectedProjectId]);
 
+	const connectedEnvironments = useMemo(
+		() =>
+			(environments ?? []).filter(
+				(environment) => environment.status === "connected"
+			),
+		[environments]
+	);
+
+	useEffect(() => {
+		if (selectedBackingKey === DEFAULT_BACKING_KEY) {
+			return;
+		}
+
+		const exists = connectedEnvironments.some(
+			(environment) => environment._id === selectedBackingKey
+		);
+		if (!exists) {
+			setSelectedBackingKey(DEFAULT_BACKING_KEY);
+		}
+	}, [connectedEnvironments, selectedBackingKey]);
+
 	const selectedProject = useMemo(() => {
 		if (!(projects && selectedProjectId)) {
 			return null;
@@ -75,39 +114,19 @@ function AuthenticatedIndex() {
 			projects.find((project) => project._id === selectedProjectId) ?? null
 		);
 	}, [projects, selectedProjectId]);
-	const snapshots = useQuery(
-		api.snapshot.listByProject,
-		selectedProject ? { projectId: selectedProject._id } : "skip"
-	);
 
-	useEffect(() => {
-		if (!selectedProject) {
-			setSelectedSnapshotId(null);
-			return;
-		}
-		if (snapshots === undefined) {
-			return;
+	const selectedBacking = useMemo<BackingSelection | null>(() => {
+		if (selectedBackingKey === DEFAULT_BACKING_KEY) {
+			return { type: "sandbox" };
 		}
 
-		setSelectedSnapshotId((current) =>
-			resolveSelectedSnapshotId({
-				currentSnapshotId: current,
-				defaultSnapshotId: selectedProject.defaultSnapshotId ?? null,
-				snapshots,
-			})
+		const environment = connectedEnvironments.find(
+			(candidate) => candidate._id === selectedBackingKey
 		);
-	}, [selectedProject, snapshots]);
-
-	const selectedSnapshot = useMemo(() => {
-		if (!(snapshots && selectedSnapshotId)) {
-			return null;
-		}
-
-		return (
-			snapshots.find((snapshot) => snapshot._id === selectedSnapshotId) ?? null
-		);
-	}, [snapshots, selectedSnapshotId]);
-	const isSelectedSnapshotReady = selectedSnapshot?.status === "ready";
+		return environment
+			? { type: "environment", environmentId: environment._id }
+			: null;
+	}, [connectedEnvironments, selectedBackingKey]);
 
 	const centerMessage =
 		projects === undefined
@@ -115,67 +134,69 @@ function AuthenticatedIndex() {
 			: projects.length === 0
 				? "Create a project to get started."
 				: "How can I help you today?";
-	let placeholder = "Select a project...";
-	if (selectedProject) {
-		if (selectedSnapshot) {
-			placeholder = isSelectedSnapshotReady
-				? "Send a message..."
-				: "Selected snapshot is not ready yet...";
-		} else {
-			placeholder =
-				snapshots === undefined
-					? "Loading snapshots..."
-					: "Select a snapshot...";
-		}
-	}
+	const placeholder = selectedProject
+		? "Send a message..."
+		: "Select a project...";
 
-	const handleSend = useCallback(() => {
+	const handleSend = useCallback(async () => {
 		const text = input.trim();
-		if (
-			!(
-				text &&
-				selectedProject &&
-				selectedSnapshotId &&
-				isSelectedSnapshotReady
-			)
-		) {
+		if (!(text && selectedProject && selectedBacking && agent && modelId)) {
 			return;
 		}
 
-		const spaceSlug = nanoid();
-		const sessionId = nanoid();
+		setIsSubmitting(true);
+		try {
+			const spaceSlug = nanoid();
+			const sessionId = nanoid();
+			const spaceId = await createSpace({
+				slug: spaceSlug,
+				projectId: selectedProject._id,
+				firstMessage: text,
+			});
 
-		setSpace({
-			slug: spaceSlug,
-			projectId: selectedProject._id,
-			snapshotId: selectedSnapshotId,
-		});
-		setMessage({ text, agent, modelId });
-		setInput("");
+			if (selectedBacking.type === "sandbox") {
+				await ensureSandbox({ id: spaceId });
+			} else {
+				await attachEnvironment({
+					id: spaceId,
+					environmentId: selectedBacking.environmentId,
+				});
+			}
 
-		navigate({
-			to: "/space/$spaceSlug",
-			params: { spaceSlug },
-			search: { session: sessionId },
-		});
+			setMessage({ text, agent, modelId });
+			setInput("");
+
+			navigate({
+				to: "/space/$spaceSlug",
+				params: { spaceSlug },
+				search: { session: sessionId },
+			});
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Failed to create space"
+			);
+		} finally {
+			setIsSubmitting(false);
+		}
 	}, [
-		input,
-		selectedProject,
-		selectedSnapshotId,
-		isSelectedSnapshotReady,
 		agent,
+		attachEnvironment,
+		createSpace,
+		ensureSandbox,
+		input,
 		modelId,
-		setSpace,
-		setMessage,
 		navigate,
+		selectedBacking,
+		selectedProject,
+		setMessage,
 	]);
 
 	const isChatDisabled = !(
 		selectedProject &&
-		selectedSnapshotId &&
-		isSelectedSnapshotReady &&
+		selectedBacking &&
 		agent &&
-		modelId
+		modelId &&
+		!isSubmitting
 	);
 
 	return (
@@ -201,11 +222,10 @@ function AuthenticatedIndex() {
 									projectId={selectedProjectId}
 									projects={projects ?? []}
 								/>
-								<SnapshotSelector
-									onSnapshotIdChange={setSelectedSnapshotId}
-									project={selectedProject}
-									snapshotId={selectedSnapshotId}
-									snapshots={snapshots}
+								<BackingSelector
+									environments={connectedEnvironments}
+									onSelectedKeyChange={setSelectedBackingKey}
+									selectedKey={selectedBackingKey}
 								/>
 								<AgentModelPicker
 									agent={agent}
@@ -220,47 +240,12 @@ function AuthenticatedIndex() {
 						message={input}
 						onMessageChange={setInput}
 						onSendMessage={handleSend}
-						placeholder={placeholder}
+						placeholder={isSubmitting ? "Creating space..." : placeholder}
 					/>
 				</div>
 			</SidebarInset>
 		</div>
 	);
-}
-
-type ProjectListItem = FunctionReturnType<typeof api.projects.list>[number];
-type SnapshotListItem = FunctionReturnType<
-	typeof api.snapshot.listByProject
->[number];
-
-function resolveSelectedSnapshotId({
-	currentSnapshotId,
-	defaultSnapshotId,
-	snapshots,
-}: {
-	currentSnapshotId: Id<"snapshots"> | null;
-	defaultSnapshotId: Id<"snapshots"> | null;
-	snapshots: SnapshotListItem[];
-}): Id<"snapshots"> | null {
-	const readySnapshots = snapshots.filter(
-		(snapshot) => snapshot.status === "ready"
-	);
-
-	if (
-		currentSnapshotId &&
-		readySnapshots.some((snapshot) => snapshot._id === currentSnapshotId)
-	) {
-		return currentSnapshotId;
-	}
-
-	if (
-		defaultSnapshotId &&
-		readySnapshots.some((snapshot) => snapshot._id === defaultSnapshotId)
-	) {
-		return defaultSnapshotId;
-	}
-
-	return readySnapshots[0]?._id ?? null;
 }
 
 const ProjectSelector: FC<{
@@ -302,59 +287,57 @@ const ProjectSelector: FC<{
 	);
 };
 
-const SnapshotSelector: FC<{
-	project: ProjectListItem | null;
-	snapshots: SnapshotListItem[] | undefined;
-	snapshotId: Id<"snapshots"> | null;
-	onSnapshotIdChange: (snapshotId: Id<"snapshots">) => void;
-}> = ({ project, snapshots, snapshotId, onSnapshotIdChange }) => {
-	const selectedSnapshot =
-		snapshots?.find((snapshot) => snapshot._id === snapshotId) ?? null;
-	const isLoading = !!project && snapshots === undefined;
-	const hasReadySnapshots =
-		snapshots?.some((snapshot) => snapshot.status === "ready") ?? false;
-	const isDisabled = !project || isLoading || !hasReadySnapshots;
-	const label = isLoading
-		? "Loading snapshots..."
-		: selectedSnapshot
-			? selectedSnapshot.label
-			: project
-				? "Select snapshot"
-				: "Select project first";
+const BackingSelector: FC<{
+	environments: EnvironmentListItem[];
+	selectedKey: string;
+	onSelectedKeyChange: (key: string) => void;
+}> = ({ environments, selectedKey, onSelectedKeyChange }) => {
+	const selectedEnvironment =
+		environments.find((environment) => environment._id === selectedKey) ?? null;
+	const label =
+		selectedKey === DEFAULT_BACKING_KEY
+			? "New sandbox"
+			: (selectedEnvironment?.name ?? "Select backing");
 
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger
-				className={`inline-flex h-7 max-w-56 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground ${isDisabled ? "pointer-events-none opacity-50" : ""}`}
-			>
-				{isLoading ? (
-					<Loader2Icon className="size-3 animate-spin" />
+			<DropdownMenuTrigger className="inline-flex h-7 max-w-56 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground">
+				{selectedKey === DEFAULT_BACKING_KEY ? (
+					<BoxIcon className="size-3" />
 				) : (
-					<ClockFadingIcon className="size-3" />
+					<LaptopIcon className="size-3" />
 				)}
 				<span className="truncate">{label}</span>
 				<ChevronDownIcon className="size-3" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start">
-				{snapshots?.map((snapshot) => (
-					<DropdownMenuItem
-						className={`flex items-center justify-between gap-3 ${snapshot._id === snapshotId ? "bg-accent text-accent-foreground" : ""}`}
-						disabled={snapshot.status !== "ready"}
-						key={snapshot._id}
-						onClick={() => onSnapshotIdChange(snapshot._id)}
-					>
-						<span className="truncate">{snapshot.label}</span>
-						{snapshot.status === "building" ? (
-							<Loader2Icon className="size-3 shrink-0 animate-spin text-muted-foreground" />
-						) : snapshot.status === "error" ? (
-							<span className="size-2 shrink-0 rounded-full bg-destructive" />
-						) : null}
-					</DropdownMenuItem>
-				))}
-				{project && !isLoading && !hasReadySnapshots && (
+				<DropdownMenuItem
+					onClick={() => onSelectedKeyChange(DEFAULT_BACKING_KEY)}
+				>
+					<div className="flex items-center gap-2">
+						<BoxIcon className="size-3.5" />
+						<span>New sandbox</span>
+					</div>
+				</DropdownMenuItem>
+				{environments.length === 0 ? (
 					<DropdownMenuItem disabled>
-						No ready snapshots available
+						<div className="flex items-center gap-2">
+							<Loader2Icon className="size-3.5 text-muted-foreground" />
+							<span>No connected environments</span>
+						</div>
 					</DropdownMenuItem>
+				) : (
+					environments.map((environment) => (
+						<DropdownMenuItem
+							key={environment._id}
+							onClick={() => onSelectedKeyChange(environment._id)}
+						>
+							<div className="flex items-center gap-2">
+								<LaptopIcon className="size-3.5" />
+								<span className="truncate">{environment.name}</span>
+							</div>
+						</DropdownMenuItem>
+					))
 				)}
 			</DropdownMenuContent>
 		</DropdownMenu>

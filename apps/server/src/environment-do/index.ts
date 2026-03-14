@@ -106,7 +106,6 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				body: JSON.stringify({
 					userId: claims.sub,
 					clientId: claims.clientId,
-					kind: "persistent",
 					name: claims.clientId,
 				}),
 			});

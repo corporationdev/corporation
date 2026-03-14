@@ -257,19 +257,17 @@ export const saveSpaceState = internalAction({
 			id: args.spaceId,
 		});
 
-		// TODO: migrate to use environments table
-		const sandboxId = (space as Record<string, unknown>).sandboxId as
-			| string
-			| undefined;
-		if (!sandboxId) {
+		const sandboxRecord = space.sandbox;
+		if (!sandboxRecord?.externalSandboxId) {
 			throw new Error("Sandbox is not running");
 		}
 
+		const externalSandboxId = sandboxRecord.externalSandboxId;
 		const snapshotId = args.snapshotId;
 		let snapshotSaved = false;
 
 		try {
-			const sandbox = await Sandbox.connect(sandboxId);
+			const sandbox = await Sandbox.connect(externalSandboxId);
 			const snapshot = await sandbox.createSnapshot();
 
 			await ctx.runMutation(internal.snapshot.completeSnapshot, {
@@ -280,24 +278,24 @@ export const saveSpaceState = internalAction({
 				setAsDefault: args.setAsDefault,
 			});
 			snapshotSaved = true;
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: space._id,
+			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+				id: sandboxRecord._id,
 				snapshotId,
 			});
 
 			try {
-				await Sandbox.betaPause(sandboxId);
+				await Sandbox.betaPause(externalSandboxId);
 			} catch (error) {
-				await ctx.runMutation(internal.spaces.internalUpdate, {
-					id: space._id,
+				await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+					id: sandboxRecord._id,
 					status: "running",
 				});
 				throw new Error(
 					`Snapshot saved but failed to pause sandbox: ${formatSnapshotError(error)}`
 				);
 			}
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: space._id,
+			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+				id: sandboxRecord._id,
 				status: "paused",
 			});
 

@@ -89,7 +89,6 @@ http.route({
 					apiKey,
 					userId: body.userId as string,
 					clientId: body.clientId as string,
-					kind: body.kind as "sandbox" | "persistent",
 					name: body.name as string,
 					metadata: body.metadata as Record<string, string> | undefined,
 				}

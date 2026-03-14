@@ -180,7 +180,7 @@ export function AgentsConfigureDialog({
 			return;
 		}
 
-		if (workspaceState.space?.status === "running") {
+		if (workspaceState.space?.sandbox?.status === "running") {
 			return;
 		}
 
@@ -294,11 +294,8 @@ export function AgentsConfigureDialog({
 	const showErrorState =
 		open &&
 		workspaceState !== undefined &&
-		(agent?.status === "error" || configureError !== null);
-	// TODO: migrate to use environments table
-	const sandboxId = (agent as Record<string, unknown> | undefined)?.sandboxId as
-		| string
-		| undefined;
+		(agent?.sandbox?.status === "error" || configureError !== null);
+	const sandboxId = agent?.sandbox?.externalSandboxId;
 
 	return (
 		<Dialog onOpenChange={onOpenChange} open={open}>
@@ -409,7 +406,7 @@ export function AgentsConfigureDialog({
 							<div className="font-medium text-sm">Unable to connect</div>
 							<div className="max-w-sm text-muted-foreground text-xs/relaxed">
 								{configureError ??
-									agent?.error ??
+									agent?.sandbox?.error ??
 									"Failed to open the agent terminal."}
 							</div>
 						</div>

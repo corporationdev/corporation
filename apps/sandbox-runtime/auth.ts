@@ -138,10 +138,7 @@ async function startLoginCallbackServer(expectedState: string): Promise<{
 	const server = createServer(async (request, response) => {
 		response.setHeader("Cache-Control", "no-store");
 
-		const requestUrl = new URL(
-			request.url ?? "/",
-			"http://127.0.0.1"
-		);
+		const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
 		if (
 			requestUrl.pathname !== "/callback" ||
 			(request.method !== "GET" && request.method !== "POST")

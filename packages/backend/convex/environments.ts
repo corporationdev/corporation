@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation } from "./_generated/server";
-import { environmentKindValidator } from "./schema";
+import { authedQuery } from "./functions";
 
 export const verifyInternalApiKey = internalAction({
 	args: { apiKey: v.string() },
@@ -21,7 +21,6 @@ export const connectAction = internalAction({
 		apiKey: v.string(),
 		userId: v.string(),
 		clientId: v.string(),
-		kind: environmentKindValidator,
 		name: v.string(),
 		metadata: v.optional(v.record(v.string(), v.string())),
 	},
@@ -55,7 +54,6 @@ export const connect = internalMutation({
 	args: {
 		userId: v.string(),
 		clientId: v.string(),
-		kind: environmentKindValidator,
 		name: v.string(),
 		metadata: v.optional(v.record(v.string(), v.string())),
 	},
@@ -84,7 +82,6 @@ export const connect = internalMutation({
 		return await ctx.db.insert("environments", {
 			userId: args.userId,
 			clientId: args.clientId,
-			kind: args.kind,
 			name: args.name,
 			status: "connected",
 			metadata: args.metadata,
@@ -116,5 +113,18 @@ export const disconnect = internalMutation({
 			status: "disconnected",
 			updatedAt: Date.now(),
 		});
+	},
+});
+
+export const listForUser = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		const environments = await ctx.db
+			.query("environments")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.collect();
+
+		environments.sort((a, b) => b.updatedAt - a.updatedAt);
+		return environments;
 	},
 });
