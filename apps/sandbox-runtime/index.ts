@@ -124,6 +124,14 @@ export type {
 } from "./websocket-runtime-transport";
 export type RuntimeEventListener = (event: SessionEvent) => void;
 
+function getPromptText(prompt: PromptPart[]): string | null {
+	const text = prompt
+		.map((part) => part.text)
+		.join("")
+		.trim();
+	return text.length > 0 ? text : null;
+}
+
 function getConfigDiff(
 	current: SessionDynamicConfig,
 	incoming: SessionDynamicConfig | undefined
@@ -297,6 +305,18 @@ export class RuntimeEngine {
 		};
 		this.turns.set(turnId, turnState);
 		session.activeTurnId = turnId;
+		const promptText = getPromptText(input.prompt);
+		if (promptText) {
+			this.emit({
+				kind: "text_delta",
+				sessionId: input.sessionId,
+				channel: "user",
+				content: {
+					type: "text",
+					text: promptText,
+				},
+			});
+		}
 		this.emit({
 			kind: "status",
 			sessionId: input.sessionId,

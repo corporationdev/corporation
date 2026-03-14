@@ -79,8 +79,17 @@ describe("RuntimeEngine Live", () => {
 
 				expect(turnId).toBeString();
 				expect(engine.getTurn(turnId)?.status).toBe("completed");
-				expect(events.length).toBeGreaterThanOrEqual(3);
+				expect(events.length).toBeGreaterThanOrEqual(4);
 				expect(events[0]).toEqual({
+					kind: "text_delta",
+					sessionId,
+					channel: "user",
+					content: {
+						type: "text",
+						text: "Reply with exactly the word READY. Do not use tools, do not read files, and do not request permissions.",
+					},
+				});
+				expect(events[1]).toEqual({
 					kind: "status",
 					sessionId,
 					status: "running",

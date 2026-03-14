@@ -107,6 +107,15 @@ describe("RuntimeEngine", () => {
 			},
 		]);
 		expect(events).toEqual([
+			{
+				kind: "text_delta",
+				sessionId: "session-1",
+				channel: "user",
+				content: {
+					type: "text",
+					text: "hello",
+				},
+			},
 			{ kind: "status", sessionId: "session-1", status: "running" },
 			{ kind: "status", sessionId: "session-1", status: "idle" },
 		]);
