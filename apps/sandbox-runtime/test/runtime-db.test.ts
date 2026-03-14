@@ -54,9 +54,9 @@ describe("openRuntimeDatabase", () => {
 			const appended = store.appendEvent({
 				commandId: "command-1",
 				event: {
-					type: "turn.started",
+					kind: "status",
 					sessionId: "session-1",
-					turnId: "turn-1",
+					status: "running",
 				},
 			});
 

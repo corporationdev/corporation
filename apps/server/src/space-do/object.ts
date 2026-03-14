@@ -1,5 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
+	SessionStreamFrame,
+	SessionStreamState,
+} from "@tendril/contracts/browser-do";
+import { sessionEventSchema } from "@tendril/contracts/browser-do";
+import type {
 	AbortSessionInput,
 	CreateSessionInput,
 	CreateSessionResult,
@@ -7,15 +12,15 @@ import type {
 	PromptSessionInput,
 	RespondToPermissionInput,
 	SpaceSessionRow,
-} from "@corporation/contracts/browser-space";
+} from "@tendril/contracts/browser-space";
 import type {
 	EnvironmentRpcErrorCode,
 	EnvironmentRpcResult,
 	EnvironmentStreamDelivery,
 	EnvironmentStreamDeliveryAck,
-} from "@corporation/contracts/environment-do";
-import type { EnvironmentRuntimeCommandResponse } from "@corporation/contracts/environment-runtime";
-import { eq } from "drizzle-orm";
+} from "@tendril/contracts/environment-do";
+import type { EnvironmentRuntimeCommandResponse } from "@tendril/contracts/environment-runtime";
+import { eq, isNull } from "drizzle-orm";
 import {
 	type DrizzleSqliteDODatabase,
 	drizzle,
@@ -34,6 +39,12 @@ export type {
 	RuntimeEventRow,
 	SpaceSessionRow as SessionRow,
 } from "./db/schema";
+
+const NUMERIC_OFFSET_PATTERN = /^\d+$/;
+const DEFAULT_STREAM_LIMIT = 200;
+const MAX_STREAM_LIMIT = 500;
+const DEFAULT_STREAM_TIMEOUT_MS = 25_000;
+const MAX_STREAM_TIMEOUT_MS = 60_000;
 
 function okResult<T>(value: T): EnvironmentRpcResult<T> {
 	return {
@@ -78,7 +89,7 @@ function parseOffsetSequence(offset: string): number | null {
 		return null;
 	}
 
-	if (!/^\d+$/.test(offset)) {
+	if (!NUMERIC_OFFSET_PATTERN.test(offset)) {
 		return null;
 	}
 
@@ -93,8 +104,8 @@ function getEventPayload(event: unknown): Record<string, unknown> | null {
 	return null;
 }
 
-function getEventType(payload: Record<string, unknown>): string {
-	return typeof payload.type === "string" ? payload.type : "unknown";
+function getEventKind(payload: Record<string, unknown>): string {
+	return typeof payload.kind === "string" ? payload.kind : "unknown";
 }
 
 function getOptionalString(
@@ -113,8 +124,57 @@ function compareOffsets(left: string, right: string): number {
 	return leftSeq - rightSeq;
 }
 
+function normalizeLimit(limit?: number): number {
+	if (!Number.isFinite(limit)) {
+		return DEFAULT_STREAM_LIMIT;
+	}
+	return Math.min(
+		MAX_STREAM_LIMIT,
+		Math.max(1, Math.trunc(limit ?? DEFAULT_STREAM_LIMIT))
+	);
+}
+
+function normalizeTimeoutMs(timeoutMs?: number): number {
+	if (!Number.isFinite(timeoutMs)) {
+		return DEFAULT_STREAM_TIMEOUT_MS;
+	}
+	return Math.min(
+		MAX_STREAM_TIMEOUT_MS,
+		Math.max(100, Math.trunc(timeoutMs ?? DEFAULT_STREAM_TIMEOUT_MS))
+	);
+}
+
+function normalizeAfterOffset(afterOffset?: number): number {
+	if (!Number.isFinite(afterOffset)) {
+		return -1;
+	}
+	return Math.max(-1, Math.trunc(afterOffset ?? -1));
+}
+
+function mapRuntimeEventRowToFrame(
+	row: Pick<RuntimeEventRow, "eventId" | "offsetSeq" | "createdAt" | "payload">
+): SessionStreamFrame | null {
+	const parsed = sessionEventSchema.safeParse(row.payload);
+	if (!parsed.success) {
+		console.warn("[space-do] sessionEventSchema parse failed", {
+			offsetSeq: row.offsetSeq,
+			error: parsed.error.message,
+		});
+		return null;
+	}
+
+	return {
+		kind: "event",
+		offset: row.offsetSeq,
+		eventId: row.eventId,
+		createdAt: row.createdAt,
+		event: parsed.data,
+	};
+}
+
 export class SpaceDurableObject extends DurableObject<Env> {
 	private readonly ready: Promise<void>;
+	private readonly sessionStreamWaiters = new Map<string, Set<() => void>>();
 	private db!: DrizzleSqliteDODatabase<typeof schema>;
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -155,15 +215,12 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	}
 
 	private async sendEnvironmentCommand(
-		environmentId: string,
+		clientId: string,
 		command: Parameters<
 			ReturnType<typeof getEnvironmentStub>["sendRuntimeCommand"]
 		>[0]
 	): Promise<EnvironmentRuntimeCommandResponse> {
-		const environment = getEnvironmentStub(
-			this.env.ENVIRONMENT_DO,
-			environmentId
-		);
+		const environment = getEnvironmentStub(this.env.ENVIRONMENT_DO, clientId);
 		const commandResult = await environment.sendRuntimeCommand(command);
 		if (!commandResult.ok) {
 			throw new Error(commandResult.error.message);
@@ -184,7 +241,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			.insert(sessions)
 			.values({
 				id: input.sessionId,
-				environmentId: input.environmentId,
+				clientId: input.clientId,
 				streamKey,
 				title: input.title ?? "New Chat",
 				agent: input.agent,
@@ -192,7 +249,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 				model: input.model,
 				mode: input.mode,
 				configOptions: input.configOptions ?? null,
-				syncStatus: "pending",
 				lastAppliedOffset: "-1",
 				lastEventAt: null,
 				lastSyncError: null,
@@ -203,7 +259,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			.onConflictDoUpdate({
 				target: sessions.id,
 				set: {
-					environmentId: input.environmentId,
+					clientId: input.clientId,
 					streamKey,
 					title: input.title ?? "New Chat",
 					agent: input.agent,
@@ -217,7 +273,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 
 		const environment = getEnvironmentStub(
 			this.env.ENVIRONMENT_DO,
-			input.environmentId
+			input.clientId
 		);
 
 		const commandResult = await environment.sendRuntimeCommand({
@@ -233,10 +289,25 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			},
 		});
 		if (!commandResult.ok) {
+			const [runtimeState, runtimeConnections] = await Promise.all([
+				environment.hasConnectedRuntime(),
+				environment.getRuntimeConnectionsSnapshot(),
+			]);
+			console.error("space-do.createSession.sendRuntimeCommand.failed", {
+				spaceName: input.spaceName,
+				sessionId: input.sessionId,
+				clientId: input.clientId,
+				error: commandResult.error.message,
+				hasConnectedRuntime: runtimeState.ok
+					? runtimeState.value.connected
+					: null,
+				runtimeConnections: runtimeConnections.ok
+					? runtimeConnections.value.snapshot
+					: null,
+			});
 			await db
 				.update(sessions)
 				.set({
-					syncStatus: "error",
 					lastSyncError: commandResult.error.message,
 					updatedAt: Date.now(),
 				})
@@ -249,7 +320,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			await db
 				.update(sessions)
 				.set({
-					syncStatus: "error",
 					lastSyncError: commandError,
 					updatedAt: Date.now(),
 				})
@@ -269,10 +339,16 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			},
 		});
 		if (!subscribeResult.ok) {
+			console.error("space-do.createSession.subscribeStream.failed", {
+				spaceName: input.spaceName,
+				sessionId: input.sessionId,
+				clientId: input.clientId,
+				error: subscribeResult.error.message,
+				streamKey,
+			});
 			await db
 				.update(sessions)
 				.set({
-					syncStatus: "error",
 					lastSyncError: subscribeResult.error.message,
 					updatedAt: Date.now(),
 				})
@@ -283,7 +359,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		await db
 			.update(sessions)
 			.set({
-				syncStatus: "live",
 				lastSyncError: null,
 				updatedAt: Date.now(),
 			})
@@ -321,10 +396,19 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		});
 	}
 
+	async listSessions(): Promise<SpaceSessionRow[]> {
+		await this.ready;
+		const db = await this.getDb();
+		return await db.query.sessions.findMany({
+			where: isNull(sessions.archivedAt),
+			orderBy: (table, { desc }) => [desc(table.updatedAt)],
+		});
+	}
+
 	async promptSession(input: PromptSessionInput): Promise<null> {
 		await this.ready;
 		const session = await this.getSessionOrThrow(input.sessionId);
-		await this.sendEnvironmentCommand(session.environmentId, {
+		await this.sendEnvironmentCommand(session.clientId, {
 			type: "prompt",
 			requestId: crypto.randomUUID(),
 			input: {
@@ -341,7 +425,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	async abortSession(input: AbortSessionInput): Promise<boolean> {
 		await this.ready;
 		const session = await this.getSessionOrThrow(input.sessionId);
-		const response = await this.sendEnvironmentCommand(session.environmentId, {
+		const response = await this.sendEnvironmentCommand(session.clientId, {
 			type: "abort",
 			requestId: crypto.randomUUID(),
 			input: {
@@ -357,7 +441,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	async respondToPermission(input: RespondToPermissionInput): Promise<boolean> {
 		await this.ready;
 		const session = await this.getSessionOrThrow(input.sessionId);
-		const response = await this.sendEnvironmentCommand(session.environmentId, {
+		const response = await this.sendEnvironmentCommand(session.clientId, {
 			type: "respond_to_permission",
 			requestId: crypto.randomUUID(),
 			input: {
@@ -371,9 +455,208 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		return response.result.handled;
 	}
 
+	async getSessionStreamState(sessionId: string): Promise<SessionStreamState> {
+		await this.ready;
+		const session = await this.getPersistedSession(sessionId);
+		const lastOffset = parseOffsetSequence(session?.lastAppliedOffset ?? "-1");
+
+		if (!session) {
+			return {
+				sessionId,
+				agent: null,
+				modelId: null,
+				lastOffset: 0,
+			};
+		}
+
+		return {
+			sessionId,
+			agent: session.agent,
+			modelId: session.model ?? null,
+			lastOffset: Math.max(0, lastOffset ?? 0),
+		};
+	}
+
+	private async readSessionFramesChunk(
+		sessionId: string,
+		afterOffset: number,
+		limit: number
+	): Promise<{
+		frames: SessionStreamFrame[];
+		nextOffset: number;
+		upToDate: boolean;
+		streamClosed: boolean;
+	}> {
+		const db = await this.getDb();
+		const session = await this.getSessionOrThrow(sessionId);
+		const sessionLastOffset =
+			parseOffsetSequence(session.lastAppliedOffset) ?? -1;
+		const rows = await db.query.runtimeEvents.findMany({
+			where: (table, { and, eq, gt }) =>
+				and(eq(table.sessionId, sessionId), gt(table.offsetSeq, afterOffset)),
+			orderBy: (table, { asc }) => [asc(table.offsetSeq)],
+			limit: limit + 1,
+		});
+
+		const hasMore = rows.length > limit;
+		const taken = hasMore ? rows.slice(0, limit) : rows;
+		const frames = taken
+			.map((row) => mapRuntimeEventRowToFrame(row))
+			.filter((frame): frame is SessionStreamFrame => frame !== null);
+		const nextOffset =
+			frames.at(-1)?.offset ?? Math.max(afterOffset, sessionLastOffset, 0);
+
+		return {
+			frames,
+			nextOffset,
+			upToDate: !hasMore,
+			streamClosed: false,
+		};
+	}
+
+	private createSessionStreamWaiter(
+		sessionId: string,
+		timeoutMs: number
+	): {
+		cancel: () => void;
+		promise: Promise<void>;
+	} {
+		let settled = false;
+		let resolvePromise!: () => void;
+
+		const promise = new Promise<void>((resolve) => {
+			resolvePromise = resolve;
+		});
+
+		const cleanup = () => {
+			const waiters = this.sessionStreamWaiters.get(sessionId);
+			if (!waiters) {
+				return;
+			}
+			waiters.delete(wake);
+			if (waiters.size === 0) {
+				this.sessionStreamWaiters.delete(sessionId);
+			}
+		};
+
+		const settle = () => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			clearTimeout(timeoutHandle);
+			cleanup();
+			resolvePromise();
+		};
+
+		const wake = () => {
+			settle();
+		};
+
+		const timeoutHandle = setTimeout(() => {
+			settle();
+		}, timeoutMs);
+
+		const waiters = this.sessionStreamWaiters.get(sessionId);
+		if (waiters) {
+			waiters.add(wake);
+		} else {
+			this.sessionStreamWaiters.set(sessionId, new Set([wake]));
+		}
+
+		return {
+			cancel: settle,
+			promise,
+		};
+	}
+
+	private notifySessionStreamWaiters(sessionId: string): void {
+		const waiters = this.sessionStreamWaiters.get(sessionId);
+		if (!waiters) {
+			return;
+		}
+
+		this.sessionStreamWaiters.delete(sessionId);
+		for (const wake of waiters) {
+			wake();
+		}
+	}
+
+	async readSessionStream(
+		sessionId: string,
+		afterOffset?: number,
+		limit?: number,
+		live?: boolean,
+		timeoutMs?: number
+	): Promise<{
+		frames: SessionStreamFrame[];
+		nextOffset: number;
+		upToDate: boolean;
+		streamClosed: boolean;
+	}> {
+		await this.ready;
+		const normalizedAfterOffset = normalizeAfterOffset(afterOffset);
+		const normalizedLimit = normalizeLimit(limit);
+		const normalizedLive = live === true;
+		const normalizedTimeoutMs = normalizeTimeoutMs(timeoutMs);
+
+		console.log("[space-do] readSessionStream", {
+			sessionId,
+			afterOffset: normalizedAfterOffset,
+			live: normalizedLive,
+		});
+
+		let result = await this.readSessionFramesChunk(
+			sessionId,
+			normalizedAfterOffset,
+			normalizedLimit
+		);
+		console.log("[space-do] readSessionStream chunk", {
+			sessionId,
+			frameCount: result.frames.length,
+			nextOffset: result.nextOffset,
+			upToDate: result.upToDate,
+		});
+		if (!normalizedLive || result.frames.length > 0) {
+			return result;
+		}
+
+		const waiter = this.createSessionStreamWaiter(
+			sessionId,
+			normalizedTimeoutMs
+		);
+		try {
+			// Re-read after registering the waiter so we do not miss updates that
+			// arrive between the initial empty read and waiter installation.
+			result = await this.readSessionFramesChunk(
+				sessionId,
+				normalizedAfterOffset,
+				normalizedLimit
+			);
+			if (result.frames.length > 0) {
+				return result;
+			}
+
+			await waiter.promise;
+			return await this.readSessionFramesChunk(
+				sessionId,
+				normalizedAfterOffset,
+				normalizedLimit
+			);
+		} finally {
+			waiter.cancel();
+		}
+	}
+
 	receiveEnvironmentStreamItems(
 		input: EnvironmentStreamDelivery
 	): Promise<EnvironmentRpcResult<EnvironmentStreamDeliveryAck>> {
+		console.log("[space-do] receiveEnvironmentStreamItems", {
+			stream: input.stream,
+			requesterId: input.requesterId,
+			itemCount: input.items.length,
+			nextOffset: input.nextOffset,
+		});
 		return this.ingestEnvironmentStreamItems(input);
 	}
 
@@ -385,6 +668,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		const nextOffsetSequence =
 			input.nextOffset === "-1" ? -1 : parseOffsetSequence(input.nextOffset);
 		if (nextOffsetSequence === null && input.nextOffset !== "-1") {
+			console.error("[space-do] invalid next offset", input.nextOffset);
 			return errorResult(
 				"stream_invalid_payload",
 				`Invalid next offset ${input.nextOffset}`
@@ -395,11 +679,25 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			where: eq(sessions.id, input.requesterId),
 		});
 		if (!(session && session.streamKey === input.stream)) {
+			console.error("[space-do] no session found for stream", {
+				stream: input.stream,
+				requesterId: input.requesterId,
+				sessionFound: !!session,
+				sessionStreamKey: session?.streamKey,
+			});
 			return errorResult(
 				"stream_session_not_found",
 				`No session found for stream ${input.stream}`
 			);
 		}
+		console.log(
+			"[space-do] ingesting",
+			input.items.length,
+			"events for session",
+			session.id,
+			"committedOffset will be >=",
+			input.nextOffset
+		);
 
 		for (const item of input.items) {
 			if (parseOffsetSequence(item.offset) === null) {
@@ -450,7 +748,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 								offsetSeq,
 								commandId: getOptionalString(payload, "commandId"),
 								turnId: getOptionalString(payload, "turnId"),
-								eventType: getEventType(payload),
+								eventType: getEventKind(payload),
 								createdAt: item.createdAt,
 								payload,
 							};
@@ -465,11 +763,14 @@ export class SpaceDurableObject extends DurableObject<Env> {
 					lastAppliedOffset: committedOffset,
 					lastEventAt,
 					lastSyncError: null,
-					syncStatus: "live",
 					updatedAt: Date.now(),
 				})
 				.where(eq(sessions.id, session.id));
 		});
+
+		if (input.items.length > 0 || input.streamClosed) {
+			this.notifySessionStreamWaiters(session.id);
+		}
 
 		return okResult({
 			committedOffset,

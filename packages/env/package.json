@@ -1,5 +1,5 @@
 {
-  "name": "@corporation/env",
+  "name": "@tendril/env",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,8 +13,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@corporation/config": "workspace:*",
-    "@corporation/infra": "workspace:*",
+    "@tendril/config": "workspace:*",
+    "@tendril/infra": "workspace:*",
     "typescript": "catalog:"
   }
 }

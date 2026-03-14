@@ -1,12 +1,11 @@
 import {
 	validateSecretName,
 	validateSecretValue,
-} from "@corporation/shared/secrets";
+} from "@tendril/shared/secrets";
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { requireProjectInActiveOrg } from "./lib/projectAccess";
@@ -23,27 +22,9 @@ function requireActiveOrganization(
 
 function requireOrgProjectAccess(
 	activeOrganizationId: string | null,
-	project: Doc<"projects">,
-	options?: { allowBase?: boolean }
+	project: Doc<"projects">
 ): Doc<"projects"> {
-	return requireProjectInActiveOrg(
-		project,
-		activeOrganizationId,
-		"Project",
-		options
-	);
-}
-
-async function getOrgBaseProject(
-	ctx: MutationCtx,
-	organizationId: string
-): Promise<Doc<"projects"> | null> {
-	return await ctx.db
-		.query("projects")
-		.withIndex("by_organization_and_kind", (q) =>
-			q.eq("organizationId", organizationId).eq("kind", "base")
-		)
-		.unique();
+	return requireProjectInActiveOrg(project, activeOrganizationId, "Project");
 }
 
 function validateSecretRecord(secrets: Record<string, string>): void {
@@ -71,14 +52,12 @@ export const list = authedQuery({
 			return [];
 		}
 
-		return (
-			await ctx.db
-				.query("projects")
-				.withIndex("by_organization", (q) =>
-					q.eq("organizationId", organizationId)
-				)
-				.collect()
-		).filter((project) => project.kind === "standard");
+		return await ctx.db
+			.query("projects")
+			.withIndex("by_organization", (q) =>
+				q.eq("organizationId", organizationId)
+			)
+			.collect();
 	},
 });
 
@@ -141,14 +120,9 @@ export const create = authedMutation({
 				)
 				.first();
 
-			if (existing && existing.kind === "standard") {
+			if (existing) {
 				throw new ConvexError("Repository already connected to a project");
 			}
-		}
-
-		const baseProject = await getOrgBaseProject(ctx, organizationId);
-		if (!baseProject) {
-			throw new ConvexError("Organization base project is not ready yet");
 		}
 
 		const now = Date.now();
@@ -156,7 +130,6 @@ export const create = authedMutation({
 		const projectId = await ctx.db.insert("projects", {
 			userId: ctx.userId,
 			organizationId,
-			kind: "standard",
 			name: args.name,
 			githubRepoId: args.githubRepoId,
 			githubOwner: args.githubOwner,
@@ -268,13 +241,7 @@ const del = authedMutation({
 				.withIndex("by_space", (q) => q.eq("spaceId", space._id))
 				.unique();
 			if (sandbox) {
-				if (sandbox.externalSandboxId) {
-					await ctx.scheduler.runAfter(
-						0,
-						internal.sandboxActions.deleteSandbox,
-						{ sandboxId: sandbox.externalSandboxId }
-					);
-				}
+				// delete sandbox in e2b
 				await ctx.db.delete(sandbox._id);
 			}
 			await ctx.db.delete(space._id);
@@ -327,15 +294,4 @@ export const internalGetByGithubRepoId = internalQuery({
 			)
 			.collect();
 	},
-});
-
-export const internalGetOrgBaseProject = internalQuery({
-	args: { organizationId: v.string() },
-	handler: async (ctx, args) =>
-		await ctx.db
-			.query("projects")
-			.withIndex("by_organization_and_kind", (q) =>
-				q.eq("organizationId", args.organizationId).eq("kind", "base")
-			)
-			.unique(),
 });

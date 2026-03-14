@@ -8,7 +8,6 @@ export const snapshotStatusValidator = v.union(
 );
 
 export const sandboxStatusValidator = v.union(
-	v.literal("provisioning"),
 	v.literal("creating"),
 	v.literal("running"),
 	v.literal("paused"),
@@ -16,14 +15,9 @@ export const sandboxStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const projectKindValidator = v.union(
-	v.literal("standard"),
-	v.literal("base")
-);
-
-export const spaceBootstrapSourceValidator = v.union(
-	v.literal("snapshot"),
-	v.literal("base-template")
+export const environmentTypeValidator = v.union(
+	v.literal("persistent"),
+	v.literal("sandbox")
 );
 
 export const environmentStatusValidator = v.union(
@@ -32,23 +26,11 @@ export const environmentStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const spaceActiveBackingValidator = v.union(
-	v.object({
-		type: v.literal("sandbox"),
-		sandboxId: v.id("sandboxes"),
-	}),
-	v.object({
-		type: v.literal("environment"),
-		environmentId: v.id("environments"),
-	})
-);
-
 export default defineSchema(
 	{
 		projects: defineTable({
 			userId: v.string(),
 			organizationId: v.string(),
-			kind: projectKindValidator,
 			name: v.string(),
 			githubRepoId: v.optional(v.number()),
 			githubOwner: v.optional(v.string()),
@@ -60,7 +42,6 @@ export default defineSchema(
 		})
 			.index("by_user", ["userId"])
 			.index("by_organization", ["organizationId"])
-			.index("by_organization_and_kind", ["organizationId", "kind"])
 			.index("by_organization_and_github_repo", [
 				"organizationId",
 				"githubRepoId",
@@ -71,7 +52,7 @@ export default defineSchema(
 			userId: v.string(),
 			slug: v.string(),
 			projectId: v.id("projects"),
-			activeBacking: v.optional(spaceActiveBackingValidator),
+			activeBackingId: v.optional(v.id("backings")),
 			name: v.string(),
 			archived: v.optional(v.boolean()),
 			createdAt: v.number(),
@@ -87,7 +68,6 @@ export default defineSchema(
 			externalSandboxId: v.optional(v.string()),
 			status: sandboxStatusValidator,
 			snapshotId: v.optional(v.id("snapshots")),
-			bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 			error: v.optional(v.string()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
@@ -132,20 +112,42 @@ export default defineSchema(
 		})
 			.index("by_user", ["userId"])
 			.index("by_user_and_agent", ["userId", "agentId"]),
+
+		backings: defineTable({
+			spaceId: v.id("spaces"),
+			environmentId: v.id("environments"),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		})
+			.index("by_space", ["spaceId"])
+			.index("by_environment", ["environmentId"]),
+
 		environments: defineTable({
 			userId: v.string(),
-			clientId: v.string(),
+			connectionId: v.string(),
 			name: v.string(),
 			status: environmentStatusValidator,
+			type: v.optional(environmentTypeValidator),
+			metadata: v.optional(v.record(v.string(), v.any())),
 			error: v.optional(v.string()),
-			metadata: v.optional(v.record(v.string(), v.string())),
 			lastConnectedAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
-			.index("by_user_and_clientId", ["userId", "clientId"])
+			.index("by_user_and_connectionId", ["userId", "connectionId"])
 			.index("by_user_and_status", ["userId", "status"]),
+
+		projectEnvironments: defineTable({
+			projectId: v.id("projects"),
+			environmentId: v.id("environments"),
+			path: v.string(),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		})
+			.index("by_project", ["projectId"])
+			.index("by_environment", ["environmentId"])
+			.index("by_project_and_environment", ["projectId", "environmentId"]),
 
 		secrets: defineTable({
 			userId: v.string(),

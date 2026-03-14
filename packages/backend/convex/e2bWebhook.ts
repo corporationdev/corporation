@@ -3,7 +3,6 @@
 import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { z } from "zod";
-import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
 const e2bEventType = z.enum([
@@ -58,7 +57,7 @@ export const handleWebhook = internalAction({
 		body: v.string(),
 		signature: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (_ctx, args) => {
 		const e2bWebhookSecret = process.env.E2B_WEBHOOK_SECRET;
 		if (!e2bWebhookSecret) {
 			throw new Error("Missing E2B_WEBHOOK_SECRET env var");
@@ -85,19 +84,19 @@ export const handleWebhook = internalAction({
 			return { status: "ignored" as const };
 		}
 
-		const space = await ctx.runQuery(internal.spaces.getByExternalSandboxId, {
-			externalSandboxId: parsed.data.sandbox_id,
-		});
+		// const space = await ctx.runQuery(internal.spaces.getByExternalSandboxId, {
+		// 	externalSandboxId: parsed.data.sandbox_id,
+		// });
 
-		if (!space?.sandbox) {
-			return { status: "ignored" as const };
-		}
+		// if (!space?.sandbox) {
+		// 	return { status: "ignored" as const };
+		// }
 
-		await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
-			id: space.sandbox._id,
-			status: nextStatus,
-		});
-
+		// await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+		// 	id: space.sandbox._id,
+		// 	status: nextStatus,
+		// });
+		await Promise.resolve();
 		return { status: "ok" as const };
 	},
 });

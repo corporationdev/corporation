@@ -69,7 +69,7 @@ exec bun "$PACKAGE_DIR/dist/index.js" "$@"
 function buildPackageReadme(version: string) {
 	return `# @isaacdyor/sandbox-runtime
 
-Generated package artifact for Corporation sandbox runtime.
+Generated package artifact for Tendril sandbox runtime.
 
 - Package: \`${packageName}\`
 - Version: \`${version}\`
@@ -150,7 +150,7 @@ export async function buildSandboxRuntimePackage(
 				version,
 				private: false,
 				type: "module",
-				description: "Corporation sandbox runtime",
+				description: "Tendril sandbox runtime",
 				bin: {
 					"sandbox-runtime": "./bin/sandbox-runtime",
 				},

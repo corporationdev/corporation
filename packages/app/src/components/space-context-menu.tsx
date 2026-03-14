@@ -1,6 +1,6 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import { ArchiveIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type FC, type ReactNode, useEffect, useRef, useState } from "react";
@@ -28,8 +28,7 @@ export const SpaceContextMenu: FC<{
 	const inputRef = useRef<HTMLInputElement>(null);
 	const skipCommitRef = useRef(false);
 
-	const updateName = useMutation(api.spaces.updateName);
-	const archiveSpace = useMutation(api.spaces.archive);
+	const updateSpace = useMutation(api.spaces.update);
 	const deleteSpace = useMutation(api.spaces.delete);
 
 	useEffect(() => {
@@ -46,7 +45,7 @@ export const SpaceContextMenu: FC<{
 		}
 		setIsRenaming(false);
 		if (renameValue !== name) {
-			updateName({ id: spaceId, name: renameValue }).catch(() => {
+			updateSpace({ id: spaceId, name: renameValue }).catch(() => {
 				toast.error("Failed to rename space");
 			});
 		}
@@ -107,7 +106,7 @@ export const SpaceContextMenu: FC<{
 				</ContextMenuItem>
 				<ContextMenuItem
 					onClick={() => {
-						archiveSpace({ id: spaceId });
+						updateSpace({ id: spaceId, archived: true });
 						navigateAway();
 					}}
 				>

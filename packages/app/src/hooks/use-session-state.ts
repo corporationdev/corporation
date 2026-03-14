@@ -1,65 +1,54 @@
-import type {
-	SessionEvent,
-	SessionStreamFrame,
-	SessionStreamState,
-} from "@corporation/contracts/browser-do";
-import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
+import type { SessionStreamFrame } from "@tendril/contracts/browser-do";
+import { env } from "@tendril/env/web";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	MessageTimelineEntry,
 	TimelineEntry,
 } from "@/components/chat/types";
-import { apiClient, getAuthHeaders } from "@/lib/api-client";
-import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
-import type { SpaceActor } from "@/lib/space-client";
+import { getAuthHeaders, getSessionStreamState } from "@/lib/api-client";
+import {
+	type EnrichedSessionEvent,
+	sessionEventsToEntries,
+} from "@/lib/session-events-to-entries";
 import { toAbsoluteUrl } from "@/lib/url";
 
 function buildSessionStreamBaseUrl(
 	spaceSlug: string,
 	sessionId: string
 ): string {
-	const baseUrl = new URL(toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL));
+	const baseUrl = new URL(toAbsoluteUrl(env.VITE_SERVER_URL));
 	baseUrl.pathname = `/api/spaces/${encodeURIComponent(spaceSlug)}/sessions/${encodeURIComponent(sessionId)}`;
 	return baseUrl.toString();
-}
-
-async function fetchSessionStreamState(
-	spaceSlug: string,
-	sessionId: string,
-	signal: AbortSignal
-): Promise<SessionStreamState> {
-	return await apiClient.spaces.getSessionStreamState(
-		{ spaceSlug, sessionId },
-		{ signal }
-	);
 }
 
 function readStreamBatch(
 	batch: JsonBatch<SessionStreamFrame>,
 	sessionId: string
 ): {
-	events: SessionEvent[];
+	events: EnrichedSessionEvent[];
 	status: string | null;
 	error: string | null | undefined;
 } {
-	const events: SessionEvent[] = [];
+	const events: EnrichedSessionEvent[] = [];
 	let status: string | null = null;
 	let error: string | null | undefined;
 
 	for (const frame of batch.items) {
-		if (frame.kind === "event") {
-			if (frame.event.sessionId === sessionId) {
-				events.push(frame.event);
-			}
+		if (frame.event.sessionId !== sessionId) {
 			continue;
 		}
 
-		if (frame.kind === "status_changed") {
-			status = frame.status;
-			error = frame.error;
+		events.push({
+			eventId: frame.eventId,
+			createdAt: frame.createdAt,
+			event: frame.event,
+		});
+		if (frame.event.kind === "status") {
+			status = frame.event.status;
+			error = frame.event.error;
 		}
 	}
 
@@ -79,14 +68,14 @@ export type SessionState = {
 export function useSessionState({
 	sessionId,
 	spaceSlug,
-	actor,
+	streamEnabled,
 }: {
 	sessionId: string;
 	spaceSlug: string;
-	actor: SpaceActor;
+	streamEnabled: boolean;
 }): SessionState {
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
-	const [events, setEvents] = useState<SessionEvent[]>([]);
+	const [events, setEvents] = useState<EnrichedSessionEvent[]>([]);
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		MessageTimelineEntry[]
 	>([]);
@@ -112,12 +101,12 @@ export function useSessionState({
 		setSessionStatus("idle");
 	}, []);
 
-	const addEvents = useCallback((newEvents: SessionEvent[]) => {
-		const unseen: SessionEvent[] = [];
-		for (const event of newEvents) {
-			if (!seenEventIdsRef.current.has(event.id)) {
-				seenEventIdsRef.current.add(event.id);
-				unseen.push(event);
+	const addEvents = useCallback((newEvents: EnrichedSessionEvent[]) => {
+		const unseen: EnrichedSessionEvent[] = [];
+		for (const enriched of newEvents) {
+			if (!seenEventIdsRef.current.has(enriched.eventId)) {
+				seenEventIdsRef.current.add(enriched.eventId);
+				unseen.push(enriched);
 			}
 		}
 		if (unseen.length > 0) {
@@ -139,7 +128,7 @@ export function useSessionState({
 	}, [sessionId]);
 
 	useEffect(() => {
-		if (!sessionId || actor.connStatus !== "connected" || !actor.connection) {
+		if (!(sessionId && streamEnabled)) {
 			return;
 		}
 
@@ -149,17 +138,11 @@ export function useSessionState({
 		let streamResponse: StreamResponse<SessionStreamFrame> | null = null;
 
 		(async () => {
-			const state = await fetchSessionStreamState(
-				spaceSlug,
-				sessionId,
-				abortController.signal
-			);
+			const state = await getSessionStreamState(spaceSlug, sessionId);
 			if (isCancelled) {
 				return;
 			}
 
-			setSessionStatus(state.status);
-			setSessionError(state.error ?? null);
 			setSessionAgent(state.agent);
 			setSessionModelId(state.modelId);
 
@@ -210,7 +193,7 @@ export function useSessionState({
 			unsubscribe?.();
 			streamResponse?.cancel("session-stream-cleanup");
 		};
-	}, [actor.connStatus, actor.connection, addEvents, sessionId, spaceSlug]);
+	}, [addEvents, sessionId, spaceSlug, streamEnabled]);
 
 	const entries = useMemo(() => {
 		const serverEntries = sessionEventsToEntries(events);

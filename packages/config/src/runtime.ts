@@ -1,5 +1,5 @@
-import { getStageServerUrl } from "@corporation/config/server-url";
-import { getStageKind } from "@corporation/config/stage";
+import { getStageServerUrl } from "@tendril/config/server-url";
+import { getStageKind } from "@tendril/config/stage";
 
 type ResolveRuntimeContextOptions = {
 	allowMissingPreviewConvex?: boolean;
@@ -7,9 +7,9 @@ type ResolveRuntimeContextOptions = {
 
 export type RuntimeContext = {
 	webClientEnv: {
-		VITE_CORPORATION_SERVER_URL: string;
-		VITE_CORPORATION_CONVEX_URL: string;
-		VITE_CORPORATION_CONVEX_SITE_URL: string;
+		VITE_SERVER_URL: string;
+		VITE_CONVEX_URL: string;
+		VITE_CONVEX_SITE_URL: string;
 		VITE_STAGE_KIND: "dev" | "sandbox" | "preview" | "production";
 	};
 	webDevProxyEnv?: {
@@ -18,17 +18,12 @@ export type RuntimeContext = {
 		DEV_CONVEX_SITE_PROXY_TARGET: string;
 	};
 	serverBindings: {
-		CORPORATION_CONVEX_URL: string;
-		CORPORATION_CONVEX_SITE_URL: string;
-		CORPORATION_SERVER_URL: string;
-		CORPORATION_WEB_URL: string;
+		CONVEX_URL: string;
+		CONVEX_SITE_URL: string;
+		SERVER_URL: string;
+		WEB_URL: string;
 	};
-	convexSyncEnv: {
-		CORPORATION_WEB_URL: string;
-		CORPORATION_CONVEX_SITE_URL: string;
-		CORPORATION_SERVER_URL: string;
-		CORPORATION_EMAIL_FROM: string;
-	};
+	emailFrom: string;
 };
 
 export function resolveRuntimeContext(
@@ -44,9 +39,9 @@ export function resolveRuntimeContext(
 
 		return {
 			webClientEnv: {
-				VITE_CORPORATION_SERVER_URL: "/api",
-				VITE_CORPORATION_CONVEX_URL: "/convex",
-				VITE_CORPORATION_CONVEX_SITE_URL: "/convex",
+				VITE_SERVER_URL: "/api",
+				VITE_CONVEX_URL: "/convex",
+				VITE_CONVEX_SITE_URL: "/convex",
 				VITE_STAGE_KIND: "dev",
 			},
 			webDevProxyEnv: {
@@ -55,17 +50,12 @@ export function resolveRuntimeContext(
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
-				CORPORATION_CONVEX_URL: CONVEX_URL,
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_WEB_URL: "http://localhost:3001",
+				CONVEX_URL,
+				CONVEX_SITE_URL,
+				SERVER_URL,
+				WEB_URL: "http://localhost:3001",
 			},
-			convexSyncEnv: {
-				CORPORATION_WEB_URL: "http://localhost:3001",
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_EMAIL_FROM: "dev@corporation.dev",
-			},
+			emailFrom: "dev@tendril.sh",
 		};
 	}
 
@@ -76,9 +66,9 @@ export function resolveRuntimeContext(
 
 		return {
 			webClientEnv: {
-				VITE_CORPORATION_SERVER_URL: "/api",
-				VITE_CORPORATION_CONVEX_URL: "/convex",
-				VITE_CORPORATION_CONVEX_SITE_URL: "/convex",
+				VITE_SERVER_URL: "/api",
+				VITE_CONVEX_URL: "/convex",
+				VITE_CONVEX_SITE_URL: "/convex",
 				VITE_STAGE_KIND: "sandbox",
 			},
 			webDevProxyEnv: {
@@ -87,17 +77,12 @@ export function resolveRuntimeContext(
 				DEV_CONVEX_SITE_PROXY_TARGET: CONVEX_SITE_URL,
 			},
 			serverBindings: {
-				CORPORATION_CONVEX_URL: CONVEX_URL,
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_WEB_URL: "http://localhost:3001",
+				CONVEX_URL,
+				CONVEX_SITE_URL,
+				SERVER_URL,
+				WEB_URL: "http://localhost:3001",
 			},
-			convexSyncEnv: {
-				CORPORATION_WEB_URL: "http://localhost:3001",
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_EMAIL_FROM: "sandbox@corporation.dev",
-			},
+			emailFrom: "sandbox@tendril.sh",
 		};
 	}
 
@@ -122,23 +107,18 @@ export function resolveRuntimeContext(
 
 		return {
 			webClientEnv: {
-				VITE_CORPORATION_SERVER_URL: "/api",
-				VITE_CORPORATION_CONVEX_URL: CONVEX_URL,
-				VITE_CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				VITE_SERVER_URL: "/api",
+				VITE_CONVEX_URL: CONVEX_URL,
+				VITE_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				VITE_STAGE_KIND: "preview",
 			},
 			serverBindings: {
-				CORPORATION_CONVEX_URL: CONVEX_URL,
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_WEB_URL: `https://${stage}.corporation.dev`,
+				CONVEX_URL,
+				CONVEX_SITE_URL,
+				SERVER_URL,
+				WEB_URL: `https://${stage}.tendril.sh`,
 			},
-			convexSyncEnv: {
-				CORPORATION_WEB_URL: `https://${stage}.corporation.dev`,
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_EMAIL_FROM: "preview@corporation.dev",
-			},
+			emailFrom: "preview@tendril.sh",
 		};
 	}
 
@@ -148,23 +128,18 @@ export function resolveRuntimeContext(
 		const SERVER_URL = getStageServerUrl(stage);
 		return {
 			webClientEnv: {
-				VITE_CORPORATION_SERVER_URL: "/api",
-				VITE_CORPORATION_CONVEX_URL: CONVEX_URL,
-				VITE_CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
+				VITE_SERVER_URL: "/api",
+				VITE_CONVEX_URL: CONVEX_URL,
+				VITE_CONVEX_SITE_URL: CONVEX_SITE_URL,
 				VITE_STAGE_KIND: "production",
 			},
 			serverBindings: {
-				CORPORATION_CONVEX_URL: CONVEX_URL,
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_WEB_URL: "https://app.corporation.dev",
+				CONVEX_URL,
+				CONVEX_SITE_URL,
+				SERVER_URL,
+				WEB_URL: "https://app.tendril.sh",
 			},
-			convexSyncEnv: {
-				CORPORATION_WEB_URL: "https://app.corporation.dev",
-				CORPORATION_CONVEX_SITE_URL: CONVEX_SITE_URL,
-				CORPORATION_SERVER_URL: SERVER_URL,
-				CORPORATION_EMAIL_FROM: "hello@corporation.dev",
-			},
+			emailFrom: "hello@tendril.sh",
 		};
 	}
 

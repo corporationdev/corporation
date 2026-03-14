@@ -6,8 +6,8 @@ import type {
 	EnvironmentStreamSubscriber as SharedEnvironmentStreamSubscriber,
 	EnvironmentStreamSubscriptionSnapshot as SharedEnvironmentStreamSubscriptionSnapshot,
 	EnvironmentSubscribeStreamInput as SharedEnvironmentSubscribeStreamInput,
-} from "@corporation/contracts/environment-do";
-import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
+} from "@tendril/contracts/environment-do";
+import type { RuntimeAccessTokenClaims } from "@tendril/contracts/runtime-auth";
 
 export type RuntimeConnectionAuthState = {
 	authToken: string;
@@ -60,6 +60,8 @@ export type EnvironmentPersistedStreamSubscription = Readonly<{
 	lastPersistedOffset: EnvironmentStreamOffset;
 	subscriber: EnvironmentStreamSubscriber;
 }>;
+
+export type EmptyResult = Record<PropertyKey, never>;
 
 export type EnvironmentDoCallbackBindings = {
 	SPACE_DO?: {

@@ -1,4 +1,4 @@
-import { App } from "@corporation/app";
+import { App } from "@tendril/app";
 import ReactDOM from "react-dom/client";
 
 const rootElement = document.getElementById("app");

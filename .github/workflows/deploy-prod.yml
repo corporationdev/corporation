@@ -41,4 +41,4 @@ jobs:
         working-directory: packages/backend
 
       - name: Deploy Alchemy (Cloudflare Workers + Web)
-        run: bun run --filter @corporation/infra deploy
+        run: bun run --filter @tendril/infra deploy

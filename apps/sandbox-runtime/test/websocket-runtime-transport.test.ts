@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage } from "@corporation/contracts/environment-runtime";
+import type { EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage } from "@tendril/contracts/environment-runtime";
 import { openRuntimeDatabase } from "../db";
 import { noopDriver, RuntimeEngine } from "../index";
 import { RuntimeMessageStore } from "../runtime-message-store";
@@ -220,9 +220,13 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: {
-								type: "turn.started",
+								kind: "text_delta",
 								sessionId: "session-1",
-								turnId: expect.any(String),
+								channel: "user",
+								content: {
+									type: "text",
+									text: "hello",
+								},
 							},
 						},
 					],
@@ -240,14 +244,9 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: {
-								type: "output.delta",
+								kind: "status",
 								sessionId: "session-1",
-								turnId: expect.any(String),
-								channel: "assistant",
-								content: {
-									type: "text",
-									text: "noop driver ran",
-								},
+								status: "running",
 							},
 						},
 					],
@@ -265,14 +264,38 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: {
-								type: "turn.completed",
+								kind: "text_delta",
 								sessionId: "session-1",
-								turnId: expect.any(String),
-								stopReason: "end_turn",
+								channel: "assistant",
+								content: {
+									type: "text",
+									text: "noop driver ran",
+								},
 							},
 						},
 					],
 					nextOffset: "3",
+					upToDate: true,
+					streamClosed: false,
+				},
+				{
+					type: "stream_items",
+					stream: "session:session-1",
+					items: [
+						{
+							offset: "4",
+							eventId: expect.any(String),
+							commandId: "req-2",
+							createdAt: expect.any(Number),
+							event: {
+								kind: "status",
+								sessionId: "session-1",
+								status: "idle",
+								stopReason: "end_turn",
+							},
+						},
+					],
+					nextOffset: "4",
 					upToDate: true,
 					streamClosed: false,
 				},
@@ -436,35 +459,43 @@ describe("createWebSocketRuntimeTransport", () => {
 						{
 							offset: "1",
 							eventId: expect.any(String),
-							commandId: undefined,
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "turn.started",
+								kind: "text_delta",
+								channel: "user",
 								sessionId: "session-1",
 							}),
 						},
 						{
 							offset: "2",
 							eventId: expect.any(String),
-							commandId: undefined,
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "output.delta",
+								kind: "status",
 								sessionId: "session-1",
 							}),
 						},
 						{
 							offset: "3",
 							eventId: expect.any(String),
-							commandId: undefined,
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "turn.completed",
+								kind: "text_delta",
+								channel: "assistant",
+								sessionId: "session-1",
+							}),
+						},
+						{
+							offset: "4",
+							eventId: expect.any(String),
+							createdAt: expect.any(Number),
+							event: expect.objectContaining({
+								kind: "status",
 								sessionId: "session-1",
 							}),
 						},
 					],
-					nextOffset: "3",
+					nextOffset: "4",
 					upToDate: true,
 					streamClosed: false,
 				},
@@ -511,7 +542,7 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "output.delta",
+								kind: "status",
 								sessionId: "session-1",
 							}),
 						},
@@ -521,12 +552,23 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "turn.completed",
+								kind: "text_delta",
+								channel: "assistant",
+								sessionId: "session-1",
+							}),
+						},
+						{
+							offset: "4",
+							eventId: expect.any(String),
+							commandId: "req-2",
+							createdAt: expect.any(Number),
+							event: expect.objectContaining({
+								kind: "status",
 								sessionId: "session-1",
 							}),
 						},
 					],
-					nextOffset: "3",
+					nextOffset: "4",
 					upToDate: true,
 					streamClosed: false,
 				},
@@ -633,7 +675,8 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "turn.started",
+									kind: "text_delta",
+									channel: "user",
 									sessionId: "session-1",
 								}),
 							},
@@ -643,7 +686,7 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "output.delta",
+									kind: "status",
 									sessionId: "session-1",
 								}),
 							},
@@ -653,12 +696,23 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "turn.completed",
+									kind: "text_delta",
+									channel: "assistant",
+									sessionId: "session-1",
+								}),
+							},
+							{
+								offset: "4",
+								eventId: expect.any(String),
+								commandId: "req-2",
+								createdAt: expect.any(Number),
+								event: expect.objectContaining({
+									kind: "status",
 									sessionId: "session-1",
 								}),
 							},
 						],
-						nextOffset: "3",
+						nextOffset: "4",
 						upToDate: true,
 						streamClosed: false,
 					},
@@ -707,12 +761,23 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "turn.completed",
+									kind: "text_delta",
+									channel: "assistant",
+									sessionId: "session-1",
+								}),
+							},
+							{
+								offset: "4",
+								eventId: expect.any(String),
+								commandId: "req-2",
+								createdAt: expect.any(Number),
+								event: expect.objectContaining({
+									kind: "status",
 									sessionId: "session-1",
 								}),
 							},
 						],
-						nextOffset: "3",
+						nextOffset: "4",
 						upToDate: true,
 						streamClosed: false,
 					},
@@ -746,7 +811,7 @@ describe("createWebSocketRuntimeTransport", () => {
 					type: "stream_items",
 					stream: "session:session-1",
 					items: [],
-					nextOffset: "3",
+					nextOffset: "4",
 					upToDate: true,
 					streamClosed: false,
 				},

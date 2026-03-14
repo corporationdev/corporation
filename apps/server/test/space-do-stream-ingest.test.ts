@@ -6,7 +6,7 @@ import type { SpaceDurableObject } from "../src/space-do/object";
 async function seedSession(input: {
 	spaceName: string;
 	sessionId: string;
-	environmentId?: string;
+	clientId?: string;
 }) {
 	const spaceStub = env.SPACE_DO.get(
 		env.SPACE_DO.idFromName(input.spaceName)
@@ -20,7 +20,7 @@ async function seedSession(input: {
 		const now = Date.now();
 		await db.insert(sessions).values({
 			id: input.sessionId,
-			environmentId: input.environmentId ?? "environment-1",
+			clientId: input.clientId ?? "environment-1",
 			streamKey: `session:${input.sessionId}`,
 			title: "Test Session",
 			agent: "claude",
@@ -28,7 +28,6 @@ async function seedSession(input: {
 			model: null,
 			mode: null,
 			configOptions: null,
-			syncStatus: "pending",
 			lastAppliedOffset: "-1",
 			lastEventAt: null,
 			lastSyncError: null,
@@ -58,8 +57,9 @@ describe("SpaceDurableObject stream ingest", () => {
 						eventId: "event-1",
 						createdAt: 100,
 						event: {
-							type: "turn.started",
-							turnId: "turn-1",
+							kind: "status",
+							sessionId: "session-1",
+							status: "running",
 							commandId: "command-1",
 						},
 					},
@@ -68,8 +68,9 @@ describe("SpaceDurableObject stream ingest", () => {
 						eventId: "event-2",
 						createdAt: 101,
 						event: {
-							type: "turn.completed",
-							turnId: "turn-1",
+							kind: "status",
+							sessionId: "session-1",
+							status: "idle",
 						},
 					},
 				],
@@ -105,7 +106,6 @@ describe("SpaceDurableObject stream ingest", () => {
 			lastAppliedOffset: "2",
 			lastEventAt: 101,
 			lastSyncError: null,
-			syncStatus: "live",
 		});
 		expect(persisted.events).toEqual([
 			expect.objectContaining({
@@ -115,12 +115,12 @@ describe("SpaceDurableObject stream ingest", () => {
 				offset: "1",
 				offsetSeq: 1,
 				commandId: "command-1",
-				turnId: "turn-1",
-				eventType: "turn.started",
+				eventType: "status",
 				createdAt: 100,
 				payload: {
-					type: "turn.started",
-					turnId: "turn-1",
+					kind: "status",
+					sessionId: "session-1",
+					status: "running",
 					commandId: "command-1",
 				},
 			}),
@@ -131,12 +131,12 @@ describe("SpaceDurableObject stream ingest", () => {
 				offset: "2",
 				offsetSeq: 2,
 				commandId: null,
-				turnId: "turn-1",
-				eventType: "turn.completed",
+				eventType: "status",
 				createdAt: 101,
 				payload: {
-					type: "turn.completed",
-					turnId: "turn-1",
+					kind: "status",
+					sessionId: "session-1",
+					status: "idle",
 				},
 			}),
 		]);
@@ -156,13 +156,13 @@ describe("SpaceDurableObject stream ingest", () => {
 					offset: "1",
 					eventId: "event-1",
 					createdAt: 100,
-					event: { type: "turn.started", turnId: "turn-1" },
+					event: { kind: "status", sessionId: "session-2", status: "running" },
 				},
 				{
 					offset: "2",
 					eventId: "event-2",
 					createdAt: 101,
-					event: { type: "turn.completed", turnId: "turn-1" },
+					event: { kind: "status", sessionId: "session-2", status: "idle" },
 				},
 			],
 			nextOffset: "2",
@@ -179,13 +179,17 @@ describe("SpaceDurableObject stream ingest", () => {
 						offset: "1",
 						eventId: "event-1",
 						createdAt: 100,
-						event: { type: "turn.started", turnId: "turn-1" },
+						event: {
+							kind: "status",
+							sessionId: "session-2",
+							status: "running",
+						},
 					},
 					{
 						offset: "2",
 						eventId: "event-2",
 						createdAt: 101,
-						event: { type: "turn.completed", turnId: "turn-1" },
+						event: { kind: "status", sessionId: "session-2", status: "idle" },
 					},
 				],
 				nextOffset: "2",
@@ -222,5 +226,64 @@ describe("SpaceDurableObject stream ingest", () => {
 			lastEventAt: 101,
 		});
 		expect(persisted.eventCount).toBe(2);
+	});
+
+	it("wakes live stream readers as soon as new events are ingested", async () => {
+		const spaceStub = await seedSession({
+			spaceName: "space-stream-live",
+			sessionId: "session-3",
+		});
+
+		const liveReadPromise = spaceStub.readSessionStream(
+			"session-3",
+			-1,
+			200,
+			true,
+			1000
+		);
+
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		await spaceStub.receiveEnvironmentStreamItems({
+			stream: "session:session-3",
+			requesterId: "session-3",
+			items: [
+				{
+					offset: "1",
+					eventId: "event-live-1",
+					createdAt: 100,
+					event: {
+						kind: "status",
+						sessionId: "session-3",
+						status: "running",
+					},
+				},
+			],
+			nextOffset: "1",
+			upToDate: true,
+			streamClosed: false,
+		});
+
+		const timeoutToken = Symbol("timeout");
+		const result = await Promise.race([
+			liveReadPromise,
+			new Promise<symbol>((resolve) => {
+				setTimeout(() => resolve(timeoutToken), 150);
+			}),
+		]);
+
+		expect(result).not.toBe(timeoutToken);
+		expect(result).toMatchObject({
+			frames: [
+				expect.objectContaining({
+					kind: "event",
+					offset: 1,
+					eventId: "event-live-1",
+				}),
+			],
+			nextOffset: 1,
+			upToDate: true,
+			streamClosed: false,
+		});
 	});
 });

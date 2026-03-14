@@ -1,6 +1,6 @@
-import { resolveProxyIntegrationForUrl } from "@corporation/config/proxy-integrations";
-import { verifyRuntimeAccessToken } from "@corporation/contracts/runtime-auth";
 import { Nango } from "@nangohq/node";
+import { resolveProxyIntegrationForUrl } from "@tendril/config/proxy-integrations";
+import { verifyRuntimeAccessToken } from "@tendril/contracts/runtime-auth";
 import { Hono } from "hono";
 import { z } from "zod";
 import { verifyAuthToken } from "./auth";
@@ -153,16 +153,13 @@ export const proxyApp = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 			return c.json({ error: "Unauthorized" }, 401);
 		}
 
-		const browserPayload = await verifyAuthToken(
-			token,
-			c.env.CORPORATION_CONVEX_SITE_URL
-		);
+		const browserPayload = await verifyAuthToken(token, c.env.CONVEX_SITE_URL);
 		if (browserPayload) {
 			c.set("userId", browserPayload.sub);
 			return await next();
 		}
 
-		const runtimeSecret = c.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+		const runtimeSecret = c.env.RUNTIME_AUTH_SECRET?.trim();
 		if (!runtimeSecret) {
 			return c.json({ error: "Unauthorized" }, 401);
 		}

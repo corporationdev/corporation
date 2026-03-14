@@ -1,16 +1,10 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import {
-	BoxIcon,
-	ChevronDownIcon,
-	FolderIcon,
-	LaptopIcon,
-	Loader2Icon,
-} from "lucide-react";
+import { BoxIcon, ChevronDownIcon, FolderIcon, LaptopIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -34,24 +28,22 @@ export const Route = createFileRoute("/_authenticated/")({
 
 type ProjectListItem = FunctionReturnType<typeof api.projects.list>[number];
 type EnvironmentListItem = FunctionReturnType<
-	typeof api.environments.listForUser
+	typeof api.environments.list
 >[number];
 
 type BackingSelection =
 	| { type: "sandbox" }
-	| { type: "environment"; environmentId: Id<"environments"> };
+	| { type: "existing"; environmentId: Id<"environments"> };
 
-const RECENT_PROJECT_STORAGE_KEY = "corporation:recent-project";
-const DEFAULT_BACKING_KEY = "sandbox";
+const RECENT_PROJECT_STORAGE_KEY = "tendril:recent-project";
+const SANDBOX_KEY = "sandbox";
 
 function AuthenticatedIndex() {
 	const navigate = useNavigate();
 	const setMessage = usePendingMessageStore((s) => s.setMessage);
 	const projects = useQuery(api.projects.list);
-	const environments = useQuery(api.environments.listForUser);
+	const environments = useQuery(api.environments.list);
 	const createSpace = useMutation(api.spaces.create);
-	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
-	const attachEnvironment = useMutation(api.spaces.attachEnvironment);
 	const agentConfigs = useQuery(api.agentConfig.list);
 	const agentOptions = useMemo(
 		() => deriveAgentSelectorOptions(agentConfigs),
@@ -63,8 +55,8 @@ function AuthenticatedIndex() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [selectedProjectId, setSelectedProjectId] =
 		useLocalStorage<Id<"projects"> | null>(RECENT_PROJECT_STORAGE_KEY, null);
-	const [selectedBackingKey, setSelectedBackingKey] =
-		useState(DEFAULT_BACKING_KEY);
+	const [selectedEnvironmentKey, setSelectedEnvironmentKey] =
+		useState(SANDBOX_KEY);
 
 	useEffect(() => {
 		if (!projects) {
@@ -85,26 +77,19 @@ function AuthenticatedIndex() {
 		});
 	}, [projects, setSelectedProjectId]);
 
-	const connectedEnvironments = useMemo(
-		() =>
-			(environments ?? []).filter(
-				(environment) => environment.status === "connected"
-			),
-		[environments]
-	);
-
+	// Reset to sandbox if selected environment disappears or disconnects
 	useEffect(() => {
-		if (selectedBackingKey === DEFAULT_BACKING_KEY) {
+		if (selectedEnvironmentKey === SANDBOX_KEY) {
 			return;
 		}
 
-		const exists = connectedEnvironments.some(
-			(environment) => environment._id === selectedBackingKey
+		const env = (environments ?? []).find(
+			(e) => e._id === selectedEnvironmentKey
 		);
-		if (!exists) {
-			setSelectedBackingKey(DEFAULT_BACKING_KEY);
+		if (!env || env.status !== "connected") {
+			setSelectedEnvironmentKey(SANDBOX_KEY);
 		}
-	}, [connectedEnvironments, selectedBackingKey]);
+	}, [environments, selectedEnvironmentKey]);
 
 	const selectedProject = useMemo(() => {
 		if (!(projects && selectedProjectId)) {
@@ -116,17 +101,15 @@ function AuthenticatedIndex() {
 	}, [projects, selectedProjectId]);
 
 	const selectedBacking = useMemo<BackingSelection | null>(() => {
-		if (selectedBackingKey === DEFAULT_BACKING_KEY) {
+		if (selectedEnvironmentKey === SANDBOX_KEY) {
 			return { type: "sandbox" };
 		}
 
-		const environment = connectedEnvironments.find(
-			(candidate) => candidate._id === selectedBackingKey
+		const env = (environments ?? []).find(
+			(e) => e._id === selectedEnvironmentKey && e.status === "connected"
 		);
-		return environment
-			? { type: "environment", environmentId: environment._id }
-			: null;
-	}, [connectedEnvironments, selectedBackingKey]);
+		return env ? { type: "existing", environmentId: env._id } : null;
+	}, [environments, selectedEnvironmentKey]);
 
 	const centerMessage =
 		projects === undefined
@@ -148,20 +131,11 @@ function AuthenticatedIndex() {
 		try {
 			const spaceSlug = nanoid();
 			const sessionId = nanoid();
-			const spaceId = await createSpace({
+			await createSpace({
 				slug: spaceSlug,
 				projectId: selectedProject._id,
-				firstMessage: text,
+				backing: selectedBacking,
 			});
-
-			if (selectedBacking.type === "sandbox") {
-				await ensureSandbox({ id: spaceId });
-			} else {
-				await attachEnvironment({
-					id: spaceId,
-					environmentId: selectedBacking.environmentId,
-				});
-			}
 
 			setMessage({ text, agent, modelId });
 			setInput("");
@@ -180,9 +154,7 @@ function AuthenticatedIndex() {
 		}
 	}, [
 		agent,
-		attachEnvironment,
 		createSpace,
-		ensureSandbox,
 		input,
 		modelId,
 		navigate,
@@ -222,10 +194,10 @@ function AuthenticatedIndex() {
 									projectId={selectedProjectId}
 									projects={projects ?? []}
 								/>
-								<BackingSelector
-									environments={connectedEnvironments}
-									onSelectedKeyChange={setSelectedBackingKey}
-									selectedKey={selectedBackingKey}
+								<EnvironmentSelector
+									environments={environments ?? []}
+									onSelectedKeyChange={setSelectedEnvironmentKey}
+									selectedKey={selectedEnvironmentKey}
 								/>
 								<AgentModelPicker
 									agent={agent}
@@ -287,7 +259,7 @@ const ProjectSelector: FC<{
 	);
 };
 
-const BackingSelector: FC<{
+const EnvironmentSelector: FC<{
 	environments: EnvironmentListItem[];
 	selectedKey: string;
 	onSelectedKeyChange: (key: string) => void;
@@ -295,14 +267,14 @@ const BackingSelector: FC<{
 	const selectedEnvironment =
 		environments.find((environment) => environment._id === selectedKey) ?? null;
 	const label =
-		selectedKey === DEFAULT_BACKING_KEY
+		selectedKey === SANDBOX_KEY
 			? "New sandbox"
-			: (selectedEnvironment?.name ?? "Select backing");
+			: (selectedEnvironment?.name ?? "Select environment");
 
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger className="inline-flex h-7 max-w-56 items-center gap-1 rounded-full border border-border/50 bg-muted/50 px-2.5 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground">
-				{selectedKey === DEFAULT_BACKING_KEY ? (
+				{selectedKey === SANDBOX_KEY ? (
 					<BoxIcon className="size-3" />
 				) : (
 					<LaptopIcon className="size-3" />
@@ -311,34 +283,34 @@ const BackingSelector: FC<{
 				<ChevronDownIcon className="size-3" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start">
-				<DropdownMenuItem
-					onClick={() => onSelectedKeyChange(DEFAULT_BACKING_KEY)}
-				>
+				<DropdownMenuItem onClick={() => onSelectedKeyChange(SANDBOX_KEY)}>
 					<div className="flex items-center gap-2">
 						<BoxIcon className="size-3.5" />
 						<span>New sandbox</span>
 					</div>
 				</DropdownMenuItem>
-				{environments.length === 0 ? (
-					<DropdownMenuItem disabled>
-						<div className="flex items-center gap-2">
-							<Loader2Icon className="size-3.5 text-muted-foreground" />
-							<span>No connected environments</span>
-						</div>
-					</DropdownMenuItem>
-				) : (
-					environments.map((environment) => (
+				{environments.map((environment) => {
+					const isConnected = environment.status === "connected";
+					return (
 						<DropdownMenuItem
+							disabled={!isConnected}
 							key={environment._id}
-							onClick={() => onSelectedKeyChange(environment._id)}
+							onClick={() =>
+								isConnected && onSelectedKeyChange(environment._id)
+							}
 						>
 							<div className="flex items-center gap-2">
 								<LaptopIcon className="size-3.5" />
 								<span className="truncate">{environment.name}</span>
+								{!isConnected && (
+									<span className="ml-auto text-muted-foreground text-xs">
+										offline
+									</span>
+								)}
 							</div>
 						</DropdownMenuItem>
-					))
-				)}
+					);
+				})}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

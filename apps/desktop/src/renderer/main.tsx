@@ -1,5 +1,5 @@
-import { App } from "@corporation/app";
 import { focusManager } from "@tanstack/react-query";
+import { App } from "@tendril/app";
 import ReactDOM from "react-dom/client";
 
 focusManager.setEventListener((handleFocus) => {

@@ -1,7 +1,3 @@
-import type {
-	Integration,
-	ListIntegrationsOutput,
-} from "@corporation/contracts/orpc/worker-http";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 
@@ -14,7 +10,12 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiClient, apiUtils } from "@/lib/api-client";
+import {
+	connectIntegration,
+	disconnectIntegration,
+	type Integration,
+	listIntegrations,
+} from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/connections")({
 	component: ConnectionsPage,
@@ -87,15 +88,15 @@ function IntegrationCard({
 
 function ConnectionsPage() {
 	const queryClient = useQueryClient();
-	const integrationsQueryKey = apiUtils.integrations.list.queryKey();
+	const integrationsQueryKey = ["integrations"];
 
 	const {
 		data: integrations,
 		isLoading,
 		error,
 	} = useQuery({
-		...apiUtils.integrations.list.queryOptions(),
-		select: (data) => data.integrations,
+		queryKey: integrationsQueryKey,
+		queryFn: listIntegrations,
 	});
 
 	const disconnectMutation = useMutation({
@@ -105,30 +106,19 @@ function ConnectionsPage() {
 		}: {
 			connectionId: string;
 			providerConfigKey: string;
-		}) =>
-			apiClient.integrations.disconnect({
-				connectionId,
-				providerConfigKey,
-			}),
+		}) => await disconnectIntegration({ connectionId, providerConfigKey }),
 		onMutate: async ({ providerConfigKey }) => {
 			await queryClient.cancelQueries({ queryKey: integrationsQueryKey });
 
 			const previous =
-				queryClient.getQueryData<ListIntegrationsOutput>(integrationsQueryKey);
+				queryClient.getQueryData<Integration[]>(integrationsQueryKey);
 
-			queryClient.setQueryData<ListIntegrationsOutput>(
-				integrationsQueryKey,
-				(old) =>
-					old
-						? {
-								...old,
-								integrations: old.integrations.map((integration) =>
-									integration.unique_key === providerConfigKey
-										? { ...integration, connection: null }
-										: integration
-								),
-							}
-						: old
+			queryClient.setQueryData<Integration[]>(integrationsQueryKey, (old) =>
+				old?.map((integration) =>
+					integration.unique_key === providerConfigKey
+						? { ...integration, connection: null }
+						: integration
+				)
 			);
 
 			return { previous };
@@ -145,9 +135,7 @@ function ConnectionsPage() {
 
 	const connectMutation = useMutation({
 		mutationFn: async (uniqueKey: string) => {
-			const { connect_link } = await apiClient.integrations.connect({
-				allowedIntegrations: [uniqueKey],
-			});
+			const { connect_link } = await connectIntegration([uniqueKey]);
 			if (connect_link) {
 				window.open(connect_link, "_blank");
 			}

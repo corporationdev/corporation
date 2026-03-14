@@ -1,4 +1,4 @@
-import type { EnvironmentStreamOffset } from "@corporation/contracts/environment-do";
+import type { EnvironmentStreamOffset } from "@tendril/contracts/environment-do";
 import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import { environmentStreamSubscriptions } from "./db/schema";
@@ -10,7 +10,11 @@ import type {
 type EnvironmentDatabase = ReturnType<typeof drizzle>;
 
 export class EnvironmentSubscriptionStore {
-	constructor(private readonly db: EnvironmentDatabase) {}
+	private readonly db: EnvironmentDatabase;
+
+	constructor(db: EnvironmentDatabase) {
+		this.db = db;
+	}
 
 	async list(): Promise<
 		Array<{

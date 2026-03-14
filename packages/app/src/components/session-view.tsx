@@ -1,7 +1,8 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { Id } from "@corporation/backend/convex/_generated/dataModel";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
+import { useQuery } from "convex/react";
 import { AlertTriangleIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
@@ -19,59 +20,27 @@ import { ChatMessages } from "@/components/chat/chat-messages";
 import { usePersistedAgentModelSelection } from "@/hooks/use-persisted-agent-model-selection";
 import { useSessionState } from "@/hooks/use-session-state";
 import { deriveAgentSelectorOptions } from "@/lib/agent-config-options";
-import type { SpaceActor } from "@/lib/space-client";
+import {
+	cancelSpaceSession,
+	createSpaceSession,
+	sendSpaceMessage,
+} from "@/lib/api-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
 type SessionViewSpace =
 	| {
 			_id: Id<"spaces">;
-			activeBacking?:
-				| {
-						type: "sandbox";
-						sandboxId: Id<"sandboxes">;
-				  }
-				| {
-						type: "environment";
-						environmentId: Id<"environments">;
-				  };
-			sandbox?: {
-				status?:
-					| "provisioning"
-					| "creating"
-					| "running"
-					| "paused"
-					| "killed"
-					| "error";
-				externalSandboxId?: string;
-			} | null;
-			activeEnvironment?: {
-				status: string;
-			} | null;
+			projectId: Id<"projects">;
 	  }
 	| null
 	| undefined;
 
-function isRuntimeReady(space: SessionViewSpace) {
-	if (!space?.activeBacking) {
-		return false;
-	}
-
-	if (space.activeBacking.type === "sandbox") {
-		return (
-			space.sandbox?.status === "running" && !!space.sandbox?.externalSandboxId
-		);
-	}
-
-	return space.activeEnvironment?.status === "connected";
-}
-
 export const SessionView: FC<{
-	actor: SpaceActor;
-	isBindingSynced: boolean;
+	hasSession: boolean;
 	sessionId?: string;
 	space: SessionViewSpace;
 	spaceSlug: string;
-}> = ({ actor, isBindingSynced, sessionId, space, spaceSlug }) => {
+}> = ({ hasSession, sessionId, space, spaceSlug }) => {
 	const agentConfigs = useQuery(api.agentConfig.list);
 	const agentOptions = useMemo(
 		() => deriveAgentSelectorOptions(agentConfigs),
@@ -81,9 +50,8 @@ export const SessionView: FC<{
 	if (sessionId) {
 		return (
 			<ConnectedSessionView
-				actor={actor}
 				agentOptions={agentOptions}
-				isBindingSynced={isBindingSynced}
+				hasSession={hasSession}
 				key={sessionId}
 				sessionId={sessionId}
 				space={space}
@@ -163,27 +131,23 @@ const NewSessionView: FC<{
 export const ConnectedSessionView: FC<{
 	sessionId: string;
 	spaceSlug: string;
-	actor: SpaceActor;
 	agentOptions: ReturnType<typeof deriveAgentSelectorOptions>;
-	isBindingSynced: boolean;
+	hasSession: boolean;
 	space: SessionViewSpace;
-}> = ({
-	sessionId,
-	spaceSlug,
-	actor,
-	agentOptions,
-	isBindingSynced,
-	space,
-}) => {
+}> = ({ sessionId, spaceSlug, agentOptions, hasSession, space }) => {
+	const queryClient = useQueryClient();
 	const [message, setMessage] = useState("");
 	const [agentOverride, setAgentOverride] = useState<string | null>(null);
 	const [modelIdOverride, setModelIdOverride] = useState<string | null>(null);
+	const [hasCreatedSession, setHasCreatedSession] = useState(hasSession);
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumeMessage = usePendingMessageStore((s) => s.consumeMessage);
-	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
-	const touchSpace = useMutation(api.spaces.touch);
-	const sessionState = useSessionState({ sessionId, spaceSlug, actor });
+	const sessionState = useSessionState({
+		sessionId,
+		spaceSlug,
+		streamEnabled: hasSession || hasCreatedSession,
+	});
 	const agent = agentOverride ?? sessionState.agent ?? "";
 	const modelId = modelIdOverride ?? sessionState.modelId ?? "";
 	const [pendingSend, setPendingSend] = useState<{
@@ -194,12 +158,72 @@ export const ConnectedSessionView: FC<{
 	const isRunning = sessionState.status === "running" && !pendingSend;
 	const hasError = sessionState.status === "error" && !!sessionState.error;
 	const hasConsumedStoredMessageRef = useRef(false);
-	const canFlushPendingSend =
-		!!pendingSend &&
-		actor.connStatus === "connected" &&
-		!!actor.connection &&
-		isRuntimeReady(space) &&
-		isBindingSynced;
+	const spaceId = space?._id;
+
+	const backingData = useQuery(
+		api.backings.getForSpace,
+		spaceId ? { spaceId } : "skip"
+	);
+	const environmentId = backingData?.environment?._id;
+	const connectionId = backingData?.environment?.connectionId ?? null;
+	const isSandbox = backingData?.environment?.type === "sandbox";
+	const runtimeReady =
+		backingData?.environment?.status === "connected" && !!connectionId;
+
+	const projectId = space?.projectId;
+	const projectEnvironment = useQuery(
+		api.projectEnvironments.getByProjectAndEnvironment,
+		projectId && environmentId && !isSandbox
+			? { projectId, environmentId }
+			: "skip"
+	);
+	const cwd = isSandbox ? "/workspace" : (projectEnvironment?.path ?? null);
+	const canFlushPendingSend = !!pendingSend && runtimeReady && !!cwd;
+
+	const ensureRemoteSession = useCallback(
+		async (nextAgent: string, nextModelId: string) => {
+			if (hasSession || hasCreatedSession) {
+				return;
+			}
+			if (!connectionId) {
+				throw new Error("Runtime client is not ready");
+			}
+			if (!cwd) {
+				throw new Error(
+					"No path configured for this project on this environment"
+				);
+			}
+
+			await createSpaceSession(spaceSlug, {
+				sessionId,
+				clientId: connectionId,
+				spaceName: spaceSlug,
+				title: "New Chat",
+				agent: nextAgent,
+				cwd,
+				model: nextModelId,
+			});
+			setHasCreatedSession(true);
+			await queryClient.invalidateQueries({
+				queryKey: ["space-sessions", spaceSlug],
+			});
+		},
+		[
+			hasCreatedSession,
+			hasSession,
+			queryClient,
+			connectionId,
+			cwd,
+			sessionId,
+			spaceSlug,
+		]
+	);
+
+	useEffect(() => {
+		if (hasSession) {
+			setHasCreatedSession(true);
+		}
+	}, [hasSession]);
 
 	// Consume pending message from store on mount
 	useEffect(() => {
@@ -216,7 +240,7 @@ export const ConnectedSessionView: FC<{
 		}
 	}, [consumeMessage, sessionState.addOptimisticMessage]);
 
-	// Flush pending messages once the space is running and the actor is synced.
+	// Flush pending messages once the environment is connected.
 	useEffect(() => {
 		if (!canFlushPendingSend) {
 			return;
@@ -227,30 +251,29 @@ export const ConnectedSessionView: FC<{
 		}
 
 		setPendingSend(null);
-		if (space?._id) {
-			touchSpace({ id: space._id }).catch(() => undefined);
-		}
-		const connection = actor.connection;
-		if (!connection) {
-			setPendingSend(pending);
-			return;
-		}
-		connection
-			.sendMessage(sessionId, pending.text, pending.agent, pending.modelId)
-			.catch((error: unknown) => {
-				console.error("Failed to flush pending message", error);
-				sessionState.clearOptimisticMessages();
-				setMessage((current) => (current ? current : pending.text));
-				toast.error("Failed to send message");
+		(async () => {
+			await ensureRemoteSession(pending.agent, pending.modelId);
+			await sendSpaceMessage({
+				spaceSlug,
+				sessionId,
+				content: pending.text,
+				modelId: pending.modelId,
 			});
+		})().catch((error: unknown) => {
+			console.error("Failed to flush pending message", error);
+			sessionState.clearOptimisticMessages();
+			setHasCreatedSession(hasSession);
+			setMessage((current) => (current ? current : pending.text));
+			toast.error("Failed to send message");
+		});
 	}, [
 		canFlushPendingSend,
+		hasSession,
 		pendingSend,
+		ensureRemoteSession,
 		sessionState.clearOptimisticMessages,
 		sessionId,
-		space?._id,
-		touchSpace,
-		actor.connection,
+		spaceSlug,
 	]);
 
 	const handleSend = useCallback(async () => {
@@ -261,40 +284,20 @@ export const ConnectedSessionView: FC<{
 
 		setMessage("");
 		sessionState.addOptimisticMessage(text);
-		const nextPending = { text, agent, modelId };
 
 		try {
-			if (
-				actor.connStatus === "connected" &&
-				actor.connection &&
-				isRuntimeReady(space) &&
-				isBindingSynced
-			) {
-				await actor.connection.sendMessage(sessionId, text, agent, modelId);
-				if (space?._id) {
-					touchSpace({ id: space._id }).catch(() => undefined);
-				}
+			if (runtimeReady && connectionId) {
+				await ensureRemoteSession(agent, modelId);
+				await sendSpaceMessage({
+					spaceSlug,
+					sessionId,
+					content: text,
+					modelId,
+				});
 				return;
 			}
 
-			setPendingSend(nextPending);
-
-			if (!(space?._id && space.activeBacking)) {
-				throw new Error("Space does not have an active backing");
-			}
-
-			if (space.activeBacking.type === "environment") {
-				throw new Error("Selected environment is not connected");
-			}
-
-			const sandboxStatus = space.sandbox?.status;
-			if (
-				sandboxStatus !== "provisioning" &&
-				sandboxStatus !== "creating" &&
-				sandboxStatus !== "running"
-			) {
-				await ensureSandbox({ id: space._id });
-			}
+			setPendingSend({ text, agent, modelId });
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
 			setPendingSend(null);
@@ -304,33 +307,25 @@ export const ConnectedSessionView: FC<{
 		}
 	}, [
 		message,
-		actor.connStatus,
-		actor.connection,
-		ensureSandbox,
-		isBindingSynced,
+		ensureRemoteSession,
+		connectionId,
+		runtimeReady,
 		sessionId,
 		agent,
 		modelId,
-		space?.activeBacking,
-		space?.sandbox?.status,
-		space?.activeEnvironment?.status,
-		space?._id,
-		touchSpace,
+		spaceSlug,
 		sessionState.addOptimisticMessage,
 		sessionState.clearOptimisticMessages,
 	]);
 
 	const handleStop = useCallback(async () => {
 		try {
-			if (!actor.connection) {
-				throw new Error("Space connection unavailable");
-			}
-			await actor.connection.cancelSession(sessionId);
+			await cancelSpaceSession({ spaceSlug, sessionId });
 		} catch (error) {
 			console.error("Failed to cancel session", { error, sessionId });
 			toast.error("Failed to stop session");
 		}
-	}, [actor.connection, sessionId]);
+	}, [sessionId, spaceSlug]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scroll when entries change
 	useEffect(() => {

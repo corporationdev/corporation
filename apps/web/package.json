@@ -9,8 +9,8 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@corporation/app": "workspace:*",
-    "@corporation/config": "workspace:*",
+    "@tendril/app": "workspace:*",
+    "@tendril/config": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

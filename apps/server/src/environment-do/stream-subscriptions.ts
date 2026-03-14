@@ -2,8 +2,9 @@ import type {
 	EnvironmentRpcResult,
 	EnvironmentStreamOffset,
 	EnvironmentUnsubscribeStreamInput,
-} from "@corporation/contracts/environment-do";
+} from "@tendril/contracts/environment-do";
 import type {
+	EmptyResult,
 	EnvironmentStreamSubscriptionSnapshot,
 	EnvironmentStreamSubscriptionState,
 	EnvironmentSubscribeStreamInput,
@@ -64,7 +65,7 @@ export class StreamSubscriptions {
 			stream: string;
 		}) => void;
 		subscription: EnvironmentSubscribeStreamInput;
-	}): EnvironmentRpcResult<{}> {
+	}): EnvironmentRpcResult<EmptyResult> {
 		if (!input.activeRuntimeConnected) {
 			return errorResult("runtime_not_connected", "Runtime is not connected");
 		}
@@ -82,7 +83,7 @@ export class StreamSubscriptions {
 
 	unsubscribe(
 		input: EnvironmentUnsubscribeStreamInput
-	): EnvironmentRpcResult<{}> {
+	): EnvironmentRpcResult<EmptyResult> {
 		this.subscriptions.delete(input.stream);
 		return okResult({});
 	}

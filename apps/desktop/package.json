@@ -10,8 +10,8 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@corporation/app": "workspace:*",
-    "@corporation/env": "workspace:*",
+    "@tendril/app": "workspace:*",
+    "@tendril/env": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "dotenv": "catalog:",
     "electron": "catalog:",
@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
-    "@corporation/config": "workspace:*",
+    "@tendril/config": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/router-plugin": "catalog:",
     "@types/node": "catalog:",

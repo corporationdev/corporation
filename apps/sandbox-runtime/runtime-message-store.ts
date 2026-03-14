@@ -1,7 +1,8 @@
 import type {
 	EnvironmentRuntimeCommand as RuntimeWebSocketCommand,
 	EnvironmentRuntimeCommandResponse as RuntimeWebSocketResponse,
-} from "@corporation/contracts/environment-runtime";
+} from "@tendril/contracts/environment-runtime";
+import type { SessionEvent } from "@tendril/contracts/session-event";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { RuntimeDatabase } from "./db";
 import {
@@ -10,11 +11,10 @@ import {
 	runtimeCommandReceipts,
 	runtimeEventLog,
 } from "./db/schema";
-import type { RuntimeEvent } from "./runtime-events";
-export type RuntimeEventEnvelope = {
+export type SessionEventEnvelope = {
 	commandId?: string;
 	createdAt: number;
-	event: RuntimeEvent;
+	event: SessionEvent;
 	eventId: string;
 	offset: string;
 	streamKey: string;
@@ -58,7 +58,7 @@ export function getStreamKeyForCommand(
 	}
 }
 
-export function getStreamKeyForEvent(event: RuntimeEvent): string {
+export function getStreamKeyForEvent(event: SessionEvent): string {
 	return `session:${event.sessionId}`;
 }
 
@@ -86,7 +86,11 @@ function formatStoredOffset(sequence: number): RuntimeStreamOffset {
 }
 
 export class RuntimeMessageStore {
-	constructor(private readonly db: RuntimeDatabase) {}
+	private readonly db: RuntimeDatabase;
+
+	constructor(db: RuntimeDatabase) {
+		this.db = db;
+	}
 
 	beginCommand(command: RuntimeWebSocketCommand): RuntimeCommandDuplicateState {
 		const now = Date.now();
@@ -154,8 +158,8 @@ export class RuntimeMessageStore {
 
 	appendEvent(input: {
 		commandId?: string;
-		event: RuntimeEvent;
-	}): RuntimeEventEnvelope {
+		event: SessionEvent;
+	}): SessionEventEnvelope {
 		const streamKey = getStreamKeyForEvent(input.event);
 		const row = this.db
 			.select({
@@ -175,9 +179,8 @@ export class RuntimeMessageStore {
 				streamKey,
 				sequence,
 				sessionId: input.event.sessionId,
-				turnId: input.event.turnId,
 				commandId: input.commandId,
-				eventType: input.event.type,
+				eventType: input.event.kind,
 				payload: input.event,
 				createdAt,
 			})
@@ -209,7 +212,7 @@ export class RuntimeMessageStore {
 		limit?: number;
 		streamKey: string;
 		offset: RuntimeStreamOffset;
-	}): RuntimeEventEnvelope[] {
+	}): SessionEventEnvelope[] {
 		const afterOffset =
 			input.offset === STREAM_NOW_OFFSET
 				? Number.parseInt(this.getCurrentOffset(input.streamKey), 10) || 0
@@ -230,11 +233,11 @@ export class RuntimeMessageStore {
 		return rows.map((row) => this.toEventEnvelope(row));
 	}
 
-	private toEventEnvelope(row: RuntimeEventLogRow): RuntimeEventEnvelope {
+	private toEventEnvelope(row: RuntimeEventLogRow): SessionEventEnvelope {
 		return {
 			commandId: row.commandId ?? undefined,
 			createdAt: row.createdAt,
-			event: row.payload as RuntimeEvent,
+			event: row.payload as SessionEvent,
 			eventId: row.id,
 			offset: formatStoredOffset(row.sequence),
 			streamKey: row.streamKey,

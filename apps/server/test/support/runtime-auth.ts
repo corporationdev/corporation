@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import {
 	mintRuntimeAccessToken,
 	mintRuntimeRefreshToken,
-} from "@corporation/contracts/runtime-auth";
+} from "@tendril/contracts/runtime-auth";
 
 export const TEST_RUNTIME_AUTH_SECRET = "test-secret";
 const DEFAULT_TOKEN_TTL_SECONDS = 5 * 60;
 const DEFAULT_REFRESH_TTL_SECONDS = 24 * 60 * 60;
+const DOT_ENV_LINE_PATTERN = /\r?\n/u;
 let cachedRuntimeAuthSecret: string | undefined;
 
 function getServerDotEnvPath(): string {
@@ -20,14 +21,14 @@ function readRuntimeAuthSecretFromDotEnv(): string | undefined {
 
 	try {
 		const contents = readFileSync(getServerDotEnvPath(), "utf8");
-		for (const line of contents.split(/\r?\n/u)) {
+		for (const line of contents.split(DOT_ENV_LINE_PATTERN)) {
 			const trimmed = line.trim();
 			if (
-				trimmed.startsWith("CORPORATION_RUNTIME_AUTH_SECRET=") &&
-				trimmed.length > "CORPORATION_RUNTIME_AUTH_SECRET=".length
+				trimmed.startsWith("RUNTIME_AUTH_SECRET=") &&
+				trimmed.length > "RUNTIME_AUTH_SECRET=".length
 			) {
 				cachedRuntimeAuthSecret = trimmed
-					.slice("CORPORATION_RUNTIME_AUTH_SECRET=".length)
+					.slice("RUNTIME_AUTH_SECRET=".length)
 					.trim();
 				return cachedRuntimeAuthSecret;
 			}
@@ -43,7 +44,7 @@ function readRuntimeAuthSecretFromDotEnv(): string | undefined {
 function getRuntimeAuthSecret(secret?: string): string {
 	return (
 		secret ??
-		process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim() ??
+		process.env.RUNTIME_AUTH_SECRET?.trim() ??
 		readRuntimeAuthSecretFromDotEnv() ??
 		TEST_RUNTIME_AUTH_SECRET
 	);

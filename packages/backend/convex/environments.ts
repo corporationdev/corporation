@@ -1,77 +1,91 @@
-import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import { internalAction, internalMutation } from "./_generated/server";
-import { authedQuery } from "./functions";
+import { ConvexError, type Value, v } from "convex/values";
+import type { MutationCtx } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
+import { authedMutation, authedQuery } from "./functions";
 
-export const verifyInternalApiKey = internalAction({
-	args: { apiKey: v.string() },
-	handler: async (_ctx, args) => {
-		const expected = process.env.CORPORATION_INTERNAL_API_KEY?.trim();
-		if (!expected) {
-			throw new Error("CORPORATION_INTERNAL_API_KEY is not configured");
-		}
-		if (args.apiKey !== expected) {
-			throw new Error("Unauthorized");
-		}
-	},
-});
-
-export const connectAction = internalAction({
-	args: {
-		apiKey: v.string(),
-		userId: v.string(),
-		clientId: v.string(),
-		name: v.string(),
-		metadata: v.optional(v.record(v.string(), v.string())),
-	},
-	handler: async (ctx, args): Promise<string> => {
-		await ctx.runAction(internal.environments.verifyInternalApiKey, {
-			apiKey: args.apiKey,
-		});
-		const { apiKey: _, ...mutationArgs } = args;
-		return await ctx.runMutation(internal.environments.connect, mutationArgs);
-	},
-});
-
-export const disconnectAction = internalAction({
-	args: {
-		apiKey: v.string(),
-		userId: v.string(),
-		clientId: v.string(),
-	},
+export const internalGet = internalQuery({
+	args: { id: v.id("environments") },
 	handler: async (ctx, args) => {
-		await ctx.runAction(internal.environments.verifyInternalApiKey, {
-			apiKey: args.apiKey,
-		});
-		await ctx.runMutation(internal.environments.disconnect, {
-			userId: args.userId,
-			clientId: args.clientId,
-		});
+		return await ctx.db.get(args.id);
 	},
 });
+
+export const list = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		return await ctx.db
+			.query("environments")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.collect();
+	},
+});
+
+export const listPersistent = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		const all = await ctx.db
+			.query("environments")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.collect();
+		return all.filter((e) => e.type === "persistent");
+	},
+});
+
+export const get = authedQuery({
+	args: { id: v.id("environments") },
+	handler: async (ctx, args) => {
+		const env = await ctx.db.get(args.id);
+		if (!env || env.userId !== ctx.userId) {
+			throw new ConvexError("Environment not found");
+		}
+		return env;
+	},
+});
+
+export async function createEnvironment(
+	ctx: MutationCtx,
+	args: {
+		userId: string;
+		connectionId: string;
+		name: string;
+		status: "connected" | "disconnected";
+		type?: "persistent" | "sandbox";
+		metadata?: Record<string, Value>;
+	}
+) {
+	const now = Date.now();
+	return await ctx.db.insert("environments", {
+		userId: args.userId,
+		connectionId: args.connectionId,
+		name: args.name,
+		status: args.status,
+		type: args.type,
+		metadata: args.metadata,
+		lastConnectedAt: args.status === "connected" ? now : undefined,
+		createdAt: now,
+		updatedAt: now,
+	});
+}
 
 export const connect = internalMutation({
 	args: {
 		userId: v.string(),
-		clientId: v.string(),
+		connectionId: v.string(),
 		name: v.string(),
-		metadata: v.optional(v.record(v.string(), v.string())),
+		metadata: v.optional(v.record(v.string(), v.any())),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
 			.query("environments")
-			.withIndex("by_user_and_clientId", (q) =>
-				q.eq("userId", args.userId).eq("clientId", args.clientId)
+			.withIndex("by_user_and_connectionId", (q) =>
+				q.eq("userId", args.userId).eq("connectionId", args.connectionId)
 			)
 			.unique();
 
-		const now = Date.now();
-
 		if (existing) {
+			const now = Date.now();
 			await ctx.db.patch(existing._id, {
 				status: "connected",
-				name: args.name,
-				metadata: args.metadata,
 				lastConnectedAt: now,
 				updatedAt: now,
 				error: undefined,
@@ -79,52 +93,67 @@ export const connect = internalMutation({
 			return existing._id;
 		}
 
-		return await ctx.db.insert("environments", {
+		return await createEnvironment(ctx, {
 			userId: args.userId,
-			clientId: args.clientId,
+			connectionId: args.connectionId,
 			name: args.name,
 			status: "connected",
+			type: "persistent",
 			metadata: args.metadata,
-			lastConnectedAt: now,
-			createdAt: now,
-			updatedAt: now,
 		});
 	},
 });
 
 export const disconnect = internalMutation({
-	args: {
-		userId: v.string(),
-		clientId: v.string(),
-	},
+	args: { connectionId: v.string(), userId: v.string() },
 	handler: async (ctx, args) => {
-		const existing = await ctx.db
+		const env = await ctx.db
 			.query("environments")
-			.withIndex("by_user_and_clientId", (q) =>
-				q.eq("userId", args.userId).eq("clientId", args.clientId)
+			.withIndex("by_user_and_connectionId", (q) =>
+				q.eq("userId", args.userId).eq("connectionId", args.connectionId)
 			)
 			.unique();
 
-		if (!existing) {
-			return;
+		if (!env) {
+			throw new ConvexError("Environment not found");
 		}
 
-		await ctx.db.patch(existing._id, {
+		await ctx.db.patch(env._id, {
 			status: "disconnected",
 			updatedAt: Date.now(),
 		});
 	},
 });
 
-export const listForUser = authedQuery({
-	args: {},
-	handler: async (ctx) => {
-		const environments = await ctx.db
-			.query("environments")
-			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
-			.collect();
+export const rename = authedMutation({
+	args: {
+		id: v.id("environments"),
+		name: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const env = await ctx.db.get(args.id);
+		if (!env || env.userId !== ctx.userId) {
+			throw new ConvexError("Environment not found");
+		}
 
-		environments.sort((a, b) => b.updatedAt - a.updatedAt);
-		return environments;
+		const name = args.name.trim();
+		if (!name) {
+			throw new ConvexError("Name cannot be empty");
+		}
+
+		await ctx.db.patch(args.id, { name, updatedAt: Date.now() });
 	},
 });
+
+const del = authedMutation({
+	args: { id: v.id("environments") },
+	handler: async (ctx, args) => {
+		const env = await ctx.db.get(args.id);
+		if (!env || env.userId !== ctx.userId) {
+			throw new ConvexError("Environment not found");
+		}
+
+		await ctx.db.delete(args.id);
+	},
+});
+export { del as delete };

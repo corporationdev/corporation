@@ -1,8 +1,7 @@
-import { api } from "@corporation/backend/convex/_generated/api";
-import type { GitHubRepository } from "@corporation/contracts/orpc/worker-http";
 import { useQuery } from "@tanstack/react-query";
+import { api } from "@tendril/backend/convex/_generated/api";
 import { useQuery as useConvexQuery } from "convex/react";
-import { apiUtils } from "@/lib/api-client";
+import { type GitHubRepository, listGitHubRepos } from "@/lib/api-client";
 
 export type GitHubRepo = GitHubRepository;
 
@@ -13,8 +12,8 @@ export function useGitHubRepos(options?: { excludeConnected?: boolean }) {
 	);
 
 	const query = useQuery({
-		...apiUtils.github.listRepos.queryOptions(),
-		select: (data) => data.repositories,
+		queryKey: ["github-repos"],
+		queryFn: listGitHubRepos,
 	});
 
 	if (!options?.excludeConnected) {

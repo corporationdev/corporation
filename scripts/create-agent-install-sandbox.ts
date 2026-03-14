@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import acpAgents from "@corporation/config/acp-agent-manifest";
+import acpAgents from "@tendril/config/acp-agent-manifest";
 import { config } from "dotenv";
 import { Sandbox } from "e2b";
 
@@ -17,7 +17,7 @@ config({
 });
 
 const apiKey = process.env.E2B_API_KEY;
-const template = process.env.E2B_BASE_TEMPLATE_ID || "corporation-base";
+const template = process.env.E2B_BASE_TEMPLATE_ID || "tendril-base";
 const installConcurrency = Math.max(
 	1,
 	Number.parseInt(process.env.AGENT_INSTALL_CONCURRENCY || "4", 10) || 4
@@ -67,6 +67,59 @@ async function ensureUserPath(sandbox: Sandbox) {
 	);
 }
 
+async function installAgent(input: {
+	sandbox: Sandbox;
+	agent: (typeof acpAgents)[number];
+}): Promise<void> {
+	if (input.agent.nativeInstallCommand) {
+		await runInstallStep(
+			input.sandbox,
+			input.agent.id,
+			"native",
+			input.agent.nativeInstallCommand
+		);
+	}
+
+	if (input.agent.acpInstallCommand) {
+		await runInstallStep(
+			input.sandbox,
+			input.agent.id,
+			"acp",
+			input.agent.acpInstallCommand
+		);
+	}
+}
+
+function createAgentWorker(input: {
+	sandbox: Sandbox;
+	installableAgents: (typeof acpAgents)[number][];
+	nextAgent: () => (typeof acpAgents)[number] | undefined;
+	installed: string[];
+	failed: Array<{ agentId: string; error: string }>;
+}): Promise<void> {
+	return (async () => {
+		while (true) {
+			const agent = input.nextAgent();
+			if (!agent) {
+				return;
+			}
+
+			try {
+				await installAgent({
+					sandbox: input.sandbox,
+					agent,
+				});
+				input.installed.push(agent.id);
+				console.log(`installed ${agent.id}`);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				input.failed.push({ agentId: agent.id, error: message });
+				console.error(`failed ${agent.id}\n${message}\n`);
+			}
+		}
+	})();
+}
+
 async function main() {
 	const sandbox = await Sandbox.betaCreate(template, {
 		apiKey,
@@ -85,45 +138,17 @@ async function main() {
 		await ensureUserPath(sandbox);
 
 		let nextIndex = 0;
+		const nextAgent = () => installableAgents[nextIndex++];
 		const workers = Array.from(
 			{ length: Math.min(installConcurrency, installableAgents.length) },
 			() =>
-				(async () => {
-					while (true) {
-						const agent = installableAgents[nextIndex++];
-						if (!agent) {
-							return;
-						}
-
-						try {
-							if (agent.nativeInstallCommand) {
-								await runInstallStep(
-									sandbox,
-									agent.id,
-									"native",
-									agent.nativeInstallCommand
-								);
-							}
-
-							if (agent.acpInstallCommand) {
-								await runInstallStep(
-									sandbox,
-									agent.id,
-									"acp",
-									agent.acpInstallCommand
-								);
-							}
-
-							installed.push(agent.id);
-							console.log(`installed ${agent.id}`);
-						} catch (error) {
-							const message =
-								error instanceof Error ? error.message : String(error);
-							failed.push({ agentId: agent.id, error: message });
-							console.error(`failed ${agent.id}\n${message}\n`);
-						}
-					}
-				})()
+				createAgentWorker({
+					sandbox,
+					installableAgents,
+					nextAgent,
+					installed,
+					failed,
+				})
 		);
 
 		await Promise.all(workers);

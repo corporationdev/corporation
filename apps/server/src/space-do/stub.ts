@@ -1,5 +1,6 @@
-import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
+import type { RuntimeAccessTokenClaims } from "@tendril/contracts/runtime-auth";
 import type { JWTPayload } from "../auth";
+import type { SpaceDurableObject } from "./object";
 
 const SPACE_AUTH_HEADER = "x-space-auth";
 const SPACE_SLUG_HEADER = "x-space-slug";
@@ -15,17 +16,17 @@ type RuntimeAuthState = {
 	claims: RuntimeAccessTokenClaims;
 };
 
-type SpaceStub = {
-	fetch: (request: Request) => Promise<Response>;
-};
+export type SpaceStubBinding = DurableObjectNamespace<SpaceDurableObject>;
+
+export type SpaceStub = ReturnType<SpaceStubBinding["getByName"]>;
 
 export function getSpaceStub(
 	env: { SPACE_DO: unknown },
 	spaceSlug: string
 ): SpaceStub {
-	return (
-		env as unknown as { SPACE_DO: { getByName: (name: string) => SpaceStub } }
-	).SPACE_DO.getByName(spaceSlug);
+	return (env as unknown as { SPACE_DO: SpaceStubBinding }).SPACE_DO.getByName(
+		spaceSlug
+	);
 }
 
 export function createSpaceForwardHeaders(opts: {

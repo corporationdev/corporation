@@ -7,14 +7,11 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const sessionSyncStatusValues = ["pending", "live", "error"] as const;
-export type SessionSyncStatus = (typeof sessionSyncStatusValues)[number];
-
 export const sessions = sqliteTable(
 	"sessions",
 	{
 		id: text("id").primaryKey(),
-		environmentId: text("environment_id").notNull(),
+		clientId: text("environment_id").notNull(),
 		streamKey: text("stream_key").notNull(),
 		title: text("title").notNull().default("New Chat"),
 		agent: text("agent").notNull(),
@@ -25,9 +22,6 @@ export const sessions = sqliteTable(
 			string,
 			string
 		> | null>(),
-		syncStatus: text("sync_status", { enum: sessionSyncStatusValues })
-			.notNull()
-			.default("pending"),
 		lastAppliedOffset: text("last_applied_offset").notNull().default("-1"),
 		lastEventAt: integer("last_event_at", { mode: "number" }),
 		lastSyncError: text("last_sync_error"),
@@ -38,7 +32,7 @@ export const sessions = sqliteTable(
 	(table) => [
 		uniqueIndex("sessions_stream_key_unique").on(table.streamKey),
 		index("sessions_environment_id_updated_at_idx").on(
-			table.environmentId,
+			table.clientId,
 			table.updatedAt
 		),
 	]

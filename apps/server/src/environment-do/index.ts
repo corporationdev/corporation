@@ -2,13 +2,13 @@ import { DurableObject } from "cloudflare:workers";
 import type {
 	EnvironmentRpcResult,
 	EnvironmentUnsubscribeStreamInput,
-} from "@corporation/contracts/environment-do";
+} from "@tendril/contracts/environment-do";
 import type {
 	EnvironmentRuntimeCommand,
 	EnvironmentRuntimeCommandResponse,
 	EnvironmentRuntimeStreamItemsMessage,
-} from "@corporation/contracts/environment-runtime";
-import { createLogger } from "@corporation/logger";
+} from "@tendril/contracts/environment-runtime";
+import { createLogger } from "@tendril/logger";
 import { drizzle } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import bundledMigrations from "./db/migrations";
@@ -24,6 +24,7 @@ import { forwardStreamItemsToSubscriber } from "./stream-delivery";
 import { StreamSubscriptions } from "./stream-subscriptions";
 import { EnvironmentSubscriptionStore } from "./subscription-store";
 import type {
+	EmptyResult,
 	EnvironmentDoCallbackBindings,
 	EnvironmentDoRuntimeConnectionsSnapshot,
 	EnvironmentStreamSubscriptionSnapshot,
@@ -85,13 +86,13 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 	}): Promise<void> {
 		const convexSiteUrl = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_CONVEX_SITE_URL?.trim();
+		).CONVEX_SITE_URL?.trim();
 		const apiKey = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_INTERNAL_API_KEY?.trim();
+		).INTERNAL_API_KEY?.trim();
 		if (!(convexSiteUrl && apiKey)) {
 			log.warn(
-				"Missing CORPORATION_CONVEX_SITE_URL or CORPORATION_INTERNAL_API_KEY, skipping environment connect notification"
+				"Missing CONVEX_SITE_URL or INTERNAL_API_KEY, skipping environment connect notification"
 			);
 			return;
 		}
@@ -105,7 +106,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				},
 				body: JSON.stringify({
 					userId: claims.sub,
-					clientId: claims.clientId,
+					connectionId: claims.clientId,
 					name: claims.clientId,
 				}),
 			});
@@ -129,10 +130,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 	}): Promise<void> {
 		const convexSiteUrl = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_CONVEX_SITE_URL?.trim();
+		).CONVEX_SITE_URL?.trim();
 		const apiKey = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_INTERNAL_API_KEY?.trim();
+		).INTERNAL_API_KEY?.trim();
 		if (!(convexSiteUrl && apiKey)) {
 			return;
 		}
@@ -146,7 +147,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				},
 				body: JSON.stringify({
 					userId: claims.sub,
-					clientId: claims.clientId,
+					connectionId: claims.clientId,
 				}),
 			});
 			if (!response.ok) {
@@ -253,14 +254,34 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 	private async handleRuntimeStreamItems(
 		message: EnvironmentRuntimeStreamItemsMessage
 	): Promise<void> {
+		const subscription = this.streamSubscriptions.get(message.stream);
+		log.info(
+			{
+				stream: message.stream,
+				hasSubscription: !!subscription,
+				subscriberBinding: subscription?.subscriber.callback.binding ?? null,
+				subscriberName: subscription?.subscriber.callback.name ?? null,
+			},
+			"handleRuntimeStreamItems"
+		);
 		const result = await forwardStreamItemsToSubscriber({
 			actorId: this.ctx.id.toString(),
 			bindings: this.env as unknown as EnvironmentDoCallbackBindings,
 			log,
 			message,
-			subscription: this.streamSubscriptions.get(message.stream),
+			subscription,
 		});
-		if (!(result && result.ok)) {
+		log.info(
+			{
+				stream: message.stream,
+				resultOk: result?.ok ?? null,
+				resultError: result?.ok
+					? null
+					: (result as { error?: { message?: string } })?.error?.message,
+			},
+			"forwardStreamItems result"
+		);
+		if (!result?.ok) {
 			return;
 		}
 
@@ -353,6 +374,39 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
+	private logAsyncError(message: string, error: unknown): void {
+		log.warn(
+			{ error: error instanceof Error ? error.message : String(error) },
+			message
+		);
+	}
+
+	private notifyConnectedInBackground(claims: {
+		sub: string;
+		clientId: string;
+	}): void {
+		this.notifyConvexEnvironmentConnected(claims).catch((error: unknown) => {
+			this.logAsyncError("environment connect notification failed", error);
+		});
+	}
+
+	private notifyDisconnectedInBackground(claims: {
+		sub: string;
+		clientId: string;
+	}): void {
+		this.notifyConvexEnvironmentDisconnected(claims).catch((error: unknown) => {
+			this.logAsyncError("environment disconnect notification failed", error);
+		});
+	}
+
+	private forwardRuntimeStreamItemsInBackground(
+		message: EnvironmentRuntimeStreamItemsMessage
+	): void {
+		this.handleRuntimeStreamItems(message).catch((error: unknown) => {
+			this.logAsyncError("runtime stream forwarding failed", error);
+		});
+	}
+
 	private async handleRuntimeSocketUpgrade(
 		request: Request
 	): Promise<Response> {
@@ -395,7 +449,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			"accepted runtime websocket"
 		);
 
-		void this.notifyConvexEnvironmentConnected(runtimeAuth.claims);
+		this.notifyConnectedInBackground(runtimeAuth.claims);
 
 		return new Response(null, {
 			status: 101,
@@ -440,6 +494,14 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 		const response = parseRuntimeResponseMessage(message);
 		if (response) {
+			log.info(
+				{
+					connectionId: attachment.connectionId,
+					requestId: response.requestId,
+					ok: response.ok,
+				},
+				"received runtime response"
+			);
 			this.commandRouter.handleResponse({
 				connectionId: attachment.connectionId,
 				response,
@@ -449,10 +511,22 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 		const streamItems = parseRuntimeStreamItemsMessage(message);
 		if (!streamItems) {
+			log.warn(
+				{ connectionId: attachment.connectionId },
+				"received unrecognized runtime message"
+			);
 			return;
 		}
 
-		void this.handleRuntimeStreamItems(streamItems);
+		log.info(
+			{
+				stream: streamItems.stream,
+				itemCount: streamItems.items.length,
+				nextOffset: streamItems.nextOffset,
+			},
+			"received runtime stream_items"
+		);
+		this.forwardRuntimeStreamItemsInBackground(streamItems);
 	}
 
 	webSocketClose(
@@ -489,7 +563,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		);
 
 		if (this.runtimeConnections.size === 0) {
-			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+			this.notifyDisconnectedInBackground(attachment.auth.claims);
 		}
 	}
 
@@ -519,7 +593,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		);
 
 		if (attachment && this.runtimeConnections.size === 0) {
-			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+			this.notifyDisconnectedInBackground(attachment.auth.claims);
 		}
 	}
 
@@ -580,7 +654,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 	async subscribeStream(
 		input: EnvironmentSubscribeStreamInput
-	): Promise<EnvironmentRpcResult<{}>> {
+	): Promise<EnvironmentRpcResult<EmptyResult>> {
 		await this.ready;
 		const result = this.streamSubscriptions.subscribe({
 			activeRuntimeConnected: this.activeRuntimeConnectionId !== null,
@@ -600,7 +674,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 	async unsubscribeStream(
 		input: EnvironmentUnsubscribeStreamInput
-	): Promise<EnvironmentRpcResult<{}>> {
+	): Promise<EnvironmentRpcResult<EmptyResult>> {
 		await this.ready;
 		const result = this.streamSubscriptions.unsubscribe(input);
 		if (result.ok) {

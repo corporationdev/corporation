@@ -70,7 +70,6 @@ describe("runtime CLI -> Environment DO -> Space DO e2e", () => {
 						id: sessionId,
 						environmentId: TEST_USER_ID,
 						streamKey: `session:${sessionId}`,
-						syncStatus: "live",
 					},
 				},
 			});
@@ -98,26 +97,17 @@ describe("runtime CLI -> Environment DO -> Space DO e2e", () => {
 					const eventTypes = new Set(
 						candidateEvents.map((event) => event.eventType)
 					);
-					return (
-						eventTypes.has("turn.started") &&
-						eventTypes.has("output.delta") &&
-						eventTypes.has("turn.completed")
-					);
+					return eventTypes.has("status") && eventTypes.has("text_delta");
 				},
 			});
 
-			expect(events.some((event) => event.eventType === "turn.started")).toBe(
-				true
-			);
-			expect(events.some((event) => event.eventType === "output.delta")).toBe(
-				true
-			);
-			expect(events.some((event) => event.eventType === "turn.completed")).toBe(
+			expect(events.some((event) => event.eventType === "status")).toBe(true);
+			expect(events.some((event) => event.eventType === "text_delta")).toBe(
 				true
 			);
 			expect(
 				events.some((event) => {
-					if (event.eventType !== "output.delta") {
+					if (event.eventType !== "text_delta") {
 						return false;
 					}
 					const payload = event.payload as {
@@ -142,7 +132,6 @@ describe("runtime CLI -> Environment DO -> Space DO e2e", () => {
 			expect(session).toMatchObject({
 				id: sessionId,
 				environmentId: TEST_USER_ID,
-				syncStatus: "live",
 			});
 			expect(session?.lastAppliedOffset).not.toBe("-1");
 			expect(session?.lastEventAt).not.toBeNull();

@@ -394,9 +394,8 @@ describe("createAcpDriver", () => {
 		expect(result).toEqual({ stopReason: "end_turn" });
 		expect(events).toEqual([
 			{
-				type: "output.delta",
+				kind: "text_delta",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				channel: "assistant",
 				content: {
 					type: "text",
@@ -404,9 +403,8 @@ describe("createAcpDriver", () => {
 				},
 			},
 			{
-				type: "output.delta",
+				kind: "text_delta",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				channel: "assistant",
 				content: {
 					type: "audio",
@@ -415,9 +413,8 @@ describe("createAcpDriver", () => {
 				},
 			},
 			{
-				type: "plan.updated",
+				kind: "plan",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				entries: [
 					{
 						content: "Answer the user",
@@ -427,15 +424,13 @@ describe("createAcpDriver", () => {
 				],
 			},
 			{
-				type: "session.mode.updated",
+				kind: "mode_changed",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				modeId: "fast",
 			},
 			{
-				type: "session.config.updated",
+				kind: "config_changed",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				configOptions: [
 					{
 						type: "select",
@@ -447,24 +442,21 @@ describe("createAcpDriver", () => {
 				],
 			},
 			{
-				type: "session.info.updated",
+				kind: "info_changed",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				title: "Session title",
 				updatedAt: "2026-03-12T12:00:00Z",
 			},
 			{
-				type: "usage.updated",
+				kind: "usage",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				used: 50,
 				size: 100,
 				cost: { amount: 0.01, currency: "USD" },
 			},
 			{
-				type: "permission.requested",
+				kind: "permission_request",
 				sessionId: "session-1",
-				turnId: "turn-1",
 				requestId: "perm-1",
 				options: [
 					{

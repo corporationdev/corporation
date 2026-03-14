@@ -4,12 +4,12 @@ import type {
 	EnvironmentRuntimeCommand as RuntimeWebSocketCommand,
 	EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage,
 	EnvironmentRuntimeSubscribeStream as RuntimeWebSocketSubscribeStream,
-} from "@corporation/contracts/environment-runtime";
+} from "@tendril/contracts/environment-runtime";
 import {
 	environmentRuntimeCommandSchema as runtimeWebSocketCommandSchema,
 	environmentRuntimeHelloAckSchema as runtimeWebSocketHelloAckSchema,
 	environmentRuntimeSubscribeStreamSchema as runtimeWebSocketSubscribeStreamSchema,
-} from "@corporation/contracts/environment-runtime";
+} from "@tendril/contracts/environment-runtime";
 import type { RuntimeEngine } from "./index";
 import {
 	getCommandId,
@@ -26,14 +26,13 @@ export type WebSocketLike = {
 	readyState: number;
 	send(data: string): void;
 	close(code?: number, reason?: string): void;
-	addEventListener(type: "open", listener: (event: Event) => void): void;
+	addEventListener(
+		type: "open" | "close" | "error",
+		listener: (event: Event) => void
+	): void;
 	addEventListener(
 		type: "message",
 		listener: (event: SocketMessageEvent) => void
-	): void;
-	addEventListener(
-		type: "close" | "error",
-		listener: (event: Event) => void
 	): void;
 };
 
@@ -65,8 +64,10 @@ export function createWebSocketRuntimeTransport(options: {
 
 	const send = (message: RuntimeWebSocketOutgoingMessage): void => {
 		if (!(socket && socket.readyState === SOCKET_OPEN && socketReady)) {
+			console.warn("[transport] send skipped — socket not ready");
 			return;
 		}
+		console.log("[transport] send:", message.type);
 		socket.send(JSON.stringify(message));
 	};
 
@@ -234,6 +235,7 @@ export function createWebSocketRuntimeTransport(options: {
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			console.error("[transport] command failed:", command.type, message);
 			options.store.failCommand(commandId, message);
 			send({
 				type: "response",
@@ -277,7 +279,7 @@ export function createWebSocketRuntimeTransport(options: {
 		}
 		reconnectTimer = setTimeout(() => {
 			reconnectTimer = null;
-			void connectSocket();
+			connectSocket().catch(() => undefined);
 		}, reconnectDelayMs);
 	};
 
@@ -334,9 +336,11 @@ export function createWebSocketRuntimeTransport(options: {
 					typeof event.data === "string"
 						? event.data
 						: new TextDecoder().decode(event.data as ArrayBuffer);
+				console.log("[transport] recv:", payload.slice(0, 200));
 				const message = JSON.parse(payload) as unknown;
 				const helloAck = runtimeWebSocketHelloAckSchema.safeParse(message);
 				if (helloAck.success) {
+					console.log("[transport] hello_ack received");
 					helloAckReceived = true;
 					socketReady = true;
 					started = true;
@@ -346,19 +350,34 @@ export function createWebSocketRuntimeTransport(options: {
 				const subscribeStream =
 					runtimeWebSocketSubscribeStreamSchema.safeParse(message);
 				if (subscribeStream.success) {
+					console.log(
+						"[transport] subscribe_stream:",
+						subscribeStream.data.stream
+					);
 					handleSubscribeStream(subscribeStream.data);
 					return;
 				}
 				const parsed = runtimeWebSocketCommandSchema.safeParse(message);
 				if (!parsed.success) {
+					console.warn(
+						"[transport] unrecognized message, parse error:",
+						parsed.error.message
+					);
 					return;
 				}
+				console.log(
+					"[transport] command:",
+					parsed.data.type,
+					"requestId:",
+					parsed.data.requestId
+				);
 				commandQueue = commandQueue
 					.then(() => handleCommand(parsed.data))
 					.catch(() => undefined);
 			});
 
 			currentSocket.addEventListener("close", () => {
+				console.log("[transport] WebSocket closed");
 				const shouldReject = !(started || helloAckReceived);
 				cleanupSocket(currentSocket);
 				if (shouldReject) {
@@ -369,6 +388,7 @@ export function createWebSocketRuntimeTransport(options: {
 			});
 
 			currentSocket.addEventListener("error", () => {
+				console.error("[transport] WebSocket error");
 				const shouldReject = !(started || helloAckReceived);
 				cleanupSocket(currentSocket);
 				if (shouldReject) {

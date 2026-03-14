@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import crypto from "node:crypto";
 import { AGENT_METHODS, type PromptResponse } from "@agentclientprotocol/sdk";
+import type { SessionEvent } from "@tendril/contracts/session-event";
 import { createSpawnedAcpConnectionFactory } from "../acp-connection";
 import {
 	type AcpConnection,
@@ -8,7 +9,6 @@ import {
 	createAcpDriver,
 } from "../acp-driver";
 import { RuntimeEngine } from "../index";
-import type { RuntimeEvent } from "../runtime-events";
 
 const LIVE_AGENT = process.env.ACP_LIVE_AGENT?.trim();
 const LIVE_MODEL = process.env.ACP_LIVE_MODEL?.trim();
@@ -19,7 +19,7 @@ describe("RuntimeEngine Live", () => {
 		test("sends a real message and emits turn plus session events through the runtime engine", async () => {
 			const baseFactory = createSpawnedAcpConnectionFactory();
 			const liveConnections: AcpConnection[] = [];
-			const events: RuntimeEvent[] = [];
+			const events: SessionEvent[] = [];
 			let promptResponse: PromptResponse | undefined;
 
 			const recordingFactory: AcpConnectionFactory = {
@@ -79,31 +79,39 @@ describe("RuntimeEngine Live", () => {
 
 				expect(turnId).toBeString();
 				expect(engine.getTurn(turnId)?.status).toBe("completed");
-				expect(events.length).toBeGreaterThanOrEqual(3);
+				expect(events.length).toBeGreaterThanOrEqual(4);
 				expect(events[0]).toEqual({
-					type: "turn.started",
+					kind: "text_delta",
 					sessionId,
-					turnId,
+					channel: "user",
+					content: {
+						type: "text",
+						text: "Reply with exactly the word READY. Do not use tools, do not read files, and do not request permissions.",
+					},
+				});
+				expect(events[1]).toEqual({
+					kind: "status",
+					sessionId,
+					status: "running",
 				});
 
 				const streamedEvents = events.filter(
-					(event) =>
-						event.type !== "turn.started" && event.type !== "turn.completed"
+					(event) => event.kind !== "status"
 				);
 				expect(streamedEvents.length).toBeGreaterThan(0);
 				expect(
 					streamedEvents.some(
 						(event) =>
-							event.type === "output.delta" &&
+							event.kind === "text_delta" &&
 							event.channel === "assistant" &&
 							event.content.type === "text" &&
 							event.content.text.length > 0
 					)
 				).toBe(true);
 				expect(events.at(-1)).toEqual({
-					type: "turn.completed",
+					kind: "status",
 					sessionId,
-					turnId,
+					status: "idle",
 					stopReason: "end_turn",
 				});
 				expect(promptResponse).toBeDefined();

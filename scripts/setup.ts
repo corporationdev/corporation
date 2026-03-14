@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { $ } from "bun";
+import { parse as parseDotEnv } from "dotenv";
 
-const envLineRegex = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)/;
 const DEV_DEPLOYMENT = "dev:hip-impala-208";
-const DEV_DEPLOY_KEY_OP_REFERENCE = "op://corporation-dev/Convex/deploy-key";
+const DEV_DEPLOY_KEY_OP_REFERENCE = "op://tendril-dev/Convex/deploy-key";
 const IGNORE_DEPLOY_KEY = "<ignore_deploy_key>";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -66,9 +66,12 @@ if (useSandbox) {
 
 if (sync) {
 	console.log("Syncing environment variables to Convex...");
+	const backendEnv = loadBackendEnv();
+	const envFilePath = resolve(backendDir, ".env");
+	const command = $`bunx convex env set --force --from-file ${envFilePath}`;
 	if (useSandbox) {
-		const localEnv = withIgnoredDeployKey(loadBackendEnv());
-		const directSync = await $`bun ./sync-convex-env.ts`
+		const localEnv = withIgnoredDeployKey(backendEnv);
+		const directSync = await command
 			.env(localEnv)
 			.cwd(backendDir)
 			.nothrow()
@@ -76,29 +79,24 @@ if (sync) {
 		if (directSync.exitCode === 0) {
 			console.log("Synced env vars to running local backend.");
 		} else {
-			await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${"bun ./sync-convex-env.ts"}`
+			await $`CONVEX_AGENT_MODE=anonymous bunx convex dev --local --once --run-sh ${"bunx convex env set --force --from-file .env"}`
 				.env(localEnv)
 				.cwd(backendDir);
 		}
 	} else {
-		await $`bunx convex dev --once --run-sh ${"bun ./sync-convex-env.ts"}`
-			.env(loadBackendEnv())
-			.cwd(backendDir);
+		await command.env(backendEnv).cwd(backendDir);
 	}
 }
 
 function loadBackendEnv() {
 	const envPath = resolve(repoRoot, "packages/backend/.env");
-	const text = readFileSync(envPath, "utf8");
 	const env: Record<string, string> = { ...process.env } as Record<
 		string,
 		string
 	>;
-	for (const line of text.split("\n")) {
-		const match = line.match(envLineRegex);
-		if (match?.[1]) {
-			env[match[1]] = match[2] ?? "";
-		}
+	const parsedEnv = parseDotEnv(readFileSync(envPath, "utf8"));
+	for (const [key, value] of Object.entries(parsedEnv)) {
+		env[key] = value;
 	}
 	return env;
 }

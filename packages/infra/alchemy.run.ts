@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolveRuntimeContext } from "@corporation/config/runtime";
-import { getStageServerHostname } from "@corporation/config/server-url";
-import { deriveEnvTier } from "@corporation/config/stage";
+import { resolveRuntimeContext } from "@tendril/config/runtime";
+import { getStageServerHostname } from "@tendril/config/server-url";
+import { deriveEnvTier } from "@tendril/config/stage";
 import alchemy from "alchemy";
 import {
 	DurableObjectNamespace,
@@ -37,7 +37,7 @@ const runtime = resolveRuntimeContext(stage, {
 	allowMissingPreviewConvex,
 });
 
-const app = await alchemy("corporation", {
+const app = await alchemy("tendril", {
 	stage,
 	stateStore: process.env.CI
 		? (scope) => new CloudflareStateStore(scope)
@@ -104,7 +104,7 @@ if (serverTunnel && app.local) {
 if (serverHostname) {
 	await Ruleset("agent-server-proxy-bypass", {
 		apiToken: alchemy.secret(process.env.CLOUDFLARE_API_TOKEN),
-		zone: "corporation.dev",
+		zone: "tendril.sh",
 		phase: "http_request_firewall_custom",
 		name: `agent-server-proxy-bypass-${stage}`,
 		description:
@@ -131,12 +131,8 @@ export const server = await Worker("agent-server", {
 		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
 		E2B_API_KEY: alchemy.secret(process.env.E2B_API_KEY),
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
-		CORPORATION_INTERNAL_API_KEY: alchemy.secret(
-			process.env.CORPORATION_INTERNAL_API_KEY
-		),
-		CORPORATION_RUNTIME_AUTH_SECRET: alchemy.secret(
-			process.env.CORPORATION_RUNTIME_AUTH_SECRET
-		),
+		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
+		RUNTIME_AUTH_SECRET: alchemy.secret(process.env.RUNTIME_AUTH_SECRET),
 		...runtime.serverBindings,
 		SPACE_DO: spaceDO,
 		ENVIRONMENT_DO: environmentDO,
@@ -154,10 +150,10 @@ if (serverHostname) {
 // Resolve custom domain for deployed stages
 function getWebDomain(): string | undefined {
 	if (envTier === "prod") {
-		return "app.corporation.dev";
+		return "app.tendril.sh";
 	}
 	if (envTier === "preview") {
-		return `${stage}.corporation.dev`;
+		return `${stage}.tendril.sh`;
 	}
 	return undefined;
 }

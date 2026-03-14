@@ -2,7 +2,7 @@ import type {
 	CreateSessionInput,
 	CreateSessionResult,
 	SpaceSessionRow,
-} from "@corporation/contracts/browser-space";
+} from "@tendril/contracts/browser-space";
 import type { RuntimeEventRow } from "../../src/space-do/object";
 
 export function buildCreateSpaceSessionUrl(input: {

@@ -3,17 +3,15 @@ import { z } from "zod";
 const ENV_VAR_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
 
 const RESERVED_SECRET_NAMES = new Set([
-	"CORPORATION_CONVEX_SITE_URL",
-	"CORPORATION_SANDBOX_OWNER_ID",
-	"CORPORATION_SERVER_URL",
+	"CONVEX_SITE_URL",
+	"SANDBOX_OWNER_ID",
+	"SERVER_URL",
 	"HOME",
 	"NODE_OPTIONS",
 	"PATH",
 	"PWD",
 	"SHELL",
 ]);
-
-const RESERVED_SECRET_PREFIXES = ["CORPORATION_"];
 
 export const MAX_SECRET_NAME_LENGTH = 128;
 export const MAX_SECRET_VALUE_LENGTH = 16_384;
@@ -31,12 +29,6 @@ export const secretNameSchema = z
 			ctx.addIssue({
 				code: "custom",
 				message: `Secret name ${name} is reserved`,
-			});
-		}
-		if (RESERVED_SECRET_PREFIXES.some((prefix) => name.startsWith(prefix))) {
-			ctx.addIssue({
-				code: "custom",
-				message: `Secret names starting with ${RESERVED_SECRET_PREFIXES.join(", ")} are reserved`,
 			});
 		}
 	});

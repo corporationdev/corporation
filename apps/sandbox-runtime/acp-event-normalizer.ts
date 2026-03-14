@@ -14,21 +14,20 @@ import type {
 	ToolCallLocation,
 	ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
-import type { SessionId, TurnId } from "./index";
 import type {
-	RuntimeAvailableCommand,
-	RuntimeContent,
-	RuntimeEvent,
-	RuntimePermissionOption,
-	RuntimeSessionConfigOption,
-	RuntimeSessionConfigOptionGroup,
-	RuntimeSessionConfigOptionValue,
-	RuntimeToolCall,
-	RuntimeToolContent,
-	RuntimeToolLocation,
-} from "./runtime-events";
+	ConfigOption,
+	ConfigOptionValue,
+	Content,
+	AvailableCommand as EventAvailableCommand,
+	ToolCall as EventToolCall,
+	PermissionOption,
+	PlanEntry,
+	SessionEvent,
+	ToolContent,
+	ToolLocation,
+} from "@tendril/contracts/session-event";
 
-function normalizeContent(content: ContentBlock): RuntimeContent {
+function normalizeContent(content: ContentBlock): Content {
 	switch (content.type) {
 		case "text":
 			return {
@@ -72,7 +71,7 @@ function normalizeContent(content: ContentBlock): RuntimeContent {
 	}
 }
 
-function normalizeEmbeddedResource(content: EmbeddedResource): RuntimeContent {
+function normalizeEmbeddedResource(content: EmbeddedResource): Content {
 	const resource = content.resource;
 	if ("text" in resource) {
 		return {
@@ -93,16 +92,14 @@ function normalizeEmbeddedResource(content: EmbeddedResource): RuntimeContent {
 	};
 }
 
-function normalizeToolLocation(
-	location: ToolCallLocation
-): RuntimeToolLocation {
+function normalizeToolLocation(location: ToolCallLocation): ToolLocation {
 	return {
 		path: location.path,
 		...(location.line !== undefined ? { line: location.line } : {}),
 	};
 }
 
-function normalizeToolContent(content: ToolCallContent): RuntimeToolContent {
+function normalizeToolContent(content: ToolCallContent): ToolContent {
 	switch (content.type) {
 		case "content":
 			return {
@@ -122,7 +119,7 @@ function normalizeToolContent(content: ToolCallContent): RuntimeToolContent {
 	}
 }
 
-function normalizeDiff(content: Diff): RuntimeToolContent {
+function normalizeDiff(content: Diff): ToolContent {
 	return {
 		type: "diff",
 		path: content.path,
@@ -131,7 +128,7 @@ function normalizeDiff(content: Diff): RuntimeToolContent {
 	};
 }
 
-function normalizeTerminal(content: Terminal): RuntimeToolContent {
+function normalizeTerminal(content: Terminal): ToolContent {
 	return {
 		type: "terminal",
 		terminalId: content.terminalId,
@@ -140,12 +137,12 @@ function normalizeTerminal(content: Terminal): RuntimeToolContent {
 
 function normalizeToolCallBase(
 	update: ToolCall | ToolCallUpdate
-): RuntimeToolCall {
+): EventToolCall {
 	return {
 		toolCallId: update.toolCallId,
 		title: "title" in update ? (update.title ?? null) : null,
 		status: "status" in update ? (update.status ?? null) : null,
-		...("kind" in update ? { kind: update.kind ?? null } : {}),
+		...("kind" in update ? { toolKind: update.kind ?? null } : {}),
 		...("locations" in update && update.locations !== undefined
 			? {
 					locations:
@@ -171,7 +168,7 @@ function normalizeToolCallBase(
 	};
 }
 
-function normalizeCommand(command: AvailableCommand): RuntimeAvailableCommand {
+function normalizeCommand(command: AvailableCommand): EventAvailableCommand {
 	return {
 		name: command.name,
 		description: command.description,
@@ -181,7 +178,7 @@ function normalizeCommand(command: AvailableCommand): RuntimeAvailableCommand {
 
 function normalizePermissionOption(
 	option: RequestPermissionRequest["options"][number]
-): RuntimePermissionOption {
+): PermissionOption {
 	return {
 		optionId: option.optionId,
 		kind: option.kind,
@@ -191,7 +188,7 @@ function normalizePermissionOption(
 
 function normalizeSessionConfigOptionValue(
 	option: SessionConfigSelectOption
-): RuntimeSessionConfigOptionValue {
+): ConfigOptionValue {
 	return {
 		name: option.name,
 		value: option.value,
@@ -203,7 +200,7 @@ function normalizeSessionConfigOptionValue(
 
 function normalizeSessionConfigOptionGroup(
 	group: SessionConfigSelectGroup
-): RuntimeSessionConfigOptionGroup {
+): ConfigOption["options"][number] {
 	return {
 		group: group.group,
 		name: group.name,
@@ -213,7 +210,7 @@ function normalizeSessionConfigOptionGroup(
 
 function normalizeSessionConfigOption(
 	option: SessionConfigOption
-): RuntimeSessionConfigOption {
+): ConfigOption {
 	return {
 		type: "select",
 		id: option.id,
@@ -231,18 +228,32 @@ function normalizeSessionConfigOption(
 	};
 }
 
+function normalizePlanEntry(
+	entry: SessionUpdate extends infer U
+		? U extends { sessionUpdate: "plan"; entries: infer E }
+			? E extends Array<infer Item>
+				? Item
+				: never
+			: never
+		: never
+): PlanEntry {
+	return {
+		content: entry.content,
+		priority: entry.priority,
+		status: entry.status,
+	};
+}
+
 export function normalizeAcpSessionUpdate(
-	sessionId: SessionId,
-	turnId: TurnId,
+	sessionId: string,
 	update: SessionUpdate
-): RuntimeEvent {
+): SessionEvent {
 	switch (update.sessionUpdate) {
 		case "user_message_chunk": {
 			const content = normalizeContent(update.content);
 			return {
-				type: "output.delta",
+				kind: "text_delta",
 				sessionId,
-				turnId,
 				channel: "user",
 				content,
 			};
@@ -250,9 +261,8 @@ export function normalizeAcpSessionUpdate(
 		case "agent_message_chunk": {
 			const content = normalizeContent(update.content);
 			return {
-				type: "output.delta",
+				kind: "text_delta",
 				sessionId,
-				turnId,
 				channel: "assistant",
 				content,
 			};
@@ -260,64 +270,52 @@ export function normalizeAcpSessionUpdate(
 		case "agent_thought_chunk": {
 			const content = normalizeContent(update.content);
 			return {
-				type: "output.delta",
+				kind: "text_delta",
 				sessionId,
-				turnId,
-				channel: "thought",
+				channel: "thinking",
 				content,
 			};
 		}
 		case "tool_call":
 			return {
-				type: "tool.started",
+				kind: "tool_start",
 				sessionId,
-				turnId,
 				toolCall: normalizeToolCallBase(update),
 			};
 		case "tool_call_update":
 			return {
-				type: "tool.updated",
+				kind: "tool_update",
 				sessionId,
-				turnId,
 				toolCall: normalizeToolCallBase(update),
 			};
 		case "plan":
 			return {
-				type: "plan.updated",
+				kind: "plan",
 				sessionId,
-				turnId,
-				entries: update.entries.map((entry) => ({
-					content: entry.content,
-					priority: entry.priority,
-					status: entry.status,
-				})),
+				entries: update.entries.map(normalizePlanEntry),
 			};
 		case "available_commands_update":
 			return {
-				type: "session.available_commands.updated",
+				kind: "commands_changed",
 				sessionId,
-				turnId,
 				commands: update.availableCommands.map(normalizeCommand),
 			};
 		case "current_mode_update":
 			return {
-				type: "session.mode.updated",
+				kind: "mode_changed",
 				sessionId,
-				turnId,
 				modeId: update.currentModeId,
 			};
 		case "config_option_update":
 			return {
-				type: "session.config.updated",
+				kind: "config_changed",
 				sessionId,
-				turnId,
 				configOptions: update.configOptions.map(normalizeSessionConfigOption),
 			};
 		case "session_info_update":
 			return {
-				type: "session.info.updated",
+				kind: "info_changed",
 				sessionId,
-				turnId,
 				...(update.title !== undefined ? { title: update.title } : {}),
 				...(update.updatedAt !== undefined
 					? { updatedAt: update.updatedAt }
@@ -325,9 +323,8 @@ export function normalizeAcpSessionUpdate(
 			};
 		case "usage_update":
 			return {
-				type: "usage.updated",
+				kind: "usage",
 				sessionId,
-				turnId,
 				used: update.used,
 				size: update.size,
 				...(update.cost !== undefined ? { cost: update.cost } : {}),
@@ -342,15 +339,13 @@ export function normalizeAcpSessionUpdate(
 }
 
 export function normalizeAcpPermissionRequest(
-	sessionId: SessionId,
-	turnId: TurnId,
+	sessionId: string,
 	requestId: string,
 	request: RequestPermissionRequest
-): RuntimeEvent {
+): SessionEvent {
 	return {
-		type: "permission.requested",
+		kind: "permission_request",
 		sessionId,
-		turnId,
 		requestId,
 		options: request.options.map(normalizePermissionOption),
 		toolCall: normalizeToolCallBase(request.toolCall),

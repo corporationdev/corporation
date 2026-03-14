@@ -1,10 +1,10 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { requireRunMutationCtx } from "@convex-dev/better-auth/utils";
+import { resolveRuntimeContext } from "@tendril/config/runtime";
 import { betterAuth } from "better-auth";
 import { getOrgAdapter, organization } from "better-auth/plugins/organization";
 import { Resend } from "resend";
-import { components, internal } from "./_generated/api";
+import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
@@ -20,24 +20,34 @@ function slugifyOrganizationName(name: string, userId: string) {
 	return `${base || "workspace"}-${suffix}`;
 }
 
-const webUrl = process.env.CORPORATION_WEB_URL ?? "";
-const convexSiteUrl = process.env.CORPORATION_CONVEX_SITE_URL;
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
-const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
-	Boolean
-);
+
+function getAuthRuntimeConfig() {
+	const stage = process.env.STAGE?.trim();
+	if (!stage) {
+		throw new Error("Better Auth requires STAGE to resolve runtime config.");
+	}
+
+	const runtime = resolveRuntimeContext(stage, {
+		allowMissingPreviewConvex: true,
+	});
+	return {
+		emailFrom: runtime.emailFrom,
+		webUrl: runtime.serverBindings.WEB_URL,
+	};
+}
 
 function getRequiredInviteEmailConfig() {
 	const resendApiKey = process.env.RESEND_API_KEY;
-	const emailFrom = process.env.CORPORATION_EMAIL_FROM;
+	const { emailFrom, webUrl } = getAuthRuntimeConfig();
 
 	if (!(resendApiKey && emailFrom && webUrl)) {
 		throw new Error(
-			"Organization invitations require RESEND_API_KEY, CORPORATION_EMAIL_FROM, and CORPORATION_WEB_URL"
+			"Organization invitations require RESEND_API_KEY, EMAIL_FROM, and WEB_URL"
 		);
 	}
 
-	return { resendApiKey, emailFrom };
+	return { resendApiKey, emailFrom, webUrl };
 }
 
 function getResendClient() {
@@ -59,20 +69,20 @@ async function sendOrganizationInvitationEmail(data: {
 		};
 	};
 }) {
-	const { emailFrom } = getRequiredInviteEmailConfig();
+	const { emailFrom, webUrl } = getRequiredInviteEmailConfig();
 	const invitationUrl = new URL("/accept-invitation", webUrl);
 	invitationUrl.searchParams.set("id", data.id);
 	const inviterName = data.inviter.user.name?.trim() || data.inviter.user.email;
 	const subject = `${inviterName} invited you to join ${data.organization.name}`;
 	const text = [
-		`${inviterName} invited you to join ${data.organization.name} on corporation.`,
+		`${inviterName} invited you to join ${data.organization.name} on tendril.`,
 		"",
 		`Role: ${data.role}`,
 		`Accept invitation: ${invitationUrl.toString()}`,
 	].join("\n");
 	const html = `
 		<div style="font-family: sans-serif; line-height: 1.6; color: #111827;">
-			<p><strong>${inviterName}</strong> invited you to join <strong>${data.organization.name}</strong> on corporation.</p>
+			<p><strong>${inviterName}</strong> invited you to join <strong>${data.organization.name}</strong> on tendril.</p>
 			<p>Role: <strong>${data.role}</strong></p>
 			<p>
 				<a href="${invitationUrl.toString()}" style="display: inline-block; padding: 10px 14px; background: #111827; color: #ffffff; text-decoration: none;">
@@ -131,8 +141,12 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 );
 
 export function createAuthOptions(ctx: GenericCtx<DataModel>) {
+	const { webUrl } = getAuthRuntimeConfig();
+	const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
+		Boolean
+	);
+
 	return {
-		...(convexSiteUrl ? { baseURL: `${convexSiteUrl}/api/auth` } : {}),
 		trustedOrigins,
 		database: authComponent.adapter(ctx),
 		databaseHooks: {
@@ -209,16 +223,6 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
 							ensuredOrganizationId ??
 							existingOrganizations[0]?.id ??
 							null;
-
-						if (activeOrganizationId) {
-							await requireRunMutationCtx(ctx).runMutation(
-								internal.organizations.ensureOrgBaseProject,
-								{
-									organizationId: activeOrganizationId,
-									userId: session.userId,
-								}
-							);
-						}
 
 						if (
 							activeOrganizationId &&

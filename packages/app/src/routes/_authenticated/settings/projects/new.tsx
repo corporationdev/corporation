@@ -1,7 +1,7 @@
-import { api } from "@corporation/backend/convex/_generated/api";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { api } from "@tendril/backend/convex/_generated/api";
 import { useMutation as useConvexMutation } from "convex/react";
 import { Check, Github, Search } from "lucide-react";
 import { useState } from "react";
@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { GitHubRepo } from "@/hooks/use-github-repos";
 import { useGitHubRepos } from "@/hooks/use-github-repos";
-import { apiClient, apiUtils } from "@/lib/api-client";
+import { connectIntegration, listIntegrations } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/settings/projects/new")({
 	component: NewProjectPage,
@@ -28,7 +28,7 @@ export const Route = createFileRoute("/_authenticated/settings/projects/new")({
 function NewProjectPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
-	const integrationsQueryKey = apiUtils.integrations.list.queryKey();
+	const integrationsQueryKey = ["integrations"];
 	const createProject = useConvexMutation(api.projects.create);
 
 	const [search, setSearch] = useState("");
@@ -36,8 +36,8 @@ function NewProjectPage() {
 	const [noGithub, setNoGithub] = useState(false);
 
 	const { data: integrations, isLoading: isIntegrationsLoading } = useQuery({
-		...apiUtils.integrations.list.queryOptions(),
-		select: (data) => data.integrations,
+		queryKey: integrationsQueryKey,
+		queryFn: listIntegrations,
 	});
 
 	const isGithubConnected = integrations?.some(
@@ -50,9 +50,7 @@ function NewProjectPage() {
 
 	const connectGithubMutation = useMutation({
 		mutationFn: async () => {
-			const { connect_link } = await apiClient.integrations.connect({
-				allowedIntegrations: ["github"],
-			});
+			const { connect_link } = await connectIntegration(["github"]);
 			if (connect_link) {
 				window.open(connect_link, "_blank");
 			}

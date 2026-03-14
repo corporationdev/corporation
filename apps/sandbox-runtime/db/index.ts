@@ -9,7 +9,7 @@ import { schema } from "./schema";
 
 const DEFAULT_RUNTIME_DATABASE_PATH = join(
 	homedir(),
-	".corporation",
+	".tendril",
 	"sandbox-runtime",
 	"runtime.sqlite"
 );
@@ -32,7 +32,7 @@ export type RuntimeDatabaseHandle = {
 };
 
 export function getDefaultRuntimeDatabasePath(): string {
-	const value = process.env.CORPORATION_RUNTIME_DB_PATH?.trim();
+	const value = process.env.RUNTIME_DB_PATH?.trim();
 	return value || DEFAULT_RUNTIME_DATABASE_PATH;
 }
 

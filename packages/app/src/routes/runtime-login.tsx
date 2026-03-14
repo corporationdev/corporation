@@ -1,5 +1,5 @@
-import { env } from "@corporation/env/web";
 import { createFileRoute } from "@tanstack/react-router";
+import { env } from "@tendril/env/web";
 import { useEffect, useRef, useState } from "react";
 import Loader from "@/components/loader";
 import SignInForm from "@/components/sign-in-form";
@@ -52,7 +52,7 @@ function submitRefreshToken(
 }
 
 async function requestRuntimeRefreshToken(clientId: string): Promise<string> {
-	const baseUrl = toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL);
+	const baseUrl = toAbsoluteUrl(env.VITE_SERVER_URL);
 	const url = new URL("/api/runtime/auth/refresh-token", baseUrl);
 	const headers = await getAuthHeaders();
 	const response = await fetch(url.toString(), {
@@ -89,7 +89,7 @@ function RuntimeLoginPage() {
 		hasStartedRef.current = true;
 		let cancelled = false;
 
-		void (async () => {
+		const run = async () => {
 			try {
 				const refreshToken = await requestRuntimeRefreshToken(search.clientId);
 				if (cancelled) {
@@ -107,7 +107,9 @@ function RuntimeLoginPage() {
 						: "Failed to create runtime credentials"
 				);
 			}
-		})();
+		};
+
+		run().catch(() => undefined);
 
 		return () => {
 			cancelled = true;

@@ -1,8 +1,19 @@
-import type { GitHubListReposOutput } from "@corporation/contracts/orpc/worker-http";
 import { Nango } from "@nangohq/node";
 import { Octokit } from "octokit";
 
 const GITHUB_PROVIDER_KEY = "github";
+
+type GitHubListReposOutput = {
+	repositories: Array<{
+		id: number;
+		name: string;
+		fullName: string;
+		owner: string;
+		defaultBranch: string;
+		private: boolean;
+		url: string;
+	}>;
+};
 
 async function getGitHubToken(env: Env, userId: string): Promise<string> {
 	const nango = new Nango({ secretKey: env.NANGO_SECRET_KEY });

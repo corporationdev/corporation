@@ -4,7 +4,7 @@ import {
 	buildSecretHint,
 	validateSecretName,
 	validateSecretValue,
-} from "@corporation/shared/secrets";
+} from "@tendril/shared/secrets";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -12,9 +12,9 @@ import { type ActionCtx, internalAction } from "./_generated/server";
 import { decrypt, deriveUserKey, encrypt } from "./lib/crypto";
 
 function getMasterKey(): string {
-	const masterKey = process.env.CORPORATION_API_KEY_MASTER_KEY;
+	const masterKey = process.env.API_KEY_MASTER_KEY;
 	if (!masterKey) {
-		throw new Error("Missing CORPORATION_API_KEY_MASTER_KEY env var");
+		throw new Error("Missing API_KEY_MASTER_KEY env var");
 	}
 	return masterKey;
 }
@@ -91,10 +91,10 @@ export const syncProjectSecretsAndScheduleInitialSnapshot = internalAction({
 	},
 	handler: async (ctx, args) => {
 		await syncProjectSecrets(ctx, args.projectId, args.secrets);
-		await ctx.runMutation(internal.snapshot.scheduleInitialSnapshotInternal, {
-			projectId: args.projectId,
-			setAsDefault: true,
-		});
+		// await ctx.runMutation(internal.snapshot.scheduleInitialSnapshotInternal, {
+		// 	projectId: args.projectId,
+		// 	setAsDefault: true,
+		// });
 	},
 });
 
@@ -118,12 +118,12 @@ export const syncProjectSecretsAndScheduleRebuild = internalAction({
 			...existingSecrets,
 			...args.upserts,
 		});
-		await ctx.runMutation(
-			internal.snapshot.scheduleRebuildWithSecretsInternal,
-			{
-				projectId: args.projectId,
-			}
-		);
+		// await ctx.runMutation(
+		// 	internal.snapshot.scheduleRebuildWithSecretsInternal,
+		// 	{
+		// 		projectId: args.projectId,
+		// 	}
+		// );
 	},
 });
 

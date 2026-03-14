@@ -1,5 +1,5 @@
 {
-  "name": "@corporation/contracts",
+  "name": "@tendril/contracts",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,18 +10,14 @@
     "./environment-do": "./src/environment-do.ts",
     "./environment-runtime": "./src/environment-runtime.ts",
     "./runtime-auth": "./src/runtime-auth.ts",
-    "./orpc/browser-space": "./src/orpc/browser-space.ts",
-    "./orpc/runtime-control": "./src/orpc/runtime-control.ts",
-    "./orpc/runtime-ingress": "./src/orpc/runtime-ingress.ts",
-    "./orpc/worker-http": "./src/orpc/worker-http.ts"
+    "./session-event": "./src/session-event.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "catalog:",
-    "@orpc/contract": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@corporation/config": "workspace:*",
+    "@tendril/config": "workspace:*",
     "typescript": "catalog:"
   },
   "scripts": {

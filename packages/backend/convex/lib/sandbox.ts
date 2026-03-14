@@ -4,7 +4,7 @@ import type { Sandbox } from "e2b";
 import { quoteShellArg } from "./git";
 
 export const SANDBOX_AGENT_PORT = 5799;
-export const BASE_TEMPLATE = "corporation-base";
+export const BASE_TEMPLATE = "tendril-base";
 export const SANDBOX_USER = "user";
 export const SANDBOX_HOME_DIR = `/home/${SANDBOX_USER}`;
 export const SANDBOX_WORKDIR = "/workspace";

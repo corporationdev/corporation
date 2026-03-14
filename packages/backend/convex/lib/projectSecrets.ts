@@ -1,7 +1,4 @@
-import {
-	secretNameSchema,
-	secretValueSchema,
-} from "@corporation/shared/secrets";
+import { secretNameSchema, secretValueSchema } from "@tendril/shared/secrets";
 import { ConvexError } from "convex/values";
 
 export function validateProjectSecretName(name: string): void {

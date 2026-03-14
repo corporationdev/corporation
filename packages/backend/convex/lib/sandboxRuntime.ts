@@ -5,7 +5,7 @@ import { quoteShellArg } from "./git";
 import { runRootCommand } from "./sandbox";
 
 export const SANDBOX_RUNTIME_PACKAGE_NAME = "@isaacdyor/sandbox-runtime";
-export const SANDBOX_RUNTIME_INSTALL_ROOT = "/opt/corporation/sandbox-runtime";
+export const SANDBOX_RUNTIME_INSTALL_ROOT = "/opt/tendril/sandbox-runtime";
 export const SANDBOX_RUNTIME_ACTIVE_BIN = "/usr/local/bin/sandbox-runtime";
 export const SANDBOX_RUNTIME_VERSION = "1.0.1";
 

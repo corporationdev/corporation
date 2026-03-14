@@ -12,6 +12,7 @@ import type * as agentConfig from "../agentConfig.js";
 import type * as agentCredentialActions from "../agentCredentialActions.js";
 import type * as agentCredentials from "../agentCredentials.js";
 import type * as auth from "../auth.js";
+import type * as backings from "../backings.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
 import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
@@ -29,18 +30,14 @@ import type * as lib_projectSecrets from "../lib/projectSecrets.js";
 import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_sandboxRuntime from "../lib/sandboxRuntime.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
-import type * as nangoWebhook from "../nangoWebhook.js";
-import type * as organizations from "../organizations.js";
+import type * as projectEnvironments from "../projectEnvironments.js";
 import type * as projects from "../projects.js";
 import type * as sandboxActions from "../sandboxActions.js";
+import type * as sandboxes from "../sandboxes.js";
 import type * as secretActions from "../secretActions.js";
 import type * as secrets from "../secrets.js";
-import type * as snapshot from "../snapshot.js";
-import type * as snapshotActions from "../snapshotActions.js";
-import type * as spaceBranchActions from "../spaceBranchActions.js";
+import type * as snapshots from "../snapshots.js";
 import type * as spaces from "../spaces.js";
-import type * as userWorkspace from "../userWorkspace.js";
-import type * as userWorkspaceActions from "../userWorkspaceActions.js";
 
 import type {
   ApiFromModules,
@@ -53,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   agentCredentialActions: typeof agentCredentialActions;
   agentCredentials: typeof agentCredentials;
   auth: typeof auth;
+  backings: typeof backings;
   e2bWebhook: typeof e2bWebhook;
   environments: typeof environments;
   functions: typeof functions;
@@ -70,18 +68,14 @@ declare const fullApi: ApiFromModules<{
   "lib/sandbox": typeof lib_sandbox;
   "lib/sandboxRuntime": typeof lib_sandboxRuntime;
   "lib/validSecrets": typeof lib_validSecrets;
-  nangoWebhook: typeof nangoWebhook;
-  organizations: typeof organizations;
+  projectEnvironments: typeof projectEnvironments;
   projects: typeof projects;
   sandboxActions: typeof sandboxActions;
+  sandboxes: typeof sandboxes;
   secretActions: typeof secretActions;
   secrets: typeof secrets;
-  snapshot: typeof snapshot;
-  snapshotActions: typeof snapshotActions;
-  spaceBranchActions: typeof spaceBranchActions;
+  snapshots: typeof snapshots;
   spaces: typeof spaces;
-  userWorkspace: typeof userWorkspace;
-  userWorkspaceActions: typeof userWorkspaceActions;
 }>;
 
 /**

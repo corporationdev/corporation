@@ -1,340 +1,12 @@
 "use node";
-import type { FunctionReturnType, GenericActionCtx } from "convex/server";
-import { v } from "convex/values";
-import { CommandExitError, Sandbox } from "e2b";
+
+import { ConvexError, v } from "convex/values";
+import { Sandbox } from "e2b";
 import { internal } from "./_generated/api";
-import type { DataModel } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
-import {
-	credentialEnabledAgents,
-	restoreAgentCredentialBundle,
-	type StoredAgentCredentialBundle,
-} from "./lib/agentCredentialBundles";
-import {
-	BASE_TEMPLATE,
-	bootServer,
-	runWorkspaceCommand,
-	SANDBOX_AGENT_PORT,
-	SANDBOX_AGENT_SESSION_NAME,
-	SANDBOX_WORKDIR,
-} from "./lib/sandbox";
-import { ensureSandboxRuntimeInstalled } from "./lib/sandboxRuntime";
-
-type Space = Awaited<FunctionReturnType<typeof internal.spaces.internalGet>>;
-
-type ActionCtx = GenericActionCtx<DataModel>;
+import { runWorkspaceCommand, SANDBOX_WORKDIR } from "./lib/sandbox";
 
 const SANDBOX_TIMEOUT_MS = 900_000;
-
-const AGENT_HEALTH_URL = `http://localhost:${SANDBOX_AGENT_PORT}/health`;
-
-const AGENT_LOG_FILE = "/tmp/sandbox-agent.log";
-const AGENT_STDERR_LOG_FILE = "/tmp/sandbox-agent.stderr.log";
-const RUNTIME_REFRESH_TOKEN_TTL_SECONDS = 365 * 24 * 60 * 60;
-const encoder = new TextEncoder();
-
-function quoteShellEnv(value: string) {
-	return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-async function createRuntimeRefreshToken(params: {
-	clientId: string;
-	userId: string;
-}): Promise<string> {
-	const secret = process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
-	if (!secret) {
-		throw new Error("Missing CORPORATION_RUNTIME_AUTH_SECRET env var");
-	}
-
-	const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
-		.replaceAll("+", "-")
-		.replaceAll("/", "_")
-		.replaceAll(/=+$/g, "");
-	const payload = btoa(
-		JSON.stringify({
-			sub: params.userId,
-			clientId: params.clientId,
-			clientType: "sandbox_runtime",
-			tokenType: "refresh",
-			aud: "space-runtime-refresh",
-			exp: Math.floor(Date.now() / 1000) + RUNTIME_REFRESH_TOKEN_TTL_SECONDS,
-			iat: Math.floor(Date.now() / 1000),
-		})
-	)
-		.replaceAll("+", "-")
-		.replaceAll("/", "_")
-		.replaceAll(/=+$/g, "");
-	const signingInput = `${header}.${payload}`;
-	const key = await crypto.subtle.importKey(
-		"raw",
-		encoder.encode(secret),
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		["sign"]
-	);
-	const signature = await crypto.subtle.sign(
-		"HMAC",
-		key,
-		encoder.encode(signingInput)
-	);
-	const signatureBytes = new Uint8Array(signature);
-	let signatureBinary = "";
-	for (const byte of signatureBytes) {
-		signatureBinary += String.fromCharCode(byte);
-	}
-	const encodedSignature = btoa(signatureBinary)
-		.replaceAll("+", "-")
-		.replaceAll("/", "_")
-		.replaceAll(/=+$/g, "");
-
-	return `${signingInput}.${encodedSignature}`;
-}
-
-async function bootAgentAndGetUrl(
-	sandbox: Sandbox,
-	params: {
-		spaceOwnerId: string;
-		spaceSlug: string;
-	}
-): Promise<string> {
-	const convexSiteUrl = process.env.CORPORATION_CONVEX_SITE_URL;
-	const serverUrl = process.env.CORPORATION_SERVER_URL;
-	if (!(convexSiteUrl && serverUrl)) {
-		throw new Error(
-			"Missing CORPORATION_CONVEX_SITE_URL or CORPORATION_SERVER_URL env var"
-		);
-	}
-	const runtimeRefreshToken = await createRuntimeRefreshToken({
-		clientId: sandbox.sandboxId,
-		userId: params.spaceOwnerId,
-	});
-
-	await runWorkspaceCommand(
-		sandbox,
-		`tmux kill-session -t ${SANDBOX_AGENT_SESSION_NAME} || true`,
-		{ cwd: SANDBOX_WORKDIR }
-	);
-	await runWorkspaceCommand(
-		sandbox,
-		`fuser -k ${SANDBOX_AGENT_PORT}/tcp || true`,
-		{
-			cwd: SANDBOX_WORKDIR,
-		}
-	);
-	await runWorkspaceCommand(
-		sandbox,
-		`: > ${AGENT_LOG_FILE}; : > ${AGENT_STDERR_LOG_FILE}`,
-		{ cwd: SANDBOX_WORKDIR }
-	);
-
-	const runtimeCommand = (await ensureSandboxRuntimeInstalled(sandbox)).command;
-
-	try {
-		await bootServer(sandbox, {
-			sessionName: SANDBOX_AGENT_SESSION_NAME,
-			command: `CORPORATION_SERVER_URL=${quoteShellEnv(serverUrl)} CORPORATION_CONVEX_SITE_URL=${quoteShellEnv(convexSiteUrl)} CORPORATION_RUNTIME_REFRESH_TOKEN=${quoteShellEnv(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${quoteShellEnv(sandbox.sandboxId)} ${runtimeCommand} --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
-			healthUrl: AGENT_HEALTH_URL,
-			workdir: SANDBOX_WORKDIR,
-		});
-		return `https://${sandbox.getHost(SANDBOX_AGENT_PORT)}`;
-	} catch (error) {
-		console.error("sandbox-agent failed to boot", error);
-		throw error;
-	}
-}
-
-async function ensureAgentReadyAndGetUrl(
-	sandbox: Sandbox,
-	params: {
-		spaceOwnerId: string;
-		spaceSlug: string;
-	}
-): Promise<string> {
-	try {
-		await sandbox.commands.run(`curl -sf --max-time 2 ${AGENT_HEALTH_URL}`);
-	} catch (error) {
-		if (error instanceof CommandExitError) {
-			return await bootAgentAndGetUrl(sandbox, params);
-		}
-		throw error;
-	}
-	return `https://${sandbox.getHost(SANDBOX_AGENT_PORT)}`;
-}
-
-async function createSandbox(
-	snapshotId: string,
-	projectEnvs: Record<string, string>,
-	params: {
-		spaceOwnerId: string;
-		spaceSlug: string;
-	}
-): Promise<Sandbox> {
-	const convexSiteUrl = process.env.CORPORATION_CONVEX_SITE_URL;
-	const serverUrl = process.env.CORPORATION_SERVER_URL;
-	if (!(convexSiteUrl && serverUrl)) {
-		throw new Error(
-			"Missing CORPORATION_CONVEX_SITE_URL or CORPORATION_SERVER_URL env var"
-		);
-	}
-
-	return await Sandbox.betaCreate(snapshotId, {
-		envs: {
-			...projectEnvs,
-			CORPORATION_CONVEX_SITE_URL: convexSiteUrl,
-			CORPORATION_SERVER_URL: serverUrl,
-			CORPORATION_SPACE_SLUG: params.spaceSlug,
-		},
-		network: { allowPublicTraffic: true },
-		autoPause: true,
-		timeoutMs: SANDBOX_TIMEOUT_MS,
-	});
-}
-
-async function restoreUserAgentCredentials(
-	ctx: ActionCtx,
-	sandbox: Sandbox,
-	userId: string
-) {
-	for (const agent of credentialEnabledAgents) {
-		const storedCredential = await ctx.runAction(
-			internal.agentCredentialActions.resolveForUser,
-			{
-				userId,
-				agentId: agent.id,
-			}
-		);
-		if (!storedCredential) {
-			continue;
-		}
-
-		const bundle = JSON.parse(
-			storedCredential.bundle
-		) as StoredAgentCredentialBundle;
-		await restoreAgentCredentialBundle(sandbox, bundle);
-	}
-}
-
-async function resolveSandbox(
-	ctx: ActionCtx,
-	space: Space,
-	spaceOwnerId: string,
-	projectEnvs: Record<string, string>
-): Promise<Sandbox> {
-	const sandboxRecord = space.sandbox;
-	if (!sandboxRecord) {
-		throw new Error("Space has no sandbox record");
-	}
-
-	if (sandboxRecord.externalSandboxId) {
-		try {
-			return await Sandbox.connect(sandboxRecord.externalSandboxId);
-		} catch (error) {
-			console.warn("Failed to connect existing sandbox", {
-				spaceId: space._id,
-				sandboxId: sandboxRecord.externalSandboxId,
-				error,
-			});
-			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
-				id: sandboxRecord._id,
-				status: "creating",
-				error: null,
-			});
-		}
-	}
-
-	const sourceSnapshotId =
-		sandboxRecord.bootstrapSource === "base-template"
-			? BASE_TEMPLATE
-			: await (async () => {
-					if (!sandboxRecord.snapshotId) {
-						throw new Error("Sandbox snapshot is not set");
-					}
-					const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
-						id: sandboxRecord.snapshotId,
-					});
-					if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
-						throw new Error("Sandbox snapshot is not ready");
-					}
-					return snapshot.externalSnapshotId;
-				})();
-
-	await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
-		id: sandboxRecord._id,
-		status: "creating",
-	});
-
-	const sandbox = await createSandbox(sourceSnapshotId, projectEnvs, {
-		spaceOwnerId,
-		spaceSlug: space.slug,
-	});
-
-	await restoreUserAgentCredentials(ctx, sandbox, spaceOwnerId);
-
-	return sandbox;
-}
-
-export const archiveSandbox = internalAction({
-	args: {
-		sandboxId: v.string(),
-	},
-	handler: async (_ctx, args) => {
-		try {
-			await Sandbox.betaPause(args.sandboxId);
-		} catch (error) {
-			console.error("Failed to pause sandbox in E2B", error);
-		}
-	},
-});
-
-export const pauseForSpace = internalAction({
-	args: {
-		spaceId: v.id("spaces"),
-	},
-	handler: async (ctx, args) => {
-		const space = await ctx.runQuery(internal.spaces.internalGet, {
-			id: args.spaceId,
-		});
-
-		const sandboxRecord = space.sandbox;
-		if (!sandboxRecord?.externalSandboxId) {
-			if (sandboxRecord) {
-				await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
-					id: sandboxRecord._id,
-					status: "killed",
-				});
-			}
-			return;
-		}
-
-		try {
-			await Sandbox.betaPause(sandboxRecord.externalSandboxId);
-		} catch (error) {
-			console.error("Failed to pause sandbox in E2B", {
-				spaceId: args.spaceId,
-				sandboxId: sandboxRecord.externalSandboxId,
-				error,
-			});
-			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
-				id: sandboxRecord._id,
-				status: "running",
-			});
-			throw error;
-		}
-	},
-});
-
-export const deleteSandbox = internalAction({
-	args: {
-		sandboxId: v.string(),
-	},
-	handler: async (_ctx, args) => {
-		try {
-			await Sandbox.kill(args.sandboxId);
-		} catch (error) {
-			console.error("Failed to delete sandbox in E2B", error);
-		}
-	},
-});
 
 export const provisionForSpace = internalAction({
 	args: {
@@ -344,48 +16,124 @@ export const provisionForSpace = internalAction({
 		const space = await ctx.runQuery(internal.spaces.internalGet, {
 			id: args.spaceId,
 		});
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
 
-		const sandboxRecord = space.sandbox;
-		if (!sandboxRecord) {
-			throw new Error("Space has no sandbox record");
+		const backing = space.activeBackingId
+			? await ctx.runQuery(internal.backings.internalGet, {
+					id: space.activeBackingId,
+				})
+			: null;
+		if (!backing) {
+			throw new ConvexError("Space has no active backing");
+		}
+
+		const environment = await ctx.runQuery(internal.environments.internalGet, {
+			id: backing.environmentId,
+		});
+		if (!environment) {
+			throw new ConvexError("Environment not found");
+		}
+
+		const sandbox = await ctx.runQuery(internal.sandboxes.getBySpace, {
+			spaceId: args.spaceId,
+		});
+		if (!sandbox) {
+			throw new ConvexError("Sandbox record not found");
+		}
+
+		if (!sandbox.snapshotId) {
+			throw new ConvexError("Sandbox has no snapshot");
+		}
+		const snapshot = await ctx.runQuery(internal.snapshots.internalGet, {
+			id: sandbox.snapshotId,
+		});
+		if (!snapshot?.externalSnapshotId || snapshot.status !== "ready") {
+			throw new ConvexError("Snapshot is not ready");
+		}
+
+		if (sandbox.externalSandboxId) {
+			throw new ConvexError("Sandbox already provisioned — use resume instead");
 		}
 
 		try {
-			if (!space.userId) {
-				throw new Error("Space owner is not set");
-			}
-			const spaceOwnerId = space.userId;
-			const projectEnvs = await ctx.runAction(
-				internal.secretActions.resolveProjectSecrets,
-				{
-					projectId: space.project._id,
-				}
-			);
-
-			const sandbox = await resolveSandbox(
-				ctx,
-				space,
-				spaceOwnerId,
-				projectEnvs
-			);
-			await ensureAgentReadyAndGetUrl(sandbox, {
-				spaceOwnerId,
-				spaceSlug: space.slug,
+			// 1. Create e2b sandbox
+			const e2bSandbox = await Sandbox.betaCreate(snapshot.externalSnapshotId, {
+				network: { allowPublicTraffic: true },
+				autoPause: true,
+				timeoutMs: SANDBOX_TIMEOUT_MS,
 			});
 
-			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
-				id: sandboxRecord._id,
+			await ctx.runMutation(internal.sandboxes.update, {
+				id: sandbox._id,
+				externalSandboxId: e2bSandbox.sandboxId,
+			});
+
+			// 2. Install tendril CLI
+			await runWorkspaceCommand(e2bSandbox, "npm install -g tendril", {
+				cwd: SANDBOX_WORKDIR,
+			});
+
+			// 3. Auth (mock for now)
+			await runWorkspaceCommand(e2bSandbox, "tendril auth mock-token", {
+				cwd: SANDBOX_WORKDIR,
+			});
+
+			// 4. Connect to environment
+			await runWorkspaceCommand(
+				e2bSandbox,
+				`tendril connect ${environment.connectionId}`,
+				{ cwd: SANDBOX_WORKDIR }
+			);
+
+			// 5. Mark sandbox as running (environment gets marked connected when the CLI actually connects)
+			await ctx.runMutation(internal.sandboxes.update, {
+				id: sandbox._id,
 				status: "running",
-				externalSandboxId: sandbox.sandboxId,
-				error: null,
 			});
 		} catch (error) {
-			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
-				id: sandboxRecord._id,
+			console.error("Sandbox provisioning failed", {
+				spaceId: args.spaceId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+
+			await ctx.runMutation(internal.sandboxes.update, {
+				id: sandbox._id,
 				status: "error",
+				error: error instanceof Error ? error.message : String(error),
 			});
 
 			throw error;
+		}
+	},
+});
+
+export const pauseForSpace = internalAction({
+	args: { spaceId: v.id("spaces") },
+	handler: async (ctx, args) => {
+		const sandbox = await ctx.runQuery(internal.sandboxes.getBySpace, {
+			spaceId: args.spaceId,
+		});
+		if (!sandbox?.externalSandboxId) {
+			return;
+		}
+
+		try {
+			await Sandbox.betaPause(sandbox.externalSandboxId);
+		} catch (error) {
+			console.error("Failed to pause sandbox", error);
+		}
+	},
+});
+
+export const killSandbox = internalAction({
+	args: { externalSandboxId: v.string() },
+	handler: async (_ctx, args) => {
+		try {
+			await Sandbox.kill(args.externalSandboxId);
+		} catch (error) {
+			console.error("Failed to kill sandbox", error);
 		}
 	},
 });

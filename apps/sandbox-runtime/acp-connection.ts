@@ -11,7 +11,7 @@ import {
 	zRequestPermissionRequest,
 	zSessionNotification,
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
-import type { AcpEnvelope } from "@corporation/contracts/sandbox-do";
+import type { AcpEnvelope } from "@tendril/contracts/sandbox-do";
 import type {
 	AcpConnection,
 	AcpConnectionFactory,
@@ -128,61 +128,96 @@ export function createSpawnedAcpConnectionFactory(): AcpConnectionFactory {
 				stdin.write(`${JSON.stringify(envelope)}\n`);
 			};
 
+			const emitInboundEvent = (event: AcpInboundEvent): void => {
+				for (const listener of eventListeners) {
+					listener(event);
+				}
+			};
+
+			const handlePendingResponse = (
+				responseId: string,
+				envelope: AcpEnvelope
+			): boolean => {
+				const pending = pendingRequests.get(responseId);
+				if (!pending) {
+					return false;
+				}
+
+				pendingRequests.delete(responseId);
+				clearTimeout(pending.timer);
+				try {
+					pending.resolve(
+						decodeResponse(
+							pending.method,
+							envelope
+						) as AcpRequestMap[typeof pending.method]["result"]
+					);
+				} catch (error) {
+					pending.reject(toError(error));
+				}
+				return true;
+			};
+
+			const handleSessionUpdateEnvelope = (envelope: AcpEnvelope): boolean => {
+				if (
+					!("method" in envelope) ||
+					envelope.method !== CLIENT_METHODS.session_update
+				) {
+					return false;
+				}
+
+				const parsed = zSessionNotification.safeParse(envelope.params);
+				if (!parsed.success) {
+					return true;
+				}
+
+				emitInboundEvent({
+					type: "session_update",
+					notification: parsed.data,
+				});
+				return true;
+			};
+
+			const handlePermissionRequestEnvelope = (
+				envelope: AcpEnvelope,
+				responseId: string | null
+			): boolean => {
+				if (
+					!("method" in envelope) ||
+					envelope.method !== CLIENT_METHODS.session_request_permission
+				) {
+					return false;
+				}
+
+				const parsed = zRequestPermissionRequest.safeParse(envelope.params);
+				if (!(parsed.success && responseId !== null)) {
+					return true;
+				}
+
+				emitInboundEvent({
+					type: "permission_request",
+					requestId: responseId,
+					request: parsed.data,
+				});
+				return true;
+			};
+
 			const handleEnvelope = (envelope: AcpEnvelope): void => {
 				const responseId =
 					"id" in envelope && envelope.id != null ? String(envelope.id) : null;
-				if (responseId) {
-					const pending = pendingRequests.get(responseId);
-					if (pending) {
-						pendingRequests.delete(responseId);
-						clearTimeout(pending.timer);
-						try {
-							pending.resolve(
-								decodeResponse(
-									pending.method,
-									envelope
-								) as AcpRequestMap[typeof pending.method]["result"]
-							);
-						} catch (error) {
-							pending.reject(toError(error));
-						}
-						return;
-					}
+				if (responseId && handlePendingResponse(responseId, envelope)) {
+					return;
 				}
 
 				if (!("method" in envelope)) {
 					return;
 				}
 
-				if (envelope.method === CLIENT_METHODS.session_update) {
-					const parsed = zSessionNotification.safeParse(envelope.params);
-					if (!parsed.success) {
-						return;
-					}
-					emitInboundEvent({
-						type: "session_update",
-						notification: parsed.data,
-					});
+				if (handleSessionUpdateEnvelope(envelope)) {
 					return;
 				}
 
-				if (envelope.method === CLIENT_METHODS.session_request_permission) {
-					const parsed = zRequestPermissionRequest.safeParse(envelope.params);
-					if (!parsed.success || responseId === null) {
-						return;
-					}
-					emitInboundEvent({
-						type: "permission_request",
-						requestId: responseId,
-						request: parsed.data,
-					});
-				}
-			};
-
-			const emitInboundEvent = (event: AcpInboundEvent): void => {
-				for (const listener of eventListeners) {
-					listener(event);
-				}
+				handlePermissionRequestEnvelope(envelope, responseId);
 			};
 
 			const handleStdoutLine = (rawLine: string): void => {
