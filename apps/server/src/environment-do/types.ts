@@ -3,9 +3,9 @@ import type {
 	EnvironmentRpcResult,
 	EnvironmentStreamConsumer,
 	EnvironmentStreamOffset,
+	EnvironmentStreamSubscriber as SharedEnvironmentStreamSubscriber,
 	EnvironmentStreamSubscriptionSnapshot as SharedEnvironmentStreamSubscriptionSnapshot,
 	EnvironmentSubscribeStreamInput as SharedEnvironmentSubscribeStreamInput,
-	EnvironmentStreamSubscriber as SharedEnvironmentStreamSubscriber,
 } from "@corporation/contracts/environment-do";
 import type { RuntimeAccessTokenClaims } from "@corporation/contracts/runtime-auth";
 

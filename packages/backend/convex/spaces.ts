@@ -7,7 +7,35 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { buildConvexPatch } from "./lib/patch";
 import { requireProjectInActiveOrg } from "./lib/projectAccess";
-import { spaceBootstrapSourceValidator, spaceStatusValidator } from "./schema";
+import {
+	sandboxStatusValidator,
+	spaceBootstrapSourceValidator,
+} from "./schema";
+
+type SandboxBootstrapInput =
+	| {
+			bootstrapSource?: "snapshot";
+			snapshotId?: Id<"snapshots">;
+	  }
+	| {
+			bootstrapSource: "base-template";
+	  };
+
+type CreateSpaceInput = {
+	slug: string;
+	userId: string;
+	project: Doc<"projects">;
+	name?: string;
+	firstMessage?: string;
+};
+
+type SandboxUpdatePatch = {
+	status?: Doc<"sandboxes">["status"];
+	externalSandboxId?: string;
+	snapshotId?: Id<"snapshots">;
+	bootstrapSource?: Doc<"sandboxes">["bootstrapSource"];
+	error?: string;
+};
 
 async function requireOwnedSpace(
 	ctx: QueryCtx & { userId: string; activeOrganizationId: string | null },
@@ -43,60 +71,6 @@ async function requireProjectAccess(
 	);
 }
 
-type EnsureSpaceInput = {
-	slug: string;
-	userId: string;
-	project: Doc<"projects">;
-	bootstrapSource?: "snapshot" | "base-template";
-	snapshotId?: Id<"snapshots">;
-	name?: string;
-	firstMessage?: string;
-};
-
-type SpaceUpdatePatch = {
-	bootstrapSource?: Doc<"spaces">["bootstrapSource"];
-	status?: Doc<"spaces">["status"];
-	snapshotId?: Id<"snapshots">;
-	sandboxId?: string;
-	agentUrl?: string;
-	error?: string;
-};
-
-type InternalSpaceUpdatePatch = SpaceUpdatePatch & {
-	name?: string;
-};
-
-function buildExistingSpacePatch(
-	existing: Doc<"spaces">,
-	args: EnsureSpaceInput,
-	bootstrapSource: "snapshot" | "base-template"
-) {
-	if (existing.status === "running") {
-		return null;
-	}
-
-	const shouldUpdateSnapshot =
-		bootstrapSource === "snapshot" &&
-		args.snapshotId !== undefined &&
-		existing.snapshotId !== args.snapshotId;
-	const shouldUpdateBootstrapSource =
-		existing.bootstrapSource !== bootstrapSource;
-
-	if (!(shouldUpdateSnapshot || shouldUpdateBootstrapSource)) {
-		return null;
-	}
-
-	return {
-		bootstrapSource,
-		...(shouldUpdateSnapshot && args.snapshotId !== undefined
-			? {
-					snapshotId: args.snapshotId,
-				}
-			: {}),
-		updatedAt: Date.now(),
-	};
-}
-
 async function requireReadySnapshot(
 	ctx: MutationCtx,
 	project: Doc<"projects">,
@@ -112,78 +86,124 @@ async function requireReadySnapshot(
 	return snapshot;
 }
 
-export async function resolveSnapshotIdForProject(
+async function requireDefaultSnapshotIdForProject(
 	ctx: MutationCtx,
-	project: Doc<"projects">,
-	requestedSnapshotId?: Id<"snapshots">
+	project: Doc<"projects">
 ): Promise<Id<"snapshots">> {
-	if (requestedSnapshotId) {
-		await requireReadySnapshot(ctx, project, requestedSnapshotId);
-		return requestedSnapshotId;
+	if (!project.defaultSnapshotId) {
+		throw new ConvexError("Project does not have a default snapshot");
 	}
 
-	const latestReadySnapshot = (
-		await ctx.db
-			.query("snapshots")
-			.withIndex("by_project_and_startedAt", (q) =>
-				q.eq("projectId", project._id)
-			)
-			.order("desc")
-			.collect()
-	).find(
-		(snapshot) => snapshot.status === "ready" && snapshot.externalSnapshotId
-	);
-
-	if (latestReadySnapshot) {
-		return latestReadySnapshot._id;
-	}
-
-	if (project.defaultSnapshotId) {
-		await requireReadySnapshot(ctx, project, project.defaultSnapshotId);
-		return project.defaultSnapshotId;
-	}
-
-	throw new ConvexError("Project does not have a ready snapshot");
+	await requireReadySnapshot(ctx, project, project.defaultSnapshotId);
+	return project.defaultSnapshotId;
 }
 
-export async function ensureSpaceRecord(
+async function requireConnectedEnvironment(
 	ctx: MutationCtx,
-	args: EnsureSpaceInput
-): Promise<Id<"spaces">> {
-	const bootstrapSource = args.bootstrapSource ?? "snapshot";
-	if (bootstrapSource === "snapshot" && !args.snapshotId) {
-		throw new ConvexError("Snapshot is required for snapshot bootstraps");
+	userId: string,
+	environmentId: Id<"environments">
+): Promise<Doc<"environments">> {
+	const environment = await ctx.db.get(environmentId);
+	if (!environment || environment.userId !== userId) {
+		throw new ConvexError("Environment not found");
+	}
+	if (environment.status !== "connected") {
+		throw new ConvexError("Environment is not connected");
+	}
+	return environment;
+}
+
+async function getSandboxForSpace(
+	ctx: Pick<QueryCtx, "db">,
+	spaceId: Id<"spaces">
+): Promise<Doc<"sandboxes"> | null> {
+	return (
+		(await ctx.db
+			.query("sandboxes")
+			.withIndex("by_space", (q) => q.eq("spaceId", spaceId))
+			.unique()) ?? null
+	);
+}
+
+async function getActiveEnvironmentForSpace(
+	ctx: Pick<QueryCtx, "db">,
+	space: Doc<"spaces">,
+	sandbox: Doc<"sandboxes"> | null
+): Promise<Doc<"environments"> | null> {
+	const activeBacking = space.activeBacking;
+	if (!activeBacking) {
+		return null;
 	}
 
+	if (activeBacking.type === "environment") {
+		return (await ctx.db.get(activeBacking.environmentId)) ?? null;
+	}
+
+	if (!sandbox?.externalSandboxId) {
+		return null;
+	}
+	const externalSandboxId = sandbox.externalSandboxId;
+
+	return (
+		(await ctx.db
+			.query("environments")
+			.withIndex("by_user_and_clientId", (q) =>
+				q.eq("userId", space.userId).eq("clientId", externalSandboxId)
+			)
+			.unique()) ?? null
+	);
+}
+
+async function buildSpaceResult(
+	ctx: Pick<QueryCtx, "db">,
+	space: Doc<"spaces">,
+	project: Doc<"projects">
+) {
+	const sandbox = await getSandboxForSpace(ctx, space._id);
+	const activeEnvironment = await getActiveEnvironmentForSpace(
+		ctx,
+		space,
+		sandbox
+	);
+
+	return {
+		...space,
+		project,
+		sandbox,
+		activeEnvironment,
+	};
+}
+
+async function maybeScheduleAutoRename(
+	ctx: MutationCtx,
+	spaceId: Id<"spaces">,
+	firstMessage?: string
+) {
+	if (!firstMessage) {
+		return;
+	}
+
+	await ctx.scheduler.runAfter(0, internal.spaces.requestAutoRename, {
+		spaceId,
+		firstMessage,
+	});
+}
+
+export async function createSpaceRecord(
+	ctx: MutationCtx,
+	args: CreateSpaceInput
+): Promise<Id<"spaces">> {
 	const slug = args.slug.trim();
+	if (!slug) {
+		throw new ConvexError("Space slug is required");
+	}
+
 	const existing = await ctx.db
 		.query("spaces")
 		.withIndex("by_slug", (q) => q.eq("slug", slug))
 		.unique();
-
 	if (existing) {
-		if (
-			existing.projectId !== args.project._id ||
-			existing.userId !== args.userId
-		) {
-			throw new ConvexError("Space slug already belongs to another space");
-		}
-
-		const patch = buildExistingSpacePatch(existing, args, bootstrapSource);
-		if (patch) {
-			await ctx.db.patch(existing._id, patch);
-		}
-
-		if (existing.status !== "running") {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.sandboxActions.provisionForSpace,
-				{
-					spaceId: existing._id,
-				}
-			);
-		}
-		return existing._id;
+		throw new ConvexError("Space slug already belongs to another space");
 	}
 
 	const now = Date.now();
@@ -191,26 +211,101 @@ export async function ensureSpaceRecord(
 		userId: args.userId,
 		slug,
 		projectId: args.project._id,
-		bootstrapSource,
-		snapshotId: args.snapshotId,
 		name: args.name ?? "New Space",
-		status: "creating",
 		createdAt: now,
 		updatedAt: now,
 	});
 
-	await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
-		spaceId,
-	});
-
-	if (args.firstMessage) {
-		await ctx.scheduler.runAfter(0, internal.spaces.requestAutoRename, {
-			spaceId,
-			firstMessage: args.firstMessage,
-		});
-	}
+	await maybeScheduleAutoRename(ctx, spaceId, args.firstMessage);
 
 	return spaceId;
+}
+
+export async function ensureSandboxRecordForSpace(
+	ctx: MutationCtx,
+	space: Doc<"spaces">,
+	project: Doc<"projects">,
+	options?: SandboxBootstrapInput
+): Promise<Id<"sandboxes">> {
+	const bootstrapSource = options?.bootstrapSource ?? "snapshot";
+	const requestedSnapshotId =
+		options && "snapshotId" in options ? options.snapshotId : undefined;
+	const snapshotId =
+		bootstrapSource === "snapshot"
+			? (requestedSnapshotId ??
+				(await requireDefaultSnapshotIdForProject(ctx, project)))
+			: undefined;
+
+	const existingSandbox = await getSandboxForSpace(ctx, space._id);
+	if (existingSandbox) {
+		const hasSnapshotChanged =
+			bootstrapSource === "snapshot" &&
+			existingSandbox.snapshotId !== snapshotId;
+		const hasBootstrapChanged =
+			existingSandbox.bootstrapSource !== bootstrapSource;
+		const shouldReprovision =
+			hasSnapshotChanged ||
+			hasBootstrapChanged ||
+			(existingSandbox.status !== "running" &&
+				existingSandbox.status !== "creating");
+
+		if (hasSnapshotChanged || hasBootstrapChanged) {
+			await ctx.db.patch(existingSandbox._id, {
+				bootstrapSource,
+				snapshotId,
+				updatedAt: Date.now(),
+			});
+		}
+
+		if (
+			space.activeBacking?.type !== "sandbox" ||
+			space.activeBacking.sandboxId !== existingSandbox._id
+		) {
+			await ctx.db.patch(space._id, {
+				activeBacking: {
+					type: "sandbox",
+					sandboxId: existingSandbox._id,
+				},
+				updatedAt: Date.now(),
+			});
+		}
+
+		if (shouldReprovision) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.sandboxActions.provisionForSpace,
+				{
+					spaceId: space._id,
+				}
+			);
+		}
+
+		return existingSandbox._id;
+	}
+
+	const now = Date.now();
+	const sandboxId = await ctx.db.insert("sandboxes", {
+		spaceId: space._id,
+		status: "provisioning",
+		snapshotId,
+		bootstrapSource,
+		createdAt: now,
+		updatedAt: now,
+	});
+
+	await ctx.db.patch(space._id, {
+		activeBacking: {
+			type: "sandbox",
+			sandboxId,
+		},
+		updatedAt: now,
+	});
+
+	await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
+		spaceId: space._id,
+	});
+
+	return sandboxId;
 }
 
 export const list = authedQuery({
@@ -299,12 +394,9 @@ export const getBySlug = authedQuery({
 		if (!space) {
 			return null;
 		}
-		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
 
-		return {
-			...ownedSpace,
-			project,
-		};
+		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
+		return await buildSpaceResult(ctx, ownedSpace, project);
 	},
 });
 
@@ -315,38 +407,67 @@ export const get = authedQuery({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
 
-		return {
-			...ownedSpace,
-			project,
-		};
+		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
+		return await buildSpaceResult(ctx, ownedSpace, project);
 	},
 });
 
-export const update = authedMutation({
+export const create = authedMutation({
+	args: {
+		slug: v.string(),
+		projectId: v.id("projects"),
+		name: v.optional(v.string()),
+		firstMessage: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const project = await requireProjectAccess(ctx, args.projectId);
+		return await createSpaceRecord(ctx, {
+			slug: args.slug,
+			userId: ctx.userId,
+			project,
+			name: args.name,
+			firstMessage: args.firstMessage,
+		});
+	},
+});
+
+export const attachEnvironment = authedMutation({
 	args: {
 		id: v.id("spaces"),
-		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
-		status: v.optional(spaceStatusValidator),
-		snapshotId: v.optional(v.id("snapshots")),
-		sandboxId: v.optional(v.union(v.string(), v.null())),
-		agentUrl: v.optional(v.union(v.string(), v.null())),
-		error: v.optional(v.union(v.string(), v.null())),
+		environmentId: v.id("environments"),
 	},
 	handler: async (ctx, args) => {
 		const space = await ctx.db.get(args.id);
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
+
 		await requireOwnedSpace(ctx, space);
+		await requireConnectedEnvironment(ctx, ctx.userId, args.environmentId);
 
-		const patch = buildConvexPatch<SpaceUpdatePatch, typeof args>(args, {
-			assign: ["bootstrapSource", "status", "snapshotId"],
-			clearable: ["sandboxId", "agentUrl", "error"],
+		await ctx.db.patch(space._id, {
+			activeBacking: {
+				type: "environment",
+				environmentId: args.environmentId,
+			},
+			updatedAt: Date.now(),
 		});
+	},
+});
 
-		await ctx.db.patch(args.id, patch);
+export const ensureSandbox = authedMutation({
+	args: {
+		id: v.id("spaces"),
+	},
+	handler: async (ctx, args) => {
+		const space = await ctx.db.get(args.id);
+		if (!space) {
+			throw new ConvexError("Space not found");
+		}
+
+		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
+		return await ensureSandboxRecordForSpace(ctx, ownedSpace, project);
 	},
 });
 
@@ -364,25 +485,20 @@ export const touch = authedMutation({
 	},
 });
 
-export const internalUpdate = internalMutation({
+export const internalUpdateSandbox = internalMutation({
 	args: {
-		id: v.id("spaces"),
-		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
-		status: v.optional(spaceStatusValidator),
+		id: v.id("sandboxes"),
+		status: v.optional(sandboxStatusValidator),
+		externalSandboxId: v.optional(v.string()),
 		snapshotId: v.optional(v.id("snapshots")),
-		sandboxId: v.optional(v.union(v.string(), v.null())),
-		agentUrl: v.optional(v.union(v.string(), v.null())),
+		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		error: v.optional(v.union(v.string(), v.null())),
-		name: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const patch = buildConvexPatch<InternalSpaceUpdatePatch, typeof args>(
-			args,
-			{
-				assign: ["bootstrapSource", "status", "snapshotId", "name"],
-				clearable: ["sandboxId", "agentUrl", "error"],
-			}
-		);
+		const patch = buildConvexPatch<SandboxUpdatePatch, typeof args>(args, {
+			assign: ["status", "externalSandboxId", "snapshotId", "bootstrapSource"],
+			clearable: ["error"],
+		});
 
 		await ctx.db.patch(args.id, patch);
 	},
@@ -420,10 +536,7 @@ export const internalGet = internalQuery({
 			throw new ConvexError("Project not found");
 		}
 
-		return {
-			...space,
-			project,
-		};
+		return await buildSpaceResult(ctx, space, project);
 	},
 });
 
@@ -446,13 +559,30 @@ export const internalGetByUserAndProject = internalQuery({
 	},
 });
 
-export const getBySandboxId = internalQuery({
-	args: { sandboxId: v.string() },
+export const getByExternalSandboxId = internalQuery({
+	args: { externalSandboxId: v.string() },
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query("spaces")
-			.withIndex("by_sandboxId", (q) => q.eq("sandboxId", args.sandboxId))
+		const sandbox = await ctx.db
+			.query("sandboxes")
+			.withIndex("by_externalSandboxId", (q) =>
+				q.eq("externalSandboxId", args.externalSandboxId)
+			)
 			.unique();
+		if (!sandbox) {
+			return null;
+		}
+
+		const space = await ctx.db.get(sandbox.spaceId);
+		if (!space) {
+			return null;
+		}
+
+		const project = await ctx.db.get(space.projectId);
+		if (!project) {
+			return null;
+		}
+
+		return await buildSpaceResult(ctx, space, project);
 	},
 });
 
@@ -484,64 +614,6 @@ export const requestAutoRename = internalMutation({
 	},
 });
 
-export const ensure = authedMutation({
-	args: {
-		slug: v.string(),
-		projectId: v.optional(v.id("projects")),
-		snapshotId: v.optional(v.id("snapshots")),
-		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
-		firstMessage: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const slug = args.slug.trim();
-
-		const existing = await ctx.db
-			.query("spaces")
-			.withIndex("by_slug", (q) => q.eq("slug", slug))
-			.unique();
-		if (existing) {
-			const { project } = await requireOwnedSpace(ctx, existing);
-			if (args.projectId && args.projectId !== project._id) {
-				throw new ConvexError("Space slug already belongs to another project");
-			}
-
-			const snapshotId = args.snapshotId;
-			if (snapshotId) {
-				await requireReadySnapshot(ctx, project, snapshotId);
-			}
-
-			return await ensureSpaceRecord(ctx, {
-				slug,
-				userId: ctx.userId,
-				project,
-				bootstrapSource: args.bootstrapSource,
-				snapshotId,
-				firstMessage: args.firstMessage,
-			});
-		}
-
-		if (!args.projectId) {
-			throw new ConvexError("projectId is required when creating a space");
-		}
-
-		const project = await requireProjectAccess(ctx, args.projectId);
-		const bootstrapSource = args.bootstrapSource ?? "snapshot";
-		const snapshotId =
-			bootstrapSource === "snapshot"
-				? await resolveSnapshotIdForProject(ctx, project, args.snapshotId)
-				: undefined;
-
-		return await ensureSpaceRecord(ctx, {
-			slug,
-			userId: ctx.userId,
-			project,
-			bootstrapSource,
-			snapshotId,
-			firstMessage: args.firstMessage,
-		});
-	},
-});
-
 export const archive = authedMutation({
 	args: {
 		id: v.id("spaces"),
@@ -558,9 +630,10 @@ export const archive = authedMutation({
 			updatedAt: Date.now(),
 		});
 
-		if (space.sandboxId) {
+		const sandbox = await getSandboxForSpace(ctx, space._id);
+		if (sandbox?.externalSandboxId) {
 			await ctx.scheduler.runAfter(0, internal.sandboxActions.archiveSandbox, {
-				sandboxId: space.sandboxId,
+				sandboxId: sandbox.externalSandboxId,
 			});
 		}
 	},
@@ -575,29 +648,9 @@ export const startSandbox = authedMutation({
 		if (!space) {
 			throw new ConvexError("Space not found");
 		}
-		await requireOwnedSpace(ctx, space);
 
-		if (space.status === "running" || space.status === "creating") {
-			return;
-		}
-		if (
-			!(
-				space.sandboxId ||
-				space.snapshotId ||
-				space.bootstrapSource === "base-template"
-			)
-		) {
-			throw new ConvexError("Sandbox cannot be started");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "creating",
-			updatedAt: Date.now(),
-		});
-
-		await ctx.scheduler.runAfter(0, internal.sandboxActions.provisionForSpace, {
-			spaceId: args.id,
-		});
+		const { project, space: ownedSpace } = await requireOwnedSpace(ctx, space);
+		await ensureSandboxRecordForSpace(ctx, ownedSpace, project);
 	},
 });
 
@@ -612,14 +665,18 @@ export const pauseSandbox = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		if (space.status === "paused") {
+		const sandbox = await getSandboxForSpace(ctx, space._id);
+		if (!sandbox) {
+			throw new ConvexError("Space has no sandbox");
+		}
+		if (sandbox.status === "paused") {
 			return;
 		}
-		if (space.status !== "running" || !space.sandboxId) {
+		if (sandbox.status !== "running" || !sandbox.externalSandboxId) {
 			throw new ConvexError("Sandbox is not running");
 		}
 
-		await ctx.db.patch(args.id, {
+		await ctx.db.patch(sandbox._id, {
 			status: "paused",
 			updatedAt: Date.now(),
 		});
@@ -665,14 +722,17 @@ const del = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		const { sandboxId } = space;
-		await ctx.db.delete(args.id);
-
-		if (sandboxId) {
-			await ctx.scheduler.runAfter(0, internal.sandboxActions.deleteSandbox, {
-				sandboxId,
-			});
+		const sandbox = await getSandboxForSpace(ctx, space._id);
+		if (sandbox) {
+			if (sandbox.externalSandboxId) {
+				await ctx.scheduler.runAfter(0, internal.sandboxActions.deleteSandbox, {
+					sandboxId: sandbox.externalSandboxId,
+				});
+			}
+			await ctx.db.delete(sandbox._id);
 		}
+
+		await ctx.db.delete(args.id);
 	},
 });
 export { del as delete };

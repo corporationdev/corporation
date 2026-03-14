@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
 import type { EnvironmentStreamOffset } from "@corporation/contracts/environment-do";
+import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/durable-sqlite";
 import { environmentStreamSubscriptions } from "./db/schema";
 import type {
@@ -18,9 +18,7 @@ export class EnvironmentSubscriptionStore {
 			subscription: EnvironmentStreamSubscriptionState;
 		}>
 	> {
-		const rows = await this.db
-			.select()
-			.from(environmentStreamSubscriptions);
+		const rows = await this.db.select().from(environmentStreamSubscriptions);
 		return rows.map((row) => ({
 			stream: row.stream,
 			subscription: {

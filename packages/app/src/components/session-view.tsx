@@ -1,4 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { AlertTriangleIcon } from "lucide-react";
@@ -21,12 +22,56 @@ import { deriveAgentSelectorOptions } from "@/lib/agent-config-options";
 import type { SpaceActor } from "@/lib/space-client";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 
+type SessionViewSpace =
+	| {
+			_id: Id<"spaces">;
+			activeBacking?:
+				| {
+						type: "sandbox";
+						sandboxId: Id<"sandboxes">;
+				  }
+				| {
+						type: "environment";
+						environmentId: Id<"environments">;
+				  };
+			sandbox?: {
+				status?:
+					| "provisioning"
+					| "creating"
+					| "running"
+					| "paused"
+					| "killed"
+					| "error";
+				externalSandboxId?: string;
+			} | null;
+			activeEnvironment?: {
+				status: string;
+			} | null;
+	  }
+	| null
+	| undefined;
+
+function isRuntimeReady(space: SessionViewSpace) {
+	if (!space?.activeBacking) {
+		return false;
+	}
+
+	if (space.activeBacking.type === "sandbox") {
+		return (
+			space.sandbox?.status === "running" && !!space.sandbox?.externalSandboxId
+		);
+	}
+
+	return space.activeEnvironment?.status === "connected";
+}
+
 export const SessionView: FC<{
 	actor: SpaceActor;
 	isBindingSynced: boolean;
 	sessionId?: string;
+	space: SessionViewSpace;
 	spaceSlug: string;
-}> = ({ actor, isBindingSynced, sessionId, spaceSlug }) => {
+}> = ({ actor, isBindingSynced, sessionId, space, spaceSlug }) => {
 	const agentConfigs = useQuery(api.agentConfig.list);
 	const agentOptions = useMemo(
 		() => deriveAgentSelectorOptions(agentConfigs),
@@ -41,6 +86,7 @@ export const SessionView: FC<{
 				isBindingSynced={isBindingSynced}
 				key={sessionId}
 				sessionId={sessionId}
+				space={space}
 				spaceSlug={spaceSlug}
 			/>
 		);
@@ -120,16 +166,23 @@ export const ConnectedSessionView: FC<{
 	actor: SpaceActor;
 	agentOptions: ReturnType<typeof deriveAgentSelectorOptions>;
 	isBindingSynced: boolean;
-}> = ({ sessionId, spaceSlug, actor, agentOptions, isBindingSynced }) => {
+	space: SessionViewSpace;
+}> = ({
+	sessionId,
+	spaceSlug,
+	actor,
+	agentOptions,
+	isBindingSynced,
+	space,
+}) => {
 	const [message, setMessage] = useState("");
 	const [agentOverride, setAgentOverride] = useState<string | null>(null);
 	const [modelIdOverride, setModelIdOverride] = useState<string | null>(null);
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumeMessage = usePendingMessageStore((s) => s.consumeMessage);
-	const ensureSpace = useMutation(api.spaces.ensure);
+	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
 	const touchSpace = useMutation(api.spaces.touch);
-	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
 	const sessionState = useSessionState({ sessionId, spaceSlug, actor });
 	const agent = agentOverride ?? sessionState.agent ?? "";
 	const modelId = modelIdOverride ?? sessionState.modelId ?? "";
@@ -145,7 +198,7 @@ export const ConnectedSessionView: FC<{
 		!!pendingSend &&
 		actor.connStatus === "connected" &&
 		!!actor.connection &&
-		space?.status === "running" &&
+		isRuntimeReady(space) &&
 		isBindingSynced;
 
 	// Consume pending message from store on mount
@@ -214,7 +267,7 @@ export const ConnectedSessionView: FC<{
 			if (
 				actor.connStatus === "connected" &&
 				actor.connection &&
-				space?.status === "running" &&
+				isRuntimeReady(space) &&
 				isBindingSynced
 			) {
 				await actor.connection.sendMessage(sessionId, text, agent, modelId);
@@ -226,8 +279,21 @@ export const ConnectedSessionView: FC<{
 
 			setPendingSend(nextPending);
 
-			if (space?.status !== "running" && space?.status !== "creating") {
-				await ensureSpace({ slug: spaceSlug });
+			if (!(space?._id && space.activeBacking)) {
+				throw new Error("Space does not have an active backing");
+			}
+
+			if (space.activeBacking.type === "environment") {
+				throw new Error("Selected environment is not connected");
+			}
+
+			const sandboxStatus = space.sandbox?.status;
+			if (
+				sandboxStatus !== "provisioning" &&
+				sandboxStatus !== "creating" &&
+				sandboxStatus !== "running"
+			) {
+				await ensureSandbox({ id: space._id });
 			}
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
@@ -240,14 +306,15 @@ export const ConnectedSessionView: FC<{
 		message,
 		actor.connStatus,
 		actor.connection,
-		ensureSpace,
+		ensureSandbox,
 		isBindingSynced,
 		sessionId,
 		agent,
 		modelId,
-		space?.status,
+		space?.activeBacking,
+		space?.sandbox?.status,
+		space?.activeEnvironment?.status,
 		space?._id,
-		spaceSlug,
 		touchSpace,
 		sessionState.addOptimisticMessage,
 		sessionState.clearOptimisticMessages,

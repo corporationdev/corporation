@@ -1,4 +1,5 @@
 import { api } from "@corporation/backend/convex/_generated/api";
+import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import { LoaderCircleIcon, PauseCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
@@ -6,8 +7,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 type SandboxPausedStateProps = {
-	spaceSlug: string;
-	status: "creating" | "running" | "paused" | "killed" | "error" | "loading";
+	spaceId: Id<"spaces"> | undefined;
+	status:
+		| "provisioning"
+		| "creating"
+		| "running"
+		| "paused"
+		| "killed"
+		| "error"
+		| "loading";
 };
 
 function getSandboxStateCopy(status: SandboxPausedStateProps["status"]): {
@@ -54,18 +62,21 @@ function getSandboxStateCopy(status: SandboxPausedStateProps["status"]): {
 }
 
 export function SandboxPausedState({
-	spaceSlug,
+	spaceId,
 	status,
 }: SandboxPausedStateProps) {
-	const ensureSpace = useMutation(api.spaces.ensure);
+	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
 	const { title, description, canResume } = getSandboxStateCopy(status);
 	const [isResuming, setIsResuming] = useState(false);
 	const isCreating = status === "creating" || isResuming;
 
 	const handleResume = async () => {
+		if (!spaceId) {
+			return;
+		}
 		setIsResuming(true);
 		try {
-			await ensureSpace({ slug: spaceSlug });
+			await ensureSandbox({ id: spaceId });
 			toast.success("Sandbox resume started");
 		} catch (error) {
 			toast.error(
@@ -90,7 +101,7 @@ export function SandboxPausedState({
 					<p className="text-muted-foreground text-sm">{description}</p>
 				</div>
 				<Button
-					disabled={!canResume || isResuming}
+					disabled={!canResume || isResuming || !spaceId}
 					onClick={handleResume}
 					size="sm"
 					variant="outline"

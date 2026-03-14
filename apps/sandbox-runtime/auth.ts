@@ -29,9 +29,11 @@ const DEFAULT_CREDENTIALS_PATH = join(
 	"credentials.json"
 );
 
-export function getDefaultServerUrl(): string | undefined {
-	const value = process.env.CORPORATION_SERVER_URL?.trim();
-	return value || undefined;
+const DEFAULT_DEV_SERVER_URL = "http://localhost:3000";
+const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+
+export function getDefaultServerUrl(): string {
+	return process.env.CORPORATION_SERVER_URL?.trim() || DEFAULT_DEV_SERVER_URL;
 }
 
 export function getDefaultRefreshToken(): string | undefined {
@@ -124,8 +126,8 @@ async function startLoginCallbackServer(expectedState: string): Promise<{
 	callbackUrl: string;
 	waitForRefreshToken: Promise<RuntimeRefreshTokenResponse>;
 }> {
-	let resolveToken: (value: RuntimeRefreshTokenResponse) => void = () => {};
-	let rejectToken: (reason?: unknown) => void = () => {};
+	let resolveToken!: (value: RuntimeRefreshTokenResponse) => void;
+	let rejectToken!: (reason?: unknown) => void;
 	const waitForRefreshToken = new Promise<RuntimeRefreshTokenResponse>(
 		(resolve, reject) => {
 			resolveToken = resolve;
@@ -136,19 +138,25 @@ async function startLoginCallbackServer(expectedState: string): Promise<{
 	const server = createServer(async (request, response) => {
 		response.setHeader("Cache-Control", "no-store");
 
-		if (!(request.method === "POST" && request.url === "/callback")) {
+		const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+		if (
+			requestUrl.pathname !== "/callback" ||
+			(request.method !== "GET" && request.method !== "POST")
+		) {
 			response.statusCode = 404;
 			response.end("Not found");
 			return;
 		}
 
 		try {
-			const chunks: Uint8Array[] = [];
-			for await (const chunk of request) {
-				chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+			let params = requestUrl.searchParams;
+			if (request.method === "POST") {
+				const chunks: Uint8Array[] = [];
+				for await (const chunk of request) {
+					chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+				}
+				params = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
 			}
-			const body = Buffer.concat(chunks).toString("utf8");
-			const params = new URLSearchParams(body);
 			const refreshToken = params.get("refreshToken")?.trim();
 			const state = params.get("state")?.trim();
 
@@ -240,7 +248,22 @@ export async function loginWithBrowser(input: {
 	openBrowser(loginUrl.toString());
 	console.log(`Opening browser for runtime login: ${loginUrl.toString()}`);
 
-	const { refreshToken } = await callback.waitForRefreshToken;
+	const loginTimeout = new Promise<never>((_, reject) => {
+		const timer = setTimeout(() => {
+			reject(
+				new Error(
+					"Runtime login timed out before the browser completed the callback"
+				)
+			);
+		}, LOGIN_TIMEOUT_MS);
+		callback.waitForRefreshToken.finally(() => {
+			clearTimeout(timer);
+		});
+	});
+	const { refreshToken } = await Promise.race([
+		callback.waitForRefreshToken,
+		loginTimeout,
+	]);
 	await saveRuntimeCredentials({
 		clientId,
 		credentialsPath: input.credentialsPath,
@@ -256,20 +279,16 @@ export async function loginWithBrowser(input: {
 export async function resolveRuntimeWebSocketUrl(input: {
 	credentialsPath: string;
 	refreshToken?: string;
-	serverUrl?: string;
+	serverUrl: string;
 	url?: string;
 }): Promise<string> {
 	if (input.url) {
-		if (input.serverUrl || input.refreshToken) {
+		if (input.refreshToken) {
 			throw new Error(
 				"Use either --url for a direct websocket connection or --server-url with a refresh token"
 			);
 		}
 		return input.url;
-	}
-
-	if (!input.serverUrl) {
-		throw new Error("Either --url or --server-url is required");
 	}
 
 	const storedCredentials =

@@ -1,6 +1,6 @@
-import type { EnvironmentDurableObject } from "../src/environment-do";
 import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import type { EnvironmentDurableObject } from "../src/environment-do";
 
 const RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
 
@@ -9,7 +9,7 @@ function createRuntimeAuthHeader() {
 		authToken: "runtime-token",
 		claims: {
 			sub: "user-1",
-			sandboxId: "sandbox-1",
+			clientId: "sandbox-1",
 			clientType: "sandbox_runtime",
 			tokenType: "access",
 			aud: "space-runtime-access",
@@ -32,7 +32,9 @@ async function waitForSocketMessage(
 	});
 }
 
-async function connectRuntimeSocket(stub: DurableObjectStub<EnvironmentDurableObject>) {
+async function connectRuntimeSocket(
+	stub: DurableObjectStub<EnvironmentDurableObject>
+) {
 	const response = await stub.fetch("http://fake/runtime/socket", {
 		headers: {
 			Upgrade: "websocket",
@@ -226,6 +228,35 @@ describe("EnvironmentDurableObject", () => {
 			error: {
 				code: "runtime_connection_closed",
 				message: "Runtime connection closed while request was in flight",
+			},
+		});
+	});
+
+	it("marks the environment as disconnected after the runtime socket closes", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("runtime-close-snapshot-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+
+		runtimeSocket.close(1000, "done");
+
+		const snapshotResult = await stub.getRuntimeConnectionsSnapshot();
+		expect(snapshotResult.ok).toBe(true);
+		if (!snapshotResult.ok) {
+			throw new Error("Expected runtime connection snapshot");
+		}
+
+		expect(snapshotResult.value.snapshot).toEqual({
+			activeConnection: null,
+			activeConnectionId: null,
+			connected: false,
+			connectionCount: 0,
+			connections: [],
+		});
+
+		await expect(stub.hasConnectedRuntime()).resolves.toEqual({
+			ok: true,
+			value: {
+				connected: false,
 			},
 		});
 	});

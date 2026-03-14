@@ -85,16 +85,16 @@ export const handleWebhook = internalAction({
 			return { status: "ignored" as const };
 		}
 
-		const space = await ctx.runQuery(internal.spaces.getBySandboxId, {
-			sandboxId: parsed.data.sandbox_id,
+		const space = await ctx.runQuery(internal.spaces.getByExternalSandboxId, {
+			externalSandboxId: parsed.data.sandbox_id,
 		});
 
-		if (!space) {
+		if (!space?.sandbox) {
 			return { status: "ignored" as const };
 		}
 
-		await ctx.runMutation(internal.spaces.internalUpdate, {
-			id: space._id,
+		await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+			id: space.sandbox._id,
 			status: nextStatus,
 		});
 

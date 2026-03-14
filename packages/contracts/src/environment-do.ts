@@ -35,15 +35,14 @@ export type EnvironmentRpcResult<T> =
 			error: EnvironmentRpcError;
 	  }>;
 
-export type EnvironmentStreamSubscriber<
-	BindingName extends string = string,
-> = Readonly<{
-	callback: Readonly<{
-		binding: BindingName;
-		name: string;
+export type EnvironmentStreamSubscriber<BindingName extends string = string> =
+	Readonly<{
+		callback: Readonly<{
+			binding: BindingName;
+			name: string;
+		}>;
+		requesterId: string;
 	}>;
-	requesterId: string;
-}>;
 
 export type EnvironmentStreamSubscriptionSnapshot<
 	BindingName extends string = string,

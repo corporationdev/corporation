@@ -1180,7 +1180,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			throw new Error("Space slug mismatch");
 		}
 		if (
-			input.sandboxId !== connection.attachment.auth.claims.sandboxId ||
+			input.sandboxId !== connection.attachment.auth.claims.clientId ||
 			input.clientType !== connection.attachment.auth.claims.clientType
 		) {
 			throw new Error("Runtime auth mismatch");

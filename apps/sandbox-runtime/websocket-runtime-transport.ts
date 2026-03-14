@@ -1,14 +1,14 @@
 /* global WebSocket */
 
-import {
-	environmentRuntimeCommandSchema as runtimeWebSocketCommandSchema,
-	environmentRuntimeHelloAckSchema as runtimeWebSocketHelloAckSchema,
-	environmentRuntimeSubscribeStreamSchema as runtimeWebSocketSubscribeStreamSchema,
-} from "@corporation/contracts/environment-runtime";
 import type {
 	EnvironmentRuntimeCommand as RuntimeWebSocketCommand,
 	EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage,
 	EnvironmentRuntimeSubscribeStream as RuntimeWebSocketSubscribeStream,
+} from "@corporation/contracts/environment-runtime";
+import {
+	environmentRuntimeCommandSchema as runtimeWebSocketCommandSchema,
+	environmentRuntimeHelloAckSchema as runtimeWebSocketHelloAckSchema,
+	environmentRuntimeSubscribeStreamSchema as runtimeWebSocketSubscribeStreamSchema,
 } from "@corporation/contracts/environment-runtime";
 import type { RuntimeEngine } from "./index";
 import {
@@ -53,7 +53,7 @@ export function createWebSocketRuntimeTransport(options: {
 }): RuntimeWebSocketTransport {
 	const createSocket =
 		options.createSocket ?? ((url) => new WebSocket(url) as WebSocketLike);
-	const reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
+	const reconnectDelayMs = options.reconnectDelayMs ?? 1000;
 	let socket: WebSocketLike | null = null;
 	let socketReady = false;
 	let stopped = false;
@@ -310,7 +310,11 @@ export function createWebSocketRuntimeTransport(options: {
 			};
 
 			const sendHello = () => {
-				if (!(socket === currentSocket && currentSocket.readyState === SOCKET_OPEN)) {
+				if (
+					!(
+						socket === currentSocket && currentSocket.readyState === SOCKET_OPEN
+					)
+				) {
 					return;
 				}
 				currentSocket.send(
@@ -355,19 +359,17 @@ export function createWebSocketRuntimeTransport(options: {
 			});
 
 			currentSocket.addEventListener("close", () => {
-				const shouldReject = !started && !helloAckReceived;
+				const shouldReject = !(started || helloAckReceived);
 				cleanupSocket(currentSocket);
 				if (shouldReject) {
 					finish(() =>
-						reject(
-							new Error("WebSocket closed before hello acknowledgement")
-						)
+						reject(new Error("WebSocket closed before hello acknowledgement"))
 					);
 				}
 			});
 
 			currentSocket.addEventListener("error", () => {
-				const shouldReject = !started && !helloAckReceived;
+				const shouldReject = !(started || helloAckReceived);
 				cleanupSocket(currentSocket);
 				if (shouldReject) {
 					finish(() => reject(new Error("WebSocket connection failed")));

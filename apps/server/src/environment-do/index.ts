@@ -20,8 +20,8 @@ import {
 	parseRuntimeStreamItemsMessage,
 } from "./protocol";
 import { RuntimeCommandRouter } from "./runtime-command-router";
-import { StreamSubscriptions } from "./stream-subscriptions";
 import { forwardStreamItemsToSubscriber } from "./stream-delivery";
+import { StreamSubscriptions } from "./stream-subscriptions";
 import { EnvironmentSubscriptionStore } from "./subscription-store";
 import type {
 	EnvironmentDoCallbackBindings,
@@ -54,11 +54,11 @@ function parseRuntimeAuthHeader(
 
 export type {
 	EnvironmentDoRuntimeConnectionsSnapshot,
+	EnvironmentStreamSubscriber,
+	EnvironmentStreamSubscriptionSnapshot,
 	EnvironmentSubscribeStreamInput,
 	RuntimeConnectionSnapshot,
-	EnvironmentStreamSubscriptionSnapshot,
 } from "./types";
-export type { EnvironmentStreamSubscriber } from "./types";
 
 export class EnvironmentDurableObject extends DurableObject<Env> {
 	private activeRuntimeConnectionId: string | null = null;
@@ -79,6 +79,90 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		});
 	}
 
+	private async notifyConvexEnvironmentConnected(claims: {
+		sub: string;
+		clientId: string;
+	}): Promise<void> {
+		const convexSiteUrl = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_CONVEX_SITE_URL?.trim();
+		const apiKey = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_INTERNAL_API_KEY?.trim();
+		if (!(convexSiteUrl && apiKey)) {
+			log.warn(
+				"Missing CORPORATION_CONVEX_SITE_URL or CORPORATION_INTERNAL_API_KEY, skipping environment connect notification"
+			);
+			return;
+		}
+
+		try {
+			const response = await fetch(`${convexSiteUrl}/environments/connect`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${apiKey}`,
+				},
+				body: JSON.stringify({
+					userId: claims.sub,
+					clientId: claims.clientId,
+					name: claims.clientId,
+				}),
+			});
+			if (!response.ok) {
+				log.warn(
+					{ status: response.status },
+					"environment connect notification failed"
+				);
+			}
+		} catch (error) {
+			log.warn(
+				{ error: error instanceof Error ? error.message : String(error) },
+				"environment connect notification error"
+			);
+		}
+	}
+
+	private async notifyConvexEnvironmentDisconnected(claims: {
+		sub: string;
+		clientId: string;
+	}): Promise<void> {
+		const convexSiteUrl = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_CONVEX_SITE_URL?.trim();
+		const apiKey = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_INTERNAL_API_KEY?.trim();
+		if (!(convexSiteUrl && apiKey)) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`${convexSiteUrl}/environments/disconnect`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${apiKey}`,
+				},
+				body: JSON.stringify({
+					userId: claims.sub,
+					clientId: claims.clientId,
+				}),
+			});
+			if (!response.ok) {
+				log.warn(
+					{ status: response.status },
+					"environment disconnect notification failed"
+				);
+			}
+		} catch (error) {
+			log.warn(
+				{ error: error instanceof Error ? error.message : String(error) },
+				"environment disconnect notification error"
+			);
+		}
+	}
+
 	private async initialize(): Promise<void> {
 		const db = drizzle(this.ctx.storage, { schema });
 		await migrate(db, bundledMigrations);
@@ -94,7 +178,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		this.streamSubscriptions.hydrate(await this.subscriptionStore.list());
 	}
 
-	private rebuildConnectionsFromHibernation(): void {
+	private rebuildConnectionsFromHibernation(options?: {
+		excludeConnectionId?: string;
+	}): void {
 		this.runtimeConnections.clear();
 		this.activeRuntimeConnectionId = null;
 		const sockets = this.ctx
@@ -110,7 +196,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				): entry is {
 					socket: WebSocket;
 					attachment: RuntimeSocketAttachment;
-				} => entry.attachment !== null
+				} =>
+					entry.attachment !== null &&
+					entry.attachment.connectionId !== options?.excludeConnectionId
 			)
 			.sort((left, right) =>
 				compareRuntimeAttachments(left.attachment, right.attachment)
@@ -200,7 +288,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			connectedAt: attachment.connectedAt,
 			lastSeenAt: attachment.lastSeenAt,
 			userId: attachment.auth.claims.sub,
-			clientId: attachment.auth.claims.sandboxId,
+			clientId: attachment.auth.claims.clientId,
 		};
 	}
 
@@ -221,12 +309,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		}
 	}
 
-	private getActiveRuntimeSocket():
-		| {
-				socket: WebSocket;
-				attachment: RuntimeSocketAttachment;
-		  }
-		| null {
+	private getActiveRuntimeSocket(): {
+		socket: WebSocket;
+		attachment: RuntimeSocketAttachment;
+	} | null {
 		const activeConnectionId = this.activeRuntimeConnectionId;
 		if (!activeConnectionId) {
 			return null;
@@ -253,7 +339,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			.map((attachment) => this.toRuntimeConnectionSnapshot(attachment));
 		const activeConnectionAttachment =
 			(this.activeRuntimeConnectionId
-				? this.runtimeConnections.get(this.activeRuntimeConnectionId) ?? null
+				? (this.runtimeConnections.get(this.activeRuntimeConnectionId) ?? null)
 				: null) ?? null;
 
 		return {
@@ -267,7 +353,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	private async handleRuntimeSocketUpgrade(request: Request): Promise<Response> {
+	private async handleRuntimeSocketUpgrade(
+		request: Request
+	): Promise<Response> {
 		const runtimeAuth = parseRuntimeAuthHeader(
 			request.headers.get(SPACE_RUNTIME_AUTH_HEADER)
 		);
@@ -302,10 +390,12 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				actorId: this.ctx.id.toString(),
 				connectionId: attachment.connectionId,
 				userId: runtimeAuth.claims.sub,
-				sandboxId: runtimeAuth.claims.sandboxId,
+				clientId: runtimeAuth.claims.clientId,
 			},
 			"accepted runtime websocket"
 		);
+
+		void this.notifyConvexEnvironmentConnected(runtimeAuth.claims);
 
 		return new Response(null, {
 			status: 101,
@@ -384,7 +474,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		});
 		if (this.activeRuntimeConnectionId === attachment.connectionId) {
 			this.clearStreamSubscriptions();
-			this.rebuildConnectionsFromHibernation();
+			this.rebuildConnectionsFromHibernation({
+				excludeConnectionId: attachment.connectionId,
+			});
 		}
 		log.info(
 			{
@@ -395,6 +487,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			},
 			"runtime websocket closed"
 		);
+
+		if (this.runtimeConnections.size === 0) {
+			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+		}
 	}
 
 	webSocketError(ws: WebSocket, error: unknown): void {
@@ -408,7 +504,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			});
 			if (this.activeRuntimeConnectionId === attachment.connectionId) {
 				this.clearStreamSubscriptions();
-				this.rebuildConnectionsFromHibernation();
+				this.rebuildConnectionsFromHibernation({
+					excludeConnectionId: attachment.connectionId,
+				});
 			}
 		}
 		log.error(
@@ -419,14 +517,23 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			},
 			"runtime websocket error"
 		);
+
+		if (attachment && this.runtimeConnections.size === 0) {
+			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+		}
 	}
 
-	async hasConnectedRuntime(): Promise<EnvironmentRpcResult<{ connected: boolean }>> {
+	async hasConnectedRuntime(): Promise<
+		EnvironmentRpcResult<{ connected: boolean }>
+	> {
 		await this.ready;
+		const activeConnectionId = this.activeRuntimeConnectionId;
 		return {
 			ok: true,
 			value: {
-				connected: this.activeRuntimeConnectionId !== null,
+				connected:
+					activeConnectionId !== null &&
+					this.runtimeConnections.has(activeConnectionId),
 			},
 		};
 	}
@@ -459,9 +566,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	async sendRuntimeCommand(
-		command: EnvironmentRuntimeCommand
-	): Promise<
+	async sendRuntimeCommand(command: EnvironmentRuntimeCommand): Promise<
 		EnvironmentRpcResult<{
 			response: EnvironmentRuntimeCommandResponse;
 		}>

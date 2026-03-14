@@ -6,8 +6,10 @@ import { useSpaceSocketClient } from "@/lib/space-client";
 type SpaceActorSpace =
 	| {
 			slug: string;
-			status?: string;
-			sandboxId?: string | null;
+			sandbox?: {
+				status?: string;
+				externalSandboxId?: string;
+			} | null;
 	  }
 	| null
 	| undefined;
@@ -18,7 +20,9 @@ export function useSpaceActor(
 	options?: { enabled?: boolean }
 ) {
 	const isSandboxReady = useMemo(
-		() => space?.status === "running" && !!space?.sandboxId,
+		() =>
+			space?.sandbox?.status === "running" &&
+			!!space?.sandbox?.externalSandboxId,
 		[space]
 	);
 	const isEnabled = (options?.enabled ?? true) && !!spaceSlug;

@@ -1,9 +1,11 @@
+import { env } from "@corporation/env/web";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import Loader from "@/components/loader";
 import SignInForm from "@/components/sign-in-form";
-import { apiClient } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import { authClient } from "@/lib/auth-client";
+import { toAbsoluteUrl } from "@/lib/url";
 
 export const Route = createFileRoute("/runtime-login")({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -44,20 +46,30 @@ function submitRefreshToken(
 	state: string,
 	refreshToken: string
 ) {
-	const form = document.createElement("form");
-	form.method = "POST";
-	form.action = callbackUrl;
+	const url = new URL(callbackUrl);
+	url.search = new URLSearchParams({ refreshToken, state }).toString();
+	window.location.replace(url.toString());
+}
 
-	for (const [name, value] of Object.entries({ refreshToken, state })) {
-		const input = document.createElement("input");
-		input.type = "hidden";
-		input.name = name;
-		input.value = value;
-		form.appendChild(input);
+async function requestRuntimeRefreshToken(clientId: string): Promise<string> {
+	const baseUrl = toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL);
+	const url = new URL("/api/runtime/auth/refresh-token", baseUrl);
+	const headers = await getAuthHeaders();
+	const response = await fetch(url.toString(), {
+		method: "POST",
+		headers: { ...headers, "Content-Type": "application/json" },
+		body: JSON.stringify({ clientId }),
+	});
+	if (!response.ok) {
+		const body = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
+		throw new Error(
+			body?.error ?? `Failed to create refresh token (${response.status})`
+		);
 	}
-
-	document.body.appendChild(form);
-	form.submit();
+	const body = (await response.json()) as { refreshToken: string };
+	return body.refreshToken;
 }
 
 function RuntimeLoginPage() {
@@ -79,11 +91,7 @@ function RuntimeLoginPage() {
 
 		void (async () => {
 			try {
-				const { refreshToken } = await apiClient.runtimeAuth.createRefreshToken(
-					{
-						clientId: search.clientId,
-					}
-				);
+				const refreshToken = await requestRuntimeRefreshToken(search.clientId);
 				if (cancelled) {
 					return;
 				}

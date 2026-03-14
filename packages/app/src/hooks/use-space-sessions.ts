@@ -1,6 +1,6 @@
+import type { SessionRow } from "@corporation/contracts/browser-do";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type SpaceActor, useSpaceEvent } from "@/lib/space-client";
-import type { SessionRow } from "../../../../apps/server/src/space-do/object";
 
 function getActorSpaceSlug(actor: SpaceActor): string | undefined {
 	const key = actor.opts.key;

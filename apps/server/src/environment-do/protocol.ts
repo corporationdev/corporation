@@ -1,12 +1,12 @@
-import {
-	environmentRuntimeCommandResponseSchema,
-	environmentRuntimeHelloSchema,
-	environmentRuntimeStreamItemsMessageSchema,
-} from "@corporation/contracts/environment-runtime";
 import type {
 	EnvironmentRuntimeCommandResponse,
 	EnvironmentRuntimeHello as RuntimeHelloMessage,
 	EnvironmentRuntimeStreamItemsMessage as RuntimeStreamItemsMessage,
+} from "@corporation/contracts/environment-runtime";
+import {
+	environmentRuntimeCommandResponseSchema,
+	environmentRuntimeHelloSchema,
+	environmentRuntimeStreamItemsMessageSchema,
 } from "@corporation/contracts/environment-runtime";
 import type { RuntimeSocketAttachment } from "./types";
 

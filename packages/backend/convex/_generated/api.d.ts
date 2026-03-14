@@ -13,6 +13,7 @@ import type * as agentCredentialActions from "../agentCredentialActions.js";
 import type * as agentCredentials from "../agentCredentials.js";
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
+import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   agentCredentials: typeof agentCredentials;
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
+  environments: typeof environments;
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;

@@ -4,7 +4,7 @@ import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { SANDBOX_WORKDIR } from "./lib/sandbox";
-import { ensureSpaceRecord } from "./spaces";
+import { createSpaceRecord, ensureSandboxRecordForSpace } from "./spaces";
 
 const USER_SPACE_NAME = "Personal Workspace";
 
@@ -50,6 +50,16 @@ export const getWorkspaceState = authedQuery({
 		}
 
 		const space = await getSpaceForProject(ctx, ctx.userId, project._id);
+		const sandbox = space
+			? await ctx.db
+					.query("sandboxes")
+					.withIndex("by_space", (q) => q.eq("spaceId", space._id))
+					.unique()
+			: null;
+		const activeEnvironment =
+			space?.activeBacking?.type === "environment"
+				? await ctx.db.get(space.activeBacking.environmentId)
+				: null;
 
 		return {
 			project,
@@ -57,6 +67,8 @@ export const getWorkspaceState = authedQuery({
 				? {
 						...space,
 						workdir: SANDBOX_WORKDIR,
+						sandbox,
+						activeEnvironment,
 					}
 				: null,
 		};
@@ -80,13 +92,23 @@ export const configure = authedMutation({
 			ctx.userId,
 			project._id
 		);
+		const spaceId =
+			existingSpace?._id ??
+			(await createSpaceRecord(ctx, {
+				slug: nanoid(),
+				userId: ctx.userId,
+				project,
+				name: USER_SPACE_NAME,
+			}));
+		const space = existingSpace ?? (await ctx.db.get(spaceId));
+		if (!space) {
+			throw new ConvexError("Workspace space not found");
+		}
 
-		return await ensureSpaceRecord(ctx, {
-			slug: existingSpace?.slug ?? nanoid(),
-			userId: ctx.userId,
-			project,
+		await ensureSandboxRecordForSpace(ctx, space, project, {
 			bootstrapSource: "base-template",
-			name: USER_SPACE_NAME,
 		});
+
+		return spaceId;
 	},
 });

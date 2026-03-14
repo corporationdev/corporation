@@ -208,7 +208,11 @@ export const createFromSpace = authedMutation({
 			"Space"
 		);
 
-		if (!space.sandboxId) {
+		const sandbox = await ctx.db
+			.query("sandboxes")
+			.withIndex("by_space", (q) => q.eq("spaceId", space._id))
+			.unique();
+		if (!sandbox?.externalSandboxId) {
 			throw new ConvexError("Sandbox is not running");
 		}
 
@@ -222,7 +226,7 @@ export const createFromSpace = authedMutation({
 			{
 				projectId: project._id,
 				snapshotId,
-				sandboxId: space.sandboxId,
+				sandboxId: sandbox.externalSandboxId,
 				setAsDefault: args.setAsDefault ?? false,
 			}
 		);

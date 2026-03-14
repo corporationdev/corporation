@@ -45,10 +45,7 @@ async function runLoginCommand(args: string[]): Promise<void> {
 		strict: true,
 	});
 
-	const serverUrl = values["server-url"]?.trim();
-	if (!serverUrl) {
-		throw new Error("--server-url is required for login");
-	}
+	const serverUrl = values["server-url"]?.trim() || getDefaultServerUrl();
 
 	await loginWithBrowser({
 		credentialsPath: values["credentials-path"],
@@ -75,10 +72,11 @@ async function runConnectCommand(args: string[]): Promise<void> {
 		strict: true,
 	});
 
+	const serverUrl = values["server-url"]?.trim() || getDefaultServerUrl();
 	const websocketUrl = await resolveRuntimeWebSocketUrl({
 		credentialsPath: values["credentials-path"],
 		refreshToken: values.token?.trim() || undefined,
-		serverUrl: values["server-url"]?.trim() || undefined,
+		serverUrl,
 		url: values.url?.trim() || undefined,
 	});
 	const runtimeDatabase = await openRuntimeDatabase({

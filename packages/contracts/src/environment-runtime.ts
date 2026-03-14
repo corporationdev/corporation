@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
-	environmentStreamOffsetSchema,
 	type EnvironmentStreamOffset,
+	environmentStreamOffsetSchema,
 } from "./environment-do";
 
 export const environmentPromptPartSchema = z.object({

@@ -32,8 +32,16 @@ type WorkspacePanelProps = {
 	space:
 		| {
 				_id: Id<"spaces">;
-				status?: "creating" | "running" | "paused" | "killed" | "error";
-				sandboxId?: string | null;
+				sandbox?: {
+					status?:
+						| "provisioning"
+						| "creating"
+						| "running"
+						| "paused"
+						| "killed"
+						| "error";
+					externalSandboxId?: string;
+				} | null;
 		  }
 		| null
 		| undefined;
@@ -52,15 +60,14 @@ export function WorkspacePanel({
 		defaultTab
 	);
 	const activeTab = isTabId(storedActiveTab) ? storedActiveTab : defaultTab;
+	const sandboxStatus = space?.sandbox?.status;
+	const externalSandboxId = space?.sandbox?.externalSandboxId;
 	const isWorkspaceAvailable =
-		space?.status === "running" && !!space?.sandboxId;
+		sandboxStatus === "running" && !!externalSandboxId;
 	const workspaceFallbackStatus =
-		space === undefined ? "loading" : (space?.status ?? "paused");
+		space === undefined ? "loading" : (sandboxStatus ?? "paused");
 	const workspaceFallback = (
-		<SandboxPausedState
-			spaceSlug={spaceSlug}
-			status={workspaceFallbackStatus}
-		/>
+		<SandboxPausedState spaceId={space?._id} status={workspaceFallbackStatus} />
 	);
 
 	return (
@@ -86,9 +93,9 @@ export function WorkspacePanel({
 				</div>
 				<div className="flex items-center gap-1 pr-1">
 					<CreateSnapshotPopover
-						sandboxId={space?.sandboxId ?? undefined}
+						sandboxId={externalSandboxId}
 						spaceId={space?._id}
-						status={space?.status}
+						status={sandboxStatus}
 					/>
 					<Button onClick={onClose} size="icon" variant="ghost">
 						<PanelRightIcon className="size-4" />
@@ -107,7 +114,7 @@ export function WorkspacePanel({
 					(isWorkspaceAvailable ? (
 						<DesktopTab
 							actor={actor}
-							sandboxId={space?.sandboxId}
+							sandboxId={externalSandboxId}
 							spaceSlug={spaceSlug}
 						/>
 					) : (

@@ -58,7 +58,7 @@ export async function mintTestRuntimeAccessToken(input: {
 	return await mintRuntimeAccessToken(
 		{
 			sub: input.userId,
-			sandboxId: input.clientId,
+			clientId: input.clientId,
 			exp:
 				Math.floor(Date.now() / 1000) +
 				(input.expiresInSeconds ?? DEFAULT_TOKEN_TTL_SECONDS),
@@ -76,7 +76,7 @@ export async function mintTestRuntimeRefreshToken(input: {
 	return await mintRuntimeRefreshToken(
 		{
 			sub: input.userId,
-			sandboxId: input.clientId,
+			clientId: input.clientId,
 			exp:
 				Math.floor(Date.now() / 1000) +
 				(input.expiresInSeconds ?? DEFAULT_REFRESH_TTL_SECONDS),

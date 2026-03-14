@@ -60,9 +60,13 @@ export const save = action({
 		if (!space) {
 			throw new ConvexError("Personal workspace not found");
 		}
-		if (!space.sandboxId) {
+		const spaceData = await ctx.runQuery(internal.spaces.internalGet, {
+			id: space._id,
+		});
+		if (!spaceData.sandbox?.externalSandboxId) {
 			throw new ConvexError("Sandbox is not running");
 		}
+		const externalSandboxId = spaceData.sandbox.externalSandboxId;
 
 		const supportedAgents = Array.from(
 			new Map(
@@ -79,7 +83,7 @@ export const save = action({
 		});
 
 		const userKey = await deriveUserKey(getMasterKey(), authUser._id);
-		const sandbox = await Sandbox.connect(space.sandboxId);
+		const sandbox = await Sandbox.connect(externalSandboxId);
 		const syncedAt = Date.now();
 
 		for (const agent of supportedAgents) {

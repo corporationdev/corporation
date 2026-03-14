@@ -16,7 +16,7 @@ function createRuntimeAuthHeader() {
 		authToken: "runtime-token",
 		claims: {
 			sub: "user-1",
-			sandboxId: "sandbox-1",
+			clientId: "sandbox-1",
 			clientType: "sandbox_runtime",
 			tokenType: "access",
 			aud: "space-runtime-access",
@@ -96,7 +96,7 @@ async function waitForReceivedStreamItems(input: {
 	stub: DurableObjectStub<TestStreamConsumerDurableObject>;
 }) {
 	const startedAt = Date.now();
-	while (Date.now() - startedAt < 2_000) {
+	while (Date.now() - startedAt < 2000) {
 		const deliveries = await getReceivedStreamItems(input.stub);
 		if (deliveries.length === input.expectedCount) {
 			return deliveries;
@@ -354,34 +354,34 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		});
 
 		reconnectedRuntimeSocket.send({
-				type: "stream_items",
-				stream: "session:session-1",
-				items: [
-					{
-						offset: "6",
-						eventId: "event-6",
-						createdAt: 123,
-						event: {
-							type: "turn.started",
-							sessionId: "session-1",
-							turnId: "turn-6",
-						},
+			type: "stream_items",
+			stream: "session:session-1",
+			items: [
+				{
+					offset: "6",
+					eventId: "event-6",
+					createdAt: 123,
+					event: {
+						type: "turn.started",
+						sessionId: "session-1",
+						turnId: "turn-6",
 					},
-					{
-						offset: "7",
-						eventId: "event-7",
-						createdAt: 124,
-						event: {
-							type: "turn.completed",
-							sessionId: "session-1",
-							turnId: "turn-6",
-						},
+				},
+				{
+					offset: "7",
+					eventId: "event-7",
+					createdAt: 124,
+					event: {
+						type: "turn.completed",
+						sessionId: "session-1",
+						turnId: "turn-6",
 					},
-				],
-				nextOffset: "7",
-				upToDate: true,
-				streamClosed: false,
-			});
+				},
+			],
+			nextOffset: "7",
+			upToDate: true,
+			streamClosed: false,
+		});
 
 		await expect(
 			waitForReceivedStreamItems({
@@ -452,26 +452,26 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		});
 
 		runtimeSocket.send({
-				type: "stream_items",
-				stream: "session:session-1",
-				items: [
-					{
-						offset: "6",
-						eventId: "event-6",
-						createdAt: 123,
-						event: { type: "turn.started" },
-					},
-					{
-						offset: "7",
-						eventId: "event-7",
-						createdAt: 124,
-						event: { type: "turn.completed" },
-					},
-				],
-				nextOffset: "7",
-				upToDate: true,
-				streamClosed: false,
-			});
+			type: "stream_items",
+			stream: "session:session-1",
+			items: [
+				{
+					offset: "6",
+					eventId: "event-6",
+					createdAt: 123,
+					event: { type: "turn.started" },
+				},
+				{
+					offset: "7",
+					eventId: "event-7",
+					createdAt: 124,
+					event: { type: "turn.completed" },
+				},
+			],
+			nextOffset: "7",
+			upToDate: true,
+			streamClosed: false,
+		});
 
 		await waitForReceivedStreamItems({
 			stub: consumerStub,
@@ -641,24 +641,24 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		});
 
 		runtimeSocket.send({
-				type: "stream_items",
-				stream: "session:session-1",
-				items: [
-					{
-						offset: "1",
-						eventId: "event-1",
-						createdAt: 123,
-						event: {
-							type: "turn.started",
-							sessionId: "session-1",
-							turnId: "turn-1",
-						},
+			type: "stream_items",
+			stream: "session:session-1",
+			items: [
+				{
+					offset: "1",
+					eventId: "event-1",
+					createdAt: 123,
+					event: {
+						type: "turn.started",
+						sessionId: "session-1",
+						turnId: "turn-1",
 					},
-				],
-				nextOffset: "1",
-				upToDate: true,
-				streamClosed: false,
-			});
+				},
+			],
+			nextOffset: "1",
+			upToDate: true,
+			streamClosed: false,
+		});
 
 		await expect(
 			waitForReceivedStreamItems({
@@ -697,20 +697,20 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		);
 
 		runtimeSocket.send({
-				type: "stream_items",
-				stream: "session:missing",
-				items: [
-					{
-						offset: "1",
-						eventId: "event-1",
-						createdAt: 123,
-						event: { type: "noop" },
-					},
-				],
-				nextOffset: "1",
-				upToDate: true,
-				streamClosed: false,
-			});
+			type: "stream_items",
+			stream: "session:missing",
+			items: [
+				{
+					offset: "1",
+					eventId: "event-1",
+					createdAt: 123,
+					event: { type: "noop" },
+				},
+			],
+			nextOffset: "1",
+			upToDate: true,
+			streamClosed: false,
+		});
 
 		await expect(getReceivedStreamItems(consumerStub)).resolves.toEqual([]);
 	});
@@ -750,25 +750,25 @@ describe("EnvironmentDurableObject stream subscriptions", () => {
 		});
 
 		runtimeSocket.send({
-				type: "stream_items",
-				stream: "session:session-1",
-				items: [
-					{ offset: "1", eventId: "a-1", createdAt: 1, event: { type: "a" } },
-				],
-				nextOffset: "1",
-				upToDate: true,
-				streamClosed: false,
-			});
+			type: "stream_items",
+			stream: "session:session-1",
+			items: [
+				{ offset: "1", eventId: "a-1", createdAt: 1, event: { type: "a" } },
+			],
+			nextOffset: "1",
+			upToDate: true,
+			streamClosed: false,
+		});
 		runtimeSocket.send({
-				type: "stream_items",
-				stream: "session:session-2",
-				items: [
-					{ offset: "1", eventId: "b-1", createdAt: 2, event: { type: "b" } },
-				],
-				nextOffset: "1",
-				upToDate: true,
-				streamClosed: false,
-			});
+			type: "stream_items",
+			stream: "session:session-2",
+			items: [
+				{ offset: "1", eventId: "b-1", createdAt: 2, event: { type: "b" } },
+			],
+			nextOffset: "1",
+			upToDate: true,
+			streamClosed: false,
+		});
 
 		await expect(
 			waitForReceivedStreamItems({ stub: firstConsumer, expectedCount: 1 })

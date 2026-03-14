@@ -33,7 +33,14 @@ import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 
 type CreateSnapshotPopoverProps = {
 	spaceId: Id<"spaces"> | undefined;
-	status: "creating" | "running" | "paused" | "killed" | "error" | undefined;
+	status:
+		| "provisioning"
+		| "creating"
+		| "running"
+		| "paused"
+		| "killed"
+		| "error"
+		| undefined;
 	sandboxId: string | undefined;
 };
 
@@ -53,7 +60,7 @@ export function CreateSnapshotPopover({
 	const defaultId = useId();
 	const createSnapshot = useMutation(api.snapshot.createFromSpace);
 	const pauseSandbox = useMutation(api.spaces.pauseSandbox);
-	const startSandbox = useMutation(api.spaces.startSandbox);
+	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
 
 	const sandboxStatus = status ?? "paused";
 	const isRunning = sandboxStatus === "running";
@@ -110,7 +117,7 @@ export function CreateSnapshotPopover({
 				await pauseSandbox({ id: spaceId });
 				toast.success("Sandbox pause started");
 			} else {
-				await startSandbox({ id: spaceId });
+				await ensureSandbox({ id: spaceId });
 				toast.success("Sandbox start queued");
 			}
 			setOpen(false);

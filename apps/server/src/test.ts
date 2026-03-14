@@ -1,5 +1,5 @@
-import { Hono } from "hono";
 import type { CreateSessionInput } from "@corporation/contracts/browser-space";
+import { Hono } from "hono";
 import {
 	type EnvironmentStubBinding,
 	getEnvironmentStub,
@@ -92,10 +92,11 @@ export const testApp = new Hono<TestAppEnv>()
 			return c.json({ error: "Missing spaceName or sessionId" }, 400);
 		}
 
-		const result = await getSpaceStub(c.env.SPACE_DO, spaceName).getSessionEvents(
-			{
-				sessionId,
-			}
-		);
+		const result = await getSpaceStub(
+			c.env.SPACE_DO,
+			spaceName
+		).getSessionEvents({
+			sessionId,
+		});
 		return c.json(result);
 	});

@@ -38,7 +38,7 @@ function quoteShellEnv(value: string) {
 }
 
 async function createRuntimeRefreshToken(params: {
-	sandboxId: string;
+	clientId: string;
 	userId: string;
 }): Promise<string> {
 	const secret = process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
@@ -53,7 +53,7 @@ async function createRuntimeRefreshToken(params: {
 	const payload = btoa(
 		JSON.stringify({
 			sub: params.userId,
-			sandboxId: params.sandboxId,
+			clientId: params.clientId,
 			clientType: "sandbox_runtime",
 			tokenType: "refresh",
 			aud: "space-runtime-refresh",
@@ -105,7 +105,7 @@ async function bootAgentAndGetUrl(
 		);
 	}
 	const runtimeRefreshToken = await createRuntimeRefreshToken({
-		sandboxId: sandbox.sandboxId,
+		clientId: sandbox.sandboxId,
 		userId: params.spaceOwnerId,
 	});
 
@@ -220,44 +220,47 @@ async function resolveSandbox(
 	spaceOwnerId: string,
 	projectEnvs: Record<string, string>
 ): Promise<Sandbox> {
-	if (space.sandboxId) {
+	const sandboxRecord = space.sandbox;
+	if (!sandboxRecord) {
+		throw new Error("Space has no sandbox record");
+	}
+
+	if (sandboxRecord.externalSandboxId) {
 		try {
-			return await Sandbox.connect(space.sandboxId);
+			return await Sandbox.connect(sandboxRecord.externalSandboxId);
 		} catch (error) {
 			console.warn("Failed to connect existing sandbox", {
 				spaceId: space._id,
-				sandboxId: space.sandboxId,
+				sandboxId: sandboxRecord.externalSandboxId,
 				error,
 			});
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: space._id,
+			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+				id: sandboxRecord._id,
 				status: "creating",
-				sandboxId: null,
-				agentUrl: null,
 				error: null,
 			});
 		}
 	}
 
 	const sourceSnapshotId =
-		space.bootstrapSource === "base-template"
+		sandboxRecord.bootstrapSource === "base-template"
 			? BASE_TEMPLATE
 			: await (async () => {
-					if (!space.snapshotId) {
-						throw new Error("Space snapshot is not set");
+					if (!sandboxRecord.snapshotId) {
+						throw new Error("Sandbox snapshot is not set");
 					}
 					const snapshot = await ctx.runQuery(internal.snapshot.internalGet, {
-						id: space.snapshotId,
+						id: sandboxRecord.snapshotId,
 					});
 					if (snapshot.status !== "ready" || !snapshot.externalSnapshotId) {
-						throw new Error("Space snapshot is not ready");
+						throw new Error("Sandbox snapshot is not ready");
 					}
 					return snapshot.externalSnapshotId;
 				})();
 
-	await ctx.runMutation(internal.spaces.internalUpdate, {
-		id: space._id,
-		status: "creating" as const,
+	await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+		id: sandboxRecord._id,
+		status: "creating",
 	});
 
 	const sandbox = await createSandbox(sourceSnapshotId, projectEnvs, {
@@ -292,24 +295,27 @@ export const pauseForSpace = internalAction({
 			id: args.spaceId,
 		});
 
-		if (!space.sandboxId) {
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: args.spaceId,
-				status: "killed",
-			});
+		const sandboxRecord = space.sandbox;
+		if (!sandboxRecord?.externalSandboxId) {
+			if (sandboxRecord) {
+				await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+					id: sandboxRecord._id,
+					status: "killed",
+				});
+			}
 			return;
 		}
 
 		try {
-			await Sandbox.betaPause(space.sandboxId);
+			await Sandbox.betaPause(sandboxRecord.externalSandboxId);
 		} catch (error) {
 			console.error("Failed to pause sandbox in E2B", {
 				spaceId: args.spaceId,
-				sandboxId: space.sandboxId,
+				sandboxId: sandboxRecord.externalSandboxId,
 				error,
 			});
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: args.spaceId,
+			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+				id: sandboxRecord._id,
 				status: "running",
 			});
 			throw error;
@@ -335,10 +341,16 @@ export const provisionForSpace = internalAction({
 		spaceId: v.id("spaces"),
 	},
 	handler: async (ctx, args) => {
+		const space = await ctx.runQuery(internal.spaces.internalGet, {
+			id: args.spaceId,
+		});
+
+		const sandboxRecord = space.sandbox;
+		if (!sandboxRecord) {
+			throw new Error("Space has no sandbox record");
+		}
+
 		try {
-			const space = await ctx.runQuery(internal.spaces.internalGet, {
-				id: args.spaceId,
-			});
 			if (!space.userId) {
 				throw new Error("Space owner is not set");
 			}
@@ -361,16 +373,15 @@ export const provisionForSpace = internalAction({
 				spaceSlug: space.slug,
 			});
 
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: args.spaceId,
+			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+				id: sandboxRecord._id,
 				status: "running",
-				sandboxId: sandbox.sandboxId,
-				agentUrl: null,
+				externalSandboxId: sandbox.sandboxId,
 				error: null,
 			});
 		} catch (error) {
-			await ctx.runMutation(internal.spaces.internalUpdate, {
-				id: args.spaceId,
+			await ctx.runMutation(internal.spaces.internalUpdateSandbox, {
+				id: sandboxRecord._id,
 				status: "error",
 			});
 
