@@ -11,7 +11,7 @@ import { authClient } from "./auth-client";
 import { toAbsoluteUrl } from "./url";
 
 function buildServerApiUrl(): string {
-	const baseUrl = new URL(toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL));
+	const baseUrl = new URL(toAbsoluteUrl(env.VITE_SERVER_URL));
 	baseUrl.pathname = "/api";
 	baseUrl.search = "";
 	baseUrl.hash = "";

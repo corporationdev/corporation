@@ -19,8 +19,8 @@ function slugifyOrganizationName(name: string, userId: string) {
 	return `${base || "workspace"}-${suffix}`;
 }
 
-const webUrl = process.env.CORPORATION_WEB_URL ?? "";
-const convexSiteUrl = process.env.CORPORATION_CONVEX_SITE_URL;
+const webUrl = process.env.WEB_URL ?? "";
+const convexSiteUrl = process.env.CONVEX_SITE_URL;
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
 	Boolean
@@ -28,11 +28,11 @@ const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
 
 function getRequiredInviteEmailConfig() {
 	const resendApiKey = process.env.RESEND_API_KEY;
-	const emailFrom = process.env.CORPORATION_EMAIL_FROM;
+	const emailFrom = process.env.EMAIL_FROM;
 
 	if (!(resendApiKey && emailFrom && webUrl)) {
 		throw new Error(
-			"Organization invitations require RESEND_API_KEY, CORPORATION_EMAIL_FROM, and CORPORATION_WEB_URL"
+			"Organization invitations require RESEND_API_KEY, EMAIL_FROM, and WEB_URL"
 		);
 	}
 

@@ -2,7 +2,7 @@ import { api } from "@corporation/backend/convex/_generated/api";
 import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { AlertTriangleIcon } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
@@ -30,63 +30,9 @@ import { usePendingMessageStore } from "@/stores/pending-message-store";
 type SessionViewSpace =
 	| {
 			_id: Id<"spaces">;
-			activeBacking?:
-				| {
-						type: "sandbox";
-						sandboxId: Id<"sandboxes">;
-				  }
-				| {
-						type: "environment";
-						environmentId: Id<"environments">;
-				  };
-			sandbox?: {
-				status?:
-					| "provisioning"
-					| "creating"
-					| "running"
-					| "paused"
-					| "killed"
-					| "error";
-				externalSandboxId?: string;
-			} | null;
-			activeEnvironment?: {
-				_id: Id<"environments">;
-				clientId: string;
-				status: string;
-			} | null;
 	  }
 	| null
 	| undefined;
-
-function isRuntimeReady(space: SessionViewSpace) {
-	if (!space?.activeBacking) {
-		return false;
-	}
-
-	if (space.activeBacking.type === "sandbox") {
-		return (
-			space.sandbox?.status === "running" &&
-			!!space.sandbox?.externalSandboxId &&
-			!!space.activeEnvironment?._id
-		);
-	}
-
-	return space.activeEnvironment?.status === "connected";
-}
-
-function getRuntimeClientId(space: SessionViewSpace): string | null {
-	if (!space?.activeBacking) {
-		return null;
-	}
-
-	if (space.activeBacking.type === "environment") {
-		return isRuntimeReady(space)
-			? (space.activeEnvironment?.clientId ?? null)
-			: null;
-	}
-
-	return space.activeEnvironment?.clientId ?? null;
-}
 
 export const SessionView: FC<{
 	hasSession: boolean;
@@ -196,8 +142,6 @@ export const ConnectedSessionView: FC<{
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const consumeMessage = usePendingMessageStore((s) => s.consumeMessage);
-	const ensureSandbox = useMutation(api.spaces.ensureSandbox);
-	const touchSpace = useMutation(api.spaces.touch);
 	const sessionState = useSessionState({
 		sessionId,
 		spaceSlug,
@@ -214,28 +158,28 @@ export const ConnectedSessionView: FC<{
 	const hasError = sessionState.status === "error" && !!sessionState.error;
 	const hasConsumedStoredMessageRef = useRef(false);
 	const spaceId = space?._id;
-	const canFlushPendingSend = !!pendingSend && isRuntimeReady(space);
-	const runtimeReady = isRuntimeReady(space);
-	const runtimeClientId = getRuntimeClientId(space);
 
-	const touchSpaceIfPresent = useCallback(() => {
-		if (spaceId) {
-			touchSpace({ id: spaceId }).catch(() => undefined);
-		}
-	}, [spaceId, touchSpace]);
+	const backingData = useQuery(
+		api.backings.getForSpace,
+		spaceId ? { spaceId } : "skip"
+	);
+	const connectionId = backingData?.environment?.connectionId ?? null;
+	const runtimeReady =
+		backingData?.environment?.status === "connected" && !!connectionId;
+	const canFlushPendingSend = !!pendingSend && runtimeReady;
 
 	const ensureRemoteSession = useCallback(
 		async (nextAgent: string, nextModelId: string) => {
 			if (hasSession || hasCreatedSession) {
 				return;
 			}
-			if (!runtimeClientId) {
+			if (!connectionId) {
 				throw new Error("Runtime client is not ready");
 			}
 
 			await createSpaceSession(spaceSlug, {
 				sessionId,
-				clientId: runtimeClientId,
+				clientId: connectionId,
 				spaceName: spaceSlug,
 				title: "New Chat",
 				agent: nextAgent,
@@ -251,30 +195,11 @@ export const ConnectedSessionView: FC<{
 			hasCreatedSession,
 			hasSession,
 			queryClient,
-			runtimeClientId,
+			connectionId,
 			sessionId,
 			spaceSlug,
 		]
 	);
-
-	const preparePendingSend = useCallback(async () => {
-		if (!(spaceId && space?.activeBacking)) {
-			throw new Error("Space does not have an active backing");
-		}
-
-		if (space.activeBacking.type === "environment") {
-			throw new Error("Selected environment is not connected");
-		}
-
-		const sandboxStatus = space.sandbox?.status;
-		if (
-			sandboxStatus !== "provisioning" &&
-			sandboxStatus !== "creating" &&
-			sandboxStatus !== "running"
-		) {
-			await ensureSandbox({ id: spaceId });
-		}
-	}, [ensureSandbox, space?.activeBacking, space?.sandbox?.status, spaceId]);
 
 	useEffect(() => {
 		if (hasSession) {
@@ -297,17 +222,13 @@ export const ConnectedSessionView: FC<{
 		}
 	}, [consumeMessage, sessionState.addOptimisticMessage]);
 
-	// Flush pending messages once the selected runtime is ready.
+	// Flush pending messages once the environment is connected.
 	useEffect(() => {
 		if (!canFlushPendingSend) {
 			return;
 		}
 		const pending = pendingSend;
 		if (!pending) {
-			return;
-		}
-
-		if (!runtimeClientId) {
 			return;
 		}
 
@@ -320,7 +241,6 @@ export const ConnectedSessionView: FC<{
 				content: pending.text,
 				modelId: pending.modelId,
 			});
-			touchSpaceIfPresent();
 		})().catch((error: unknown) => {
 			console.error("Failed to flush pending message", error);
 			sessionState.clearOptimisticMessages();
@@ -333,11 +253,9 @@ export const ConnectedSessionView: FC<{
 		hasSession,
 		pendingSend,
 		ensureRemoteSession,
-		runtimeClientId,
 		sessionState.clearOptimisticMessages,
 		sessionId,
 		spaceSlug,
-		touchSpaceIfPresent,
 	]);
 
 	const handleSend = useCallback(async () => {
@@ -348,10 +266,9 @@ export const ConnectedSessionView: FC<{
 
 		setMessage("");
 		sessionState.addOptimisticMessage(text);
-		const nextPending = { text, agent, modelId };
 
 		try {
-			if (runtimeReady && runtimeClientId) {
+			if (runtimeReady && connectionId) {
 				await ensureRemoteSession(agent, modelId);
 				await sendSpaceMessage({
 					spaceSlug,
@@ -359,12 +276,10 @@ export const ConnectedSessionView: FC<{
 					content: text,
 					modelId,
 				});
-				touchSpaceIfPresent();
 				return;
 			}
 
-			setPendingSend(nextPending);
-			await preparePendingSend();
+			setPendingSend({ text, agent, modelId });
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
 			setPendingSend(null);
@@ -375,14 +290,12 @@ export const ConnectedSessionView: FC<{
 	}, [
 		message,
 		ensureRemoteSession,
-		preparePendingSend,
-		runtimeClientId,
+		connectionId,
 		runtimeReady,
 		sessionId,
 		agent,
 		modelId,
 		spaceSlug,
-		touchSpaceIfPresent,
 		sessionState.addOptimisticMessage,
 		sessionState.clearOptimisticMessages,
 	]);

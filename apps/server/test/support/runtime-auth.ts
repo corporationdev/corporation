@@ -24,11 +24,11 @@ function readRuntimeAuthSecretFromDotEnv(): string | undefined {
 		for (const line of contents.split(DOT_ENV_LINE_PATTERN)) {
 			const trimmed = line.trim();
 			if (
-				trimmed.startsWith("CORPORATION_RUNTIME_AUTH_SECRET=") &&
-				trimmed.length > "CORPORATION_RUNTIME_AUTH_SECRET=".length
+				trimmed.startsWith("RUNTIME_AUTH_SECRET=") &&
+				trimmed.length > "RUNTIME_AUTH_SECRET=".length
 			) {
 				cachedRuntimeAuthSecret = trimmed
-					.slice("CORPORATION_RUNTIME_AUTH_SECRET=".length)
+					.slice("RUNTIME_AUTH_SECRET=".length)
 					.trim();
 				return cachedRuntimeAuthSecret;
 			}
@@ -44,7 +44,7 @@ function readRuntimeAuthSecretFromDotEnv(): string | undefined {
 function getRuntimeAuthSecret(secret?: string): string {
 	return (
 		secret ??
-		process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim() ??
+		process.env.RUNTIME_AUTH_SECRET?.trim() ??
 		readRuntimeAuthSecretFromDotEnv() ??
 		TEST_RUNTIME_AUTH_SECRET
 	);

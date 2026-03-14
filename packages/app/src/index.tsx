@@ -10,9 +10,7 @@ import { toAbsoluteUrl } from "@/lib/url";
 import { initAdapters } from "@/stores/adapter-store";
 import { routeTree } from "./routeTree.gen";
 
-const convex = new ConvexReactClient(
-	toAbsoluteUrl(env.VITE_CORPORATION_CONVEX_URL)
-);
+const convex = new ConvexReactClient(toAbsoluteUrl(env.VITE_CONVEX_URL));
 const queryClient = new QueryClient();
 
 const router = createRouter({

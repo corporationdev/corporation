@@ -52,7 +52,7 @@ function submitRefreshToken(
 }
 
 async function requestRuntimeRefreshToken(clientId: string): Promise<string> {
-	const baseUrl = toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL);
+	const baseUrl = toAbsoluteUrl(env.VITE_SERVER_URL);
 	const url = new URL("/api/runtime/auth/refresh-token", baseUrl);
 	const headers = await getAuthHeaders();
 	const response = await fetch(url.toString(), {

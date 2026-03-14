@@ -131,12 +131,8 @@ export const server = await Worker("agent-server", {
 		ANTHROPIC_API_KEY: alchemy.secret(process.env.ANTHROPIC_API_KEY),
 		E2B_API_KEY: alchemy.secret(process.env.E2B_API_KEY),
 		NANGO_SECRET_KEY: alchemy.secret(process.env.NANGO_SECRET_KEY),
-		CORPORATION_INTERNAL_API_KEY: alchemy.secret(
-			process.env.CORPORATION_INTERNAL_API_KEY
-		),
-		CORPORATION_RUNTIME_AUTH_SECRET: alchemy.secret(
-			process.env.CORPORATION_RUNTIME_AUTH_SECRET
-		),
+		INTERNAL_API_KEY: alchemy.secret(process.env.INTERNAL_API_KEY),
+		RUNTIME_AUTH_SECRET: alchemy.secret(process.env.RUNTIME_AUTH_SECRET),
 		...runtime.serverBindings,
 		SPACE_DO: spaceDO,
 		ENVIRONMENT_DO: environmentDO,

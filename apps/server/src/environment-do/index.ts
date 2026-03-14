@@ -86,13 +86,13 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 	}): Promise<void> {
 		const convexSiteUrl = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_CONVEX_SITE_URL?.trim();
+		).CONVEX_SITE_URL?.trim();
 		const apiKey = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_INTERNAL_API_KEY?.trim();
+		).INTERNAL_API_KEY?.trim();
 		if (!(convexSiteUrl && apiKey)) {
 			log.warn(
-				"Missing CORPORATION_CONVEX_SITE_URL or CORPORATION_INTERNAL_API_KEY, skipping environment connect notification"
+				"Missing CONVEX_SITE_URL or INTERNAL_API_KEY, skipping environment connect notification"
 			);
 			return;
 		}
@@ -130,10 +130,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 	}): Promise<void> {
 		const convexSiteUrl = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_CONVEX_SITE_URL?.trim();
+		).CONVEX_SITE_URL?.trim();
 		const apiKey = (
 			this.env as unknown as Record<string, string>
-		).CORPORATION_INTERNAL_API_KEY?.trim();
+		).INTERNAL_API_KEY?.trim();
 		if (!(convexSiteUrl && apiKey)) {
 			return;
 		}

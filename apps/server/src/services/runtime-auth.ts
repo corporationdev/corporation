@@ -22,13 +22,13 @@ function buildRuntimeSocketUrl(serverUrl: string, token: string) {
 
 export async function createRuntimeAuthSession(
 	env: {
-		CORPORATION_RUNTIME_AUTH_SECRET?: string;
-		CORPORATION_SERVER_URL?: string;
+		RUNTIME_AUTH_SECRET?: string;
+		SERVER_URL?: string;
 	},
 	requestUrl: string,
 	input: RuntimeAuthSessionRequest
 ) {
-	const secret = env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+	const secret = env.RUNTIME_AUTH_SECRET?.trim();
 	if (!secret) {
 		throw new Error("Runtime auth is not configured");
 	}
@@ -48,7 +48,7 @@ export async function createRuntimeAuthSession(
 		},
 		secret
 	);
-	const canonicalServerUrl = env.CORPORATION_SERVER_URL?.trim();
+	const canonicalServerUrl = env.SERVER_URL?.trim();
 	const runtimeSocketBaseUrl = canonicalServerUrl || requestUrl;
 
 	return runtimeAuthSessionResponseSchema.parse({
@@ -60,13 +60,13 @@ export async function createRuntimeAuthSession(
 
 export async function createRuntimeRefreshToken(
 	env: {
-		CORPORATION_RUNTIME_AUTH_SECRET?: string;
+		RUNTIME_AUTH_SECRET?: string;
 	},
 	input: RuntimeRefreshTokenRequest & {
 		userId: string;
 	}
 ) {
-	const secret = env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+	const secret = env.RUNTIME_AUTH_SECRET?.trim();
 	if (!secret) {
 		throw new Error("Runtime auth is not configured");
 	}

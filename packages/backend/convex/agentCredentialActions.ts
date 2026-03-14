@@ -8,9 +8,9 @@ import { authComponent } from "./auth";
 import { decrypt, deriveUserKey, encrypt } from "./lib/crypto";
 
 function getMasterKey(): string {
-	const masterKey = process.env.CORPORATION_API_KEY_MASTER_KEY;
+	const masterKey = process.env.API_KEY_MASTER_KEY;
 	if (!masterKey) {
-		throw new Error("Missing CORPORATION_API_KEY_MASTER_KEY env var");
+		throw new Error("Missing API_KEY_MASTER_KEY env var");
 	}
 	return masterKey;
 }

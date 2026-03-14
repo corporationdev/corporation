@@ -8,7 +8,7 @@ import type { SpaceDurableObject } from "./space-do/object";
 
 type TestAppEnv = {
 	Bindings: {
-		CORPORATION_ENABLE_TEST_ROUTES?: string;
+		ENABLE_TEST_ROUTES?: string;
 		ENVIRONMENT_DO: EnvironmentStubBinding;
 		SPACE_DO: DurableObjectNamespace<SpaceDurableObject>;
 	};
@@ -23,7 +23,7 @@ function getSpaceStub(
 
 export const testApp = new Hono<TestAppEnv>()
 	.use("*", async (c, next) => {
-		if (c.env.CORPORATION_ENABLE_TEST_ROUTES !== "1") {
+		if (c.env.ENABLE_TEST_ROUTES !== "1") {
 			return c.notFound();
 		}
 		return await next();

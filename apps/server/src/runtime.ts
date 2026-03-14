@@ -17,10 +17,10 @@ import {
 
 type RuntimeAppEnv = {
 	Bindings: {
-		CORPORATION_CONVEX_SITE_URL: string;
-		CORPORATION_RUNTIME_AUTH_SECRET?: string;
-		CORPORATION_SERVER_URL?: string;
-		CORPORATION_WEB_URL?: string;
+		CONVEX_SITE_URL: string;
+		RUNTIME_AUTH_SECRET?: string;
+		SERVER_URL?: string;
+		WEB_URL?: string;
 		ENVIRONMENT_DO: EnvironmentStubBinding;
 	};
 };
@@ -54,7 +54,7 @@ export const runtimeApp = new Hono<RuntimeAppEnv>()
 			return c.text("Invalid callback URL", 400);
 		}
 
-		const webUrl = c.env.CORPORATION_WEB_URL?.trim();
+		const webUrl = c.env.WEB_URL?.trim();
 		if (!webUrl) {
 			return c.text("Runtime login is not configured", 500);
 		}
@@ -73,10 +73,7 @@ export const runtimeApp = new Hono<RuntimeAppEnv>()
 			return c.json({ error: "Unauthorized" }, 401);
 		}
 		const token = authHeader.slice("Bearer ".length).trim();
-		const jwtPayload = await verifyAuthToken(
-			token,
-			c.env.CORPORATION_CONVEX_SITE_URL
-		);
+		const jwtPayload = await verifyAuthToken(token, c.env.CONVEX_SITE_URL);
 		if (!jwtPayload) {
 			return c.json({ error: "Unauthorized" }, 401);
 		}
@@ -124,7 +121,7 @@ export const runtimeApp = new Hono<RuntimeAppEnv>()
 	})
 	.get("/socket", async (c) => {
 		const token = c.req.query("token")?.trim();
-		const secret = c.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+		const secret = c.env.RUNTIME_AUTH_SECRET?.trim();
 		if (!(token && secret)) {
 			return c.text("Unauthorized", 401);
 		}

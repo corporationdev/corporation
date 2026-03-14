@@ -50,11 +50,9 @@ async function createDevRefreshToken(params: {
 	spaceSlug: string;
 	sandboxId: string;
 }) {
-	const secret = process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+	const secret = process.env.RUNTIME_AUTH_SECRET?.trim();
 	if (!secret) {
-		throw new Error(
-			"Missing CORPORATION_RUNTIME_AUTH_SECRET. Set it in apps/server/.env."
-		);
+		throw new Error("Missing RUNTIME_AUTH_SECRET. Set it in apps/server/.env.");
 	}
 
 	const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -352,9 +350,9 @@ async function ensureRuntimeDependenciesInstalled(packageJsonHash: string) {
 
 async function installAndRestartRuntime() {
 	const startedAt = Date.now();
-	const serverUrl = await getSandboxEnv("CORPORATION_SERVER_URL");
-	const convexSiteUrl = await getSandboxEnv("CORPORATION_CONVEX_SITE_URL");
-	const spaceSlug = await getSandboxEnv("CORPORATION_SPACE_SLUG");
+	const serverUrl = await getSandboxEnv("SERVER_URL");
+	const convexSiteUrl = await getSandboxEnv("CONVEX_SITE_URL");
+	const spaceSlug = await getSandboxEnv("SPACE_SLUG");
 	const refreshToken = await createDevRefreshToken({
 		spaceSlug,
 		sandboxId,
@@ -397,7 +395,7 @@ async function installAndRestartRuntime() {
 		user: sandboxUser,
 	});
 
-	const runtimeCommand = `CORPORATION_SERVER_URL=${shellEscape(serverUrl)} CORPORATION_CONVEX_SITE_URL=${shellEscape(convexSiteUrl)} CORPORATION_SPACE_SLUG=${shellEscape(spaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${shellEscape(refreshToken)} CORPORATION_SANDBOX_ID=${shellEscape(sandboxId)} ${activeRuntimeBin} --host 0.0.0.0 --port ${runtimePort} >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}`;
+	const runtimeCommand = `SERVER_URL=${shellEscape(serverUrl)} CONVEX_SITE_URL=${shellEscape(convexSiteUrl)} SPACE_SLUG=${shellEscape(spaceSlug)} RUNTIME_REFRESH_TOKEN=${shellEscape(refreshToken)} SANDBOX_ID=${shellEscape(sandboxId)} ${activeRuntimeBin} --host 0.0.0.0 --port ${runtimePort} >> ${shellEscape(runtimeLogPath)} 2>> ${shellEscape(runtimeStderrPath)}`;
 	await runSandboxCommand(
 		`tmux new-session -d -s ${shellEscape(runtimeSessionName)} -c ${shellEscape(sandboxWorkdir)} ${shellEscape(runtimeCommand)}`,
 		{

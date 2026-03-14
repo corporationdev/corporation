@@ -37,11 +37,11 @@ const DEFAULT_DEV_SERVER_URL = "http://localhost:3000";
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 export function getDefaultServerUrl(): string {
-	return process.env.CORPORATION_SERVER_URL?.trim() || DEFAULT_DEV_SERVER_URL;
+	return process.env.SERVER_URL?.trim() || DEFAULT_DEV_SERVER_URL;
 }
 
 export function getDefaultRefreshToken(): string | undefined {
-	const value = process.env.CORPORATION_RUNTIME_REFRESH_TOKEN?.trim();
+	const value = process.env.RUNTIME_REFRESH_TOKEN?.trim();
 	return value || undefined;
 }
 
