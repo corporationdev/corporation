@@ -6,7 +6,6 @@ import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
 import { requireProjectInActiveOrg } from "./lib/projectAccess";
@@ -53,14 +52,12 @@ export const list = authedQuery({
 			return [];
 		}
 
-		return (
-			await ctx.db
-				.query("projects")
-				.withIndex("by_organization", (q) =>
-					q.eq("organizationId", organizationId)
-				)
-				.collect()
-		);
+		return await ctx.db
+			.query("projects")
+			.withIndex("by_organization", (q) =>
+				q.eq("organizationId", organizationId)
+			)
+			.collect();
 	},
 });
 

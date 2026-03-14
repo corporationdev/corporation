@@ -5,7 +5,7 @@ import { authedQuery } from "./functions";
 
 export const verifyInternalApiKey = internalAction({
 	args: { apiKey: v.string() },
-	handler: async (_ctx, args) => {
+	handler: (_ctx, args) => {
 		const expected = process.env.CORPORATION_INTERNAL_API_KEY?.trim();
 		if (!expected) {
 			throw new Error("CORPORATION_INTERNAL_API_KEY is not configured");

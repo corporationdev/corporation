@@ -26,14 +26,13 @@ export type WebSocketLike = {
 	readyState: number;
 	send(data: string): void;
 	close(code?: number, reason?: string): void;
-	addEventListener(type: "open", listener: (event: Event) => void): void;
+	addEventListener(
+		type: "open" | "close" | "error",
+		listener: (event: Event) => void
+	): void;
 	addEventListener(
 		type: "message",
 		listener: (event: SocketMessageEvent) => void
-	): void;
-	addEventListener(
-		type: "close" | "error",
-		listener: (event: Event) => void
 	): void;
 };
 
@@ -277,7 +276,7 @@ export function createWebSocketRuntimeTransport(options: {
 		}
 		reconnectTimer = setTimeout(() => {
 			reconnectTimer = null;
-			void connectSocket();
+			connectSocket().catch(() => undefined);
 		}, reconnectDelayMs);
 	};
 

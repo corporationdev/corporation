@@ -31,14 +31,13 @@ export function useAgentProbeState({
 	const [checkingById, setCheckingById] = useState<Record<string, boolean>>({});
 	const [lastProbedAt, setLastProbedAt] = useState<number | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const resetScope = spaceSlug;
 
 	useEffect(() => {
 		setProbeById({});
 		setCheckingById({});
 		setLastProbedAt(null);
 		setError(null);
-	}, [resetScope]);
+	}, [spaceSlug]);
 
 	const refresh = useCallback(
 		async (ids: string[]) => {

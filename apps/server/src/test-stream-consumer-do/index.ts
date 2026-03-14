@@ -6,6 +6,8 @@ import type {
 	EnvironmentStreamDeliveryAck,
 } from "@corporation/contracts/environment-do";
 
+type EmptyResult = Record<PropertyKey, never>;
+
 function okResult<T>(value: T): EnvironmentRpcResult<T> {
 	return {
 		ok: true,
@@ -46,7 +48,9 @@ export class TestStreamConsumerDurableObject
 		});
 	}
 
-	setAckEnabled(input: { enabled: boolean }): EnvironmentRpcResult<{}> {
+	setAckEnabled(input: {
+		enabled: boolean;
+	}): EnvironmentRpcResult<EmptyResult> {
 		this.ackEnabled = input.enabled;
 		return okResult({});
 	}

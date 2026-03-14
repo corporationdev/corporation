@@ -1,7 +1,7 @@
 "use node";
 
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import type { GenericActionCtx } from "convex/server";
 import { v } from "convex/values";
 import { z } from "zod";
@@ -32,16 +32,20 @@ async function generateSpaceName(firstMessage: string): Promise<string> {
 		`User request: ${firstMessage}`,
 	].join("\n");
 
-	const { object } = await generateObject({
+	const { output } = await generateText({
 		model: anthropic("claude-haiku-4-5"),
-		schema: z.object({
-			name: z.string(),
+		output: Output.object({
+			schema: z.object({
+				name: z.string(),
+			}),
 		}),
 		temperature: 0,
 		prompt,
 	});
 
-	return normalizeSpaceName(object.name) || normalizeSpaceName(firstMessage);
+	return (
+		normalizeSpaceName(output?.name ?? "") || normalizeSpaceName(firstMessage)
+	);
 }
 
 export const generateAndApplyName = internalAction({

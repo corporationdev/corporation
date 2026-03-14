@@ -7,6 +7,7 @@ import {
 export const TEST_RUNTIME_AUTH_SECRET = "test-secret";
 const DEFAULT_TOKEN_TTL_SECONDS = 5 * 60;
 const DEFAULT_REFRESH_TTL_SECONDS = 24 * 60 * 60;
+const DOT_ENV_LINE_PATTERN = /\r?\n/u;
 let cachedRuntimeAuthSecret: string | undefined;
 
 function getServerDotEnvPath(): string {
@@ -20,7 +21,7 @@ function readRuntimeAuthSecretFromDotEnv(): string | undefined {
 
 	try {
 		const contents = readFileSync(getServerDotEnvPath(), "utf8");
-		for (const line of contents.split(/\r?\n/u)) {
+		for (const line of contents.split(DOT_ENV_LINE_PATTERN)) {
 			const trimmed = line.trim();
 			if (
 				trimmed.startsWith("CORPORATION_RUNTIME_AUTH_SECRET=") &&

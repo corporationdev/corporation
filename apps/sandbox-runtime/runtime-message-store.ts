@@ -86,7 +86,11 @@ function formatStoredOffset(sequence: number): RuntimeStreamOffset {
 }
 
 export class RuntimeMessageStore {
-	constructor(private readonly db: RuntimeDatabase) {}
+	private readonly db: RuntimeDatabase;
+
+	constructor(db: RuntimeDatabase) {
+		this.db = db;
+	}
 
 	beginCommand(command: RuntimeWebSocketCommand): RuntimeCommandDuplicateState {
 		const now = Date.now();

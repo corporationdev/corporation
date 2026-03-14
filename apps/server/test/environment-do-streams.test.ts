@@ -35,14 +35,18 @@ async function connectRuntimeSocket(
 		},
 	});
 
-	expect(response.status).toBe(101);
+	if (response.status !== 101) {
+		throw new Error(`Expected websocket upgrade, received ${response.status}`);
+	}
 	const runtimeSocket = response.webSocket;
-	expect(runtimeSocket).toBeTruthy();
-	runtimeSocket?.accept();
+	if (!runtimeSocket) {
+		throw new Error("Expected runtime websocket");
+	}
+	runtimeSocket.accept();
 	const queue: Record<string, unknown>[] = [];
 	const waiters: Array<(message: Record<string, unknown>) => void> = [];
 
-	runtimeSocket!.addEventListener("message", (event) => {
+	runtimeSocket.addEventListener("message", (event) => {
 		const message = JSON.parse(String(event.data)) as Record<string, unknown>;
 		const waiter = waiters.shift();
 		if (waiter) {
@@ -53,9 +57,9 @@ async function connectRuntimeSocket(
 	});
 
 	return {
-		socket: runtimeSocket!,
+		socket: runtimeSocket,
 		send(payload) {
-			runtimeSocket!.send(JSON.stringify(payload));
+			runtimeSocket.send(JSON.stringify(payload));
 		},
 		waitForMessage() {
 			const message = queue.shift();
@@ -73,7 +77,6 @@ async function getReceivedStreamItems(
 	stub: DurableObjectStub<TestStreamConsumerDurableObject>
 ) {
 	const result = await stub.getReceivedStreamItems();
-	expect(result.ok).toBe(true);
 	if (!result.ok) {
 		throw new Error("Expected received stream items snapshot");
 	}
@@ -85,10 +88,9 @@ async function setConsumerAckEnabled(input: {
 	enabled: boolean;
 }) {
 	const result = await input.stub.setAckEnabled({ enabled: input.enabled });
-	expect(result).toEqual({
-		ok: true,
-		value: {},
-	});
+	if (!result.ok) {
+		throw new Error("Expected ack toggle to succeed");
+	}
 }
 
 async function waitForReceivedStreamItems(input: {

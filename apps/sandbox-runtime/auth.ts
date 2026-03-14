@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import {
+	createServer,
+	type IncomingMessage,
+	type ServerResponse,
+} from "node:http";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -108,18 +112,99 @@ async function loadRuntimeCredentials(input: {
 }
 
 function openBrowser(url: string): void {
+	const spawnDetached = (command: string, args: string[]): void => {
+		spawn(command, args, { stdio: "ignore", detached: true }).unref();
+	};
+
 	if (process.platform === "darwin") {
-		void spawn("open", [url], { stdio: "ignore", detached: true }).unref();
+		spawnDetached("open", [url]);
 		return;
 	}
 	if (process.platform === "win32") {
-		void spawn("cmd", ["/c", "start", "", url], {
-			stdio: "ignore",
-			detached: true,
-		}).unref();
+		spawnDetached("cmd", ["/c", "start", "", url]);
 		return;
 	}
-	void spawn("xdg-open", [url], { stdio: "ignore", detached: true }).unref();
+	spawnDetached("xdg-open", [url]);
+}
+
+function isLoginCallbackRequest(url: URL, method: string | undefined): boolean {
+	return (
+		url.pathname === "/callback" && (method === "GET" || method === "POST")
+	);
+}
+
+async function readPostSearchParams(
+	request: IncomingMessage
+): Promise<URLSearchParams> {
+	const chunks: Uint8Array[] = [];
+	for await (const chunk of request) {
+		chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+	}
+	return new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function resolveCallbackParams(input: {
+	request: IncomingMessage;
+	requestUrl: URL;
+}): Promise<URLSearchParams> {
+	if (input.request.method !== "POST") {
+		return input.requestUrl.searchParams;
+	}
+
+	return await readPostSearchParams(input.request);
+}
+
+function respondWithError(
+	response: ServerResponse<IncomingMessage>,
+	statusCode: number,
+	message: string
+): void {
+	response.statusCode = statusCode;
+	response.end(message);
+}
+
+async function handleLoginCallbackRequest(input: {
+	expectedState: string;
+	request: IncomingMessage;
+	response: ServerResponse<IncomingMessage>;
+	resolveToken: (value: RuntimeRefreshTokenResponse) => void;
+	rejectToken: (reason?: unknown) => void;
+	closeServer: () => void;
+}): Promise<void> {
+	const requestUrl = new URL(input.request.url ?? "/", "http://127.0.0.1");
+	if (!isLoginCallbackRequest(requestUrl, input.request.method)) {
+		respondWithError(input.response, 404, "Not found");
+		return;
+	}
+
+	try {
+		const params = await resolveCallbackParams({
+			request: input.request,
+			requestUrl,
+		});
+		const refreshToken = params.get("refreshToken")?.trim();
+		const state = params.get("state")?.trim();
+
+		if (!(refreshToken && state)) {
+			respondWithError(input.response, 400, "Missing login payload");
+			return;
+		}
+		if (state !== input.expectedState) {
+			respondWithError(input.response, 400, "Invalid login state");
+			return;
+		}
+
+		input.response.setHeader("Content-Type", "text/html; charset=utf-8");
+		input.response.end(
+			"<!doctype html><title>Runtime login complete</title><body><p>Runtime login complete. You can close this window.</p></body>"
+		);
+		input.resolveToken({ refreshToken });
+		input.closeServer();
+	} catch (error) {
+		input.rejectToken(error);
+		respondWithError(input.response, 500, "Runtime login failed");
+		input.closeServer();
+	}
 }
 
 async function startLoginCallbackServer(expectedState: string): Promise<{
@@ -137,52 +222,16 @@ async function startLoginCallbackServer(expectedState: string): Promise<{
 
 	const server = createServer(async (request, response) => {
 		response.setHeader("Cache-Control", "no-store");
-
-		const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-		if (
-			requestUrl.pathname !== "/callback" ||
-			(request.method !== "GET" && request.method !== "POST")
-		) {
-			response.statusCode = 404;
-			response.end("Not found");
-			return;
-		}
-
-		try {
-			let params = requestUrl.searchParams;
-			if (request.method === "POST") {
-				const chunks: Uint8Array[] = [];
-				for await (const chunk of request) {
-					chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-				}
-				params = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
-			}
-			const refreshToken = params.get("refreshToken")?.trim();
-			const state = params.get("state")?.trim();
-
-			if (!(refreshToken && state)) {
-				response.statusCode = 400;
-				response.end("Missing login payload");
-				return;
-			}
-			if (state !== expectedState) {
-				response.statusCode = 400;
-				response.end("Invalid login state");
-				return;
-			}
-
-			response.setHeader("Content-Type", "text/html; charset=utf-8");
-			response.end(
-				"<!doctype html><title>Runtime login complete</title><body><p>Runtime login complete. You can close this window.</p></body>"
-			);
-			resolveToken({ refreshToken });
-			server.close();
-		} catch (error) {
-			rejectToken(error);
-			response.statusCode = 500;
-			response.end("Runtime login failed");
-			server.close();
-		}
+		await handleLoginCallbackRequest({
+			expectedState,
+			request,
+			response,
+			resolveToken,
+			rejectToken,
+			closeServer: () => {
+				server.close();
+			},
+		});
 	});
 
 	server.on("error", (error) => {

@@ -43,7 +43,7 @@ function isLoopbackCallbackUrl(value: string): boolean {
 }
 
 export const runtimeApp = new Hono<RuntimeAppEnv>()
-	.get("/login", async (c) => {
+	.get("/login", (c) => {
 		const callbackUrl = c.req.query("callbackUrl")?.trim();
 		const clientId = c.req.query("clientId")?.trim();
 		const state = c.req.query("state")?.trim();

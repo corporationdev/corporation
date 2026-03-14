@@ -61,6 +61,8 @@ export type EnvironmentPersistedStreamSubscription = Readonly<{
 	subscriber: EnvironmentStreamSubscriber;
 }>;
 
+export type EmptyResult = Record<PropertyKey, never>;
+
 export type EnvironmentDoCallbackBindings = {
 	SPACE_DO?: {
 		getByName(name: string): EnvironmentStreamConsumer;

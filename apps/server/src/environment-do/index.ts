@@ -24,6 +24,7 @@ import { forwardStreamItemsToSubscriber } from "./stream-delivery";
 import { StreamSubscriptions } from "./stream-subscriptions";
 import { EnvironmentSubscriptionStore } from "./subscription-store";
 import type {
+	EmptyResult,
 	EnvironmentDoCallbackBindings,
 	EnvironmentDoRuntimeConnectionsSnapshot,
 	EnvironmentStreamSubscriptionSnapshot,
@@ -260,7 +261,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			message,
 			subscription: this.streamSubscriptions.get(message.stream),
 		});
-		if (!(result && result.ok)) {
+		if (!result?.ok) {
 			return;
 		}
 
@@ -353,6 +354,39 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
+	private logAsyncError(message: string, error: unknown): void {
+		log.warn(
+			{ error: error instanceof Error ? error.message : String(error) },
+			message
+		);
+	}
+
+	private notifyConnectedInBackground(claims: {
+		sub: string;
+		clientId: string;
+	}): void {
+		this.notifyConvexEnvironmentConnected(claims).catch((error: unknown) => {
+			this.logAsyncError("environment connect notification failed", error);
+		});
+	}
+
+	private notifyDisconnectedInBackground(claims: {
+		sub: string;
+		clientId: string;
+	}): void {
+		this.notifyConvexEnvironmentDisconnected(claims).catch((error: unknown) => {
+			this.logAsyncError("environment disconnect notification failed", error);
+		});
+	}
+
+	private forwardRuntimeStreamItemsInBackground(
+		message: EnvironmentRuntimeStreamItemsMessage
+	): void {
+		this.handleRuntimeStreamItems(message).catch((error: unknown) => {
+			this.logAsyncError("runtime stream forwarding failed", error);
+		});
+	}
+
 	private async handleRuntimeSocketUpgrade(
 		request: Request
 	): Promise<Response> {
@@ -395,7 +429,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			"accepted runtime websocket"
 		);
 
-		void this.notifyConvexEnvironmentConnected(runtimeAuth.claims);
+		this.notifyConnectedInBackground(runtimeAuth.claims);
 
 		return new Response(null, {
 			status: 101,
@@ -452,7 +486,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			return;
 		}
 
-		void this.handleRuntimeStreamItems(streamItems);
+		this.forwardRuntimeStreamItemsInBackground(streamItems);
 	}
 
 	webSocketClose(
@@ -489,7 +523,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		);
 
 		if (this.runtimeConnections.size === 0) {
-			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+			this.notifyDisconnectedInBackground(attachment.auth.claims);
 		}
 	}
 
@@ -519,7 +553,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		);
 
 		if (attachment && this.runtimeConnections.size === 0) {
-			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+			this.notifyDisconnectedInBackground(attachment.auth.claims);
 		}
 	}
 
@@ -580,7 +614,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 	async subscribeStream(
 		input: EnvironmentSubscribeStreamInput
-	): Promise<EnvironmentRpcResult<{}>> {
+	): Promise<EnvironmentRpcResult<EmptyResult>> {
 		await this.ready;
 		const result = this.streamSubscriptions.subscribe({
 			activeRuntimeConnected: this.activeRuntimeConnectionId !== null,
@@ -600,7 +634,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 	async unsubscribeStream(
 		input: EnvironmentUnsubscribeStreamInput
-	): Promise<EnvironmentRpcResult<{}>> {
+	): Promise<EnvironmentRpcResult<EmptyResult>> {
 		await this.ready;
 		const result = this.streamSubscriptions.unsubscribe(input);
 		if (result.ok) {

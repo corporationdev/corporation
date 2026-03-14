@@ -42,11 +42,15 @@ async function connectRuntimeSocket(
 		},
 	});
 
-	expect(response.status).toBe(101);
+	if (response.status !== 101) {
+		throw new Error(`Expected websocket upgrade, received ${response.status}`);
+	}
 	const runtimeSocket = response.webSocket;
-	expect(runtimeSocket).toBeTruthy();
-	runtimeSocket?.accept();
-	return runtimeSocket!;
+	if (!runtimeSocket) {
+		throw new Error("Expected runtime websocket");
+	}
+	runtimeSocket.accept();
+	return runtimeSocket;
 }
 
 describe("EnvironmentDurableObject", () => {
@@ -145,7 +149,7 @@ describe("EnvironmentDurableObject", () => {
 			},
 		});
 
-		const outboundMessage = await waitForSocketMessage(runtimeSocket!);
+		const outboundMessage = await waitForSocketMessage(runtimeSocket);
 		expect(outboundMessage).toEqual({
 			type: "abort",
 			requestId: "req-1",

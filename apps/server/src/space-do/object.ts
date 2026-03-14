@@ -35,6 +35,8 @@ export type {
 	SpaceSessionRow as SessionRow,
 } from "./db/schema";
 
+const NUMERIC_OFFSET_PATTERN = /^\d+$/;
+
 function okResult<T>(value: T): EnvironmentRpcResult<T> {
 	return {
 		ok: true,
@@ -78,7 +80,7 @@ function parseOffsetSequence(offset: string): number | null {
 		return null;
 	}
 
-	if (!/^\d+$/.test(offset)) {
+	if (!NUMERIC_OFFSET_PATTERN.test(offset)) {
 		return null;
 	}
 

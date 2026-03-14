@@ -194,12 +194,14 @@ export const ConnectedSessionView: FC<{
 	const isRunning = sessionState.status === "running" && !pendingSend;
 	const hasError = sessionState.status === "error" && !!sessionState.error;
 	const hasConsumedStoredMessageRef = useRef(false);
+	const spaceId = space?._id;
 	const canFlushPendingSend =
 		!!pendingSend &&
 		actor.connStatus === "connected" &&
 		!!actor.connection &&
 		isRuntimeReady(space) &&
 		isBindingSynced;
+	const runtimeReady = isRuntimeReady(space);
 
 	// Consume pending message from store on mount
 	useEffect(() => {
@@ -227,8 +229,8 @@ export const ConnectedSessionView: FC<{
 		}
 
 		setPendingSend(null);
-		if (space?._id) {
-			touchSpace({ id: space._id }).catch(() => undefined);
+		if (spaceId) {
+			touchSpace({ id: spaceId }).catch(() => undefined);
 		}
 		const connection = actor.connection;
 		if (!connection) {
@@ -248,7 +250,7 @@ export const ConnectedSessionView: FC<{
 		pendingSend,
 		sessionState.clearOptimisticMessages,
 		sessionId,
-		space?._id,
+		spaceId,
 		touchSpace,
 		actor.connection,
 	]);
@@ -267,19 +269,19 @@ export const ConnectedSessionView: FC<{
 			if (
 				actor.connStatus === "connected" &&
 				actor.connection &&
-				isRuntimeReady(space) &&
+				runtimeReady &&
 				isBindingSynced
 			) {
 				await actor.connection.sendMessage(sessionId, text, agent, modelId);
-				if (space?._id) {
-					touchSpace({ id: space._id }).catch(() => undefined);
+				if (spaceId) {
+					touchSpace({ id: spaceId }).catch(() => undefined);
 				}
 				return;
 			}
 
 			setPendingSend(nextPending);
 
-			if (!(space?._id && space.activeBacking)) {
+			if (!(spaceId && space.activeBacking)) {
 				throw new Error("Space does not have an active backing");
 			}
 
@@ -293,7 +295,7 @@ export const ConnectedSessionView: FC<{
 				sandboxStatus !== "creating" &&
 				sandboxStatus !== "running"
 			) {
-				await ensureSandbox({ id: space._id });
+				await ensureSandbox({ id: spaceId });
 			}
 		} catch (error) {
 			console.error("Failed to send message", { error, sessionId });
@@ -308,13 +310,13 @@ export const ConnectedSessionView: FC<{
 		actor.connection,
 		ensureSandbox,
 		isBindingSynced,
+		runtimeReady,
 		sessionId,
 		agent,
 		modelId,
+		spaceId,
 		space?.activeBacking,
 		space?.sandbox?.status,
-		space?.activeEnvironment?.status,
-		space?._id,
 		touchSpace,
 		sessionState.addOptimisticMessage,
 		sessionState.clearOptimisticMessages,

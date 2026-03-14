@@ -246,6 +246,8 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 							)
 						);
 						return;
+					default:
+						return;
 				}
 			});
 

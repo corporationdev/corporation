@@ -2,7 +2,7 @@
 
 const PORT = Number(process.env.PORT) || 8787;
 
-const server = Bun.serve({
+const _server = Bun.serve({
 	port: PORT,
 	fetch(req, server) {
 		if (server.upgrade(req)) {

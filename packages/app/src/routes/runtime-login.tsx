@@ -89,7 +89,7 @@ function RuntimeLoginPage() {
 		hasStartedRef.current = true;
 		let cancelled = false;
 
-		void (async () => {
+		const run = async () => {
 			try {
 				const refreshToken = await requestRuntimeRefreshToken(search.clientId);
 				if (cancelled) {
@@ -107,7 +107,9 @@ function RuntimeLoginPage() {
 						: "Failed to create runtime credentials"
 				);
 			}
-		})();
+		};
+
+		run().catch(() => undefined);
 
 		return () => {
 			cancelled = true;

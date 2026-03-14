@@ -313,14 +313,12 @@ export const listByProject = authedQuery({
 			return [];
 		}
 
-		const projects = (
-			await ctx.db
-				.query("projects")
-				.withIndex("by_organization", (q) =>
-					q.eq("organizationId", activeOrganizationId)
-				)
-				.collect()
-		);
+		const projects = await ctx.db
+			.query("projects")
+			.withIndex("by_organization", (q) =>
+				q.eq("organizationId", activeOrganizationId)
+			)
+			.collect();
 
 		const spacesByProject = new Map<Id<"projects">, Doc<"spaces">[]>();
 		const projectSpaces = await asyncMap(projects, async (project) => ({
@@ -572,7 +570,7 @@ export const requestAutoRename = internalMutation({
 
 		await ctx.scheduler.runAfter(
 			0,
-			internal.spaceBranchActions.generateAndApplyName,
+			internal.spaceActions.generateAndApplyName,
 			{
 				spaceId: args.spaceId,
 				oldName: space.name,
