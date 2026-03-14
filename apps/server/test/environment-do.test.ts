@@ -1,6 +1,6 @@
-import type { EnvironmentDurableObject } from "../src/environment-do";
 import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import type { EnvironmentDurableObject } from "../src/environment-do";
 
 const RUNTIME_AUTH_HEADER = "x-space-runtime-auth";
 
@@ -32,7 +32,9 @@ async function waitForSocketMessage(
 	});
 }
 
-async function connectRuntimeSocket(stub: DurableObjectStub<EnvironmentDurableObject>) {
+async function connectRuntimeSocket(
+	stub: DurableObjectStub<EnvironmentDurableObject>
+) {
 	const response = await stub.fetch("http://fake/runtime/socket", {
 		headers: {
 			Upgrade: "websocket",

@@ -1,7 +1,7 @@
 import type {
 	EnvironmentRpcResult,
-	EnvironmentStreamDeliveryAck,
 	EnvironmentStreamConsumer,
+	EnvironmentStreamDeliveryAck,
 } from "@corporation/contracts/environment-do";
 import type { EnvironmentRuntimeStreamItemsMessage as RuntimeStreamItemsMessage } from "@corporation/contracts/environment-runtime";
 import type {

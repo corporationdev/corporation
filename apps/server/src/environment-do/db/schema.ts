@@ -1,9 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import {
-	integer,
-	sqliteTable,
-	text,
-} from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const environmentStreamSubscriptions = sqliteTable(
 	"environment_stream_subscriptions",

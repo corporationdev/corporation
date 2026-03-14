@@ -1,7 +1,7 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { SpaceDurableObject } from "../src/space-do/object";
 import { sessions } from "../src/space-do/db/schema";
+import type { SpaceDurableObject } from "../src/space-do/object";
 
 async function seedSession(input: {
 	spaceName: string;

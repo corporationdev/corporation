@@ -80,7 +80,9 @@ export class StreamSubscriptions {
 		return okResult({});
 	}
 
-	unsubscribe(input: EnvironmentUnsubscribeStreamInput): EnvironmentRpcResult<{}> {
+	unsubscribe(
+		input: EnvironmentUnsubscribeStreamInput
+	): EnvironmentRpcResult<{}> {
 		this.subscriptions.delete(input.stream);
 		return okResult({});
 	}

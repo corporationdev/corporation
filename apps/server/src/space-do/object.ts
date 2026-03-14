@@ -1,20 +1,20 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
+	AbortSessionInput,
+	CreateSessionInput,
+	CreateSessionResult,
+	GetSessionInput,
+	PromptSessionInput,
+	RespondToPermissionInput,
+	SpaceSessionRow,
+} from "@corporation/contracts/browser-space";
+import type {
 	EnvironmentRpcErrorCode,
 	EnvironmentRpcResult,
 	EnvironmentStreamDelivery,
 	EnvironmentStreamDeliveryAck,
 } from "@corporation/contracts/environment-do";
 import type { EnvironmentRuntimeCommandResponse } from "@corporation/contracts/environment-runtime";
-import type {
-	CreateSessionInput,
-	CreateSessionResult,
-	GetSessionInput,
-	PromptSessionInput,
-	AbortSessionInput,
-	RespondToPermissionInput,
-	SpaceSessionRow,
-} from "@corporation/contracts/browser-space";
 import { eq } from "drizzle-orm";
 import {
 	type DrizzleSqliteDODatabase,
@@ -24,8 +24,8 @@ import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { getEnvironmentStub } from "../environment-do/stub";
 import bundledMigrations from "./db/migrations";
 import {
-	runtimeEvents,
 	type RuntimeEventRow,
+	runtimeEvents,
 	schema,
 	sessions,
 } from "./db/schema";
@@ -160,7 +160,10 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			ReturnType<typeof getEnvironmentStub>["sendRuntimeCommand"]
 		>[0]
 	): Promise<EnvironmentRuntimeCommandResponse> {
-		const environment = getEnvironmentStub(this.env.ENVIRONMENT_DO, environmentId);
+		const environment = getEnvironmentStub(
+			this.env.ENVIRONMENT_DO,
+			environmentId
+		);
 		const commandResult = await environment.sendRuntimeCommand(command);
 		if (!commandResult.ok) {
 			throw new Error(commandResult.error.message);

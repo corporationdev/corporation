@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage } from "@corporation/contracts/environment-runtime";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage } from "@corporation/contracts/environment-runtime";
 import { openRuntimeDatabase } from "../db";
 import { noopDriver, RuntimeEngine } from "../index";
 import { RuntimeMessageStore } from "../runtime-message-store";

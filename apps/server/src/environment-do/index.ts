@@ -20,8 +20,8 @@ import {
 	parseRuntimeStreamItemsMessage,
 } from "./protocol";
 import { RuntimeCommandRouter } from "./runtime-command-router";
-import { StreamSubscriptions } from "./stream-subscriptions";
 import { forwardStreamItemsToSubscriber } from "./stream-delivery";
+import { StreamSubscriptions } from "./stream-subscriptions";
 import { EnvironmentSubscriptionStore } from "./subscription-store";
 import type {
 	EnvironmentDoCallbackBindings,
@@ -54,11 +54,11 @@ function parseRuntimeAuthHeader(
 
 export type {
 	EnvironmentDoRuntimeConnectionsSnapshot,
+	EnvironmentStreamSubscriber,
+	EnvironmentStreamSubscriptionSnapshot,
 	EnvironmentSubscribeStreamInput,
 	RuntimeConnectionSnapshot,
-	EnvironmentStreamSubscriptionSnapshot,
 } from "./types";
-export type { EnvironmentStreamSubscriber } from "./types";
 
 export class EnvironmentDurableObject extends DurableObject<Env> {
 	private activeRuntimeConnectionId: string | null = null;
@@ -221,12 +221,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		}
 	}
 
-	private getActiveRuntimeSocket():
-		| {
-				socket: WebSocket;
-				attachment: RuntimeSocketAttachment;
-		  }
-		| null {
+	private getActiveRuntimeSocket(): {
+		socket: WebSocket;
+		attachment: RuntimeSocketAttachment;
+	} | null {
 		const activeConnectionId = this.activeRuntimeConnectionId;
 		if (!activeConnectionId) {
 			return null;
@@ -253,7 +251,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			.map((attachment) => this.toRuntimeConnectionSnapshot(attachment));
 		const activeConnectionAttachment =
 			(this.activeRuntimeConnectionId
-				? this.runtimeConnections.get(this.activeRuntimeConnectionId) ?? null
+				? (this.runtimeConnections.get(this.activeRuntimeConnectionId) ?? null)
 				: null) ?? null;
 
 		return {
@@ -267,7 +265,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	private async handleRuntimeSocketUpgrade(request: Request): Promise<Response> {
+	private async handleRuntimeSocketUpgrade(
+		request: Request
+	): Promise<Response> {
 		const runtimeAuth = parseRuntimeAuthHeader(
 			request.headers.get(SPACE_RUNTIME_AUTH_HEADER)
 		);
@@ -421,7 +421,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		);
 	}
 
-	async hasConnectedRuntime(): Promise<EnvironmentRpcResult<{ connected: boolean }>> {
+	async hasConnectedRuntime(): Promise<
+		EnvironmentRpcResult<{ connected: boolean }>
+	> {
 		await this.ready;
 		return {
 			ok: true,
@@ -459,9 +461,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		};
 	}
 
-	async sendRuntimeCommand(
-		command: EnvironmentRuntimeCommand
-	): Promise<
+	async sendRuntimeCommand(command: EnvironmentRuntimeCommand): Promise<
 		EnvironmentRpcResult<{
 			response: EnvironmentRuntimeCommandResponse;
 		}>
