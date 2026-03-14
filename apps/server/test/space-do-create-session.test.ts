@@ -138,7 +138,6 @@ describe("SpaceDurableObject createSession seam", () => {
 					cwd: "/workspace",
 					model: "claude-sonnet",
 					mode: "build",
-					syncStatus: "live",
 					lastAppliedOffset: "-1",
 					lastSyncError: null,
 				},
@@ -164,7 +163,6 @@ describe("SpaceDurableObject createSession seam", () => {
 			cwd: "/workspace",
 			model: "claude-sonnet",
 			mode: "build",
-			syncStatus: "live",
 			lastAppliedOffset: "-1",
 			lastSyncError: null,
 		});
@@ -232,7 +230,6 @@ describe("SpaceDurableObject createSession seam", () => {
 			id: sessionId,
 			environmentId,
 			streamKey: `session:${sessionId}`,
-			syncStatus: "error",
 			lastAppliedOffset: "-1",
 			lastSyncError: "create failed",
 		});

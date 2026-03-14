@@ -1,6 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
-	SessionStatus,
 	SessionStreamFrame,
 	SessionStreamState,
 } from "@corporation/contracts/browser-do";
@@ -13,7 +12,6 @@ import type {
 	PromptSessionInput,
 	RespondToPermissionInput,
 	SpaceSessionRow,
-	SpaceSessionSyncStatus,
 } from "@corporation/contracts/browser-space";
 import type {
 	EnvironmentRpcErrorCode,
@@ -47,7 +45,6 @@ const DEFAULT_STREAM_LIMIT = 200;
 const MAX_STREAM_LIMIT = 500;
 const DEFAULT_STREAM_TIMEOUT_MS = 25_000;
 const MAX_STREAM_TIMEOUT_MS = 60_000;
-const STREAM_POLL_INTERVAL_MS = 250;
 
 function okResult<T>(value: T): EnvironmentRpcResult<T> {
 	return {
@@ -154,16 +151,6 @@ function normalizeAfterOffset(afterOffset?: number): number {
 	return Math.max(-1, Math.trunc(afterOffset ?? -1));
 }
 
-function mapSyncStatusToSessionStatus(
-	syncStatus: SpaceSessionSyncStatus,
-	lastSyncError: string | null
-): SessionStatus {
-	if (syncStatus === "error" || lastSyncError) {
-		return "error";
-	}
-	return "idle";
-}
-
 function mapRuntimeEventRowToFrame(
 	row: Pick<RuntimeEventRow, "eventId" | "offsetSeq" | "createdAt" | "payload">
 ): SessionStreamFrame | null {
@@ -185,12 +172,9 @@ function mapRuntimeEventRowToFrame(
 	};
 }
 
-async function sleep(ms: number): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export class SpaceDurableObject extends DurableObject<Env> {
 	private readonly ready: Promise<void>;
+	private readonly sessionStreamWaiters = new Map<string, Set<() => void>>();
 	private db!: DrizzleSqliteDODatabase<typeof schema>;
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -265,7 +249,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 				model: input.model,
 				mode: input.mode,
 				configOptions: input.configOptions ?? null,
-				syncStatus: "pending",
 				lastAppliedOffset: "-1",
 				lastEventAt: null,
 				lastSyncError: null,
@@ -325,7 +308,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			await db
 				.update(sessions)
 				.set({
-					syncStatus: "error",
 					lastSyncError: commandResult.error.message,
 					updatedAt: Date.now(),
 				})
@@ -338,7 +320,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			await db
 				.update(sessions)
 				.set({
-					syncStatus: "error",
 					lastSyncError: commandError,
 					updatedAt: Date.now(),
 				})
@@ -368,7 +349,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			await db
 				.update(sessions)
 				.set({
-					syncStatus: "error",
 					lastSyncError: subscribeResult.error.message,
 					updatedAt: Date.now(),
 				})
@@ -379,7 +359,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		await db
 			.update(sessions)
 			.set({
-				syncStatus: "live",
 				lastSyncError: null,
 				updatedAt: Date.now(),
 			})
@@ -484,8 +463,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		if (!session) {
 			return {
 				sessionId,
-				status: "idle",
-				error: null,
 				agent: null,
 				modelId: null,
 				lastOffset: 0,
@@ -494,11 +471,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 
 		return {
 			sessionId,
-			status: mapSyncStatusToSessionStatus(
-				session.syncStatus,
-				session.lastSyncError ?? null
-			),
-			error: session.lastSyncError ?? null,
 			agent: session.agent,
 			modelId: session.model ?? null,
 			lastOffset: Math.max(0, lastOffset ?? 0),
@@ -542,6 +514,74 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		};
 	}
 
+	private createSessionStreamWaiter(
+		sessionId: string,
+		timeoutMs: number
+	): {
+		cancel: () => void;
+		promise: Promise<void>;
+	} {
+		let settled = false;
+		let resolvePromise!: () => void;
+
+		const promise = new Promise<void>((resolve) => {
+			resolvePromise = resolve;
+		});
+
+		const cleanup = () => {
+			const waiters = this.sessionStreamWaiters.get(sessionId);
+			if (!waiters) {
+				return;
+			}
+			waiters.delete(wake);
+			if (waiters.size === 0) {
+				this.sessionStreamWaiters.delete(sessionId);
+			}
+		};
+
+		const settle = () => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			clearTimeout(timeoutHandle);
+			cleanup();
+			resolvePromise();
+		};
+
+		const wake = () => {
+			settle();
+		};
+
+		const timeoutHandle = setTimeout(() => {
+			settle();
+		}, timeoutMs);
+
+		const waiters = this.sessionStreamWaiters.get(sessionId);
+		if (waiters) {
+			waiters.add(wake);
+		} else {
+			this.sessionStreamWaiters.set(sessionId, new Set([wake]));
+		}
+
+		return {
+			cancel: settle,
+			promise,
+		};
+	}
+
+	private notifySessionStreamWaiters(sessionId: string): void {
+		const waiters = this.sessionStreamWaiters.get(sessionId);
+		if (!waiters) {
+			return;
+		}
+
+		this.sessionStreamWaiters.delete(sessionId);
+		for (const wake of waiters) {
+			wake();
+		}
+	}
+
 	async readSessionStream(
 		sessionId: string,
 		afterOffset?: number,
@@ -581,9 +621,13 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			return result;
 		}
 
-		const deadline = Date.now() + normalizedTimeoutMs;
-		while (Date.now() < deadline) {
-			await sleep(STREAM_POLL_INTERVAL_MS);
+		const waiter = this.createSessionStreamWaiter(
+			sessionId,
+			normalizedTimeoutMs
+		);
+		try {
+			// Re-read after registering the waiter so we do not miss updates that
+			// arrive between the initial empty read and waiter installation.
 			result = await this.readSessionFramesChunk(
 				sessionId,
 				normalizedAfterOffset,
@@ -592,9 +636,16 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			if (result.frames.length > 0) {
 				return result;
 			}
-		}
 
-		return result;
+			await waiter.promise;
+			return await this.readSessionFramesChunk(
+				sessionId,
+				normalizedAfterOffset,
+				normalizedLimit
+			);
+		} finally {
+			waiter.cancel();
+		}
 	}
 
 	receiveEnvironmentStreamItems(
@@ -712,11 +763,14 @@ export class SpaceDurableObject extends DurableObject<Env> {
 					lastAppliedOffset: committedOffset,
 					lastEventAt,
 					lastSyncError: null,
-					syncStatus: "live",
 					updatedAt: Date.now(),
 				})
 				.where(eq(sessions.id, session.id));
 		});
+
+		if (input.items.length > 0 || input.streamClosed) {
+			this.notifySessionStreamWaiters(session.id);
+		}
 
 		return okResult({
 			committedOffset,

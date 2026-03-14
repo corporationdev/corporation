@@ -7,9 +7,6 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const sessionSyncStatusValues = ["pending", "live", "error"] as const;
-export type SessionSyncStatus = (typeof sessionSyncStatusValues)[number];
-
 export const sessions = sqliteTable(
 	"sessions",
 	{
@@ -25,9 +22,6 @@ export const sessions = sqliteTable(
 			string,
 			string
 		> | null>(),
-		syncStatus: text("sync_status", { enum: sessionSyncStatusValues })
-			.notNull()
-			.default("pending"),
 		lastAppliedOffset: text("last_applied_offset").notNull().default("-1"),
 		lastEventAt: integer("last_event_at", { mode: "number" }),
 		lastSyncError: text("last_sync_error"),

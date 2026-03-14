@@ -70,7 +70,6 @@ describe("runtime CLI -> Environment DO -> Space DO e2e", () => {
 						id: sessionId,
 						environmentId: TEST_USER_ID,
 						streamKey: `session:${sessionId}`,
-						syncStatus: "live",
 					},
 				},
 			});
@@ -133,7 +132,6 @@ describe("runtime CLI -> Environment DO -> Space DO e2e", () => {
 			expect(session).toMatchObject({
 				id: sessionId,
 				environmentId: TEST_USER_ID,
-				syncStatus: "live",
 			});
 			expect(session?.lastAppliedOffset).not.toBe("-1");
 			expect(session?.lastEventAt).not.toBeNull();

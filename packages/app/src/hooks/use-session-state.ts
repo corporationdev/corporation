@@ -37,20 +37,18 @@ function readStreamBatch(
 	let error: string | null | undefined;
 
 	for (const frame of batch.items) {
-		if (frame.kind === "event") {
-			if (frame.event.sessionId === sessionId) {
-				events.push({
-					eventId: frame.eventId,
-					createdAt: frame.createdAt,
-					event: frame.event,
-				});
-			}
+		if (frame.event.sessionId !== sessionId) {
 			continue;
 		}
 
-		if (frame.kind === "status_changed") {
-			status = frame.status;
-			error = frame.error;
+		events.push({
+			eventId: frame.eventId,
+			createdAt: frame.createdAt,
+			event: frame.event,
+		});
+		if (frame.event.kind === "status") {
+			status = frame.event.status;
+			error = frame.event.error;
 		}
 	}
 
@@ -145,8 +143,6 @@ export function useSessionState({
 				return;
 			}
 
-			setSessionStatus(state.status);
-			setSessionError(state.error ?? null);
 			setSessionAgent(state.agent);
 			setSessionModelId(state.modelId);
 

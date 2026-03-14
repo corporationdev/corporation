@@ -80,7 +80,6 @@ async function seedSession(input: {
 			model: "claude-sonnet",
 			mode: "build",
 			configOptions: { approval: "never" },
-			syncStatus: "live",
 			lastAppliedOffset: "3",
 			lastEventAt: 123,
 			lastSyncError: null,

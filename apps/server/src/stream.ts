@@ -37,24 +37,46 @@ type StreamReadResult = {
 	streamClosed: boolean;
 };
 
+function buildControlEvent(result: StreamReadResult): string {
+	return JSON.stringify({
+		streamNextOffset: String(result.nextOffset),
+		...(result.streamClosed
+			? { streamClosed: true }
+			: { streamCursor: String(result.nextOffset) }),
+		...(result.upToDate ? { upToDate: true } : {}),
+	});
+}
+
+function buildInitialSSEHeaders(result: StreamReadResult): HeadersInit {
+	return {
+		"Content-Type": "text/event-stream",
+		"Cache-Control": "no-store",
+		"X-Accel-Buffering": "no",
+		"Stream-Next-Offset": String(result.nextOffset),
+		...(result.streamClosed
+			? { "Stream-Closed": "true" }
+			: { "Stream-Cursor": String(result.nextOffset) }),
+		...(result.upToDate ? { "Stream-Up-To-Date": "true" } : {}),
+	};
+}
+
 function createSSEStream(opts: {
 	spaceActor: ReturnType<typeof getSpaceStubWithAuth>;
 	sessionId: string;
-	initialOffset: number;
+	initialResult: StreamReadResult;
 	limit: number | undefined;
 	timeoutMs: number | undefined;
 	signal: AbortSignal;
 }): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
-	let offset = opts.initialOffset;
+	let offset = opts.initialResult.nextOffset;
 
 	const formatSSE = (result: StreamReadResult) => {
-		let out = `event: data\ndata: ${JSON.stringify(result.frames)}\n\n`;
-		out += `event: control\ndata: ${JSON.stringify({
-			streamNextOffset: String(result.nextOffset),
-			upToDate: result.upToDate,
-			streamClosed: result.streamClosed,
-		})}\n\n`;
+		let out = "";
+		if (result.frames.length > 0) {
+			out += `event: data\ndata: ${JSON.stringify(result.frames)}\n\n`;
+		}
+		out += `event: control\ndata: ${buildControlEvent(result)}\n\n`;
 		return out;
 	};
 
@@ -63,16 +85,20 @@ function createSSEStream(opts: {
 			const enqueue = (chunk: string) => {
 				controller.enqueue(encoder.encode(chunk));
 			};
+			let nextResult: StreamReadResult | null = opts.initialResult;
 
 			try {
 				while (!opts.signal.aborted) {
-					const result = await opts.spaceActor.readSessionStream(
-						opts.sessionId,
-						offset,
-						opts.limit,
-						false,
-						opts.timeoutMs
-					);
+					const result =
+						nextResult ??
+						(await opts.spaceActor.readSessionStream(
+							opts.sessionId,
+							offset,
+							opts.limit,
+							false,
+							opts.timeoutMs
+						));
+					nextResult = null;
 
 					enqueue(formatSSE(result));
 					offset = result.nextOffset;
@@ -82,20 +108,13 @@ function createSSEStream(opts: {
 					}
 
 					if (result.upToDate) {
-						const liveResult = await opts.spaceActor.readSessionStream(
+						nextResult = await opts.spaceActor.readSessionStream(
 							opts.sessionId,
 							offset,
 							opts.limit,
 							true,
 							opts.timeoutMs
 						);
-
-						enqueue(formatSSE(liveResult));
-						offset = liveResult.nextOffset;
-
-						if (liveResult.streamClosed) {
-							break;
-						}
 					}
 				}
 			} catch {
@@ -163,22 +182,25 @@ export const streamApp = new Hono<{
 				const state = await spaceActor.getSessionStreamState(sessionId);
 				offset = state.lastOffset;
 			}
+			const initialResult = await spaceActor.readSessionStream(
+				sessionId,
+				offset,
+				limit,
+				false,
+				timeoutMs
+			);
 
 			const stream = createSSEStream({
 				spaceActor,
 				sessionId,
-				initialOffset: offset,
+				initialResult,
 				limit,
 				timeoutMs,
 				signal: c.req.raw.signal,
 			});
 
 			return new Response(stream, {
-				headers: {
-					"Content-Type": "text/event-stream",
-					"Cache-Control": "no-store",
-					"X-Accel-Buffering": "no",
-				},
+				headers: buildInitialSSEHeaders(initialResult),
 			});
 		} catch (error) {
 			console.error("session-stream.read-failed", {

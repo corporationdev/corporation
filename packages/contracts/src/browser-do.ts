@@ -22,45 +22,21 @@ export type SessionStreamEventFrame = z.infer<
 	typeof sessionStreamEventFrameSchema
 >;
 
-export const sessionStreamStatusFrameSchema = z.object({
-	kind: z.literal("status_changed"),
-	offset: z.number().int().gte(0),
-	status: sessionStatusSchema,
-	error: z.string().nullable().optional(),
-	reason: z.string().min(1).optional(),
-});
-export type SessionStreamStatusFrame = z.infer<
-	typeof sessionStreamStatusFrameSchema
->;
-
-export const sessionStreamFrameSchema = z.discriminatedUnion("kind", [
-	sessionStreamEventFrameSchema,
-	sessionStreamStatusFrameSchema,
-]);
+export const sessionStreamFrameSchema = sessionStreamEventFrameSchema;
 export type SessionStreamFrame = z.infer<typeof sessionStreamFrameSchema>;
 
-export const sessionStreamFrameDataSchema = z.discriminatedUnion("kind", [
-	z.object({
-		kind: z.literal("event"),
-		eventId: z.string().min(1),
-		createdAt: z.number(),
-		event: sessionEventSchema,
-	}),
-	z.object({
-		kind: z.literal("status_changed"),
-		status: sessionStatusSchema,
-		error: z.string().nullable().optional(),
-		reason: z.string().min(1).optional(),
-	}),
-]);
+export const sessionStreamFrameDataSchema = z.object({
+	kind: z.literal("event"),
+	eventId: z.string().min(1),
+	createdAt: z.number(),
+	event: sessionEventSchema,
+});
 export type SessionStreamFrameData = z.infer<
 	typeof sessionStreamFrameDataSchema
 >;
 
 export const sessionStreamStateSchema = z.object({
 	sessionId: z.string().min(1),
-	status: sessionStatusSchema,
-	error: z.string().nullable().optional(),
 	agent: z.string().nullable(),
 	modelId: z.string().nullable(),
 	lastOffset: z.number().int().gte(0),

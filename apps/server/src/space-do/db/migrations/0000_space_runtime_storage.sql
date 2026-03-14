@@ -8,7 +8,6 @@ CREATE TABLE `sessions` (
 	`model` text,
 	`mode` text,
 	`config_options` text,
-	`sync_status` text DEFAULT 'pending' NOT NULL,
 	`last_applied_offset` text DEFAULT '-1' NOT NULL,
 	`last_event_at` integer,
 	`last_sync_error` text,

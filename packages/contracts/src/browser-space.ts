@@ -17,15 +17,6 @@ export const createSessionInputSchema = z.object({
 });
 export type CreateSessionInput = z.infer<typeof createSessionInputSchema>;
 
-export const spaceSessionSyncStatusSchema = z.enum([
-	"pending",
-	"live",
-	"error",
-]);
-export type SpaceSessionSyncStatus = z.infer<
-	typeof spaceSessionSyncStatusSchema
->;
-
 export const spaceSessionRowSchema = z.object({
 	id: z.string().min(1),
 	clientId: z.string().min(1),
@@ -36,7 +27,6 @@ export const spaceSessionRowSchema = z.object({
 	model: z.string().nullable(),
 	mode: z.string().nullable(),
 	configOptions: z.record(z.string(), z.string()).nullable(),
-	syncStatus: spaceSessionSyncStatusSchema,
 	lastAppliedOffset: z.string().min(1),
 	lastEventAt: z.number().int().nullable(),
 	lastSyncError: z.string().nullable(),

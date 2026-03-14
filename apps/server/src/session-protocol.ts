@@ -5,5 +5,4 @@ export type {
 	SessionStreamEventFrame,
 	SessionStreamFrame,
 	SessionStreamState,
-	SessionStreamStatusFrame,
 } from "@corporation/contracts/browser-do";
