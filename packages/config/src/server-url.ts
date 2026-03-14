@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { getStageKind } from "@tendril/config/stage";
+import { getStageKind } from "./stage-kind";
 
 const ROOT_DOMAIN = "tendril.sh";
 const SERVER_LABEL_PREFIX = "server-";
@@ -7,7 +6,11 @@ const MAX_DNS_LABEL_LENGTH = 63;
 const HASH_LENGTH = 8;
 
 function shortHash(input: string): string {
-	return createHash("sha256").update(input).digest("hex").slice(0, HASH_LENGTH);
+	let hash = 0;
+	for (let index = 0; index < input.length; index += 1) {
+		hash = (hash * 31 + input.charCodeAt(index)) % 4_294_967_296;
+	}
+	return hash.toString(16).padStart(HASH_LENGTH, "0").slice(0, HASH_LENGTH);
 }
 
 function getSingleLabelServerSubdomain(stage: string): string {

@@ -1,6 +1,6 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { resolveRuntimeContext } from "@tendril/config/runtime";
+import { getStageEmailFrom, getStageWebUrl } from "@tendril/config/runtime";
 import { betterAuth } from "better-auth";
 import { getOrgAdapter, organization } from "better-auth/plugins/organization";
 import { Resend } from "resend";
@@ -28,12 +28,9 @@ function getAuthRuntimeConfig() {
 		throw new Error("Better Auth requires STAGE to resolve runtime config.");
 	}
 
-	const runtime = resolveRuntimeContext(stage, {
-		allowMissingPreviewConvex: true,
-	});
 	return {
-		emailFrom: runtime.emailFrom,
-		webUrl: runtime.serverBindings.WEB_URL,
+		emailFrom: getStageEmailFrom(stage),
+		webUrl: getStageWebUrl(stage),
 	};
 }
 
