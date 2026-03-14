@@ -91,10 +91,10 @@ export const syncProjectSecretsAndScheduleInitialSnapshot = internalAction({
 	},
 	handler: async (ctx, args) => {
 		await syncProjectSecrets(ctx, args.projectId, args.secrets);
-		await ctx.runMutation(internal.snapshot.scheduleInitialSnapshotInternal, {
-			projectId: args.projectId,
-			setAsDefault: true,
-		});
+		// await ctx.runMutation(internal.snapshot.scheduleInitialSnapshotInternal, {
+		// 	projectId: args.projectId,
+		// 	setAsDefault: true,
+		// });
 	},
 });
 
@@ -118,12 +118,12 @@ export const syncProjectSecretsAndScheduleRebuild = internalAction({
 			...existingSecrets,
 			...args.upserts,
 		});
-		await ctx.runMutation(
-			internal.snapshot.scheduleRebuildWithSecretsInternal,
-			{
-				projectId: args.projectId,
-			}
-		);
+		// await ctx.runMutation(
+		// 	internal.snapshot.scheduleRebuildWithSecretsInternal,
+		// 	{
+		// 		projectId: args.projectId,
+		// 	}
+		// );
 	},
 });
 
