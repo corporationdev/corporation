@@ -1,4 +1,4 @@
-import { getStageKind } from "./stage-kind";
+import { getStageKind } from "@tendril/config/stage-kind";
 
 const ROOT_DOMAIN = "tendril.sh";
 const SERVER_LABEL_PREFIX = "server-";
