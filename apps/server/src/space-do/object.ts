@@ -23,7 +23,12 @@ import {
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { getEnvironmentStub } from "../environment-do/stub";
 import bundledMigrations from "./db/migrations";
-import { runtimeEvents, schema, sessions } from "./db/schema";
+import {
+	runtimeEvents,
+	type RuntimeEventRow,
+	schema,
+	sessions,
+} from "./db/schema";
 
 export type {
 	RuntimeEventRow,
@@ -300,6 +305,17 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	async getSession(input: GetSessionInput): Promise<SpaceSessionRow | null> {
 		await this.ready;
 		return await this.getPersistedSession(input.sessionId);
+	}
+
+	async getSessionEvents(input: {
+		sessionId: string;
+	}): Promise<RuntimeEventRow[]> {
+		await this.ready;
+		const db = await this.getDb();
+		return await db.query.runtimeEvents.findMany({
+			where: eq(runtimeEvents.sessionId, input.sessionId),
+			orderBy: (table, { asc }) => [asc(table.offsetSeq)],
+		});
 	}
 
 	async promptSession(input: PromptSessionInput): Promise<null> {

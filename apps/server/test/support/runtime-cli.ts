@@ -19,19 +19,17 @@ function getBunBin(): string {
 	return process.env.BUN_BINARY?.trim() || "bun";
 }
 
-function createCliEnv(): Record<string, string> {
+function createCliEnv(
+	extraEnv?: Record<string, string | undefined>
+): Record<string, string> {
 	const env: Record<string, string> = {};
-	for (const key of [
-		"HOME",
-		"LOGNAME",
-		"PATH",
-		"SHELL",
-		"TERM",
-		"TMPDIR",
-		"USER",
-	]) {
-		const value = process.env[key];
-		if (value) {
+	for (const [key, value] of Object.entries(process.env)) {
+		if (typeof value === "string") {
+			env[key] = value;
+		}
+	}
+	for (const [key, value] of Object.entries(extraEnv ?? {})) {
+		if (typeof value === "string") {
 			env[key] = value;
 		}
 	}
@@ -109,10 +107,15 @@ async function waitForOutput(
 	);
 }
 
-export function spawnRuntimeCli(args: string[]): SpawnedCli {
+export function spawnRuntimeCli(
+	args: string[],
+	options?: {
+		env?: Record<string, string | undefined>;
+	}
+): SpawnedCli {
 	const child = spawn(getBunBin(), ["apps/sandbox-runtime/cli.ts", ...args], {
 		cwd: getRepoRoot(),
-		env: createCliEnv(),
+		env: createCliEnv(options?.env),
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	const output = attachOutput(child);
