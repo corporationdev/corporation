@@ -1,5 +1,6 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
+import { resolveRuntimeContext } from "@tendril/config/runtime";
 import { betterAuth } from "better-auth";
 import { getOrgAdapter, organization } from "better-auth/plugins/organization";
 import { Resend } from "resend";
@@ -19,15 +20,26 @@ function slugifyOrganizationName(name: string, userId: string) {
 	return `${base || "workspace"}-${suffix}`;
 }
 
-const webUrl = process.env.WEB_URL ?? "";
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
-const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
-	Boolean
-);
+
+function getAuthRuntimeConfig() {
+	const stage = process.env.STAGE?.trim();
+	if (!stage) {
+		throw new Error("Better Auth requires STAGE to resolve runtime config.");
+	}
+
+	const runtime = resolveRuntimeContext(stage, {
+		allowMissingPreviewConvex: true,
+	});
+	return {
+		emailFrom: runtime.emailFrom,
+		webUrl: runtime.serverBindings.WEB_URL,
+	};
+}
 
 function getRequiredInviteEmailConfig() {
 	const resendApiKey = process.env.RESEND_API_KEY;
-	const emailFrom = process.env.EMAIL_FROM;
+	const { emailFrom, webUrl } = getAuthRuntimeConfig();
 
 	if (!(resendApiKey && emailFrom && webUrl)) {
 		throw new Error(
@@ -35,7 +47,7 @@ function getRequiredInviteEmailConfig() {
 		);
 	}
 
-	return { resendApiKey, emailFrom };
+	return { resendApiKey, emailFrom, webUrl };
 }
 
 function getResendClient() {
@@ -57,7 +69,7 @@ async function sendOrganizationInvitationEmail(data: {
 		};
 	};
 }) {
-	const { emailFrom } = getRequiredInviteEmailConfig();
+	const { emailFrom, webUrl } = getRequiredInviteEmailConfig();
 	const invitationUrl = new URL("/accept-invitation", webUrl);
 	invitationUrl.searchParams.set("id", data.id);
 	const inviterName = data.inviter.user.name?.trim() || data.inviter.user.email;
@@ -129,6 +141,11 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 );
 
 export function createAuthOptions(ctx: GenericCtx<DataModel>) {
+	const { webUrl } = getAuthRuntimeConfig();
+	const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
+		Boolean
+	);
+
 	return {
 		trustedOrigins,
 		database: authComponent.adapter(ctx),

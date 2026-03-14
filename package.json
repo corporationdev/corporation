@@ -82,7 +82,7 @@
       "better-auth": "1.4.21",
       "class-variance-authority": "^0.7.1",
       "clsx": "^2.1.1",
-      "convex": "^1.32.0",
+      "convex": "^1.33.1",
       "convex-helpers": "^0.1.111",
       "dotenv": "^17.2.2",
       "electron": "^40.1.0",

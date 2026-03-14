@@ -23,11 +23,7 @@ export type RuntimeContext = {
 		SERVER_URL: string;
 		WEB_URL: string;
 	};
-	convexSyncEnv: {
-		WEB_URL: string;
-		SERVER_URL: string;
-		EMAIL_FROM: string;
-	};
+	emailFrom: string;
 };
 
 export function resolveRuntimeContext(
@@ -59,11 +55,7 @@ export function resolveRuntimeContext(
 				SERVER_URL,
 				WEB_URL: "http://localhost:3001",
 			},
-			convexSyncEnv: {
-				WEB_URL: "http://localhost:3001",
-				SERVER_URL,
-				EMAIL_FROM: "dev@tendril.sh",
-			},
+			emailFrom: "dev@tendril.sh",
 		};
 	}
 
@@ -90,11 +82,7 @@ export function resolveRuntimeContext(
 				SERVER_URL,
 				WEB_URL: "http://localhost:3001",
 			},
-			convexSyncEnv: {
-				WEB_URL: "http://localhost:3001",
-				SERVER_URL,
-				EMAIL_FROM: "sandbox@tendril.sh",
-			},
+			emailFrom: "sandbox@tendril.sh",
 		};
 	}
 
@@ -130,11 +118,7 @@ export function resolveRuntimeContext(
 				SERVER_URL,
 				WEB_URL: `https://${stage}.tendril.sh`,
 			},
-			convexSyncEnv: {
-				WEB_URL: `https://${stage}.tendril.sh`,
-				SERVER_URL,
-				EMAIL_FROM: "preview@tendril.sh",
-			},
+			emailFrom: "preview@tendril.sh",
 		};
 	}
 
@@ -155,11 +139,7 @@ export function resolveRuntimeContext(
 				SERVER_URL,
 				WEB_URL: "https://app.tendril.sh",
 			},
-			convexSyncEnv: {
-				WEB_URL: "https://app.tendril.sh",
-				SERVER_URL,
-				EMAIL_FROM: "hello@tendril.sh",
-			},
+			emailFrom: "hello@tendril.sh",
 		};
 	}
 

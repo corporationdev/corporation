@@ -20,9 +20,9 @@
       "name": "desktop",
       "version": "0.0.0",
       "dependencies": {
+        "@tanstack/react-query": "catalog:",
         "@tendril/app": "workspace:*",
         "@tendril/env": "workspace:*",
-        "@tanstack/react-query": "catalog:",
         "dotenv": "catalog:",
         "electron": "catalog:",
         "react": "catalog:",
@@ -30,9 +30,9 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "catalog:",
-        "@tendril/config": "workspace:*",
         "@tailwindcss/vite": "catalog:",
         "@tanstack/router-plugin": "catalog:",
+        "@tendril/config": "workspace:*",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
@@ -49,14 +49,14 @@
       "version": "1.0.1",
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
-        "@tendril/config": "workspace:*",
-        "@tendril/contracts": "workspace:*",
         "@effect/platform-bun": "catalog:",
         "@hono/zod-validator": "^0.7.6",
         "@modelcontextprotocol/sdk": "^1.12.1",
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
+        "@tendril/config": "workspace:*",
+        "@tendril/contracts": "workspace:*",
         "chromium-bidi": "^15.0.0",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
@@ -78,14 +78,14 @@
       "dependencies": {
         "@agentclientprotocol/sdk": "catalog:",
         "@ai-sdk/anthropic": "catalog:",
+        "@e2b/desktop": "catalog:",
+        "@hono/zod-openapi": "catalog:",
+        "@nangohq/node": "catalog:",
         "@tendril/backend": "workspace:*",
         "@tendril/config": "workspace:*",
         "@tendril/contracts": "workspace:*",
         "@tendril/env": "workspace:*",
         "@tendril/logger": "workspace:*",
-        "@e2b/desktop": "catalog:",
-        "@hono/zod-openapi": "catalog:",
-        "@nangohq/node": "catalog:",
         "ai": "catalog:",
         "convex": "catalog:",
         "drizzle-orm": "catalog:",
@@ -134,12 +134,6 @@
       "dependencies": {
         "@base-ui/react": "^1.2.0",
         "@convex-dev/better-auth": "catalog:",
-        "@tendril/backend": "workspace:*",
-        "@tendril/config": "workspace:*",
-        "@tendril/contracts": "workspace:*",
-        "@tendril/env": "workspace:*",
-        "@tendril/server": "workspace:*",
-        "@tendril/shared": "workspace:*",
         "@durable-streams/client": "^0.2.1",
         "@fontsource-variable/geist": "^5.2.8",
         "@radix-ui/react-slot": "catalog:",
@@ -147,6 +141,12 @@
         "@tanstack/react-form": "catalog:",
         "@tanstack/react-query": "catalog:",
         "@tanstack/react-router": "catalog:",
+        "@tendril/backend": "workspace:*",
+        "@tendril/config": "workspace:*",
+        "@tendril/contracts": "workspace:*",
+        "@tendril/env": "workspace:*",
+        "@tendril/server": "workspace:*",
+        "@tendril/shared": "workspace:*",
         "@uidotdev/usehooks": "catalog:",
         "better-auth": "catalog:",
         "class-variance-authority": "^0.7.1",
@@ -184,8 +184,8 @@
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@convex-dev/better-auth": "catalog:",
-        "@tendril/shared": "workspace:*",
         "@nangohq/node": "catalog:",
+        "@tendril/shared": "workspace:*",
         "ai": "catalog:",
         "better-auth": "catalog:",
         "convex": "catalog:",
@@ -302,7 +302,7 @@
     "better-auth": "1.4.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "convex": "^1.32.0",
+    "convex": "^1.33.1",
     "convex-helpers": "^0.1.111",
     "dotenv": "^17.2.2",
     "drizzle-kit": "^0.31.9",
@@ -539,24 +539,6 @@
     "@connectrpc/connect-web": ["@connectrpc/connect-web@2.0.0-rc.3", "", { "peerDependencies": { "@bufbuild/protobuf": "^2.2.0", "@connectrpc/connect": "2.0.0-rc.3" } }, "sha512-w88P8Lsn5CCsA7MFRl2e6oLY4J/5toiNtJns/YJrlyQaWOy3RO8pDgkz+iIkG98RPMhj2thuBvsd3Cn4DKKCkw=="],
 
     "@convex-dev/better-auth": ["@convex-dev/better-auth@0.10.13", "", { "dependencies": { "@better-auth/passkey": "1.4.9", "@better-fetch/fetch": "^1.1.18", "common-tags": "^1.8.2", "convex-helpers": "^0.1.95", "jose": "^6.1.0", "remeda": "^2.32.0", "semver": "^7.7.3", "type-fest": "^4.39.1", "zod": "^4.0.0" }, "peerDependencies": { "better-auth": ">=1.4.9 <1.5.0", "convex": "^1.25.0", "react": "^18.3.1 || ^19.0.0" } }, "sha512-ll59IxdJrefJkKcH667aWt0S5Z0vPNiW2EixWlsdz0h4qdm31J8dxwxO9aDIaeqnE+m1iJ0mUwRedTgYcxQxiQ=="],
-
-    "@tendril/app": ["@tendril/app@workspace:packages/app"],
-
-    "@tendril/backend": ["@tendril/backend@workspace:packages/backend"],
-
-    "@tendril/config": ["@tendril/config@workspace:packages/config"],
-
-    "@tendril/contracts": ["@tendril/contracts@workspace:packages/contracts"],
-
-    "@tendril/env": ["@tendril/env@workspace:packages/env"],
-
-    "@tendril/infra": ["@tendril/infra@workspace:packages/infra"],
-
-    "@tendril/logger": ["@tendril/logger@workspace:packages/logger"],
-
-    "@tendril/server": ["@tendril/server@workspace:apps/server"],
-
-    "@tendril/shared": ["@tendril/shared@workspace:packages/shared"],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 
@@ -1118,6 +1100,24 @@
 
     "@tanstack/virtual-file-routes": ["@tanstack/virtual-file-routes@1.161.4", "", {}, "sha512-42WoRePf8v690qG8yGRe/YOh+oHni9vUaUUfoqlS91U2scd3a5rkLtVsc6b7z60w3RogH0I00vdrC5AaeiZ18w=="],
 
+    "@tendril/app": ["@tendril/app@workspace:packages/app"],
+
+    "@tendril/backend": ["@tendril/backend@workspace:packages/backend"],
+
+    "@tendril/config": ["@tendril/config@workspace:packages/config"],
+
+    "@tendril/contracts": ["@tendril/contracts@workspace:packages/contracts"],
+
+    "@tendril/env": ["@tendril/env@workspace:packages/env"],
+
+    "@tendril/infra": ["@tendril/infra@workspace:packages/infra"],
+
+    "@tendril/logger": ["@tendril/logger@workspace:packages/logger"],
+
+    "@tendril/server": ["@tendril/server@workspace:apps/server"],
+
+    "@tendril/shared": ["@tendril/shared@workspace:packages/shared"],
+
     "@ts-morph/common": ["@ts-morph/common@0.27.0", "", { "dependencies": { "fast-glob": "^3.3.3", "minimatch": "^10.0.1", "path-browserify": "^1.0.1" } }, "sha512-Wf29UqxWDpc+i61k3oIOzcUfQt79PIT9y/MWfAGlrkjg6lBC1hwDECLXPVJAhWjiGbfBCxZd65F/LIZF3+jeJQ=="],
 
     "@types/aws-lambda": ["@types/aws-lambda@8.10.161", "", {}, "sha512-rUYdp+MQwSFocxIOcSsYSF3YYYC/uUpMbCY/mbO21vGqfrEYvNSoPyKYDj6RhXXpPfS0KstW9RwG3qXh9sL7FQ=="],
@@ -1352,7 +1352,7 @@
 
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 
-    "convex": ["convex@1.32.0", "", { "dependencies": { "esbuild": "0.27.0", "prettier": "^3.0.0", "ws": "8.18.0" }, "peerDependencies": { "@auth0/auth0-react": "^2.0.1", "@clerk/clerk-react": "^4.12.8 || ^5.0.0", "react": "^18.0.0 || ^19.0.0-0 || ^19.0.0" }, "optionalPeers": ["@auth0/auth0-react", "@clerk/clerk-react", "react"], "bin": { "convex": "bin/main.js" } }, "sha512-5FlajdLpW75pdLS+/CgGH5H6yeRuA+ru50AKJEYbJpmyILUS+7fdTvsdTaQ7ZFXMv0gE8mX4S+S3AtJ94k0mfw=="],
+    "convex": ["convex@1.33.1", "", { "dependencies": { "esbuild": "0.27.0", "prettier": "^3.0.0", "ws": "8.18.0" }, "peerDependencies": { "@auth0/auth0-react": "^2.0.1", "@clerk/clerk-react": "^4.12.8 || ^5.0.0", "react": "^18.0.0 || ^19.0.0-0 || ^19.0.0" }, "optionalPeers": ["@auth0/auth0-react", "@clerk/clerk-react", "react"], "bin": { "convex": "bin/main.js" } }, "sha512-mRhR1XqZPLhgJsUepecM/kOgQVRCWKJtHHtyEX/XYY4zmzfItG0D1GNh5fjNEkuO5+72X4PCkzbEFA6327rxog=="],
 
     "convex-helpers": ["convex-helpers@0.1.114", "", { "peerDependencies": { "@standard-schema/spec": "^1.0.0", "convex": "^1.32.0", "hono": "^4.0.5", "react": "^17.0.2 || ^18.0.0 || ^19.0.0", "typescript": "^5.5", "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["@standard-schema/spec", "hono", "react", "typescript", "zod"], "bin": { "convex-helpers": "bin.cjs" } }, "sha512-elEdh+gG6BDv2dWIWVvBeJPbHnDQS5+WexUuwlGVJXz1EbMkXz/UIQwFIfLMZIXUwW6ot4JYf/1JJKNStrE6lg=="],
 
