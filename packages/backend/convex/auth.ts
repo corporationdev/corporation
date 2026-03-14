@@ -1,6 +1,10 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { getStageEmailFrom, getStageWebUrl } from "@tendril/config/runtime";
+import {
+	getStageEmailFrom,
+	getStageWebUrl,
+	resolveRuntimeContext,
+} from "@tendril/config/runtime";
 import { betterAuth } from "better-auth";
 import { getOrgAdapter, organization } from "better-auth/plugins/organization";
 import { Resend } from "resend";
@@ -23,12 +27,13 @@ function slugifyOrganizationName(name: string, userId: string) {
 const sandboxTrustedOriginPatterns = ["*.e2b.app"];
 
 function getAuthRuntimeConfig() {
-	const stage = process.env.STAGE?.trim();
-	if (!stage) {
-		throw new Error("Better Auth requires STAGE to resolve runtime config.");
-	}
+	const stage = process.env.STAGE?.trim() || "dev";
+	const runtime = resolveRuntimeContext(stage, {
+		allowMissingPreviewConvex: true,
+	});
 
 	return {
+		authBaseUrl: `${runtime.serverBindings.CONVEX_SITE_URL}/api/auth`,
 		emailFrom: getStageEmailFrom(stage),
 		webUrl: getStageWebUrl(stage),
 	};
@@ -138,12 +143,13 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
 );
 
 export function createAuthOptions(ctx: GenericCtx<DataModel>) {
-	const { webUrl } = getAuthRuntimeConfig();
+	const { authBaseUrl, webUrl } = getAuthRuntimeConfig();
 	const trustedOrigins = [webUrl, ...sandboxTrustedOriginPatterns].filter(
 		Boolean
 	);
 
 	return {
+		baseURL: authBaseUrl,
 		trustedOrigins,
 		database: authComponent.adapter(ctx),
 		databaseHooks: {

@@ -1,5 +1,5 @@
 import { getStageServerUrl } from "@tendril/config/server-url";
-import { getStageKind } from "./stage-kind";
+import { getStageKind } from "@tendril/config/stage-kind";
 
 type ResolveRuntimeContextOptions = {
 	allowMissingPreviewConvex?: boolean;

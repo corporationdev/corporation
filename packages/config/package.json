@@ -6,6 +6,7 @@
   "exports": {
     "./acp-agent-manifest": "./src/acp-agent-manifest.ts",
     "./proxy-integrations": "./src/proxy-integrations.ts",
+    "./stage-kind": "./src/stage-kind.ts",
     "./server-url": "./src/server-url.ts",
     "./tsconfig.base.json": "./tsconfig.base.json",
     "./runtime": "./src/runtime.ts",
