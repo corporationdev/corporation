@@ -38,7 +38,6 @@ function quoteShellEnv(value: string) {
 }
 
 async function createRuntimeRefreshToken(params: {
-	spaceSlug: string;
 	sandboxId: string;
 	userId: string;
 }): Promise<string> {
@@ -54,7 +53,6 @@ async function createRuntimeRefreshToken(params: {
 	const payload = btoa(
 		JSON.stringify({
 			sub: params.userId,
-			spaceSlug: params.spaceSlug,
 			sandboxId: params.sandboxId,
 			clientType: "sandbox_runtime",
 			tokenType: "refresh",
@@ -107,7 +105,6 @@ async function bootAgentAndGetUrl(
 		);
 	}
 	const runtimeRefreshToken = await createRuntimeRefreshToken({
-		spaceSlug: params.spaceSlug,
 		sandboxId: sandbox.sandboxId,
 		userId: params.spaceOwnerId,
 	});
@@ -135,7 +132,7 @@ async function bootAgentAndGetUrl(
 	try {
 		await bootServer(sandbox, {
 			sessionName: SANDBOX_AGENT_SESSION_NAME,
-			command: `CORPORATION_SERVER_URL=${quoteShellEnv(serverUrl)} CORPORATION_CONVEX_SITE_URL=${quoteShellEnv(convexSiteUrl)} CORPORATION_SPACE_SLUG=${quoteShellEnv(params.spaceSlug)} CORPORATION_RUNTIME_REFRESH_TOKEN=${quoteShellEnv(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${quoteShellEnv(sandbox.sandboxId)} ${runtimeCommand} --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
+			command: `CORPORATION_SERVER_URL=${quoteShellEnv(serverUrl)} CORPORATION_CONVEX_SITE_URL=${quoteShellEnv(convexSiteUrl)} CORPORATION_RUNTIME_REFRESH_TOKEN=${quoteShellEnv(runtimeRefreshToken)} CORPORATION_SANDBOX_ID=${quoteShellEnv(sandbox.sandboxId)} ${runtimeCommand} --host 0.0.0.0 --port ${SANDBOX_AGENT_PORT} >> ${AGENT_LOG_FILE} 2>> ${AGENT_STDERR_LOG_FILE}`,
 			healthUrl: AGENT_HEALTH_URL,
 			workdir: SANDBOX_WORKDIR,
 		});

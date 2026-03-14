@@ -12,7 +12,6 @@ export type RuntimeClientType = z.infer<typeof runtimeClientTypeSchema>;
 
 const runtimeTokenBaseClaimsSchema = z.object({
 	sub: z.string().min(1),
-	spaceSlug: z.string().min(1),
 	sandboxId: z.string().min(1),
 	clientType: runtimeClientTypeSchema,
 });
@@ -42,6 +41,21 @@ export const runtimeAuthSessionRequestSchema = z.object({
 });
 export type RuntimeAuthSessionRequest = z.infer<
 	typeof runtimeAuthSessionRequestSchema
+>;
+
+export const runtimeRefreshTokenRequestSchema = z.object({
+	clientId: z.string().min(1),
+});
+export type RuntimeRefreshTokenRequest = z.infer<
+	typeof runtimeRefreshTokenRequestSchema
+>;
+
+export const runtimeRefreshTokenResponseSchema = z.object({
+	refreshToken: z.string().min(1),
+	expiresAt: z.number().int().positive(),
+});
+export type RuntimeRefreshTokenResponse = z.infer<
+	typeof runtimeRefreshTokenResponseSchema
 >;
 
 export const runtimeAuthSessionResponseSchema = z.object({
@@ -91,7 +105,6 @@ async function signToken(
 		encoder.encode(
 			JSON.stringify({
 				sub: claims.sub,
-				spaceSlug: claims.spaceSlug,
 				sandboxId: claims.sandboxId,
 				clientType: claims.clientType,
 				tokenType: claims.tokenType,
@@ -188,7 +201,6 @@ async function verifyToken<T extends z.ZodTypeAny>(
 		}
 		const result = schema.safeParse({
 			sub: payload.sub,
-			spaceSlug: payload.spaceSlug,
 			sandboxId: payload.sandboxId,
 			clientType: payload.clientType,
 			tokenType: payload.tokenType,

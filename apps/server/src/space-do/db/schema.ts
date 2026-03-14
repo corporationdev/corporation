@@ -1,4 +1,3 @@
-import type { SessionStreamFrameData } from "@corporation/contracts/browser-do";
 import type { InferSelectModel } from "drizzle-orm";
 import {
 	index,
@@ -8,81 +7,82 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const sessionStatusValues = ["idle", "running", "error"] as const;
-export type SessionStatus = (typeof sessionStatusValues)[number];
-export const sessionStreamFrameKindValues = [
-	"event",
-	"status_changed",
-] as const;
-export type SessionStreamFrameKind =
-	(typeof sessionStreamFrameKindValues)[number];
+export const sessionSyncStatusValues = ["pending", "live", "error"] as const;
+export type SessionSyncStatus = (typeof sessionSyncStatusValues)[number];
 
-export const sessions = sqliteTable("sessions", {
-	id: text("id").primaryKey(),
-	title: text("title").notNull().default("New Chat"),
-	agent: text("agent").notNull(),
-	agentSessionId: text("agent_session_id").notNull(),
-	lastConnectionId: text("last_connection_id").notNull(),
-	createdAt: integer("created_at", { mode: "number" }).notNull(),
-	updatedAt: integer("updated_at", { mode: "number" }).notNull().default(0),
-	destroyedAt: integer("destroyed_at", { mode: "number" }),
-	sessionInit: text("session_init", { mode: "json" }),
-	modelId: text("model_id"),
-	runId: text("run_id"),
-	pid: integer("pid"),
-	status: text("status", { enum: sessionStatusValues })
-		.notNull()
-		.default("idle"),
-	lastStreamOffset: integer("last_stream_offset").notNull().default(0),
-	callbackToken: text("callback_token"),
-	error: text("error", { mode: "json" }),
-});
-
-export const spaceMetadata = sqliteTable("space_metadata", {
-	id: integer("id").primaryKey(),
-	sandboxId: text("sandbox_id"),
-	agentUrl: text("agent_url"),
-});
-
-export const sessionStreamFrames = sqliteTable(
-	"session_stream_frames",
+export const sessions = sqliteTable(
+	"sessions",
 	{
 		id: text("id").primaryKey(),
-		sessionId: text("session_id")
+		environmentId: text("environment_id").notNull(),
+		streamKey: text("stream_key").notNull(),
+		title: text("title").notNull().default("New Chat"),
+		agent: text("agent").notNull(),
+		cwd: text("cwd").notNull(),
+		model: text("model"),
+		mode: text("mode"),
+		configOptions: text("config_options", { mode: "json" }).$type<Record<
+			string,
+			string
+		> | null>(),
+		syncStatus: text("sync_status", { enum: sessionSyncStatusValues })
 			.notNull()
-			.references(() => sessions.id, { onDelete: "cascade" }),
-		offset: integer("offset").notNull(),
+			.default("pending"),
+		lastAppliedOffset: text("last_applied_offset").notNull().default("-1"),
+		lastEventAt: integer("last_event_at", { mode: "number" }),
+		lastSyncError: text("last_sync_error"),
 		createdAt: integer("created_at", { mode: "number" }).notNull(),
-		kind: text("kind", { enum: sessionStreamFrameKindValues }).notNull(),
-		eventId: text("event_id"),
-		data: text("data", { mode: "json" })
-			.notNull()
-			.$type<SessionStreamFrameData>(),
+		updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+		archivedAt: integer("archived_at", { mode: "number" }),
 	},
 	(table) => [
-		uniqueIndex("session_stream_frames_session_offset_idx").on(
-			table.sessionId,
-			table.offset
-		),
-		uniqueIndex("session_stream_frames_session_event_id_unique").on(
-			table.sessionId,
-			table.eventId
-		),
-		index("session_stream_frames_session_kind_offset_idx").on(
-			table.sessionId,
-			table.kind,
-			table.offset
+		uniqueIndex("sessions_stream_key_unique").on(table.streamKey),
+		index("sessions_environment_id_updated_at_idx").on(
+			table.environmentId,
+			table.updatedAt
 		),
 	]
 );
 
-export type SessionRow = InferSelectModel<typeof sessions>;
-export type SessionStreamFrameRow = InferSelectModel<
-	typeof sessionStreamFrames
->;
+export const runtimeEvents = sqliteTable(
+	"runtime_events",
+	{
+		eventId: text("event_id").primaryKey(),
+		streamKey: text("stream_key").notNull(),
+		sessionId: text("session_id")
+			.notNull()
+			.references(() => sessions.id, { onDelete: "cascade" }),
+		offset: text("offset").notNull(),
+		offsetSeq: integer("offset_seq").notNull(),
+		commandId: text("command_id"),
+		turnId: text("turn_id"),
+		eventType: text("event_type").notNull(),
+		createdAt: integer("created_at", { mode: "number" }).notNull(),
+		payload: text("payload", { mode: "json" })
+			.notNull()
+			.$type<Record<string, unknown>>(),
+	},
+	(table) => [
+		uniqueIndex("runtime_events_stream_offset_unique").on(
+			table.streamKey,
+			table.offset
+		),
+		index("runtime_events_session_offset_seq_idx").on(
+			table.sessionId,
+			table.offsetSeq
+		),
+		index("runtime_events_stream_created_at_idx").on(
+			table.streamKey,
+			table.createdAt
+		),
+		index("runtime_events_command_id_idx").on(table.commandId),
+	]
+);
+
+export type SpaceSessionRow = InferSelectModel<typeof sessions>;
+export type RuntimeEventRow = InferSelectModel<typeof runtimeEvents>;
 
 export const schema = {
-	spaceMetadata,
 	sessions,
-	sessionStreamFrames,
+	runtimeEvents,
 };

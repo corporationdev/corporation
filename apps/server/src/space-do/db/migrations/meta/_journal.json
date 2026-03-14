@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1772870252520,
-      "tag": "0000_slimy_power_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1772870252521,
-      "tag": "0001_sudden_space_metadata",
+      "when": 1773431000000,
+      "tag": "0000_space_runtime_storage",
       "breakpoints": true
     }
   ]

@@ -4,6 +4,8 @@ import { sessionStreamStateSchema } from "../browser-do";
 import {
 	runtimeAuthSessionRequestSchema,
 	runtimeAuthSessionResponseSchema,
+	runtimeRefreshTokenRequestSchema,
+	runtimeRefreshTokenResponseSchema,
 } from "../runtime-auth";
 
 export const githubRepositorySchema = z.object({
@@ -104,11 +106,21 @@ export type GetSessionStreamStateInput = z.infer<
 >;
 
 export const createRuntimeAuthSessionInputSchema =
-	runtimeAuthSessionRequestSchema.extend({
-		spaceSlug: z.string().min(1),
-	});
+	runtimeAuthSessionRequestSchema;
 export type CreateRuntimeAuthSessionInput = z.infer<
 	typeof createRuntimeAuthSessionInputSchema
+>;
+
+export const createRuntimeRefreshTokenInputSchema =
+	runtimeRefreshTokenRequestSchema;
+export type CreateRuntimeRefreshTokenInput = z.infer<
+	typeof createRuntimeRefreshTokenInputSchema
+>;
+
+export const createRuntimeRefreshTokenOutputSchema =
+	runtimeRefreshTokenResponseSchema;
+export type CreateRuntimeRefreshTokenOutput = z.infer<
+	typeof createRuntimeRefreshTokenOutputSchema
 >;
 
 export const workerHttpContract = {
@@ -133,6 +145,9 @@ export const workerHttpContract = {
 			.output(sessionStreamStateSchema),
 	},
 	runtimeAuth: {
+		createRefreshToken: oc
+			.input(createRuntimeRefreshTokenInputSchema)
+			.output(createRuntimeRefreshTokenOutputSchema),
 		createSession: oc
 			.input(createRuntimeAuthSessionInputSchema)
 			.output(runtimeAuthSessionResponseSchema),

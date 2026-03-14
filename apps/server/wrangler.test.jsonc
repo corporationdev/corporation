@@ -1,0 +1,39 @@
+{
+  "name": "server-test",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "SPACE_DO", "class_name": "SpaceDurableObject" },
+      { "name": "ENVIRONMENT_DO", "class_name": "EnvironmentDurableObject" },
+      {
+        "name": "TEST_STREAM_CONSUMER_DO",
+        "class_name": "TestStreamConsumerDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "SpaceDurableObject",
+        "EnvironmentDurableObject"
+      ],
+      "new_classes": [
+        "TestStreamConsumerDurableObject"
+      ]
+    }
+  ],
+  "vars": {
+    "CORPORATION_ENABLE_TEST_ROUTES": "1",
+    "CORPORATION_RUNTIME_AUTH_SECRET": "test-secret",
+    "CORPORATION_INTERNAL_API_KEY": "test-key",
+    "CORPORATION_CONVEX_URL": "http://localhost:0",
+    "CORPORATION_CONVEX_SITE_URL": "http://localhost:0",
+    "CORPORATION_WEB_URL": "http://localhost:3001",
+    "NANGO_SECRET_KEY": "test",
+    "ANTHROPIC_API_KEY": "",
+    "E2B_API_KEY": ""
+  }
+}

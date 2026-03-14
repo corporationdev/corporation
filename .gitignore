@@ -43,10 +43,15 @@ lerna-debug.log*
 # Testing
 coverage
 .nyc_output
+.test-tmp
+
+# Cloudflare Worker local state
+.wrangler
 
 # Misc
 *.tgz
 .cache
+.drizzle
 tmp
 temp
 

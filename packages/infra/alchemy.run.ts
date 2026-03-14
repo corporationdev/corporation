@@ -48,6 +48,10 @@ const spaceDO = DurableObjectNamespace("space-do", {
 	className: "SpaceDurableObject",
 	sqlite: true,
 });
+const environmentDO = DurableObjectNamespace("environment-do", {
+	className: "EnvironmentDurableObject",
+	sqlite: true,
+});
 const serverHostname =
 	envTier === "dev" ? getStageServerHostname(stage) : undefined;
 const serverTunnel =
@@ -135,6 +139,7 @@ export const server = await Worker("agent-server", {
 		),
 		...runtime.serverBindings,
 		SPACE_DO: spaceDO,
+		ENVIRONMENT_DO: environmentDO,
 	},
 	dev: {
 		port: 3000,

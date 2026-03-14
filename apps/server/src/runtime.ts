@@ -1,11 +1,67 @@
-import { runtimeAuthSessionRequestSchema } from "@corporation/contracts/runtime-auth";
+import {
+	runtimeAuthSessionRequestSchema,
+	verifyRuntimeAccessToken,
+} from "@corporation/contracts/runtime-auth";
 import { Hono } from "hono";
+import {
+	createRuntimeForwardHeaders,
+	type EnvironmentStubBinding,
+	getEnvironmentStub,
+} from "./environment-do/stub";
 import { createRuntimeAuthSession } from "./services/runtime-auth";
 
-export const runtimeApp = new Hono<{ Bindings: Env }>().post(
-	"/:spaceSlug/runtime/auth/session",
-	async (c) => {
-		const { spaceSlug } = c.req.param();
+type RuntimeAppEnv = {
+	Bindings: {
+		CORPORATION_RUNTIME_AUTH_SECRET?: string;
+		CORPORATION_SERVER_URL?: string;
+		CORPORATION_WEB_URL?: string;
+		ENVIRONMENT_DO: EnvironmentStubBinding;
+	};
+};
+
+function isLoopbackCallbackUrl(value: string): boolean {
+	try {
+		const url = new URL(value);
+		if (url.protocol !== "http:") {
+			return false;
+		}
+		return (
+			url.hostname === "127.0.0.1" ||
+			url.hostname === "localhost" ||
+			url.hostname === "[::1]" ||
+			url.hostname === "::1"
+		);
+	} catch {
+		return false;
+	}
+}
+
+export const runtimeApp = new Hono<RuntimeAppEnv>()
+	.get("/login", async (c) => {
+		const callbackUrl = c.req.query("callbackUrl")?.trim();
+		const clientId = c.req.query("clientId")?.trim();
+		const state = c.req.query("state")?.trim();
+		if (!(callbackUrl && clientId && state)) {
+			return c.text("Missing login parameters", 400);
+		}
+		if (!isLoopbackCallbackUrl(callbackUrl)) {
+			return c.text("Invalid callback URL", 400);
+		}
+
+		const webUrl = c.env.CORPORATION_WEB_URL?.trim();
+		if (!webUrl) {
+			return c.text("Runtime login is not configured", 500);
+		}
+
+		const redirectUrl = new URL("/runtime-login", webUrl);
+		redirectUrl.search = new URLSearchParams({
+			callbackUrl,
+			clientId,
+			state,
+		}).toString();
+		return c.redirect(redirectUrl.toString(), 302);
+	})
+	.post("/auth/session", async (c) => {
 		const body = runtimeAuthSessionRequestSchema.safeParse(
 			await c.req.json().catch(() => null)
 		);
@@ -15,7 +71,6 @@ export const runtimeApp = new Hono<{ Bindings: Env }>().post(
 		try {
 			return c.json(
 				await createRuntimeAuthSession(c.env, c.req.url, {
-					spaceSlug,
 					refreshToken: body.data.refreshToken,
 				})
 			);
@@ -24,5 +79,29 @@ export const runtimeApp = new Hono<{ Bindings: Env }>().post(
 				error instanceof Error ? error.message : "Runtime auth failed";
 			return c.json({ error: message }, message === "Unauthorized" ? 401 : 500);
 		}
-	}
-);
+	})
+	.get("/socket", async (c) => {
+		const token = c.req.query("token")?.trim();
+		const secret = c.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
+		if (!(token && secret)) {
+			return c.text("Unauthorized", 401);
+		}
+
+		const claims = await verifyRuntimeAccessToken(token, secret);
+		if (!claims) {
+			return c.text("Unauthorized", 401);
+		}
+
+		const headers = createRuntimeForwardHeaders({
+			authToken: token,
+			claims,
+			headers: c.req.raw.headers,
+		});
+
+		return await getEnvironmentStub(c.env.ENVIRONMENT_DO, claims.sub).fetch(
+			new Request("http://environment/runtime/socket", {
+				method: c.req.raw.method,
+				headers,
+			})
+		);
+	});
