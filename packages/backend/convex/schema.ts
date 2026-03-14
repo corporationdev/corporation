@@ -22,17 +22,6 @@ export const environmentStatusValidator = v.union(
 	v.literal("error")
 );
 
-export const spaceActiveBackingValidator = v.union(
-	v.object({
-		type: v.literal("sandbox"),
-		sandboxId: v.id("sandboxes"),
-	}),
-	v.object({
-		type: v.literal("environment"),
-		environmentId: v.id("environments"),
-	})
-);
-
 export default defineSchema(
 	{
 		projects: defineTable({
@@ -59,7 +48,7 @@ export default defineSchema(
 			userId: v.string(),
 			slug: v.string(),
 			projectId: v.id("projects"),
-			activeBacking: v.optional(spaceActiveBackingValidator),
+			activeBindingId: v.optional(v.id("spaceBindings")),
 			name: v.string(),
 			archived: v.optional(v.boolean()),
 			createdAt: v.number(),
@@ -119,19 +108,41 @@ export default defineSchema(
 		})
 			.index("by_user", ["userId"])
 			.index("by_user_and_agent", ["userId", "agentId"]),
+
+		spaceBindings: defineTable({
+			spaceId: v.id("spaces"),
+			environmentId: v.id("environments"),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		})
+			.index("by_space", ["spaceId"])
+			.index("by_environment", ["environmentId"]),
+
 		environments: defineTable({
 			userId: v.string(),
-			clientId: v.string(),
+			connectionId: v.string(),
 			name: v.string(),
 			status: environmentStatusValidator,
+			metadata: v.optional(v.record(v.string(), v.any())),
 			error: v.optional(v.string()),
 			lastConnectedAt: v.optional(v.number()),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})
 			.index("by_user", ["userId"])
-			.index("by_user_and_clientId", ["userId", "clientId"])
+			.index("by_user_and_connectionId", ["userId", "connectionId"])
 			.index("by_user_and_status", ["userId", "status"]),
+
+		projectEnvironments: defineTable({
+			projectId: v.id("projects"),
+			environmentId: v.id("environments"),
+			rootPath: v.string(),
+			createdAt: v.number(),
+			updatedAt: v.number(),
+		})
+			.index("by_project", ["projectId"])
+			.index("by_environment", ["environmentId"])
+			.index("by_project_and_environment", ["projectId", "environmentId"]),
 
 		secrets: defineTable({
 			userId: v.string(),
