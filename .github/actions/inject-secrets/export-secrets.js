@@ -4,7 +4,9 @@ import { exportVariable, setSecret } from "@actions/core";
 import dotenv from "dotenv";
 
 const repoRoot = process.cwd();
-const env = dotenv.parse(fs.readFileSync(path.join(repoRoot, ".env.resolved"), "utf8"));
+const env = dotenv.parse(
+	fs.readFileSync(path.join(repoRoot, ".env.resolved"), "utf8")
+);
 const envAssignmentRegex =
 	/^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.*)$/;
 
