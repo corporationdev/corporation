@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
+import type {
+	EnvTier as DerivedEnvTier,
+	StageKind as DerivedStageKind,
+} from "./stage-kind";
+import {
+	deriveEnvTier as deriveEnvTierFromStageKind,
+	getStageKind as getStageKindFromStageKind,
+} from "./stage-kind";
 
-export type EnvTier = "dev" | "preview" | "prod";
 export type StageMode = "dev" | "sandbox";
-export type StageKind =
-	| "dev"
-	| "sandbox"
-	| "preview"
-	| "production"
-	| "unknown";
 
 const SLUG_NON_ALPHANUMERIC_REGEX = /[^a-z0-9-]+/g;
 const SLUG_MULTIPLE_DASHES_REGEX = /-+/g;
@@ -50,37 +51,12 @@ export function resolveStage(mode: StageMode): string {
 }
 
 export function getStageKind(stage: string): StageKind {
-	if (stage === "sandbox" || stage.startsWith("sandbox-")) {
-		return "sandbox";
-	}
-	if (stage === "dev" || stage.startsWith("dev-")) {
-		return "dev";
-	}
-	if (
-		stage === "preview" ||
-		stage.startsWith("preview-") ||
-		stage.startsWith("pr-")
-	) {
-		return "preview";
-	}
-	if (
-		stage === "prod" ||
-		stage === "production" ||
-		stage.startsWith("prod-") ||
-		stage.startsWith("production-")
-	) {
-		return "production";
-	}
-	return "unknown";
+	return getStageKindFromStageKind(stage);
 }
 
 export function deriveEnvTier(stage: string): EnvTier {
-	const stageKind = getStageKind(stage);
-	if (stageKind === "production") {
-		return "prod";
-	}
-	if (stageKind === "preview") {
-		return "preview";
-	}
-	return "dev";
+	return deriveEnvTierFromStageKind(stage);
 }
+
+export type EnvTier = DerivedEnvTier;
+export type StageKind = DerivedStageKind;

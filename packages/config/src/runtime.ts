@@ -1,5 +1,5 @@
 import { getStageServerUrl } from "@tendril/config/server-url";
-import { getStageKind } from "@tendril/config/stage";
+import { getStageKind } from "./stage-kind";
 
 type ResolveRuntimeContextOptions = {
 	allowMissingPreviewConvex?: boolean;
@@ -25,6 +25,41 @@ export type RuntimeContext = {
 	};
 	emailFrom: string;
 };
+
+export function getStageWebUrl(stage: string): string {
+	const stageKind = getStageKind(stage);
+
+	if (stageKind === "dev" || stageKind === "sandbox") {
+		return "http://localhost:3001";
+	}
+	if (stageKind === "preview") {
+		return `https://${stage}.tendril.sh`;
+	}
+	if (stageKind === "production") {
+		return "https://app.tendril.sh";
+	}
+
+	throw new Error(`Unsupported stage "${stage}" for web URL resolution.`);
+}
+
+export function getStageEmailFrom(stage: string): string {
+	const stageKind = getStageKind(stage);
+
+	if (stageKind === "dev") {
+		return "dev@tendril.sh";
+	}
+	if (stageKind === "sandbox") {
+		return "sandbox@tendril.sh";
+	}
+	if (stageKind === "preview") {
+		return "preview@tendril.sh";
+	}
+	if (stageKind === "production") {
+		return "hello@tendril.sh";
+	}
+
+	throw new Error(`Unsupported stage "${stage}" for email resolution.`);
+}
 
 export function resolveRuntimeContext(
 	stage: string,
@@ -53,9 +88,9 @@ export function resolveRuntimeContext(
 				CONVEX_URL,
 				CONVEX_SITE_URL,
 				SERVER_URL,
-				WEB_URL: "http://localhost:3001",
+				WEB_URL: getStageWebUrl(stage),
 			},
-			emailFrom: "dev@tendril.sh",
+			emailFrom: getStageEmailFrom(stage),
 		};
 	}
 
@@ -80,9 +115,9 @@ export function resolveRuntimeContext(
 				CONVEX_URL,
 				CONVEX_SITE_URL,
 				SERVER_URL,
-				WEB_URL: "http://localhost:3001",
+				WEB_URL: getStageWebUrl(stage),
 			},
-			emailFrom: "sandbox@tendril.sh",
+			emailFrom: getStageEmailFrom(stage),
 		};
 	}
 
@@ -116,9 +151,9 @@ export function resolveRuntimeContext(
 				CONVEX_URL,
 				CONVEX_SITE_URL,
 				SERVER_URL,
-				WEB_URL: `https://${stage}.tendril.sh`,
+				WEB_URL: getStageWebUrl(stage),
 			},
-			emailFrom: "preview@tendril.sh",
+			emailFrom: getStageEmailFrom(stage),
 		};
 	}
 
@@ -137,9 +172,9 @@ export function resolveRuntimeContext(
 				CONVEX_URL,
 				CONVEX_SITE_URL,
 				SERVER_URL,
-				WEB_URL: "https://app.tendril.sh",
+				WEB_URL: getStageWebUrl(stage),
 			},
-			emailFrom: "hello@tendril.sh",
+			emailFrom: getStageEmailFrom(stage),
 		};
 	}
 
