@@ -225,15 +225,12 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	}
 
 	private async sendEnvironmentCommand(
-		environmentId: string,
+		clientId: string,
 		command: Parameters<
 			ReturnType<typeof getEnvironmentStub>["sendRuntimeCommand"]
 		>[0]
 	): Promise<EnvironmentRuntimeCommandResponse> {
-		const environment = getEnvironmentStub(
-			this.env.ENVIRONMENT_DO,
-			environmentId
-		);
+		const environment = getEnvironmentStub(this.env.ENVIRONMENT_DO, clientId);
 		const commandResult = await environment.sendRuntimeCommand(command);
 		if (!commandResult.ok) {
 			throw new Error(commandResult.error.message);
@@ -254,7 +251,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			.insert(sessions)
 			.values({
 				id: input.sessionId,
-				environmentId: input.environmentId,
+				clientId: input.clientId,
 				streamKey,
 				title: input.title ?? "New Chat",
 				agent: input.agent,
@@ -273,7 +270,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			.onConflictDoUpdate({
 				target: sessions.id,
 				set: {
-					environmentId: input.environmentId,
+					clientId: input.clientId,
 					streamKey,
 					title: input.title ?? "New Chat",
 					agent: input.agent,
@@ -287,7 +284,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 
 		const environment = getEnvironmentStub(
 			this.env.ENVIRONMENT_DO,
-			input.environmentId
+			input.clientId
 		);
 
 		const commandResult = await environment.sendRuntimeCommand({
@@ -303,6 +300,22 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			},
 		});
 		if (!commandResult.ok) {
+			const [runtimeState, runtimeConnections] = await Promise.all([
+				environment.hasConnectedRuntime(),
+				environment.getRuntimeConnectionsSnapshot(),
+			]);
+			console.error("space-do.createSession.sendRuntimeCommand.failed", {
+				spaceName: input.spaceName,
+				sessionId: input.sessionId,
+				clientId: input.clientId,
+				error: commandResult.error.message,
+				hasConnectedRuntime: runtimeState.ok
+					? runtimeState.value.connected
+					: null,
+				runtimeConnections: runtimeConnections.ok
+					? runtimeConnections.value.snapshot
+					: null,
+			});
 			await db
 				.update(sessions)
 				.set({
@@ -339,6 +352,13 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			},
 		});
 		if (!subscribeResult.ok) {
+			console.error("space-do.createSession.subscribeStream.failed", {
+				spaceName: input.spaceName,
+				sessionId: input.sessionId,
+				clientId: input.clientId,
+				error: subscribeResult.error.message,
+				streamKey,
+			});
 			await db
 				.update(sessions)
 				.set({
@@ -403,7 +423,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	async promptSession(input: PromptSessionInput): Promise<null> {
 		await this.ready;
 		const session = await this.getSessionOrThrow(input.sessionId);
-		await this.sendEnvironmentCommand(session.environmentId, {
+		await this.sendEnvironmentCommand(session.clientId, {
 			type: "prompt",
 			requestId: crypto.randomUUID(),
 			input: {
@@ -420,7 +440,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	async abortSession(input: AbortSessionInput): Promise<boolean> {
 		await this.ready;
 		const session = await this.getSessionOrThrow(input.sessionId);
-		const response = await this.sendEnvironmentCommand(session.environmentId, {
+		const response = await this.sendEnvironmentCommand(session.clientId, {
 			type: "abort",
 			requestId: crypto.randomUUID(),
 			input: {
@@ -436,7 +456,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	async respondToPermission(input: RespondToPermissionInput): Promise<boolean> {
 		await this.ready;
 		const session = await this.getSessionOrThrow(input.sessionId);
-		const response = await this.sendEnvironmentCommand(session.environmentId, {
+		const response = await this.sendEnvironmentCommand(session.clientId, {
 			type: "respond_to_permission",
 			requestId: crypto.randomUUID(),
 			input: {

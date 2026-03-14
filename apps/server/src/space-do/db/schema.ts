@@ -14,7 +14,7 @@ export const sessions = sqliteTable(
 	"sessions",
 	{
 		id: text("id").primaryKey(),
-		environmentId: text("environment_id").notNull(),
+		clientId: text("environment_id").notNull(),
 		streamKey: text("stream_key").notNull(),
 		title: text("title").notNull().default("New Chat"),
 		agent: text("agent").notNull(),
@@ -38,7 +38,7 @@ export const sessions = sqliteTable(
 	(table) => [
 		uniqueIndex("sessions_stream_key_unique").on(table.streamKey),
 		index("sessions_environment_id_updated_at_idx").on(
-			table.environmentId,
+			table.clientId,
 			table.updatedAt
 		),
 	]

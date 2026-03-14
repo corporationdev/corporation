@@ -43,32 +43,57 @@ export const spacesApp = new Hono<{
 		return c.json(session);
 	})
 	.post("/:spaceSlug/sessions", async (c) => {
+		const spaceSlug = c.req.param("spaceSlug");
 		const body = createSessionInputSchema.safeParse(await c.req.json());
 		if (!body.success) {
+			console.error("spaces.createSession.invalid-body", {
+				spaceSlug,
+				error: body.error.flatten(),
+			});
 			return c.json({ error: body.error.message }, 400);
 		}
-		const result = await getSpaceStub(
-			c.env,
-			c.req.param("spaceSlug")
-		).createSession(body.data);
+		const result = await getSpaceStub(c.env, spaceSlug).createSession(
+			body.data
+		);
 		if (!result.ok) {
-			return c.json(result, 400);
+			console.error("spaces.createSession.failed", {
+				spaceSlug,
+				sessionId: body.data.sessionId,
+				clientId: body.data.clientId,
+				error: result.error.message,
+			});
+			return c.json({ error: result.error.message }, 400);
 		}
 		return c.json(result);
 	})
 	.post("/:spaceSlug/sessions/:sessionId/messages", async (c) => {
+		const { spaceSlug, sessionId } = c.req.param();
 		const body = sendMessageSchema.safeParse(await c.req.json());
 		if (!body.success) {
+			console.error("spaces.promptSession.invalid-body", {
+				spaceSlug,
+				sessionId,
+				error: body.error.flatten(),
+			});
 			return c.json({ error: body.error.message }, 400);
 		}
-		await getSpaceStub(c.env, c.req.param("spaceSlug")).promptSession({
-			sessionId: c.req.param("sessionId"),
-			prompt: [{ type: "text", text: body.data.content }],
-			model: body.data.modelId,
-			mode: body.data.mode,
-			configOptions: body.data.configOptions,
-		});
-		return c.json(null);
+		try {
+			await getSpaceStub(c.env, spaceSlug).promptSession({
+				sessionId,
+				prompt: [{ type: "text", text: body.data.content }],
+				model: body.data.modelId,
+				mode: body.data.mode,
+				configOptions: body.data.configOptions,
+			});
+			return c.json(null);
+		} catch (error) {
+			console.error("spaces.promptSession.failed", {
+				spaceSlug,
+				sessionId,
+				error,
+			});
+			return c.json({ error: "Failed to send message" }, 500);
+		}
 	})
 	.post("/:spaceSlug/sessions/:sessionId/cancel", async (c) => {
 		const aborted = await getSpaceStub(

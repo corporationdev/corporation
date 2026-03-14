@@ -129,12 +129,24 @@ export async function getAuthHeaders() {
 }
 
 async function readErrorMessage(
-	response: JsonResponseLike<{ error?: string }>
+	response: JsonResponseLike<{
+		error?: string | { message?: string };
+	}>
 ): Promise<string> {
 	try {
-		const data = (await response.json()) as { error?: string };
+		const data = (await response.json()) as {
+			error?: string | { message?: string };
+		};
 		if (typeof data.error === "string" && data.error.length > 0) {
 			return data.error;
+		}
+		if (
+			data.error &&
+			typeof data.error === "object" &&
+			typeof data.error.message === "string" &&
+			data.error.message.length > 0
+		) {
+			return data.error.message;
 		}
 	} catch {
 		// Ignore invalid error payloads.
@@ -148,7 +160,11 @@ async function getJsonOrThrow<T>(
 ): Promise<T> {
 	if (!response.ok) {
 		throw new Error(
-			await readErrorMessage(response as JsonResponseLike<{ error?: string }>)
+			await readErrorMessage(
+				response as JsonResponseLike<{
+					error?: string | { message?: string };
+				}>
+			)
 		);
 	}
 	return (await response.json()) as T;
@@ -198,7 +214,11 @@ export async function listSpaceSessions(
 	});
 	if (!response.ok) {
 		throw new Error(
-			await readErrorMessage(response as JsonResponseLike<{ error?: string }>)
+			await readErrorMessage(
+				response as JsonResponseLike<{
+					error?: string | { message?: string };
+				}>
+			)
 		);
 	}
 	return (await response.json()) as unknown as SpaceSession[];

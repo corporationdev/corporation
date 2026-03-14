@@ -140,7 +140,10 @@ export const runtimeApp = new Hono<RuntimeAppEnv>()
 			headers: c.req.raw.headers,
 		});
 
-		return await getEnvironmentStub(c.env.ENVIRONMENT_DO, claims.sub).fetch(
+		return await getEnvironmentStub(
+			c.env.ENVIRONMENT_DO,
+			claims.clientId
+		).fetch(
 			new Request("http://environment/runtime/socket", {
 				method: c.req.raw.method,
 				headers,

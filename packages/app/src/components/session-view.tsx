@@ -51,6 +51,7 @@ type SessionViewSpace =
 			} | null;
 			activeEnvironment?: {
 				_id: Id<"environments">;
+				clientId: string;
 				status: string;
 			} | null;
 	  }
@@ -73,18 +74,18 @@ function isRuntimeReady(space: SessionViewSpace) {
 	return space.activeEnvironment?.status === "connected";
 }
 
-function getRuntimeEnvironmentId(
-	space: SessionViewSpace
-): Id<"environments"> | null {
+function getRuntimeClientId(space: SessionViewSpace): string | null {
 	if (!space?.activeBacking) {
 		return null;
 	}
 
 	if (space.activeBacking.type === "environment") {
-		return isRuntimeReady(space) ? space.activeBacking.environmentId : null;
+		return isRuntimeReady(space)
+			? (space.activeEnvironment?.clientId ?? null)
+			: null;
 	}
 
-	return space.activeEnvironment?._id ?? null;
+	return space.activeEnvironment?.clientId ?? null;
 }
 
 export const SessionView: FC<{
@@ -215,7 +216,7 @@ export const ConnectedSessionView: FC<{
 	const spaceId = space?._id;
 	const canFlushPendingSend = !!pendingSend && isRuntimeReady(space);
 	const runtimeReady = isRuntimeReady(space);
-	const runtimeEnvironmentId = getRuntimeEnvironmentId(space);
+	const runtimeClientId = getRuntimeClientId(space);
 
 	const touchSpaceIfPresent = useCallback(() => {
 		if (spaceId) {
@@ -228,13 +229,13 @@ export const ConnectedSessionView: FC<{
 			if (hasSession || hasCreatedSession) {
 				return;
 			}
-			if (!runtimeEnvironmentId) {
-				throw new Error("Runtime environment is not ready");
+			if (!runtimeClientId) {
+				throw new Error("Runtime client is not ready");
 			}
 
 			await createSpaceSession(spaceSlug, {
 				sessionId,
-				environmentId: runtimeEnvironmentId,
+				clientId: runtimeClientId,
 				spaceName: spaceSlug,
 				title: "New Chat",
 				agent: nextAgent,
@@ -250,7 +251,7 @@ export const ConnectedSessionView: FC<{
 			hasCreatedSession,
 			hasSession,
 			queryClient,
-			runtimeEnvironmentId,
+			runtimeClientId,
 			sessionId,
 			spaceSlug,
 		]
@@ -306,7 +307,7 @@ export const ConnectedSessionView: FC<{
 			return;
 		}
 
-		if (!runtimeEnvironmentId) {
+		if (!runtimeClientId) {
 			return;
 		}
 
@@ -332,7 +333,7 @@ export const ConnectedSessionView: FC<{
 		hasSession,
 		pendingSend,
 		ensureRemoteSession,
-		runtimeEnvironmentId,
+		runtimeClientId,
 		sessionState.clearOptimisticMessages,
 		sessionId,
 		spaceSlug,
@@ -350,7 +351,7 @@ export const ConnectedSessionView: FC<{
 		const nextPending = { text, agent, modelId };
 
 		try {
-			if (runtimeReady && runtimeEnvironmentId) {
+			if (runtimeReady && runtimeClientId) {
 				await ensureRemoteSession(agent, modelId);
 				await sendSpaceMessage({
 					spaceSlug,
@@ -375,7 +376,7 @@ export const ConnectedSessionView: FC<{
 		message,
 		ensureRemoteSession,
 		preparePendingSend,
-		runtimeEnvironmentId,
+		runtimeClientId,
 		runtimeReady,
 		sessionId,
 		agent,
