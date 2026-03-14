@@ -241,13 +241,7 @@ const del = authedMutation({
 				.withIndex("by_space", (q) => q.eq("spaceId", space._id))
 				.unique();
 			if (sandbox) {
-				if (sandbox.externalSandboxId) {
-					await ctx.scheduler.runAfter(
-						0,
-						internal.sandboxActions.deleteSandbox,
-						{ sandboxId: sandbox.externalSandboxId }
-					);
-				}
+				// delete sandbox in e2b
 				await ctx.db.delete(sandbox._id);
 			}
 			await ctx.db.delete(space._id);

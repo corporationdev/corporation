@@ -13,7 +13,6 @@ import type * as agentCredentialActions from "../agentCredentialActions.js";
 import type * as agentCredentials from "../agentCredentials.js";
 import type * as auth from "../auth.js";
 import type * as e2bWebhook from "../e2bWebhook.js";
-import type * as environments from "../environments.js";
 import type * as functions from "../functions.js";
 import type * as healthCheck from "../healthCheck.js";
 import type * as http from "../http.js";
@@ -30,13 +29,8 @@ import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_sandboxRuntime from "../lib/sandboxRuntime.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as projects from "../projects.js";
-import type * as sandboxActions from "../sandboxActions.js";
 import type * as secretActions from "../secretActions.js";
 import type * as secrets from "../secrets.js";
-import type * as snapshot from "../snapshot.js";
-import type * as snapshotActions from "../snapshotActions.js";
-import type * as spaceActions from "../spaceActions.js";
-import type * as spaces from "../spaces.js";
 
 import type {
   ApiFromModules,
@@ -50,7 +44,6 @@ declare const fullApi: ApiFromModules<{
   agentCredentials: typeof agentCredentials;
   auth: typeof auth;
   e2bWebhook: typeof e2bWebhook;
-  environments: typeof environments;
   functions: typeof functions;
   healthCheck: typeof healthCheck;
   http: typeof http;
@@ -67,13 +60,8 @@ declare const fullApi: ApiFromModules<{
   "lib/sandboxRuntime": typeof lib_sandboxRuntime;
   "lib/validSecrets": typeof lib_validSecrets;
   projects: typeof projects;
-  sandboxActions: typeof sandboxActions;
   secretActions: typeof secretActions;
   secrets: typeof secrets;
-  snapshot: typeof snapshot;
-  snapshotActions: typeof snapshotActions;
-  spaceActions: typeof spaceActions;
-  spaces: typeof spaces;
 }>;
 
 /**
