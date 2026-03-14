@@ -38,7 +38,7 @@ function quoteShellEnv(value: string) {
 }
 
 async function createRuntimeRefreshToken(params: {
-	sandboxId: string;
+	clientId: string;
 	userId: string;
 }): Promise<string> {
 	const secret = process.env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
@@ -53,7 +53,7 @@ async function createRuntimeRefreshToken(params: {
 	const payload = btoa(
 		JSON.stringify({
 			sub: params.userId,
-			sandboxId: params.sandboxId,
+			clientId: params.clientId,
 			clientType: "sandbox_runtime",
 			tokenType: "refresh",
 			aud: "space-runtime-refresh",
@@ -105,7 +105,7 @@ async function bootAgentAndGetUrl(
 		);
 	}
 	const runtimeRefreshToken = await createRuntimeRefreshToken({
-		sandboxId: sandbox.sandboxId,
+		clientId: sandbox.sandboxId,
 		userId: params.spaceOwnerId,
 	});
 
@@ -220,20 +220,22 @@ async function resolveSandbox(
 	spaceOwnerId: string,
 	projectEnvs: Record<string, string>
 ): Promise<Sandbox> {
-	if (space.sandboxId) {
+	// TODO: migrate to use environments table
+	const existingSandboxId = (space as Record<string, unknown>).sandboxId as
+		| string
+		| undefined;
+	if (existingSandboxId) {
 		try {
-			return await Sandbox.connect(space.sandboxId);
+			return await Sandbox.connect(existingSandboxId);
 		} catch (error) {
 			console.warn("Failed to connect existing sandbox", {
 				spaceId: space._id,
-				sandboxId: space.sandboxId,
+				sandboxId: existingSandboxId,
 				error,
 			});
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: space._id,
 				status: "creating",
-				sandboxId: null,
-				agentUrl: null,
 				error: null,
 			});
 		}
@@ -292,7 +294,11 @@ export const pauseForSpace = internalAction({
 			id: args.spaceId,
 		});
 
-		if (!space.sandboxId) {
+		// TODO: migrate to use environments table
+		const spaceSandboxId = (space as Record<string, unknown>).sandboxId as
+			| string
+			| undefined;
+		if (!spaceSandboxId) {
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "killed",
@@ -301,11 +307,11 @@ export const pauseForSpace = internalAction({
 		}
 
 		try {
-			await Sandbox.betaPause(space.sandboxId);
+			await Sandbox.betaPause(spaceSandboxId);
 		} catch (error) {
 			console.error("Failed to pause sandbox in E2B", {
 				spaceId: args.spaceId,
-				sandboxId: space.sandboxId,
+				sandboxId: spaceSandboxId,
 				error,
 			});
 			await ctx.runMutation(internal.spaces.internalUpdate, {
@@ -361,11 +367,10 @@ export const provisionForSpace = internalAction({
 				spaceSlug: space.slug,
 			});
 
+			// TODO: sandboxId should be tracked on environments table
 			await ctx.runMutation(internal.spaces.internalUpdate, {
 				id: args.spaceId,
 				status: "running",
-				sandboxId: sandbox.sandboxId,
-				agentUrl: null,
 				error: null,
 			});
 		} catch (error) {

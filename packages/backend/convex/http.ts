@@ -65,4 +65,78 @@ http.route({
 	}),
 });
 
+http.route({
+	path: "/environments/connect",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const apiKey = request.headers.get("authorization")?.replace("Bearer ", "");
+		if (!apiKey) {
+			return new Response("Unauthorized", { status: 401 });
+		}
+
+		const body = (await request.json().catch(() => null)) as Record<
+			string,
+			unknown
+		> | null;
+		if (!body) {
+			return new Response("Invalid request body", { status: 400 });
+		}
+
+		try {
+			const environmentId = await ctx.runAction(
+				internal.environments.connectAction,
+				{
+					apiKey,
+					userId: body.userId as string,
+					clientId: body.clientId as string,
+					kind: body.kind as "sandbox" | "persistent",
+					name: body.name as string,
+					metadata: body.metadata as Record<string, string> | undefined,
+				}
+			);
+			return Response.json({ environmentId });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Internal error";
+			if (message === "Unauthorized") {
+				return new Response("Unauthorized", { status: 401 });
+			}
+			return new Response(message, { status: 500 });
+		}
+	}),
+});
+
+http.route({
+	path: "/environments/disconnect",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const apiKey = request.headers.get("authorization")?.replace("Bearer ", "");
+		if (!apiKey) {
+			return new Response("Unauthorized", { status: 401 });
+		}
+
+		const body = (await request.json().catch(() => null)) as Record<
+			string,
+			unknown
+		> | null;
+		if (!body) {
+			return new Response("Invalid request body", { status: 400 });
+		}
+
+		try {
+			await ctx.runAction(internal.environments.disconnectAction, {
+				apiKey,
+				userId: body.userId as string,
+				clientId: body.clientId as string,
+			});
+			return new Response("OK", { status: 200 });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Internal error";
+			if (message === "Unauthorized") {
+				return new Response("Unauthorized", { status: 401 });
+			}
+			return new Response(message, { status: 500 });
+		}
+	}),
+});
+
 export default http;

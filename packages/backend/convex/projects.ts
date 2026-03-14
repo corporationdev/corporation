@@ -263,9 +263,13 @@ const del = authedMutation({
 		]);
 
 		for (const space of spaces) {
-			if (space.sandboxId) {
+			// TODO: migrate to use environments table
+			const spaceSandboxId = (space as Record<string, unknown>).sandboxId as
+				| string
+				| undefined;
+			if (spaceSandboxId) {
 				await ctx.scheduler.runAfter(0, internal.sandboxActions.deleteSandbox, {
-					sandboxId: space.sandboxId,
+					sandboxId: spaceSandboxId,
 				});
 			}
 			await ctx.db.delete(space._id);

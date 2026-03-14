@@ -295,7 +295,10 @@ export function AgentsConfigureDialog({
 		open &&
 		workspaceState !== undefined &&
 		(agent?.status === "error" || configureError !== null);
-	const sandboxId = agent?.sandboxId;
+	// TODO: migrate to use environments table
+	const sandboxId = (agent as Record<string, unknown> | undefined)?.sandboxId as
+		| string
+		| undefined;
 
 	return (
 		<Dialog onOpenChange={onOpenChange} open={open}>

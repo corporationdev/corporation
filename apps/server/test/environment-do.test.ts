@@ -232,6 +232,35 @@ describe("EnvironmentDurableObject", () => {
 		});
 	});
 
+	it("marks the environment as disconnected after the runtime socket closes", async () => {
+		const id = env.ENVIRONMENT_DO.idFromName("runtime-close-snapshot-user");
+		const stub = env.ENVIRONMENT_DO.get(id);
+		const runtimeSocket = await connectRuntimeSocket(stub);
+
+		runtimeSocket.close(1000, "done");
+
+		const snapshotResult = await stub.getRuntimeConnectionsSnapshot();
+		expect(snapshotResult.ok).toBe(true);
+		if (!snapshotResult.ok) {
+			throw new Error("Expected runtime connection snapshot");
+		}
+
+		expect(snapshotResult.value.snapshot).toEqual({
+			activeConnection: null,
+			activeConnectionId: null,
+			connected: false,
+			connectionCount: 0,
+			connections: [],
+		});
+
+		await expect(stub.hasConnectedRuntime()).resolves.toEqual({
+			ok: true,
+			value: {
+				connected: false,
+			},
+		});
+	});
+
 	it("matches concurrent responses by request id", async () => {
 		const id = env.ENVIRONMENT_DO.idFromName("runtime-concurrent-user");
 		const stub = env.ENVIRONMENT_DO.get(id);

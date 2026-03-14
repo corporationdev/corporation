@@ -257,7 +257,11 @@ export const saveSpaceState = internalAction({
 			id: args.spaceId,
 		});
 
-		if (!space.sandboxId) {
+		// TODO: migrate to use environments table
+		const sandboxId = (space as Record<string, unknown>).sandboxId as
+			| string
+			| undefined;
+		if (!sandboxId) {
 			throw new Error("Sandbox is not running");
 		}
 
@@ -265,7 +269,7 @@ export const saveSpaceState = internalAction({
 		let snapshotSaved = false;
 
 		try {
-			const sandbox = await Sandbox.connect(space.sandboxId);
+			const sandbox = await Sandbox.connect(sandboxId);
 			const snapshot = await sandbox.createSnapshot();
 
 			await ctx.runMutation(internal.snapshot.completeSnapshot, {
@@ -282,7 +286,7 @@ export const saveSpaceState = internalAction({
 			});
 
 			try {
-				await Sandbox.betaPause(space.sandboxId);
+				await Sandbox.betaPause(sandboxId);
 			} catch (error) {
 				await ctx.runMutation(internal.spaces.internalUpdate, {
 					id: space._id,

@@ -208,7 +208,11 @@ export const createFromSpace = authedMutation({
 			"Space"
 		);
 
-		if (!space.sandboxId) {
+		// TODO: migrate to use environments table
+		const spaceSandboxId = (space as Record<string, unknown>).sandboxId as
+			| string
+			| undefined;
+		if (!spaceSandboxId) {
 			throw new ConvexError("Sandbox is not running");
 		}
 
@@ -222,7 +226,7 @@ export const createFromSpace = authedMutation({
 			{
 				projectId: project._id,
 				snapshotId,
-				sandboxId: space.sandboxId,
+				sandboxId: spaceSandboxId,
 				setAsDefault: args.setAsDefault ?? false,
 			}
 		);

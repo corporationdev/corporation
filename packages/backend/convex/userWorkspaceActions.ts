@@ -60,7 +60,11 @@ export const save = action({
 		if (!space) {
 			throw new ConvexError("Personal workspace not found");
 		}
-		if (!space.sandboxId) {
+		// TODO: migrate to use environments table
+		const sandboxId = (space as Record<string, unknown>).sandboxId as
+			| string
+			| undefined;
+		if (!sandboxId) {
 			throw new ConvexError("Sandbox is not running");
 		}
 
@@ -79,7 +83,7 @@ export const save = action({
 		});
 
 		const userKey = await deriveUserKey(getMasterKey(), authUser._id);
-		const sandbox = await Sandbox.connect(space.sandboxId);
+		const sandbox = await Sandbox.connect(sandboxId);
 		const syncedAt = Date.now();
 
 		for (const agent of supportedAgents) {

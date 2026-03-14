@@ -57,8 +57,6 @@ type SpaceUpdatePatch = {
 	bootstrapSource?: Doc<"spaces">["bootstrapSource"];
 	status?: Doc<"spaces">["status"];
 	snapshotId?: Id<"snapshots">;
-	sandboxId?: string;
-	agentUrl?: string;
 	error?: string;
 };
 
@@ -330,8 +328,6 @@ export const update = authedMutation({
 		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		status: v.optional(spaceStatusValidator),
 		snapshotId: v.optional(v.id("snapshots")),
-		sandboxId: v.optional(v.union(v.string(), v.null())),
-		agentUrl: v.optional(v.union(v.string(), v.null())),
 		error: v.optional(v.union(v.string(), v.null())),
 	},
 	handler: async (ctx, args) => {
@@ -343,7 +339,7 @@ export const update = authedMutation({
 
 		const patch = buildConvexPatch<SpaceUpdatePatch, typeof args>(args, {
 			assign: ["bootstrapSource", "status", "snapshotId"],
-			clearable: ["sandboxId", "agentUrl", "error"],
+			clearable: ["error"],
 		});
 
 		await ctx.db.patch(args.id, patch);
@@ -370,8 +366,6 @@ export const internalUpdate = internalMutation({
 		bootstrapSource: v.optional(spaceBootstrapSourceValidator),
 		status: v.optional(spaceStatusValidator),
 		snapshotId: v.optional(v.id("snapshots")),
-		sandboxId: v.optional(v.union(v.string(), v.null())),
-		agentUrl: v.optional(v.union(v.string(), v.null())),
 		error: v.optional(v.union(v.string(), v.null())),
 		name: v.optional(v.string()),
 	},
@@ -380,7 +374,7 @@ export const internalUpdate = internalMutation({
 			args,
 			{
 				assign: ["bootstrapSource", "status", "snapshotId", "name"],
-				clearable: ["sandboxId", "agentUrl", "error"],
+				clearable: ["error"],
 			}
 		);
 
@@ -446,13 +440,16 @@ export const internalGetByUserAndProject = internalQuery({
 	},
 });
 
+// TODO: migrate to use environments table - sandboxId is now tracked on environments
 export const getBySandboxId = internalQuery({
 	args: { sandboxId: v.string() },
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query("spaces")
-			.withIndex("by_sandboxId", (q) => q.eq("sandboxId", args.sandboxId))
-			.unique();
+		const spaces = await ctx.db.query("spaces").collect();
+		return (
+			spaces.find(
+				(s) => (s as Record<string, unknown>).sandboxId === args.sandboxId
+			) ?? null
+		);
 	},
 });
 
@@ -558,9 +555,13 @@ export const archive = authedMutation({
 			updatedAt: Date.now(),
 		});
 
-		if (space.sandboxId) {
+		// TODO: migrate to use environments table
+		const sandboxId = (space as Record<string, unknown>).sandboxId as
+			| string
+			| undefined;
+		if (sandboxId) {
 			await ctx.scheduler.runAfter(0, internal.sandboxActions.archiveSandbox, {
-				sandboxId: space.sandboxId,
+				sandboxId,
 			});
 		}
 	},
@@ -580,9 +581,11 @@ export const startSandbox = authedMutation({
 		if (space.status === "running" || space.status === "creating") {
 			return;
 		}
+		// TODO: migrate to use environments table
+		const hasSandboxId = !!(space as Record<string, unknown>).sandboxId;
 		if (
 			!(
-				space.sandboxId ||
+				hasSandboxId ||
 				space.snapshotId ||
 				space.bootstrapSource === "base-template"
 			)
@@ -615,7 +618,11 @@ export const pauseSandbox = authedMutation({
 		if (space.status === "paused") {
 			return;
 		}
-		if (space.status !== "running" || !space.sandboxId) {
+		// TODO: migrate to use environments table
+		if (
+			space.status !== "running" ||
+			!(space as Record<string, unknown>).sandboxId
+		) {
 			throw new ConvexError("Sandbox is not running");
 		}
 
@@ -665,7 +672,10 @@ const del = authedMutation({
 		}
 		await requireOwnedSpace(ctx, space);
 
-		const { sandboxId } = space;
+		// TODO: migrate to use environments table
+		const sandboxId = (space as Record<string, unknown>).sandboxId as
+			| string
+			| undefined;
 		await ctx.db.delete(args.id);
 
 		if (sandboxId) {

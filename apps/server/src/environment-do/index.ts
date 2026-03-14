@@ -79,6 +79,91 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		});
 	}
 
+	private async notifyConvexEnvironmentConnected(claims: {
+		sub: string;
+		clientId: string;
+	}): Promise<void> {
+		const convexSiteUrl = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_CONVEX_SITE_URL?.trim();
+		const apiKey = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_INTERNAL_API_KEY?.trim();
+		if (!(convexSiteUrl && apiKey)) {
+			log.warn(
+				"Missing CORPORATION_CONVEX_SITE_URL or CORPORATION_INTERNAL_API_KEY, skipping environment connect notification"
+			);
+			return;
+		}
+
+		try {
+			const response = await fetch(`${convexSiteUrl}/environments/connect`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${apiKey}`,
+				},
+				body: JSON.stringify({
+					userId: claims.sub,
+					clientId: claims.clientId,
+					kind: "persistent",
+					name: claims.clientId,
+				}),
+			});
+			if (!response.ok) {
+				log.warn(
+					{ status: response.status },
+					"environment connect notification failed"
+				);
+			}
+		} catch (error) {
+			log.warn(
+				{ error: error instanceof Error ? error.message : String(error) },
+				"environment connect notification error"
+			);
+		}
+	}
+
+	private async notifyConvexEnvironmentDisconnected(claims: {
+		sub: string;
+		clientId: string;
+	}): Promise<void> {
+		const convexSiteUrl = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_CONVEX_SITE_URL?.trim();
+		const apiKey = (
+			this.env as unknown as Record<string, string>
+		).CORPORATION_INTERNAL_API_KEY?.trim();
+		if (!(convexSiteUrl && apiKey)) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`${convexSiteUrl}/environments/disconnect`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${apiKey}`,
+				},
+				body: JSON.stringify({
+					userId: claims.sub,
+					clientId: claims.clientId,
+				}),
+			});
+			if (!response.ok) {
+				log.warn(
+					{ status: response.status },
+					"environment disconnect notification failed"
+				);
+			}
+		} catch (error) {
+			log.warn(
+				{ error: error instanceof Error ? error.message : String(error) },
+				"environment disconnect notification error"
+			);
+		}
+	}
+
 	private async initialize(): Promise<void> {
 		const db = drizzle(this.ctx.storage, { schema });
 		await migrate(db, bundledMigrations);
@@ -94,7 +179,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		this.streamSubscriptions.hydrate(await this.subscriptionStore.list());
 	}
 
-	private rebuildConnectionsFromHibernation(): void {
+	private rebuildConnectionsFromHibernation(options?: {
+		excludeConnectionId?: string;
+	}): void {
 		this.runtimeConnections.clear();
 		this.activeRuntimeConnectionId = null;
 		const sockets = this.ctx
@@ -110,7 +197,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				): entry is {
 					socket: WebSocket;
 					attachment: RuntimeSocketAttachment;
-				} => entry.attachment !== null
+				} =>
+					entry.attachment !== null &&
+					entry.attachment.connectionId !== options?.excludeConnectionId
 			)
 			.sort((left, right) =>
 				compareRuntimeAttachments(left.attachment, right.attachment)
@@ -307,6 +396,8 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			"accepted runtime websocket"
 		);
 
+		void this.notifyConvexEnvironmentConnected(runtimeAuth.claims);
+
 		return new Response(null, {
 			status: 101,
 			webSocket: client,
@@ -384,7 +475,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		});
 		if (this.activeRuntimeConnectionId === attachment.connectionId) {
 			this.clearStreamSubscriptions();
-			this.rebuildConnectionsFromHibernation();
+			this.rebuildConnectionsFromHibernation({
+				excludeConnectionId: attachment.connectionId,
+			});
 		}
 		log.info(
 			{
@@ -395,6 +488,10 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			},
 			"runtime websocket closed"
 		);
+
+		if (this.runtimeConnections.size === 0) {
+			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+		}
 	}
 
 	webSocketError(ws: WebSocket, error: unknown): void {
@@ -408,7 +505,9 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			});
 			if (this.activeRuntimeConnectionId === attachment.connectionId) {
 				this.clearStreamSubscriptions();
-				this.rebuildConnectionsFromHibernation();
+				this.rebuildConnectionsFromHibernation({
+					excludeConnectionId: attachment.connectionId,
+				});
 			}
 		}
 		log.error(
@@ -419,16 +518,23 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 			},
 			"runtime websocket error"
 		);
+
+		if (attachment && this.runtimeConnections.size === 0) {
+			void this.notifyConvexEnvironmentDisconnected(attachment.auth.claims);
+		}
 	}
 
 	async hasConnectedRuntime(): Promise<
 		EnvironmentRpcResult<{ connected: boolean }>
 	> {
 		await this.ready;
+		const activeConnectionId = this.activeRuntimeConnectionId;
 		return {
 			ok: true,
 			value: {
-				connected: this.activeRuntimeConnectionId !== null,
+				connected:
+					activeConnectionId !== null &&
+					this.runtimeConnections.has(activeConnectionId),
 			},
 		};
 	}
