@@ -4,6 +4,7 @@ import { githubApp } from "./github";
 import { integrationsApp } from "./integrations";
 import { proxyApp } from "./proxy";
 import { runtimeApp } from "./runtime";
+import { spacesApp } from "./spaces";
 import { streamApp } from "./stream";
 import { testApp } from "./test";
 
@@ -28,6 +29,7 @@ const apiApp = new Hono<{ Bindings: Env }>()
 	.route("/proxy", proxyApp)
 	.route("/runtime", runtimeApp)
 	.route("/test", testApp)
+	.route("/spaces", spacesApp)
 	.route("/spaces", streamApp);
 
 const app = new Hono<{ Bindings: Env }>().route("/api", apiApp);

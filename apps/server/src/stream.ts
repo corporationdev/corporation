@@ -125,8 +125,6 @@ export const streamApp = new Hono<{
 		const spaceActor = getSpaceStubWithAuth({
 			env: c.env,
 			spaceSlug,
-			authToken,
-			jwtPayload: c.get("jwtPayload"),
 		});
 		try {
 			const state = await spaceActor.getSessionStreamState(sessionId);
@@ -155,8 +153,6 @@ export const streamApp = new Hono<{
 		const spaceActor = getSpaceStubWithAuth({
 			env: c.env,
 			spaceSlug,
-			authToken,
-			jwtPayload: c.get("jwtPayload"),
 		});
 		const limit = parseLimit(c.req.query("limit"));
 		const timeoutMs = parseLimit(c.req.query("timeoutMs"));

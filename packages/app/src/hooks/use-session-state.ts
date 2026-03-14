@@ -1,7 +1,6 @@
 import type {
 	SessionEvent,
 	SessionStreamFrame,
-	SessionStreamState,
 } from "@corporation/contracts/browser-do";
 import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
@@ -12,9 +11,8 @@ import type {
 	MessageTimelineEntry,
 	TimelineEntry,
 } from "@/components/chat/types";
-import { apiClient, getAuthHeaders } from "@/lib/api-client";
+import { getAuthHeaders, getSessionStreamState } from "@/lib/api-client";
 import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
-import type { SpaceActor } from "@/lib/space-client";
 import { toAbsoluteUrl } from "@/lib/url";
 
 function buildSessionStreamBaseUrl(
@@ -24,17 +22,6 @@ function buildSessionStreamBaseUrl(
 	const baseUrl = new URL(toAbsoluteUrl(env.VITE_CORPORATION_SERVER_URL));
 	baseUrl.pathname = `/api/spaces/${encodeURIComponent(spaceSlug)}/sessions/${encodeURIComponent(sessionId)}`;
 	return baseUrl.toString();
-}
-
-async function fetchSessionStreamState(
-	spaceSlug: string,
-	sessionId: string,
-	signal: AbortSignal
-): Promise<SessionStreamState> {
-	return await apiClient.spaces.getSessionStreamState(
-		{ spaceSlug, sessionId },
-		{ signal }
-	);
 }
 
 function readStreamBatch(
@@ -79,11 +66,11 @@ export type SessionState = {
 export function useSessionState({
 	sessionId,
 	spaceSlug,
-	actor,
+	streamEnabled,
 }: {
 	sessionId: string;
 	spaceSlug: string;
-	actor: SpaceActor;
+	streamEnabled: boolean;
 }): SessionState {
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const [events, setEvents] = useState<SessionEvent[]>([]);
@@ -139,7 +126,7 @@ export function useSessionState({
 	}, [sessionId]);
 
 	useEffect(() => {
-		if (!sessionId || actor.connStatus !== "connected" || !actor.connection) {
+		if (!(sessionId && streamEnabled)) {
 			return;
 		}
 
@@ -149,11 +136,7 @@ export function useSessionState({
 		let streamResponse: StreamResponse<SessionStreamFrame> | null = null;
 
 		(async () => {
-			const state = await fetchSessionStreamState(
-				spaceSlug,
-				sessionId,
-				abortController.signal
-			);
+			const state = await getSessionStreamState(spaceSlug, sessionId);
 			if (isCancelled) {
 				return;
 			}
@@ -210,7 +193,7 @@ export function useSessionState({
 			unsubscribe?.();
 			streamResponse?.cancel("session-stream-cleanup");
 		};
-	}, [actor.connStatus, actor.connection, addEvents, sessionId, spaceSlug]);
+	}, [addEvents, sessionId, spaceSlug, streamEnabled]);
 
 	const entries = useMemo(() => {
 		const serverEntries = sessionEventsToEntries(events);

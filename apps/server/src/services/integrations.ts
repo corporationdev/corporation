@@ -1,10 +1,39 @@
-import type {
-	CreateIntegrationConnectSessionInput,
-	CreateIntegrationConnectSessionOutput,
-	GetIntegrationConnectionOutput,
-	ListIntegrationsOutput,
-} from "@corporation/contracts/orpc/worker-http";
 import { Nango } from "@nangohq/node";
+
+type IntegrationConnection = {
+	connection_id: string;
+	provider: string;
+	created: string;
+	end_user: {
+		email: string | null;
+		display_name: string | null;
+	} | null;
+};
+
+type Integration = {
+	unique_key: string;
+	provider: string;
+	logo?: string;
+	connection: IntegrationConnection | null;
+};
+
+type ListIntegrationsOutput = {
+	integrations: Integration[];
+};
+
+type GetIntegrationConnectionOutput = {
+	connection: IntegrationConnection | null;
+};
+
+type CreateIntegrationConnectSessionInput = {
+	allowedIntegrations?: string[];
+};
+
+type CreateIntegrationConnectSessionOutput = {
+	token: string;
+	connect_link?: string;
+	expires_at: string;
+};
 
 export async function listIntegrations(
 	env: Env,

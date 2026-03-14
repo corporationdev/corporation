@@ -1,10 +1,8 @@
-import type {
-	CreateRuntimeAuthSessionInput,
-	CreateRuntimeRefreshTokenInput,
-} from "@corporation/contracts/orpc/worker-http";
 import {
 	mintRuntimeAccessToken,
 	mintRuntimeRefreshToken,
+	type RuntimeAuthSessionRequest,
+	type RuntimeRefreshTokenRequest,
 	runtimeAuthSessionResponseSchema,
 	runtimeRefreshTokenResponseSchema,
 	verifyRuntimeRefreshToken,
@@ -28,7 +26,7 @@ export async function createRuntimeAuthSession(
 		CORPORATION_SERVER_URL?: string;
 	},
 	requestUrl: string,
-	input: CreateRuntimeAuthSessionInput
+	input: RuntimeAuthSessionRequest
 ) {
 	const secret = env.CORPORATION_RUNTIME_AUTH_SECRET?.trim();
 	if (!secret) {
@@ -64,7 +62,7 @@ export async function createRuntimeRefreshToken(
 	env: {
 		CORPORATION_RUNTIME_AUTH_SECRET?: string;
 	},
-	input: CreateRuntimeRefreshTokenInput & {
+	input: RuntimeRefreshTokenRequest & {
 		userId: string;
 	}
 ) {

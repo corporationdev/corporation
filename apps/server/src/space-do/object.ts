@@ -1,5 +1,11 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
+	SessionStatus,
+	SessionStreamFrame,
+	SessionStreamState,
+} from "@corporation/contracts/browser-do";
+import { sessionEventSchema } from "@corporation/contracts/browser-do";
+import type {
 	AbortSessionInput,
 	CreateSessionInput,
 	CreateSessionResult,
@@ -7,6 +13,7 @@ import type {
 	PromptSessionInput,
 	RespondToPermissionInput,
 	SpaceSessionRow,
+	SpaceSessionSyncStatus,
 } from "@corporation/contracts/browser-space";
 import type {
 	EnvironmentRpcErrorCode,
@@ -15,7 +22,7 @@ import type {
 	EnvironmentStreamDeliveryAck,
 } from "@corporation/contracts/environment-do";
 import type { EnvironmentRuntimeCommandResponse } from "@corporation/contracts/environment-runtime";
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import {
 	type DrizzleSqliteDODatabase,
 	drizzle,
@@ -36,6 +43,11 @@ export type {
 } from "./db/schema";
 
 const NUMERIC_OFFSET_PATTERN = /^\d+$/;
+const DEFAULT_STREAM_LIMIT = 200;
+const MAX_STREAM_LIMIT = 500;
+const DEFAULT_STREAM_TIMEOUT_MS = 25_000;
+const MAX_STREAM_TIMEOUT_MS = 60_000;
+const STREAM_POLL_INTERVAL_MS = 250;
 
 function okResult<T>(value: T): EnvironmentRpcResult<T> {
 	return {
@@ -113,6 +125,62 @@ function compareOffsets(left: string, right: string): number {
 		return left.localeCompare(right);
 	}
 	return leftSeq - rightSeq;
+}
+
+function normalizeLimit(limit?: number): number {
+	if (!Number.isFinite(limit)) {
+		return DEFAULT_STREAM_LIMIT;
+	}
+	return Math.min(
+		MAX_STREAM_LIMIT,
+		Math.max(1, Math.trunc(limit ?? DEFAULT_STREAM_LIMIT))
+	);
+}
+
+function normalizeTimeoutMs(timeoutMs?: number): number {
+	if (!Number.isFinite(timeoutMs)) {
+		return DEFAULT_STREAM_TIMEOUT_MS;
+	}
+	return Math.min(
+		MAX_STREAM_TIMEOUT_MS,
+		Math.max(100, Math.trunc(timeoutMs ?? DEFAULT_STREAM_TIMEOUT_MS))
+	);
+}
+
+function normalizeAfterOffset(afterOffset?: number): number {
+	if (!Number.isFinite(afterOffset)) {
+		return -1;
+	}
+	return Math.max(-1, Math.trunc(afterOffset ?? -1));
+}
+
+function mapSyncStatusToSessionStatus(
+	syncStatus: SpaceSessionSyncStatus,
+	lastSyncError: string | null
+): SessionStatus {
+	if (syncStatus === "error" || lastSyncError) {
+		return "error";
+	}
+	return "idle";
+}
+
+function mapRuntimeEventRowToFrame(
+	row: Pick<RuntimeEventRow, "offsetSeq" | "payload">
+): SessionStreamFrame | null {
+	const parsed = sessionEventSchema.safeParse(row.payload);
+	if (!parsed.success) {
+		return null;
+	}
+
+	return {
+		kind: "event",
+		offset: row.offsetSeq,
+		event: parsed.data,
+	};
+}
+
+async function sleep(ms: number): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class SpaceDurableObject extends DurableObject<Env> {
@@ -323,6 +391,15 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		});
 	}
 
+	async listSessions(): Promise<SpaceSessionRow[]> {
+		await this.ready;
+		const db = await this.getDb();
+		return await db.query.sessions.findMany({
+			where: isNull(sessions.archivedAt),
+			orderBy: (table, { desc }) => [desc(table.updatedAt)],
+		});
+	}
+
 	async promptSession(input: PromptSessionInput): Promise<null> {
 		await this.ready;
 		const session = await this.getSessionOrThrow(input.sessionId);
@@ -371,6 +448,115 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			throw new Error("Unexpected permission response from runtime");
 		}
 		return response.result.handled;
+	}
+
+	async getSessionStreamState(sessionId: string): Promise<SessionStreamState> {
+		await this.ready;
+		const session = await this.getPersistedSession(sessionId);
+		const lastOffset = parseOffsetSequence(session?.lastAppliedOffset ?? "-1");
+
+		if (!session) {
+			return {
+				sessionId,
+				status: "idle",
+				error: null,
+				agent: null,
+				modelId: null,
+				lastOffset: 0,
+			};
+		}
+
+		return {
+			sessionId,
+			status: mapSyncStatusToSessionStatus(
+				session.syncStatus,
+				session.lastSyncError ?? null
+			),
+			error: session.lastSyncError ?? null,
+			agent: session.agent,
+			modelId: session.model ?? null,
+			lastOffset: Math.max(0, lastOffset ?? 0),
+		};
+	}
+
+	private async readSessionFramesChunk(
+		sessionId: string,
+		afterOffset: number,
+		limit: number
+	): Promise<{
+		frames: SessionStreamFrame[];
+		nextOffset: number;
+		upToDate: boolean;
+		streamClosed: boolean;
+	}> {
+		const db = await this.getDb();
+		const session = await this.getSessionOrThrow(sessionId);
+		const sessionLastOffset =
+			parseOffsetSequence(session.lastAppliedOffset) ?? -1;
+		const rows = await db.query.runtimeEvents.findMany({
+			where: (table, { and, eq, gt }) =>
+				and(eq(table.sessionId, sessionId), gt(table.offsetSeq, afterOffset)),
+			orderBy: (table, { asc }) => [asc(table.offsetSeq)],
+			limit: limit + 1,
+		});
+
+		const hasMore = rows.length > limit;
+		const taken = hasMore ? rows.slice(0, limit) : rows;
+		const frames = taken
+			.map((row) => mapRuntimeEventRowToFrame(row))
+			.filter((frame): frame is SessionStreamFrame => frame !== null);
+		const nextOffset =
+			frames.at(-1)?.offset ?? Math.max(afterOffset, sessionLastOffset, 0);
+
+		return {
+			frames,
+			nextOffset,
+			upToDate: !hasMore,
+			streamClosed: false,
+		};
+	}
+
+	async readSessionStream(
+		sessionId: string,
+		afterOffset?: number,
+		limit?: number,
+		live?: boolean,
+		timeoutMs?: number
+	): Promise<{
+		frames: SessionStreamFrame[];
+		nextOffset: number;
+		upToDate: boolean;
+		streamClosed: boolean;
+	}> {
+		await this.ready;
+		const normalizedAfterOffset = normalizeAfterOffset(afterOffset);
+		const normalizedLimit = normalizeLimit(limit);
+		const normalizedLive = live === true;
+		const normalizedTimeoutMs = normalizeTimeoutMs(timeoutMs);
+
+		let result = await this.readSessionFramesChunk(
+			sessionId,
+			normalizedAfterOffset,
+			normalizedLimit
+		);
+		if (!normalizedLive || result.frames.length > 0) {
+			return result;
+		}
+
+		const deadline = Date.now() + normalizedTimeoutMs;
+		while (Date.now() < deadline) {
+			await sleep(STREAM_POLL_INTERVAL_MS);
+			result = await this.readSessionFramesChunk(
+				sessionId,
+				normalizedAfterOffset,
+				normalizedLimit
+			);
+			if (result.frames.length > 0) {
+				return result;
+			}
+		}
+
+		return result;
 	}
 
 	receiveEnvironmentStreamItems(

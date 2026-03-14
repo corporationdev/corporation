@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/resizable";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { WorkspacePanel } from "@/components/workspace-panel/workspace-panel";
-import { useSpaceActor } from "@/hooks/use-space-actor";
 import { useSpaceSessions } from "@/hooks/use-space-sessions";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +32,8 @@ export function SpaceLayout() {
 	const activeSessionId: string | undefined = match.search.session;
 
 	const space = useQuery(api.spaces.getBySlug, { slug: spaceSlug });
-	const { actor, isBindingSynced } = useSpaceActor(spaceSlug, space);
-	const { sessions, isLoading: isSessionsLoading } = useSpaceSessions(actor);
+	const { sessions, isLoading: isSessionsLoading } =
+		useSpaceSessions(spaceSlug);
 	const [workspacePanelOpen, setWorkspacePanelOpen] = useLocalStorage(
 		WORKSPACE_PANEL_OPEN_KEY,
 		true
@@ -130,8 +129,10 @@ export function SpaceLayout() {
 						<SpaceNotFoundPanel />
 					) : (
 						<SessionView
-							actor={actor}
-							isBindingSynced={isBindingSynced}
+							hasSession={
+								!!activeSessionId &&
+								sessions.some((session) => session.id === activeSessionId)
+							}
 							key={activeSessionId ?? spaceSlug}
 							sessionId={activeSessionId}
 							space={space}
@@ -152,12 +153,7 @@ export function SpaceLayout() {
 			<ResizablePanel>{mainPane}</ResizablePanel>
 			<ResizableHandle />
 			<ResizablePanel>
-				<WorkspacePanel
-					actor={actor}
-					onClose={() => setWorkspacePanelOpen(false)}
-					space={space}
-					spaceSlug={spaceSlug}
-				/>
+				<WorkspacePanel onClose={() => setWorkspacePanelOpen(false)} />
 			</ResizablePanel>
 		</ResizablePanelGroup>
 	);

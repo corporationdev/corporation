@@ -35,7 +35,7 @@ import type * as secretActions from "../secretActions.js";
 import type * as secrets from "../secrets.js";
 import type * as snapshot from "../snapshot.js";
 import type * as snapshotActions from "../snapshotActions.js";
-import type * as spaceBranchActions from "../spaceBranchActions.js";
+import type * as spaceActions from "../spaceActions.js";
 import type * as spaces from "../spaces.js";
 
 import type {
@@ -72,7 +72,7 @@ declare const fullApi: ApiFromModules<{
   secrets: typeof secrets;
   snapshot: typeof snapshot;
   snapshotActions: typeof snapshotActions;
-  spaceBranchActions: typeof spaceBranchActions;
+  spaceActions: typeof spaceActions;
   spaces: typeof spaces;
 }>;
 
