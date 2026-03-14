@@ -8,7 +8,6 @@ export const snapshotStatusValidator = v.union(
 );
 
 export const sandboxStatusValidator = v.union(
-	v.literal("provisioning"),
 	v.literal("creating"),
 	v.literal("running"),
 	v.literal("paused"),

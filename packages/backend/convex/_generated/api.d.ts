@@ -31,8 +31,11 @@ import type * as lib_sandbox from "../lib/sandbox.js";
 import type * as lib_sandboxRuntime from "../lib/sandboxRuntime.js";
 import type * as lib_validSecrets from "../lib/validSecrets.js";
 import type * as projects from "../projects.js";
+import type * as sandboxActions from "../sandboxActions.js";
+import type * as sandboxes from "../sandboxes.js";
 import type * as secretActions from "../secretActions.js";
 import type * as secrets from "../secrets.js";
+import type * as snapshots from "../snapshots.js";
 import type * as spaces from "../spaces.js";
 
 import type {
@@ -65,8 +68,11 @@ declare const fullApi: ApiFromModules<{
   "lib/sandboxRuntime": typeof lib_sandboxRuntime;
   "lib/validSecrets": typeof lib_validSecrets;
   projects: typeof projects;
+  sandboxActions: typeof sandboxActions;
+  sandboxes: typeof sandboxes;
   secretActions: typeof secretActions;
   secrets: typeof secrets;
+  snapshots: typeof snapshots;
   spaces: typeof spaces;
 }>;
 

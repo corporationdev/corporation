@@ -1,7 +1,14 @@
 import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { authedMutation, authedQuery } from "./functions";
+
+export const internalGet = internalQuery({
+	args: { id: v.id("environments") },
+	handler: async (ctx, args) => {
+		return await ctx.db.get(args.id);
+	},
+});
 
 export const list = authedQuery({
 	args: {},

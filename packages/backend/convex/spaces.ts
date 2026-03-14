@@ -2,10 +2,18 @@ import { ConvexError, v } from "convex/values";
 import { asyncMap } from "convex-helpers";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internalQuery } from "./_generated/server";
 import { createBacking } from "./backings";
 import { createEnvironment } from "./environments";
 import { authedMutation, authedQuery } from "./functions";
 import { requireProjectInActiveOrg } from "./lib/projectAccess";
+
+export const internalGet = internalQuery({
+	args: { id: v.id("spaces") },
+	handler: async (ctx, args) => {
+		return await ctx.db.get(args.id);
+	},
+});
 
 export const list = authedQuery({
 	args: {},
@@ -173,14 +181,14 @@ export const create = authedMutation({
 		// 3. Create backing
 		await createBacking(ctx, { spaceId, environmentId });
 
-		// 4. Sandbox-specific: create sandbox record + schedule provisioning
+		// 4. Sandbox-specific: create sandbox record + schedule creating
 		if (args.backing.type === "sandbox") {
 			if (!project.defaultSnapshotId) {
 				throw new ConvexError("Project needs default snapshot");
 			}
 			await ctx.db.insert("sandboxes", {
 				spaceId,
-				status: "provisioning",
+				status: "creating",
 				snapshotId: project.defaultSnapshotId,
 				createdAt: now,
 				updatedAt: now,

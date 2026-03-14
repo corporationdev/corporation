@@ -1,7 +1,15 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { internalQuery } from "./_generated/server";
 import { authedQuery } from "./functions";
+
+export const internalGet = internalQuery({
+	args: { id: v.id("backings") },
+	handler: async (ctx, args) => {
+		return await ctx.db.get(args.id);
+	},
+});
 
 export async function createBacking(
 	ctx: MutationCtx,
