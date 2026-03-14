@@ -1,5 +1,8 @@
-import type { RequestPermissionOutcome } from "@agentclientprotocol/sdk";
-import type { RuntimeEvent, TurnStopReason } from "./runtime-events";
+import type {
+	RequestPermissionOutcome,
+	StopReason,
+} from "@agentclientprotocol/sdk";
+import type { SessionEvent } from "@corporation/contracts/session-event";
 
 export type SessionId = string;
 export type TurnId = string;
@@ -42,7 +45,7 @@ export type ResolvedStartTurnInput = {
 	dynamicConfig: SessionDynamicConfig;
 };
 
-export type EventSink = (event: RuntimeEvent) => void;
+export type EventSink = (event: SessionEvent) => void;
 
 export type RespondToPermissionRequestInput = {
 	requestId: string;
@@ -50,7 +53,7 @@ export type RespondToPermissionRequestInput = {
 };
 
 export type RunTurnResult = {
-	stopReason?: TurnStopReason;
+	stopReason?: StopReason;
 };
 
 export type AgentDriver = {
@@ -113,13 +116,13 @@ export type RuntimeSession = Readonly<{
 
 export type RuntimeTurn = Readonly<TurnState>;
 
-export type { RuntimeEvent, TurnStopReason } from "./runtime-events";
+export type { SessionEvent } from "@corporation/contracts/session-event";
 export type {
 	RuntimeWebSocketTransport,
 	WebSocketLike,
 	WebSocketLikeFactory,
 } from "./websocket-runtime-transport";
-export type RuntimeEventListener = (event: RuntimeEvent) => void;
+export type RuntimeEventListener = (event: SessionEvent) => void;
 
 function getConfigDiff(
 	current: SessionDynamicConfig,
@@ -216,13 +219,22 @@ export class RuntimeEngine {
 		};
 	}
 
-	private readonly emit = (event: RuntimeEvent): void => {
+	private readonly emit = (event: SessionEvent): void => {
+		console.log("[engine] emit:", event.kind);
 		for (const listener of this.listeners) {
 			listener(event);
 		}
 	};
 
 	async createSession(input: CreateSessionInput): Promise<RuntimeSession> {
+		console.log(
+			"[engine] createSession:",
+			input.sessionId,
+			"cwd:",
+			input.cwd,
+			"agent:",
+			input.agent
+		);
 		if (this.sessions.has(input.sessionId)) {
 			throw new Error(`Session ${input.sessionId} already exists`);
 		}
@@ -286,9 +298,9 @@ export class RuntimeEngine {
 		this.turns.set(turnId, turnState);
 		session.activeTurnId = turnId;
 		this.emit({
-			type: "turn.started",
+			kind: "status",
 			sessionId: input.sessionId,
-			turnId,
+			status: "running",
 		});
 
 		try {
@@ -312,9 +324,9 @@ export class RuntimeEngine {
 			if (turnState.status !== "cancelled") {
 				turnState.status = "completed";
 				this.emit({
-					type: "turn.completed",
+					kind: "status",
 					sessionId: input.sessionId,
-					turnId,
+					status: "idle",
 					...(runResult?.stopReason
 						? { stopReason: runResult.stopReason }
 						: {}),
@@ -324,9 +336,9 @@ export class RuntimeEngine {
 			if (turnState.status !== "cancelled") {
 				turnState.status = "failed";
 				this.emit({
-					type: "turn.failed",
+					kind: "status",
 					sessionId: input.sessionId,
-					turnId,
+					status: "error",
 					error: toErrorMessage(error),
 				});
 				throw error;
@@ -352,9 +364,9 @@ export class RuntimeEngine {
 		await this.driver.cancel?.(turnId);
 		turnState.status = "cancelled";
 		this.emit({
-			type: "turn.cancelled",
+			kind: "status",
 			sessionId,
-			turnId,
+			status: "idle",
 		});
 		return true;
 	}
@@ -406,9 +418,8 @@ export const noopDriver: AgentDriver = {
 	},
 	async run(input, emit) {
 		emit({
-			type: "output.delta",
+			kind: "text_delta",
 			sessionId: input.sessionId,
-			turnId: input.turnId,
 			channel: "assistant",
 			content: {
 				type: "text",

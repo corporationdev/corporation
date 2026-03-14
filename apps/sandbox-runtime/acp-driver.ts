@@ -169,12 +169,21 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 
 	return {
 		async createSession(input: DriverCreateSessionInput): Promise<void> {
+			console.log(
+				"[acp] createSession:",
+				input.sessionId,
+				"agent:",
+				input.staticConfig.agent,
+				"cwd:",
+				input.staticConfig.cwd
+			);
 			if (sessions.has(input.sessionId)) {
 				throw new Error(`ACP session already exists for ${input.sessionId}`);
 			}
 
 			const connection = await factory.connect(input.staticConfig.agent);
 			try {
+				console.log("[acp] sending initialize...");
 				await connection.request("initialize", {
 					protocolVersion: ACP_PROTOCOL_VERSION,
 					clientInfo: {
@@ -182,10 +191,12 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 						version: "v1",
 					},
 				});
+				console.log("[acp] sending session/new cwd:", input.staticConfig.cwd);
 				const created = await connection.request("session/new", {
 					cwd: input.staticConfig.cwd,
 					mcpServers: [],
 				});
+				console.log("[acp] session created:", created.sessionId);
 
 				await applyDynamicConfig(
 					connection,
@@ -198,6 +209,10 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 					connection,
 				});
 			} catch (error) {
+				console.error(
+					"[acp] createSession failed:",
+					error instanceof Error ? error.message : error
+				);
 				await connection.close?.().catch(() => undefined);
 				throw error;
 			}
@@ -223,7 +238,6 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 						emit(
 							normalizeAcpSessionUpdate(
 								input.sessionId,
-								input.turnId,
 								event.notification.update
 							)
 						);
@@ -240,7 +254,6 @@ export function createAcpDriver(factory: AcpConnectionFactory): AgentDriver {
 						emit(
 							normalizeAcpPermissionRequest(
 								input.sessionId,
-								input.turnId,
 								event.requestId,
 								event.request
 							)

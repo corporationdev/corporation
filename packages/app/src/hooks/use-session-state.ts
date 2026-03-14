@@ -1,7 +1,4 @@
-import type {
-	SessionEvent,
-	SessionStreamFrame,
-} from "@corporation/contracts/browser-do";
+import type { SessionStreamFrame } from "@corporation/contracts/browser-do";
 import { env } from "@corporation/env/web";
 import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
@@ -12,7 +9,10 @@ import type {
 	TimelineEntry,
 } from "@/components/chat/types";
 import { getAuthHeaders, getSessionStreamState } from "@/lib/api-client";
-import { sessionEventsToEntries } from "@/lib/session-events-to-entries";
+import {
+	type EnrichedSessionEvent,
+	sessionEventsToEntries,
+} from "@/lib/session-events-to-entries";
 import { toAbsoluteUrl } from "@/lib/url";
 
 function buildSessionStreamBaseUrl(
@@ -28,18 +28,22 @@ function readStreamBatch(
 	batch: JsonBatch<SessionStreamFrame>,
 	sessionId: string
 ): {
-	events: SessionEvent[];
+	events: EnrichedSessionEvent[];
 	status: string | null;
 	error: string | null | undefined;
 } {
-	const events: SessionEvent[] = [];
+	const events: EnrichedSessionEvent[] = [];
 	let status: string | null = null;
 	let error: string | null | undefined;
 
 	for (const frame of batch.items) {
 		if (frame.kind === "event") {
 			if (frame.event.sessionId === sessionId) {
-				events.push(frame.event);
+				events.push({
+					eventId: frame.eventId,
+					createdAt: frame.createdAt,
+					event: frame.event,
+				});
 			}
 			continue;
 		}
@@ -73,7 +77,7 @@ export function useSessionState({
 	streamEnabled: boolean;
 }): SessionState {
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
-	const [events, setEvents] = useState<SessionEvent[]>([]);
+	const [events, setEvents] = useState<EnrichedSessionEvent[]>([]);
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		MessageTimelineEntry[]
 	>([]);
@@ -99,12 +103,12 @@ export function useSessionState({
 		setSessionStatus("idle");
 	}, []);
 
-	const addEvents = useCallback((newEvents: SessionEvent[]) => {
-		const unseen: SessionEvent[] = [];
-		for (const event of newEvents) {
-			if (!seenEventIdsRef.current.has(event.id)) {
-				seenEventIdsRef.current.add(event.id);
-				unseen.push(event);
+	const addEvents = useCallback((newEvents: EnrichedSessionEvent[]) => {
+		const unseen: EnrichedSessionEvent[] = [];
+		for (const enriched of newEvents) {
+			if (!seenEventIdsRef.current.has(enriched.eventId)) {
+				seenEventIdsRef.current.add(enriched.eventId);
+				unseen.push(enriched);
 			}
 		}
 		if (unseen.length > 0) {

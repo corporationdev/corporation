@@ -1,4 +1,4 @@
-import type { SessionEvent } from "@corporation/contracts/browser-do";
+import type { SessionEvent } from "@corporation/contracts/session-event";
 import type {
 	MessageTimelineEntry,
 	ReasoningTimelineEntry,
@@ -6,9 +6,28 @@ import type {
 	ToolTimelineEntry,
 } from "@/components/chat/types";
 
+export type EnrichedSessionEvent = {
+	eventId: string;
+	createdAt: number;
+	event: SessionEvent;
+};
+
+function extractText(
+	content: SessionEvent extends infer E
+		? E extends { kind: "text_delta"; content: infer C }
+			? C
+			: never
+		: never
+): string | null {
+	if (content.type === "text") {
+		return content.text || null;
+	}
+	return null;
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: event translation is intentionally centralized here
 export function sessionEventsToEntries(
-	events: SessionEvent[]
+	enrichedEvents: EnrichedSessionEvent[]
 ): TimelineEntry[] {
 	const entries: TimelineEntry[] = [];
 
@@ -37,144 +56,147 @@ export function sessionEventsToEntries(
 
 	const toolEntryMap = new Map<string, ToolTimelineEntry>();
 
-	for (const event of events) {
-		const time = new Date(event.createdAt).toISOString();
+	for (const { eventId, createdAt, event } of enrichedEvents) {
+		const time = new Date(createdAt).toISOString();
 
 		switch (event.kind) {
-			case "user_prompt": {
-				if (!event.text) {
-					continue;
-				}
-				flushAssistant(time);
-				flushThought(time);
-				const replayPrefix = "Previous session history is replayed below";
-				const text = event.text
-					.split("\n\n")
-					.map((part) => part.trim())
-					.filter(
-						(partText) =>
-							partText.length > 0 && !partText.startsWith(replayPrefix)
-					)
-					.join("\n\n")
-					.trim();
+			case "text_delta": {
+				const text = extractText(event.content);
 				if (!text) {
-					continue;
-				}
-				entries.push({
-					id: event.id,
-					kind: "message",
-					time,
-					role: "user",
-					text,
-				});
-				break;
-			}
-			case "agent_message_chunk": {
-				if (!event.text) {
 					break;
 				}
-				if (!assistantEntry) {
-					assistantAccumText = "";
-					assistantEntry = {
-						id: `assistant-${event.id}`,
-						kind: "message",
-						time,
-						role: "assistant",
-						text: "",
-					};
-					entries.push(assistantEntry);
-				}
-				assistantAccumText += event.text;
-				if (assistantEntry) {
-					assistantEntry.text = assistantAccumText;
-					assistantEntry.time = time;
+
+				switch (event.channel) {
+					case "user": {
+						flushAssistant(time);
+						flushThought(time);
+						const replayPrefix = "Previous session history is replayed below";
+						const cleaned = text
+							.split("\n\n")
+							.map((part) => part.trim())
+							.filter(
+								(partText) =>
+									partText.length > 0 && !partText.startsWith(replayPrefix)
+							)
+							.join("\n\n")
+							.trim();
+						if (!cleaned) {
+							break;
+						}
+						entries.push({
+							id: eventId,
+							kind: "message",
+							time,
+							role: "user",
+							text: cleaned,
+						});
+						break;
+					}
+					case "assistant": {
+						if (!assistantEntry) {
+							assistantAccumText = "";
+							assistantEntry = {
+								id: `assistant-${eventId}`,
+								kind: "message",
+								time,
+								role: "assistant",
+								text: "",
+							};
+							entries.push(assistantEntry);
+						}
+						assistantAccumText += text;
+						assistantEntry.text = assistantAccumText;
+						assistantEntry.time = time;
+						break;
+					}
+					case "thinking": {
+						if (!thoughtEntry) {
+							thoughtAccumText = "";
+							thoughtEntry = {
+								id: `thought-${eventId}`,
+								kind: "reasoning",
+								time,
+								reasoning: {
+									text: "",
+									visibility: "public",
+								},
+							};
+							entries.push(thoughtEntry);
+						}
+						thoughtAccumText += text;
+						thoughtEntry.reasoning.text = thoughtAccumText;
+						thoughtEntry.time = time;
+						break;
+					}
+					default:
+						break;
 				}
 				break;
 			}
-			case "agent_thought_chunk": {
-				if (!event.text) {
-					break;
-				}
-				if (!thoughtEntry) {
-					thoughtAccumText = "";
-					thoughtEntry = {
-						id: `thought-${event.id}`,
-						kind: "reasoning",
-						time,
-						reasoning: {
-							text: "",
-							visibility: "public",
-						},
-					};
-					entries.push(thoughtEntry);
-				}
-				thoughtAccumText += event.text;
-				thoughtEntry.reasoning.text = thoughtAccumText;
-				thoughtEntry.time = time;
-				break;
-			}
-			case "tool_call": {
+			case "tool_start": {
 				flushAssistant(time);
 				flushThought(time);
-				const existing = toolEntryMap.get(event.toolCallId);
+				const tc = event.toolCall;
+				const existing = toolEntryMap.get(tc.toolCallId);
 				if (existing) {
-					if (event.status) {
-						existing.toolStatus = event.status;
+					if (tc.status) {
+						existing.toolStatus = tc.status;
 					}
-					if (event.rawInput != null) {
-						existing.toolInput = JSON.stringify(event.rawInput, null, 2);
+					if (tc.rawInput != null) {
+						existing.toolInput = JSON.stringify(tc.rawInput, null, 2);
 					}
-					if (event.rawOutput != null) {
-						existing.toolOutput = JSON.stringify(event.rawOutput, null, 2);
+					if (tc.rawOutput != null) {
+						existing.toolOutput = JSON.stringify(tc.rawOutput, null, 2);
 					}
-					existing.toolName = event.title;
+					existing.toolName = tc.title ?? existing.toolName;
 					existing.time = time;
 				} else {
-					const entry: TimelineEntry = {
-						id: `tool-${event.toolCallId}`,
+					const entry: ToolTimelineEntry = {
+						id: `tool-${tc.toolCallId}`,
 						kind: "tool",
 						time,
-						toolName: event.title,
+						toolName: tc.title ?? undefined,
 						toolInput:
-							event.rawInput != null
-								? JSON.stringify(event.rawInput, null, 2)
+							tc.rawInput != null
+								? JSON.stringify(tc.rawInput, null, 2)
 								: undefined,
 						toolOutput:
-							event.rawOutput != null
-								? JSON.stringify(event.rawOutput, null, 2)
+							tc.rawOutput != null
+								? JSON.stringify(tc.rawOutput, null, 2)
 								: undefined,
-						toolStatus: event.status ?? "in_progress",
+						toolStatus: tc.status ?? "in_progress",
 					};
-					toolEntryMap.set(event.toolCallId, entry);
+					toolEntryMap.set(tc.toolCallId, entry);
 					entries.push(entry);
 				}
 				break;
 			}
-			case "tool_call_update": {
-				const existing = toolEntryMap.get(event.toolCallId);
+			case "tool_update": {
+				const tc = event.toolCall;
+				const existing = toolEntryMap.get(tc.toolCallId);
 				if (existing) {
-					if (event.status) {
-						existing.toolStatus = event.status;
+					if (tc.status) {
+						existing.toolStatus = tc.status;
 					}
-					if (event.rawInput != null) {
-						existing.toolInput = JSON.stringify(event.rawInput, null, 2);
+					if (tc.rawInput != null) {
+						existing.toolInput = JSON.stringify(tc.rawInput, null, 2);
 					}
-					if (event.rawOutput != null) {
-						existing.toolOutput = JSON.stringify(event.rawOutput, null, 2);
+					if (tc.rawOutput != null) {
+						existing.toolOutput = JSON.stringify(tc.rawOutput, null, 2);
 					}
-					if (event.title) {
-						existing.toolName = event.title;
+					if (tc.title) {
+						existing.toolName = tc.title;
 					}
 					existing.time = time;
 				}
 				break;
 			}
 			case "plan": {
-				const detail = event.update.entries
+				const detail = event.entries
 					.map((entry) => `[${entry.status}] ${entry.content}`)
 					.join("\n");
 				entries.push({
-					id: event.id,
+					id: eventId,
 					kind: "meta",
 					time,
 					meta: {
@@ -183,6 +205,21 @@ export function sessionEventsToEntries(
 						severity: "info",
 					},
 				});
+				break;
+			}
+			case "status": {
+				if (event.status === "error" && event.error) {
+					entries.push({
+						id: eventId,
+						kind: "meta",
+						time,
+						meta: {
+							title: "Error",
+							detail: event.error,
+							severity: "error",
+						},
+					});
+				}
 				break;
 			}
 			default:

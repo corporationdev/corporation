@@ -64,8 +64,10 @@ export function createWebSocketRuntimeTransport(options: {
 
 	const send = (message: RuntimeWebSocketOutgoingMessage): void => {
 		if (!(socket && socket.readyState === SOCKET_OPEN && socketReady)) {
+			console.warn("[transport] send skipped — socket not ready");
 			return;
 		}
+		console.log("[transport] send:", message.type);
 		socket.send(JSON.stringify(message));
 	};
 
@@ -233,6 +235,7 @@ export function createWebSocketRuntimeTransport(options: {
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			console.error("[transport] command failed:", command.type, message);
 			options.store.failCommand(commandId, message);
 			send({
 				type: "response",
@@ -333,9 +336,11 @@ export function createWebSocketRuntimeTransport(options: {
 					typeof event.data === "string"
 						? event.data
 						: new TextDecoder().decode(event.data as ArrayBuffer);
+				console.log("[transport] recv:", payload.slice(0, 200));
 				const message = JSON.parse(payload) as unknown;
 				const helloAck = runtimeWebSocketHelloAckSchema.safeParse(message);
 				if (helloAck.success) {
+					console.log("[transport] hello_ack received");
 					helloAckReceived = true;
 					socketReady = true;
 					started = true;
@@ -345,19 +350,34 @@ export function createWebSocketRuntimeTransport(options: {
 				const subscribeStream =
 					runtimeWebSocketSubscribeStreamSchema.safeParse(message);
 				if (subscribeStream.success) {
+					console.log(
+						"[transport] subscribe_stream:",
+						subscribeStream.data.stream
+					);
 					handleSubscribeStream(subscribeStream.data);
 					return;
 				}
 				const parsed = runtimeWebSocketCommandSchema.safeParse(message);
 				if (!parsed.success) {
+					console.warn(
+						"[transport] unrecognized message, parse error:",
+						parsed.error.message
+					);
 					return;
 				}
+				console.log(
+					"[transport] command:",
+					parsed.data.type,
+					"requestId:",
+					parsed.data.requestId
+				);
 				commandQueue = commandQueue
 					.then(() => handleCommand(parsed.data))
 					.catch(() => undefined);
 			});
 
 			currentSocket.addEventListener("close", () => {
+				console.log("[transport] WebSocket closed");
 				const shouldReject = !(started || helloAckReceived);
 				cleanupSocket(currentSocket);
 				if (shouldReject) {
@@ -368,6 +388,7 @@ export function createWebSocketRuntimeTransport(options: {
 			});
 
 			currentSocket.addEventListener("error", () => {
+				console.error("[transport] WebSocket error");
 				const shouldReject = !(started || helloAckReceived);
 				cleanupSocket(currentSocket);
 				if (shouldReject) {

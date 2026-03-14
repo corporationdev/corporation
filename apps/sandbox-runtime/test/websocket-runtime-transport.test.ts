@@ -220,9 +220,9 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: {
-								type: "turn.started",
+								kind: "status",
 								sessionId: "session-1",
-								turnId: expect.any(String),
+								status: "running",
 							},
 						},
 					],
@@ -240,9 +240,8 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: {
-								type: "output.delta",
+								kind: "text_delta",
 								sessionId: "session-1",
-								turnId: expect.any(String),
 								channel: "assistant",
 								content: {
 									type: "text",
@@ -265,9 +264,9 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: {
-								type: "turn.completed",
+								kind: "status",
 								sessionId: "session-1",
-								turnId: expect.any(String),
+								status: "idle",
 								stopReason: "end_turn",
 							},
 						},
@@ -439,7 +438,7 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: undefined,
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "turn.started",
+								kind: "status",
 								sessionId: "session-1",
 							}),
 						},
@@ -449,7 +448,7 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: undefined,
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "output.delta",
+								kind: "text_delta",
 								sessionId: "session-1",
 							}),
 						},
@@ -459,7 +458,7 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: undefined,
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "turn.completed",
+								kind: "status",
 								sessionId: "session-1",
 							}),
 						},
@@ -511,7 +510,7 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "output.delta",
+								kind: "text_delta",
 								sessionId: "session-1",
 							}),
 						},
@@ -521,7 +520,7 @@ describe("createWebSocketRuntimeTransport", () => {
 							commandId: "req-2",
 							createdAt: expect.any(Number),
 							event: expect.objectContaining({
-								type: "turn.completed",
+								kind: "status",
 								sessionId: "session-1",
 							}),
 						},
@@ -633,7 +632,7 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "turn.started",
+									kind: "status",
 									sessionId: "session-1",
 								}),
 							},
@@ -643,7 +642,7 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "output.delta",
+									kind: "text_delta",
 									sessionId: "session-1",
 								}),
 							},
@@ -653,7 +652,7 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "turn.completed",
+									kind: "status",
 									sessionId: "session-1",
 								}),
 							},
@@ -707,7 +706,7 @@ describe("createWebSocketRuntimeTransport", () => {
 								commandId: "req-2",
 								createdAt: expect.any(Number),
 								event: expect.objectContaining({
-									type: "turn.completed",
+									kind: "status",
 									sessionId: "session-1",
 								}),
 							},

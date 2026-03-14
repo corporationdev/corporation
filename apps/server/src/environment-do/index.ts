@@ -254,13 +254,33 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 	private async handleRuntimeStreamItems(
 		message: EnvironmentRuntimeStreamItemsMessage
 	): Promise<void> {
+		const subscription = this.streamSubscriptions.get(message.stream);
+		log.info(
+			{
+				stream: message.stream,
+				hasSubscription: !!subscription,
+				subscriberBinding: subscription?.subscriber.callback.binding ?? null,
+				subscriberName: subscription?.subscriber.callback.name ?? null,
+			},
+			"handleRuntimeStreamItems"
+		);
 		const result = await forwardStreamItemsToSubscriber({
 			actorId: this.ctx.id.toString(),
 			bindings: this.env as unknown as EnvironmentDoCallbackBindings,
 			log,
 			message,
-			subscription: this.streamSubscriptions.get(message.stream),
+			subscription,
 		});
+		log.info(
+			{
+				stream: message.stream,
+				resultOk: result?.ok ?? null,
+				resultError: result?.ok
+					? null
+					: (result as { error?: { message?: string } })?.error?.message,
+			},
+			"forwardStreamItems result"
+		);
 		if (!result?.ok) {
 			return;
 		}
@@ -474,6 +494,14 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 		const response = parseRuntimeResponseMessage(message);
 		if (response) {
+			log.info(
+				{
+					connectionId: attachment.connectionId,
+					requestId: response.requestId,
+					ok: response.ok,
+				},
+				"received runtime response"
+			);
 			this.commandRouter.handleResponse({
 				connectionId: attachment.connectionId,
 				response,
@@ -483,9 +511,21 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 
 		const streamItems = parseRuntimeStreamItemsMessage(message);
 		if (!streamItems) {
+			log.warn(
+				{ connectionId: attachment.connectionId },
+				"received unrecognized runtime message"
+			);
 			return;
 		}
 
+		log.info(
+			{
+				stream: streamItems.stream,
+				itemCount: streamItems.items.length,
+				nextOffset: streamItems.nextOffset,
+			},
+			"received runtime stream_items"
+		);
 		this.forwardRuntimeStreamItemsInBackground(streamItems);
 	}
 

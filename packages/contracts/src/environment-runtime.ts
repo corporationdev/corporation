@@ -3,6 +3,7 @@ import {
 	type EnvironmentStreamOffset,
 	environmentStreamOffsetSchema,
 } from "./environment-do";
+import { type SessionEvent, sessionEventSchema } from "./session-event";
 
 export const environmentPromptPartSchema = z.object({
 	type: z.literal("text"),
@@ -146,7 +147,7 @@ export type EnvironmentRuntimeStreamItem = {
 	eventId: string;
 	commandId?: string;
 	createdAt: number;
-	event: unknown;
+	event: SessionEvent;
 };
 
 export const environmentRuntimeStreamItemSchema = z.object({
@@ -154,7 +155,7 @@ export const environmentRuntimeStreamItemSchema = z.object({
 	eventId: z.string().min(1),
 	commandId: z.string().min(1).optional(),
 	createdAt: z.number().int().nonnegative(),
-	event: z.unknown(),
+	event: sessionEventSchema,
 });
 
 export type EnvironmentRuntimeStreamItemsMessage = {

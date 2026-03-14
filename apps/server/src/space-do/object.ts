@@ -107,8 +107,8 @@ function getEventPayload(event: unknown): Record<string, unknown> | null {
 	return null;
 }
 
-function getEventType(payload: Record<string, unknown>): string {
-	return typeof payload.type === "string" ? payload.type : "unknown";
+function getEventKind(payload: Record<string, unknown>): string {
+	return typeof payload.kind === "string" ? payload.kind : "unknown";
 }
 
 function getOptionalString(
@@ -165,16 +165,22 @@ function mapSyncStatusToSessionStatus(
 }
 
 function mapRuntimeEventRowToFrame(
-	row: Pick<RuntimeEventRow, "offsetSeq" | "payload">
+	row: Pick<RuntimeEventRow, "eventId" | "offsetSeq" | "createdAt" | "payload">
 ): SessionStreamFrame | null {
 	const parsed = sessionEventSchema.safeParse(row.payload);
 	if (!parsed.success) {
+		console.warn("[space-do] sessionEventSchema parse failed", {
+			offsetSeq: row.offsetSeq,
+			error: parsed.error.message,
+		});
 		return null;
 	}
 
 	return {
 		kind: "event",
 		offset: row.offsetSeq,
+		eventId: row.eventId,
+		createdAt: row.createdAt,
 		event: parsed.data,
 	};
 }
@@ -554,11 +560,23 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		const normalizedLive = live === true;
 		const normalizedTimeoutMs = normalizeTimeoutMs(timeoutMs);
 
+		console.log("[space-do] readSessionStream", {
+			sessionId,
+			afterOffset: normalizedAfterOffset,
+			live: normalizedLive,
+		});
+
 		let result = await this.readSessionFramesChunk(
 			sessionId,
 			normalizedAfterOffset,
 			normalizedLimit
 		);
+		console.log("[space-do] readSessionStream chunk", {
+			sessionId,
+			frameCount: result.frames.length,
+			nextOffset: result.nextOffset,
+			upToDate: result.upToDate,
+		});
 		if (!normalizedLive || result.frames.length > 0) {
 			return result;
 		}
@@ -582,6 +600,12 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	receiveEnvironmentStreamItems(
 		input: EnvironmentStreamDelivery
 	): Promise<EnvironmentRpcResult<EnvironmentStreamDeliveryAck>> {
+		console.log("[space-do] receiveEnvironmentStreamItems", {
+			stream: input.stream,
+			requesterId: input.requesterId,
+			itemCount: input.items.length,
+			nextOffset: input.nextOffset,
+		});
 		return this.ingestEnvironmentStreamItems(input);
 	}
 
@@ -593,6 +617,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		const nextOffsetSequence =
 			input.nextOffset === "-1" ? -1 : parseOffsetSequence(input.nextOffset);
 		if (nextOffsetSequence === null && input.nextOffset !== "-1") {
+			console.error("[space-do] invalid next offset", input.nextOffset);
 			return errorResult(
 				"stream_invalid_payload",
 				`Invalid next offset ${input.nextOffset}`
@@ -603,11 +628,25 @@ export class SpaceDurableObject extends DurableObject<Env> {
 			where: eq(sessions.id, input.requesterId),
 		});
 		if (!(session && session.streamKey === input.stream)) {
+			console.error("[space-do] no session found for stream", {
+				stream: input.stream,
+				requesterId: input.requesterId,
+				sessionFound: !!session,
+				sessionStreamKey: session?.streamKey,
+			});
 			return errorResult(
 				"stream_session_not_found",
 				`No session found for stream ${input.stream}`
 			);
 		}
+		console.log(
+			"[space-do] ingesting",
+			input.items.length,
+			"events for session",
+			session.id,
+			"committedOffset will be >=",
+			input.nextOffset
+		);
 
 		for (const item of input.items) {
 			if (parseOffsetSequence(item.offset) === null) {
@@ -658,7 +697,7 @@ export class SpaceDurableObject extends DurableObject<Env> {
 								offsetSeq,
 								commandId: getOptionalString(payload, "commandId"),
 								turnId: getOptionalString(payload, "turnId"),
-								eventType: getEventType(payload),
+								eventType: getEventKind(payload),
 								createdAt: item.createdAt,
 								payload,
 							};

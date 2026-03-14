@@ -177,9 +177,7 @@ export const ConnectedSessionView: FC<{
 			? { projectId, environmentId }
 			: "skip"
 	);
-	const cwd = isSandbox
-		? "/workspace"
-		: (projectEnvironment?.path ?? null);
+	const cwd = isSandbox ? "/workspace" : (projectEnvironment?.path ?? null);
 	const canFlushPendingSend = !!pendingSend && runtimeReady && !!cwd;
 
 	const ensureRemoteSession = useCallback(

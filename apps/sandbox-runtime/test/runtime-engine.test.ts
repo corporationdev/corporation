@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import type { SessionEvent } from "@corporation/contracts/session-event";
 import {
 	type CreateSessionInput,
 	type ResolvedStartTurnInput,
 	RuntimeEngine,
 } from "../index";
-import type { RuntimeEvent } from "../runtime-events";
 
 function createDeferred() {
 	let resolve!: () => void;
@@ -63,7 +63,7 @@ describe("RuntimeEngine", () => {
 
 	test("rejects a second prompt while the same session is already running", async () => {
 		const blocker = createDeferred();
-		const events: RuntimeEvent[] = [];
+		const events: SessionEvent[] = [];
 		const driverCalls: ResolvedStartTurnInput[] = [];
 		const engine = new RuntimeEngine(
 			{
@@ -107,8 +107,8 @@ describe("RuntimeEngine", () => {
 			},
 		]);
 		expect(events).toEqual([
-			{ type: "turn.started", sessionId: "session-1", turnId },
-			{ type: "turn.completed", sessionId: "session-1", turnId },
+			{ kind: "status", sessionId: "session-1", status: "running" },
+			{ kind: "status", sessionId: "session-1", status: "idle" },
 		]);
 	});
 

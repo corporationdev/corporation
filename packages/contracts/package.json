@@ -9,7 +9,8 @@
     "./browser-space": "./src/browser-space.ts",
     "./environment-do": "./src/environment-do.ts",
     "./environment-runtime": "./src/environment-runtime.ts",
-    "./runtime-auth": "./src/runtime-auth.ts"
+    "./runtime-auth": "./src/runtime-auth.ts",
+    "./session-event": "./src/session-event.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "catalog:",
