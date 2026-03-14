@@ -20,6 +20,17 @@ export const list = authedQuery({
 	},
 });
 
+export const listPersistent = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		const all = await ctx.db
+			.query("environments")
+			.withIndex("by_user", (q) => q.eq("userId", ctx.userId))
+			.collect();
+		return all.filter((e) => e.type === "persistent");
+	},
+});
+
 export const get = authedQuery({
 	args: { id: v.id("environments") },
 	handler: async (ctx, args) => {
@@ -38,6 +49,7 @@ export async function createEnvironment(
 		connectionId: string;
 		name: string;
 		status: "connected" | "disconnected";
+		type?: "persistent" | "sandbox";
 		metadata?: Record<string, any>;
 	}
 ) {
@@ -47,6 +59,7 @@ export async function createEnvironment(
 		connectionId: args.connectionId,
 		name: args.name,
 		status: args.status,
+		type: args.type,
 		metadata: args.metadata,
 		lastConnectedAt: args.status === "connected" ? now : undefined,
 		createdAt: now,
@@ -85,6 +98,7 @@ export const connect = internalMutation({
 			connectionId: args.connectionId,
 			name: args.name,
 			status: "connected",
+			type: "persistent",
 			metadata: args.metadata,
 		});
 	},

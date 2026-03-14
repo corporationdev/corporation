@@ -177,6 +177,7 @@ export const create = authedMutation({
 				connectionId,
 				name: "Sandbox",
 				status: "disconnected",
+				type: "sandbox",
 			});
 		}
 

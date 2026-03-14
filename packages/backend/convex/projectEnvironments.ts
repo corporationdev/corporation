@@ -9,14 +9,14 @@ export async function createProjectEnvironment(
 	args: {
 		projectId: Id<"projects">;
 		environmentId: Id<"environments">;
-		rootPath: string;
+		path: string;
 	}
 ) {
 	const now = Date.now();
 	return await ctx.db.insert("projectEnvironments", {
 		projectId: args.projectId,
 		environmentId: args.environmentId,
-		rootPath: args.rootPath,
+		path: args.path,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -89,7 +89,7 @@ export const set = authedMutation({
 	args: {
 		projectId: v.id("projects"),
 		environmentId: v.id("environments"),
-		rootPath: v.string(),
+		path: v.string(),
 	},
 	handler: async (ctx, args) => {
 		const env = await ctx.db.get(args.environmentId);
@@ -97,9 +97,9 @@ export const set = authedMutation({
 			throw new ConvexError("Environment not found");
 		}
 
-		const rootPath = args.rootPath.trim();
-		if (!rootPath) {
-			throw new ConvexError("Root path cannot be empty");
+		const path = args.path.trim();
+		if (!path) {
+			throw new ConvexError("Path cannot be empty");
 		}
 
 		const existing = await ctx.db
@@ -113,7 +113,7 @@ export const set = authedMutation({
 
 		if (existing) {
 			await ctx.db.patch(existing._id, {
-				rootPath,
+				path,
 				updatedAt: Date.now(),
 			});
 			return existing._id;
@@ -122,7 +122,7 @@ export const set = authedMutation({
 		return await createProjectEnvironment(ctx, {
 			projectId: args.projectId,
 			environmentId: args.environmentId,
-			rootPath,
+			path,
 		});
 	},
 });

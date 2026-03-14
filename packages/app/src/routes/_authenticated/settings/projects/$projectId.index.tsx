@@ -4,8 +4,9 @@ import type { Id } from "@corporation/backend/convex/_generated/dataModel";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import type { FunctionReturnType } from "convex/server";
+import { ArrowLeft, LaptopIcon, Loader2, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	buildSecretChanges,
@@ -15,6 +16,7 @@ import {
 } from "@/components/project-config-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConvexTanstackMutation } from "@/lib/convex-mutation";
 import { cn } from "@/lib/utils";
@@ -59,7 +61,13 @@ type Project = NonNullable<
 	ReturnType<typeof useQuery<typeof api.projects.get>>
 >;
 
-type Tab = "snapshots" | "secrets";
+type Tab = "snapshots" | "secrets" | "environments";
+
+const TAB_LABELS: Record<Tab, string> = {
+	snapshots: "Snapshots",
+	secrets: "Secrets",
+	environments: "Environments",
+};
 
 function ProjectDetail({ project }: { project: Project }) {
 	const navigate = useNavigate();
@@ -103,7 +111,7 @@ function ProjectDetail({ project }: { project: Project }) {
 
 			<div>
 				<div className="flex border-b">
-					{(["snapshots", "secrets"] as Tab[]).map((tab) => (
+					{(["snapshots", "secrets", "environments"] as Tab[]).map((tab) => (
 						<button
 							className={cn(
 								"px-4 py-2 text-sm transition-colors",
@@ -115,7 +123,7 @@ function ProjectDetail({ project }: { project: Project }) {
 							onClick={() => setActiveTab(tab)}
 							type="button"
 						>
-							{tab.charAt(0).toUpperCase() + tab.slice(1)}
+							{TAB_LABELS[tab]}
 						</button>
 					))}
 				</div>
@@ -123,6 +131,9 @@ function ProjectDetail({ project }: { project: Project }) {
 				<div className="mt-4">
 					{activeTab === "snapshots" && <SnapshotList project={project} />}
 					{activeTab === "secrets" && <SecretsTab project={project} />}
+					{activeTab === "environments" && (
+						<EnvironmentsTab projectId={project._id} />
+					)}
 				</div>
 			</div>
 		</div>
@@ -290,5 +301,143 @@ function SecretsTab({ project }: { project: Project }) {
 				</Button>
 			</div>
 		</form>
+	);
+}
+
+type EnvironmentItem = FunctionReturnType<
+	typeof api.environments.listPersistent
+>[number];
+
+type ProjectEnvironmentItem = FunctionReturnType<
+	typeof api.projectEnvironments.listByProject
+>[number];
+
+function EnvironmentsTab({ projectId }: { projectId: Id<"projects"> }) {
+	const environments = useQuery(api.environments.listPersistent);
+	const projectEnvironments = useQuery(api.projectEnvironments.listByProject, {
+		projectId,
+	});
+	const setProjectEnvironment = useMutation(api.projectEnvironments.set);
+
+	if (environments === undefined || projectEnvironments === undefined) {
+		return (
+			<div className="flex flex-col gap-2">
+				<Skeleton className="h-16 w-full" />
+				<Skeleton className="h-16 w-full" />
+			</div>
+		);
+	}
+
+	if (environments.length === 0) {
+		return (
+			<p className="py-4 text-muted-foreground text-sm">
+				No environments found. Connect a CLI to create one.
+			</p>
+		);
+	}
+
+	return (
+		<div className="flex flex-col gap-2">
+			{environments.map((env) => {
+				const projectEnv = projectEnvironments.find(
+					(pe) => pe.environmentId === env._id
+				);
+				return (
+					<EnvironmentPathRow
+						environment={env}
+						key={env._id}
+						onSave={(path) =>
+							setProjectEnvironment({
+								projectId,
+								environmentId: env._id,
+								path,
+							})
+						}
+						projectEnvironment={projectEnv ?? null}
+					/>
+				);
+			})}
+		</div>
+	);
+}
+
+function EnvironmentPathRow({
+	environment,
+	projectEnvironment,
+	onSave,
+}: {
+	environment: EnvironmentItem;
+	projectEnvironment: ProjectEnvironmentItem | null;
+	onSave: (path: string) => void;
+}) {
+	const [value, setValue] = useState(projectEnvironment?.path ?? "");
+	const [isDirty, setIsDirty] = useState(false);
+	const prevPath = useRef(projectEnvironment?.path ?? "");
+
+	useEffect(() => {
+		const serverPath = projectEnvironment?.path ?? "";
+		if (serverPath !== prevPath.current) {
+			prevPath.current = serverPath;
+			setValue(serverPath);
+			setIsDirty(false);
+		}
+	}, [projectEnvironment?.path]);
+
+	const handleChange = (newValue: string) => {
+		setValue(newValue);
+		setIsDirty(newValue.trim() !== (projectEnvironment?.path ?? ""));
+	};
+
+	const handleSave = () => {
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return;
+		}
+		onSave(trimmed);
+		setIsDirty(false);
+	};
+
+	const isConnected = environment.status === "connected";
+
+	return (
+		<Card size="sm">
+			<CardHeader className="py-3">
+				<div className="flex min-w-0 flex-1 items-center gap-3">
+					<LaptopIcon className="size-4 shrink-0 text-muted-foreground" />
+					<div className="flex min-w-0 flex-col gap-0.5">
+						<span className="font-medium text-sm">{environment.name}</span>
+						<span className="flex items-center gap-1.5 text-muted-foreground text-xs">
+							<span
+								className={cn(
+									"size-1.5 rounded-full",
+									isConnected ? "bg-emerald-500" : "bg-muted-foreground/50"
+								)}
+							/>
+							{isConnected ? "Connected" : "Offline"}
+						</span>
+					</div>
+				</div>
+				<CardAction>
+					<div className="flex items-center gap-2">
+						<Input
+							className="w-64"
+							onChange={(e) => handleChange(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && isDirty) {
+									handleSave();
+								}
+							}}
+							placeholder="/path/to/project"
+							value={value}
+						/>
+						{isDirty && (
+							<Button onClick={handleSave} size="sm" variant="outline">
+								Save
+							</Button>
+						)}
+					</div>
+				</CardAction>
+			</CardHeader>
+		</Card>
 	);
 }

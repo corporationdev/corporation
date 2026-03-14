@@ -106,7 +106,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				},
 				body: JSON.stringify({
 					userId: claims.sub,
-					clientId: claims.clientId,
+					connectionId: claims.clientId,
 					name: claims.clientId,
 				}),
 			});
@@ -147,7 +147,7 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 				},
 				body: JSON.stringify({
 					userId: claims.sub,
-					clientId: claims.clientId,
+					connectionId: claims.clientId,
 				}),
 			});
 			if (!response.ok) {

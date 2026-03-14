@@ -15,6 +15,11 @@ export const sandboxStatusValidator = v.union(
 	v.literal("error")
 );
 
+export const environmentTypeValidator = v.union(
+	v.literal("persistent"),
+	v.literal("sandbox")
+);
+
 export const environmentStatusValidator = v.union(
 	v.literal("connected"),
 	v.literal("disconnected"),
@@ -122,6 +127,7 @@ export default defineSchema(
 			connectionId: v.string(),
 			name: v.string(),
 			status: environmentStatusValidator,
+			type: v.optional(environmentTypeValidator),
 			metadata: v.optional(v.record(v.string(), v.any())),
 			error: v.optional(v.string()),
 			lastConnectedAt: v.optional(v.number()),
@@ -135,7 +141,7 @@ export default defineSchema(
 		projectEnvironments: defineTable({
 			projectId: v.id("projects"),
 			environmentId: v.id("environments"),
-			rootPath: v.string(),
+			path: v.string(),
 			createdAt: v.number(),
 			updatedAt: v.number(),
 		})

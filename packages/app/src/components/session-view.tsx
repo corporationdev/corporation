@@ -30,6 +30,7 @@ import { usePendingMessageStore } from "@/stores/pending-message-store";
 type SessionViewSpace =
 	| {
 			_id: Id<"spaces">;
+			projectId: Id<"projects">;
 	  }
 	| null
 	| undefined;
@@ -163,10 +164,23 @@ export const ConnectedSessionView: FC<{
 		api.backings.getForSpace,
 		spaceId ? { spaceId } : "skip"
 	);
+	const environmentId = backingData?.environment?._id;
 	const connectionId = backingData?.environment?.connectionId ?? null;
+	const isSandbox = backingData?.environment?.type === "sandbox";
 	const runtimeReady =
 		backingData?.environment?.status === "connected" && !!connectionId;
-	const canFlushPendingSend = !!pendingSend && runtimeReady;
+
+	const projectId = space?.projectId;
+	const projectEnvironment = useQuery(
+		api.projectEnvironments.getByProjectAndEnvironment,
+		projectId && environmentId && !isSandbox
+			? { projectId, environmentId }
+			: "skip"
+	);
+	const cwd = isSandbox
+		? "/workspace"
+		: (projectEnvironment?.path ?? null);
+	const canFlushPendingSend = !!pendingSend && runtimeReady && !!cwd;
 
 	const ensureRemoteSession = useCallback(
 		async (nextAgent: string, nextModelId: string) => {
@@ -176,6 +190,11 @@ export const ConnectedSessionView: FC<{
 			if (!connectionId) {
 				throw new Error("Runtime client is not ready");
 			}
+			if (!cwd) {
+				throw new Error(
+					"No path configured for this project on this environment"
+				);
+			}
 
 			await createSpaceSession(spaceSlug, {
 				sessionId,
@@ -183,7 +202,7 @@ export const ConnectedSessionView: FC<{
 				spaceName: spaceSlug,
 				title: "New Chat",
 				agent: nextAgent,
-				cwd: "/workspace",
+				cwd,
 				model: nextModelId,
 			});
 			setHasCreatedSession(true);
@@ -196,6 +215,7 @@ export const ConnectedSessionView: FC<{
 			hasSession,
 			queryClient,
 			connectionId,
+			cwd,
 			sessionId,
 			spaceSlug,
 		]
