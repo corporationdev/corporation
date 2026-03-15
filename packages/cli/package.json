@@ -1,5 +1,5 @@
 {
-  "name": "sandbox-runtime",
+  "name": "@tendril/cli",
   "version": "1.0.1",
   "private": true,
   "type": "module",
@@ -24,6 +24,7 @@
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
     "chromium-bidi": "^15.0.0",
+    "commander": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
     "hono": "catalog:",

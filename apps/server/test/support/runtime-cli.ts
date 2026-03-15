@@ -113,7 +113,7 @@ export function spawnRuntimeCli(
 		env?: Record<string, string | undefined>;
 	}
 ): SpawnedCli {
-	const child = spawn(getBunBin(), ["apps/sandbox-runtime/cli.ts", ...args], {
+	const child = spawn(getBunBin(), ["packages/cli/cli.ts", ...args], {
 		cwd: getRepoRoot(),
 		env: createCliEnv(options?.env),
 		stdio: ["ignore", "pipe", "pipe"],
