@@ -178,22 +178,22 @@ const captureScreenshot = async (): Promise<File | null> => {
 // Provider Context & Types
 // ============================================================================
 
-export interface AttachmentsContext {
+export type AttachmentsContext = {
 	add: (files: File[] | FileList) => void;
 	clear: () => void;
 	fileInputRef: RefObject<HTMLInputElement | null>;
 	files: (FileUIPart & { id: string })[];
 	openFileDialog: () => void;
 	remove: (id: string) => void;
-}
+};
 
-export interface TextInputContext {
+export type TextInputContext = {
 	clear: () => void;
 	setInput: (v: string) => void;
 	value: string;
-}
+};
 
-export interface PromptInputControllerProps {
+export type PromptInputControllerProps = {
 	/** INTERNAL: Allows PromptInput to register its file textInput + "open" callback */
 	__registerFileInput: (
 		ref: RefObject<HTMLInputElement | null>,
@@ -201,7 +201,7 @@ export interface PromptInputControllerProps {
 	) => void;
 	attachments: AttachmentsContext;
 	textInput: TextInputContext;
-}
+};
 
 const PromptInputController = createContext<PromptInputControllerProps | null>(
 	null
@@ -258,8 +258,9 @@ export const PromptInputProvider = ({
 		(FileUIPart & { id: string })[]
 	>([]);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
-	// oxlint-disable-next-line eslint(no-empty-function)
-	const openRef = useRef<() => void>(() => {});
+	const openRef = useRef<() => void>(() => {
+		/* no-op until registered */
+	});
 
 	const add = useCallback((files: File[] | FileList) => {
 		const incoming = [...files];
@@ -388,12 +389,12 @@ export const usePromptInputAttachments = () => {
 // Referenced Sources (Local to PromptInput)
 // ============================================================================
 
-export interface ReferencedSourcesContext {
+export type ReferencedSourcesContext = {
 	add: (sources: SourceDocumentUIPart[] | SourceDocumentUIPart) => void;
 	clear: () => void;
 	remove: (id: string) => void;
 	sources: (SourceDocumentUIPart & { id: string })[];
-}
+};
 
 export const LocalReferencedSourcesContext =
 	createContext<ReferencedSourcesContext | null>(null);
@@ -481,10 +482,10 @@ export const PromptInputActionAddScreenshot = ({
 	);
 };
 
-export interface PromptInputMessage {
+export type PromptInputMessage = {
 	files: FileUIPart[];
 	text: string;
-}
+};
 
 export type PromptInputProps = Omit<
 	HTMLAttributes<HTMLFormElement>,

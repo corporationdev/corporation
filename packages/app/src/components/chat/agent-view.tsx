@@ -1,13 +1,14 @@
-"use client";
-
 import type { UseChatHelpers } from "@ai-sdk/react";
+import { api } from "@tendril/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
 import {
-	AlertTriangleIcon,
-	BotIcon,
-	CpuIcon,
+	ChevronDownIcon,
 	MessageSquare,
+	Monitor,
+	PlusIcon,
+	Shield,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
 	Conversation,
 	ConversationContent,
@@ -23,37 +24,50 @@ import {
 import {
 	PromptInput,
 	PromptInputBody,
+	PromptInputButton,
 	PromptInputFooter,
-	type PromptInputMessage,
-	PromptInputSelect,
-	PromptInputSelectContent,
-	PromptInputSelectItem,
-	PromptInputSelectTrigger,
 	PromptInputSubmit,
 	PromptInputTextarea,
 	PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAgentModelPreferences } from "@/hooks/use-agent-model-preferences";
+import { useEnvironmentSelection } from "@/hooks/use-environment-selection";
 import type { TendrilUIMessage } from "@/lib/tendril-ui-message";
-import { cn } from "@/lib/utils";
 
-type AgentConfigOption = {
+export type ChatSendMessageInput = {
+	message: string;
+	agentId: string;
+	modelId: string;
+	modeId: string;
+	environmentId: string | null;
+};
+
+export type ChatSendMessage = (message: ChatSendMessageInput) => Promise<void>;
+export type ChatStatus = UseChatHelpers<TendrilUIMessage>["status"];
+
+type ConfigOption = {
+	description: string;
+	name: string;
+	value: string;
+};
+
+type ConfigItem = {
 	category: string;
 	currentValue: string;
 	description: string;
 	id: string;
 	name: string;
-	options: Array<{
-		description: string;
-		name: string;
-		value: string;
-	}>;
+	options: ConfigOption[];
 	type: "select";
 };
 
-const AGENT_CONFIG_OPTIONS: Record<
-	"claude-acp" | "codex-acp",
-	AgentConfigOption[]
-> = {
+const AGENT_CONFIG: Record<string, ConfigItem[]> = {
 	"claude-acp": [
 		{
 			category: "mode",
@@ -116,316 +130,243 @@ const AGENT_CONFIG_OPTIONS: Record<
 			type: "select",
 		},
 	],
-	"codex-acp": [
-		{
-			category: "mode",
-			currentValue: "auto",
-			description: "Choose an approval and sandboxing preset for your session",
-			id: "mode",
-			name: "Approval Preset",
-			options: [
-				{
-					description:
-						"Codex can read files in the current workspace. Approval is required to edit files or access the internet.",
-					name: "Read Only",
-					value: "read-only",
-				},
-				{
-					description:
-						"Codex can read and edit files in the current workspace, and run commands. Approval is required to access the internet or edit other files. (Identical to Agent mode)",
-					name: "Default",
-					value: "auto",
-				},
-				{
-					description:
-						"Codex can edit files outside this workspace and access the internet without asking for approval. Exercise caution when using.",
-					name: "Full Access",
-					value: "full-access",
-				},
-			],
-			type: "select",
-		},
-		{
-			category: "model",
-			currentValue: "gpt-5.4",
-			description: "Choose which model Codex should use",
-			id: "model",
-			name: "Model",
-			options: [
-				{
-					description: "Latest frontier agentic coding model.",
-					name: "gpt-5.4",
-					value: "gpt-5.4",
-				},
-				{
-					description: "Frontier Codex-optimized agentic coding model.",
-					name: "gpt-5.3-codex",
-					value: "gpt-5.3-codex",
-				},
-				{
-					description: "Ultra-fast coding model.",
-					name: "GPT-5.3-Codex-Spark",
-					value: "gpt-5.3-codex-spark",
-				},
-				{
-					description: "Frontier agentic coding model.",
-					name: "gpt-5.2-codex",
-					value: "gpt-5.2-codex",
-				},
-				{
-					description:
-						"Optimized for professional work and long-running agents",
-					name: "gpt-5.2",
-					value: "gpt-5.2",
-				},
-				{
-					description: "Codex-optimized model for deep and fast reasoning.",
-					name: "gpt-5.1-codex-max",
-					value: "gpt-5.1-codex-max",
-				},
-				{
-					description:
-						"Optimized for codex. Cheaper, faster, but less capable.",
-					name: "gpt-5.1-codex-mini",
-					value: "gpt-5.1-codex-mini",
-				},
-			],
-			type: "select",
-		},
-		{
-			category: "thought_level",
-			currentValue: "medium",
-			description: "Choose how much reasoning effort the model should use",
-			id: "reasoning_effort",
-			name: "Reasoning Effort",
-			options: [
-				{
-					description: "Fast responses with lighter reasoning",
-					name: "Low",
-					value: "low",
-				},
-				{
-					description: "Balances speed and reasoning depth for everyday tasks",
-					name: "Medium",
-					value: "medium",
-				},
-				{
-					description: "Greater reasoning depth for complex problems",
-					name: "High",
-					value: "high",
-				},
-				{
-					description: "Extra high reasoning depth for complex problems",
-					name: "Xhigh",
-					value: "xhigh",
-				},
-			],
-			type: "select",
-		},
-	],
 };
 
-const DEFAULT_AGENT_ID: keyof typeof AGENT_CONFIG_OPTIONS = "codex-acp";
-
-const AGENT_LABELS: Record<keyof typeof AGENT_CONFIG_OPTIONS, string> = {
-	"claude-acp": "Claude ACP",
-	"codex-acp": "Codex ACP",
+const AGENT_LABELS: Record<string, string> = {
+	"claude-acp": "Claude Agent",
 };
 
-function getConfigOption(
-	agentId: keyof typeof AGENT_CONFIG_OPTIONS,
-	id: string
-): AgentConfigOption | undefined {
-	return AGENT_CONFIG_OPTIONS[agentId].find((option) => option.id === id);
-}
+const AGENTS = Object.keys(AGENT_CONFIG) as string[];
+const MODELS_BY_AGENT = Object.fromEntries(
+	(Object.entries(AGENT_CONFIG) as [string, ConfigItem[]][]).map(
+		([agentId, config]) => {
+			const modelConfig = config.find((c) => c.id === "model");
+			const models = modelConfig?.options ?? [];
+			return [
+				agentId,
+				models.map((o) => ({ id: o.value, name: o.name })),
+			] as const;
+		}
+	)
+);
+const MODES_BY_AGENT = Object.fromEntries(
+	(Object.entries(AGENT_CONFIG) as [string, ConfigItem[]][]).map(
+		([agentId, config]) => {
+			const modeConfig = config.find((c) => c.id === "mode");
+			const modes = modeConfig?.options ?? [];
+			return [
+				agentId,
+				modes.map((o) => ({ id: o.value, name: o.name })),
+			] as const;
+		}
+	)
+);
 
 export const AgentView = ({
 	messages,
 	sendMessage,
 	status,
 	error,
+	emptyState,
 }: {
 	messages: TendrilUIMessage[];
-	sendMessage: UseChatHelpers<TendrilUIMessage>["sendMessage"];
-	status: UseChatHelpers<TendrilUIMessage>["status"];
+	sendMessage: ChatSendMessage;
+	status: ChatStatus;
 	error?: string | null;
+	/** Optional empty state component when there are no messages. Defaults to ConversationEmptyState. */
+	emptyState?: React.ReactNode;
 }) => {
-	const [input, setInput] = useState("");
-	const [selectedAgentId, setSelectedAgentId] =
-		useState<keyof typeof AGENT_CONFIG_OPTIONS>(DEFAULT_AGENT_ID);
-	const [selectedModelId, setSelectedModelId] = useState(
-		getConfigOption(DEFAULT_AGENT_ID, "model")?.currentValue ?? ""
-	);
-	const errorMessage = error?.trim() || "Unknown error";
-	const modelOptions = useMemo(
-		() => getConfigOption(selectedAgentId, "model")?.options ?? [],
-		[selectedAgentId]
-	);
-	const selectedAgentLabel = AGENT_LABELS[selectedAgentId];
-	const selectedModelLabel =
-		modelOptions.find((option) => option.value === selectedModelId)?.name ??
-		selectedModelId;
+	const [message, setMessage] = useState("");
+	const { agentId, modelId, modeId, setAgentId, setModelId, setModeId } =
+		useAgentModelPreferences({ modesByAgent: MODES_BY_AGENT });
+	const { environmentId, setEnvironmentId } = useEnvironmentSelection();
 
-	const handleSubmit = (message: PromptInputMessage) => {
-		if (message.text.trim()) {
-			sendMessage({
-				text: message.text,
-				metadata: {
-					composer: {
-						agentId: selectedAgentId,
-						modelId: selectedModelId,
-					},
-				},
-			});
-			setInput("");
+	const environments = useQuery(api.environments.listPersistent);
+
+	const agents = AGENTS;
+	const models = MODELS_BY_AGENT[agentId] ?? [];
+	const modes = MODES_BY_AGENT[agentId] ?? [];
+	const agentLabel = AGENT_LABELS[agentId] ?? agentId;
+	const modelLabel = models.find((m) => m.id === modelId)?.name ?? modelId;
+	const modeLabel = modes.find((m) => m.id === modeId)?.name ?? modeId;
+
+	const environmentLabel =
+		environmentId === "new-sandbox"
+			? "New sandbox"
+			: (environments?.find((e) => e._id === environmentId)?.name ??
+				"Environment");
+
+	const handleSubmit = () => {
+		const input: ChatSendMessageInput = {
+			message,
+			agentId,
+			modelId,
+			modeId,
+			environmentId: environmentId === "new-sandbox" ? null : environmentId,
+		};
+		console.log("input", input);
+		sendMessage(input);
+		setMessage("");
+	};
+
+	const handleAgentChange = (id: string) => {
+		if (id === agentId) {
+			return;
+		}
+		setAgentId(id);
+		const firstModel = MODELS_BY_AGENT[id]?.[0]?.id;
+		if (firstModel) {
+			setModelId(firstModel);
 		}
 	};
 
 	return (
-		<div className="flex h-full flex-col">
+		<div className="flex h-full flex-col p-4">
 			<Conversation>
 				<ConversationContent>
-					{status === "error" ? (
-						<div className="mx-auto w-full max-w-[44rem] px-2 py-2">
-							<div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
-								<AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
-								<div className="min-w-0">
-									<div className="font-medium">Run failed</div>
-									<p className="break-words text-destructive/90">
-										{errorMessage}
-									</p>
-								</div>
-							</div>
-						</div>
-					) : null}
-					{messages.length === 0 ? (
-						<ConversationEmptyState
-							description="Type a message below to begin chatting"
-							icon={<MessageSquare className="size-12" />}
-							title="Start a conversation"
-						/>
-					) : (
-						messages.map((message) => (
-							<Message from={message.role} key={message.id}>
-								<MessageContent>
-									{message.parts.map((part, i) => {
-										switch (part.type) {
-											case "text": // we don't use any reasoning or tool calls in this example
-												return (
-													<MessageResponse key={`${message.id}-${i}`}>
-														{part.text}
-													</MessageResponse>
-												);
-											default:
-												return null;
-										}
-									})}
-								</MessageContent>
-							</Message>
-						))
-					)}
+					{messages.length === 0
+						? (emptyState ?? (
+								<ConversationEmptyState
+									description="Type a message below to begin chatting"
+									icon={<MessageSquare className="size-12" />}
+									title="Start a conversation"
+								/>
+							))
+						: messages.map((message) => (
+								<Message from={message.role} key={message.id}>
+									<MessageContent>
+										{message.parts.map((part, i) => {
+											switch (part.type) {
+												case "text": // we don't use any reasoning or tool calls in this example
+													return (
+														<MessageResponse key={`${message.id}-${i}`}>
+															{part.text}
+														</MessageResponse>
+													);
+												default:
+													return null;
+											}
+										})}
+									</MessageContent>
+								</Message>
+							))}
 				</ConversationContent>
 				<ConversationDownload messages={messages} />
 				<ConversationScrollButton />
 			</Conversation>
+			<p>{error}</p>
+			<div className="mx-auto mt-4 w-full max-w-2xl">
+				<PromptInput className="relative w-full" onSubmit={handleSubmit}>
+					<PromptInputBody>
+						<PromptInputTextarea
+							className="px-4 py-3 pr-12"
+							onChange={(e) => setMessage(e.currentTarget.value)}
+							placeholder="Say something..."
+							value={message}
+						/>
+					</PromptInputBody>
 
-			<PromptInput
-				className="relative mx-auto mt-4 w-full max-w-4xl rounded-[28px] border border-border/60 bg-card/80 p-1 shadow-sm backdrop-blur"
-				onSubmit={handleSubmit}
-			>
-				<PromptInputBody>
-					<PromptInputTextarea
-						className="min-h-24 border-none bg-transparent px-4 pt-4 pr-4 text-base placeholder:text-foreground/40 focus-visible:ring-0"
-						onChange={(e) => setInput(e.currentTarget.value)}
-						placeholder="Ask Tendril anything"
-						value={input}
-					/>
-				</PromptInputBody>
-				<PromptInputFooter className="mt-1 px-2 pb-2">
-					<PromptInputTools className="gap-2">
-						<PromptInputSelect
-							onValueChange={(value) => {
-								const nextAgentId = value as keyof typeof AGENT_CONFIG_OPTIONS;
-								setSelectedAgentId(nextAgentId);
-								setSelectedModelId(
-									getConfigOption(nextAgentId, "model")?.currentValue ?? ""
-								);
-							}}
-							value={selectedAgentId}
+					<PromptInputFooter>
+						<PromptInputTools>
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									render={<PromptInputButton className="gap-1" />}
+								>
+									{agentLabel}
+									<ChevronDownIcon className="size-3" />
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start">
+									{agents.map((id) => (
+										<DropdownMenuItem
+											key={id}
+											onClick={() => handleAgentChange(id)}
+										>
+											{AGENT_LABELS[id] ?? id}
+										</DropdownMenuItem>
+									))}
+								</DropdownMenuContent>
+							</DropdownMenu>
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									render={
+										<PromptInputButton className="min-w-0 max-w-32 gap-1" />
+									}
+								>
+									<span className="truncate">{modelLabel}</span>
+									<ChevronDownIcon className="size-3" />
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start">
+									{models.map((model) => (
+										<DropdownMenuItem
+											key={model.id}
+											onClick={() => setModelId(model.id)}
+										>
+											{model.name ?? model.id}
+										</DropdownMenuItem>
+									))}
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</PromptInputTools>
+						<PromptInputSubmit
+							className="absolute right-1 bottom-1"
+							disabled={!message.trim()}
+							status={status}
+						/>
+					</PromptInputFooter>
+				</PromptInput>
+				<div className="mt-1.5 flex items-center justify-start gap-2">
+					<DropdownMenu>
+						<DropdownMenuTrigger
+							render={
+								<PromptInputButton className="h-6 gap-1.5 px-2 text-muted-foreground" />
+							}
 						>
-							<PromptInputSelectTrigger className="h-8 rounded-full border border-border/50 bg-background/60 px-3 font-medium text-foreground/80 text-xs hover:bg-muted/80">
-								<BotIcon className="size-3.5 text-muted-foreground" />
-								<span>{selectedAgentLabel}</span>
-							</PromptInputSelectTrigger>
-							<PromptInputSelectContent align="start">
-								{(
-									Object.entries(AGENT_LABELS) as Array<
-										[keyof typeof AGENT_LABELS, string]
-									>
-								).map(([agentId, label]) => (
-									<PromptInputSelectItem key={agentId} value={agentId}>
-										<div className="flex min-w-0 flex-col">
-											<span className="font-medium text-foreground">
-												{label}
-											</span>
-											<span className="text-muted-foreground text-xs">
-												{getConfigOption(agentId, "model")?.description}
-											</span>
-										</div>
-									</PromptInputSelectItem>
-								))}
-							</PromptInputSelectContent>
-						</PromptInputSelect>
-						<PromptInputSelect
-							onValueChange={setSelectedModelId}
-							value={selectedModelId}
+							{environmentId === "new-sandbox" ? (
+								<PlusIcon className="size-3.5 shrink-0" />
+							) : (
+								<Monitor className="size-3.5 shrink-0" />
+							)}
+							<span className="max-w-24 truncate">{environmentLabel}</span>
+							<ChevronDownIcon className="size-3 shrink-0" />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start">
+							<DropdownMenuItem onClick={() => setEnvironmentId("new-sandbox")}>
+								<PlusIcon className="mr-2 size-3" />
+								New sandbox
+							</DropdownMenuItem>
+							{environments?.map((env) => (
+								<DropdownMenuItem
+									key={env._id}
+									onClick={() => setEnvironmentId(env._id)}
+								>
+									<Monitor className="mr-2 size-3" />
+									{env.name}
+								</DropdownMenuItem>
+							)) ?? null}
+						</DropdownMenuContent>
+					</DropdownMenu>
+					<DropdownMenu>
+						<DropdownMenuTrigger
+							render={
+								<PromptInputButton className="h-6 min-w-0 max-w-28 gap-1.5 px-2 text-muted-foreground" />
+							}
 						>
-							<PromptInputSelectTrigger className="h-8 rounded-full border border-border/50 bg-background/60 px-3 font-medium text-foreground/80 text-xs hover:bg-muted/80">
-								<CpuIcon className="size-3.5 text-muted-foreground" />
-								<span className="truncate">{selectedModelLabel}</span>
-							</PromptInputSelectTrigger>
-							<PromptInputSelectContent align="start">
-								{modelOptions.map((option) => (
-									<PromptInputSelectItem
-										key={option.value}
-										value={option.value}
-									>
-										<div className="flex min-w-0 flex-col">
-											<span className="font-medium text-foreground">
-												{option.name}
-											</span>
-											<span className="text-muted-foreground text-xs">
-												{option.description}
-											</span>
-										</div>
-									</PromptInputSelectItem>
-								))}
-							</PromptInputSelectContent>
-						</PromptInputSelect>
-					</PromptInputTools>
-					<PromptInputSubmit
-						className={cn(
-							"size-9 rounded-full",
-							(status === "streaming" || status === "submitted") &&
-								"bg-foreground text-background hover:bg-foreground/90"
-						)}
-						disabled={!input.trim()}
-						status={status}
-					/>
-				</PromptInputFooter>
-			</PromptInput>
-			<div className="flex gap-2">
-				{" "}
-				<ProjectSelector
-					onProjectIdChange={setSelectedProjectId}
-					projectId={selectedProjectId}
-					projects={projects ?? []}
-				/>
-				<EnvironmentSelector
-					environments={environments ?? []}
-					onSelectedKeyChange={setSelectedEnvironmentKey}
-					selectedKey={selectedEnvironmentKey}
-				/>
+							<Shield className="size-3.5 shrink-0" />
+							<span className="truncate">{modeLabel}</span>
+							<ChevronDownIcon className="size-3 shrink-0" />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start">
+							{modes.map((mode) => (
+								<DropdownMenuItem
+									key={mode.id}
+									onClick={() => setModeId(mode.id)}
+								>
+									{mode.name ?? mode.id}
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
 			</div>
 		</div>
 	);

@@ -41,6 +41,8 @@ export type TendrilMessageMetadata = {
 	composer?: {
 		agentId: string;
 		modelId: string;
+		modeId?: string;
+		environmentId?: string | null;
 	};
 };
 

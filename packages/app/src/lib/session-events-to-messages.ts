@@ -97,7 +97,10 @@ function appendTextPart(
 	});
 }
 
-function findRuntimeToolPartIndex(message: MutableTendrilMessage, toolCallId: string) {
+function findRuntimeToolPartIndex(
+	message: MutableTendrilMessage,
+	toolCallId: string
+) {
 	return message.parts.findIndex(
 		(part) => part.type === "tool-runtime" && part.toolCallId === toolCallId
 	);
@@ -126,10 +129,9 @@ function toRuntimeToolOutput(toolCall: ToolCall) {
 	};
 }
 
-function toRuntimeToolPart(toolCall: ToolCall): Extract<
-	TendrilUIMessage["parts"][number],
-	{ type: "tool-runtime" }
-> {
+function toRuntimeToolPart(
+	toolCall: ToolCall
+): Extract<TendrilUIMessage["parts"][number], { type: "tool-runtime" }> {
 	const base = {
 		type: "tool-runtime" as const,
 		toolCallId: toolCall.toolCallId,
@@ -177,7 +179,6 @@ function appendStructuredContent(
 	});
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: event translation is intentionally centralized here
 export function sessionEventsToMessages(
 	enrichedEvents: EnrichedSessionEvent[]
 ): TendrilUIMessage[] {
@@ -215,7 +216,12 @@ export function sessionEventsToMessages(
 						event.content.text
 					);
 				} else {
-					appendStructuredContent(message, enriched, event.channel, event.content);
+					appendStructuredContent(
+						message,
+						enriched,
+						event.channel,
+						event.content
+					);
 				}
 				break;
 			}

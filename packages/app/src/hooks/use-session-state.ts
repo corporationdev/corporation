@@ -85,17 +85,20 @@ export function useSessionState({
 	const [sessionAgent, setSessionAgent] = useState<string | null>(null);
 	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
 
-	const addOptimisticMessage = useCallback((text: string) => {
-		setOptimisticMessages((prev) => [
-			...prev,
-			createOptimisticUserTextMessage({
-				id: `optimistic-${nanoid()}`,
-				sessionId,
-				text,
-			}),
-		]);
-		setSessionStatus("running");
-	}, [sessionId]);
+	const addOptimisticMessage = useCallback(
+		(text: string) => {
+			setOptimisticMessages((prev) => [
+				...prev,
+				createOptimisticUserTextMessage({
+					id: `optimistic-${nanoid()}`,
+					sessionId,
+					text,
+				}),
+			]);
+			setSessionStatus("running");
+		},
+		[sessionId]
+	);
 
 	const clearOptimisticMessages = useCallback(() => {
 		setOptimisticMessages([]);

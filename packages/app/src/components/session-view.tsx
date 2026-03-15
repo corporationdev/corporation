@@ -1,23 +1,15 @@
-import type { UseChatHelpers } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "@tendril/backend/convex/_generated/api";
 import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { nanoid } from "nanoid";
-import {
-	type FC,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSessionState } from "@/hooks/use-session-state";
 import { createSpaceSession, sendSpaceMessage } from "@/lib/api-client";
-import type { TendrilUIMessage } from "@/lib/tendril-ui-message";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
-import { AgentView } from "./chat/agent-view";
+import { AgentView, type ChatSendMessage } from "./chat/agent-view";
 
 type SessionViewSpace =
 	| {
@@ -57,35 +49,29 @@ const NewSessionView: FC<{
 	const navigate = useNavigate();
 	const setMessageStore = usePendingMessageStore((s) => s.setMessage);
 
-	const handleSend: UseChatHelpers<TendrilUIMessage>["sendMessage"] =
-		useCallback(
-			(message) => {
-				const text =
-					message && "text" in message ? message.text?.trim() : undefined;
-				const composer =
-					message && "metadata" in message
-						? message.metadata?.composer
-						: undefined;
-				const agent = composer?.agentId ?? DEFAULT_AGENT_ID;
-				const modelId = composer?.modelId ?? DEFAULT_MODEL_ID;
-				if (!(text && agent && modelId)) {
-					return Promise.resolve();
-				}
-
-				const sessionId = nanoid();
-
-				setMessageStore({ text, agent, modelId });
-
-				navigate({
-					to: "/space/$spaceSlug",
-					params: { spaceSlug },
-					search: { session: sessionId },
-				});
-
+	const handleSend: ChatSendMessage = useCallback(
+		(input) => {
+			const text = input.text?.trim();
+			const agent = input.agentId ?? DEFAULT_AGENT_ID;
+			const modelId = input.modelId ?? DEFAULT_MODEL_ID;
+			if (!(text && agent && modelId)) {
 				return Promise.resolve();
-			},
-			[setMessageStore, spaceSlug, navigate]
-		);
+			}
+
+			const sessionId = nanoid();
+
+			setMessageStore({ text, agent, modelId });
+
+			navigate({
+				to: "/space/$spaceSlug",
+				params: { spaceSlug },
+				search: { session: sessionId },
+			});
+
+			return Promise.resolve();
+		},
+		[setMessageStore, spaceSlug, navigate]
+	);
 
 	return <AgentView messages={[]} sendMessage={handleSend} status="ready" />;
 };
@@ -234,57 +220,51 @@ export const ConnectedSessionView: FC<{
 		spaceSlug,
 	]);
 
-	const handleSend: UseChatHelpers<TendrilUIMessage>["sendMessage"] =
-		useCallback(
-			async (message) => {
-				const text =
-					message && "text" in message ? message.text?.trim() : undefined;
-				const composer =
-					message && "metadata" in message
-						? message.metadata?.composer
-						: undefined;
-				const nextAgent = composer?.agentId ?? agent ?? DEFAULT_AGENT_ID;
-				const nextModelId = composer?.modelId ?? modelId ?? DEFAULT_MODEL_ID;
-				if (!text) {
+	const handleSend: ChatSendMessage = useCallback(
+		async (input) => {
+			const text = input.text?.trim();
+			const nextAgent = input.agentId ?? agent ?? DEFAULT_AGENT_ID;
+			const nextModelId = input.modelId ?? modelId ?? DEFAULT_MODEL_ID;
+			if (!text) {
+				return;
+			}
+
+			setAgentOverride(nextAgent);
+			setModelIdOverride(nextModelId);
+			sessionState.addOptimisticMessage(text);
+
+			try {
+				if (runtimeReady && connectionId) {
+					await ensureRemoteSession(nextAgent, nextModelId);
+					await sendSpaceMessage({
+						spaceSlug,
+						sessionId,
+						content: text,
+						modelId: nextModelId,
+					});
 					return;
 				}
 
-				setAgentOverride(nextAgent);
-				setModelIdOverride(nextModelId);
-				sessionState.addOptimisticMessage(text);
-
-				try {
-					if (runtimeReady && connectionId) {
-						await ensureRemoteSession(nextAgent, nextModelId);
-						await sendSpaceMessage({
-							spaceSlug,
-							sessionId,
-							content: text,
-							modelId: nextModelId,
-						});
-						return;
-					}
-
-					setPendingSend({ text, agent: nextAgent, modelId: nextModelId });
-				} catch (error) {
-					console.error("Failed to send message", { error, sessionId });
-					setPendingSend(null);
-					sessionState.clearOptimisticMessages();
-					toast.error("Failed to send message");
-				}
-			},
-			[
-				ensureRemoteSession,
-				connectionId,
-				runtimeReady,
-				sessionId,
-				agent,
-				modelId,
-				spaceSlug,
-				sessionState.addOptimisticMessage,
-				sessionState.clearOptimisticMessages,
-			]
-		);
+				setPendingSend({ text, agent: nextAgent, modelId: nextModelId });
+			} catch (error) {
+				console.error("Failed to send message", { error, sessionId });
+				setPendingSend(null);
+				sessionState.clearOptimisticMessages();
+				toast.error("Failed to send message");
+			}
+		},
+		[
+			ensureRemoteSession,
+			connectionId,
+			runtimeReady,
+			sessionId,
+			agent,
+			modelId,
+			spaceSlug,
+			sessionState.addOptimisticMessage,
+			sessionState.clearOptimisticMessages,
+		]
+	);
 
 	return (
 		<AgentView
