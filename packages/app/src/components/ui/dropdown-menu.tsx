@@ -1,6 +1,7 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
-import type * as React from "react";
+import type { ReactElement } from "react";
+import { Children } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -78,11 +79,31 @@ function DropdownMenuItem({
 	className,
 	inset,
 	variant = "default",
+	asChild = false,
+	children,
+	render,
 	...props
 }: MenuPrimitive.Item.Props & {
 	inset?: boolean;
 	variant?: "default" | "destructive";
+	asChild?: boolean;
 }) {
+	if (asChild) {
+		return (
+			<MenuPrimitive.Item
+				className={cn(
+					"group/dropdown-menu-item relative flex cursor-default select-none items-center gap-2 rounded-none px-2 py-2 text-xs outline-hidden focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-[inset]:pl-8 data-[variant=destructive]:text-destructive data-disabled:opacity-50 data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 data-[variant=destructive]:*:[svg]:text-destructive",
+					className
+				)}
+				data-inset={inset}
+				data-slot="dropdown-menu-item"
+				data-variant={variant}
+				render={Children.only(children) as ReactElement}
+				{...props}
+			/>
+		);
+	}
+
 	return (
 		<MenuPrimitive.Item
 			className={cn(
@@ -92,8 +113,11 @@ function DropdownMenuItem({
 			data-inset={inset}
 			data-slot="dropdown-menu-item"
 			data-variant={variant}
+			render={render}
 			{...props}
-		/>
+		>
+			{children}
+		</MenuPrimitive.Item>
 	);
 }
 

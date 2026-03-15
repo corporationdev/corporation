@@ -47,7 +47,6 @@ function AgentCard({
 
 function AgentsPage() {
 	const agentCredentials = useQuery(api.agentCredentials.list);
-	const agentConfig = useQuery(api.agentConfig.list);
 	const connectedCredentialsByAgentId = useMemo(
 		() =>
 			new Map(
@@ -58,23 +57,9 @@ function AgentsPage() {
 			),
 		[agentCredentials]
 	);
-	const configByAgentId = useMemo(
-		() =>
-			new Map(
-				(agentConfig ?? []).map((config) => [
-					config.agentId,
-					config.configOptions,
-				])
-			),
-		[agentConfig]
-	);
 	const connectedAgentIds = useMemo(
-		() =>
-			new Set([
-				...connectedCredentialsByAgentId.keys(),
-				...configByAgentId.keys(),
-			]),
-		[configByAgentId, connectedCredentialsByAgentId]
+		() => new Set(connectedCredentialsByAgentId.keys()),
+		[connectedCredentialsByAgentId]
 	);
 
 	const supportedAgents = useMemo(() => acpAgents, []);
@@ -101,7 +86,7 @@ function AgentsPage() {
 			</div>
 
 			<div className="space-y-2">
-				{agentCredentials === undefined || agentConfig === undefined
+				{agentCredentials === undefined
 					? supportedAgents.map((agent) => (
 							<div
 								className="flex items-center gap-3 rounded-lg border px-4 py-3"

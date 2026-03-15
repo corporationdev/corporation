@@ -34,8 +34,8 @@
     "pack:sandbox-runtime": "bun scripts/pack-sandbox-runtime.ts",
     "publish:sandbox-runtime": "bun scripts/publish-sandbox-runtime.ts",
     "dev:sandbox-runtime": "bun scripts/dev-sandbox-runtime.ts",
-    "dev:runtime-cli": "bun apps/sandbox-runtime/cli.ts",
-    "dev:runtime-server": "bun apps/sandbox-runtime/dev-server.ts",
+    "dev:cli": "STAGE_VALUE=${STAGE:-$(awk -F= '/^STAGE=/{print $2; exit}' .env 2>/dev/null)}; if [ -z \"$STAGE_VALUE\" ]; then echo 'Missing STAGE. Set STAGE in the environment or .env.'; exit 1; fi; STAGE=$STAGE_VALUE bun packages/cli/cli/index.ts",
+    "dev:runtime-server": "bun packages/cli/dev-server.ts",
     "sandbox:create-agent-install": "bun scripts/create-agent-install-sandbox.ts",
     "rebuild:template": "bun scripts/build-base-template.ts",
     "generate:agents": "bun scripts/generate-acp-agents.ts",
@@ -52,8 +52,9 @@
     "catalog": {
       "@agentclientprotocol/sdk": "^0.15.0",
       "@base-ui/react": "^1.0.0",
+      "@better-auth/api-key": "^1.5.5",
       "@cloudflare/workers-types": "^4.20251213.0",
-      "@convex-dev/better-auth": "^0.10.13",
+      "@convex-dev/better-auth": "^0.11.1",
       "@e2b/desktop": "^2.2.2",
       "e2b": "^2.13.0",
       "effect": "4.0.0-beta.30",
@@ -79,9 +80,10 @@
       "@vitejs/plugin-react": "^4.3.4",
       "ghostty-web": "^0.4.0",
       "alchemy": "^0.82.1",
-      "better-auth": "1.4.21",
+      "better-auth": "1.5.5",
       "class-variance-authority": "^0.7.1",
       "clsx": "^2.1.1",
+      "commander": "^14.0.1",
       "convex": "^1.33.1",
       "convex-helpers": "^0.1.111",
       "dotenv": "^17.2.2",
@@ -117,6 +119,7 @@
       "zod": "^4.1.13",
       "zustand": "^5.0.11",
       "@ai-sdk/anthropic": "^3.0.53",
+      "@ai-sdk/react": "^3.0.118",
       "ai": "^6.0.108"
     }
   }

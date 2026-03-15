@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { runtimeAuthApp } from "./auth-routes";
+import { environmentApp } from "./environment";
 import { githubApp } from "./github";
 import { integrationsApp } from "./integrations";
 import { proxyApp } from "./proxy";
-import { runtimeApp } from "./runtime";
 import { spacesApp } from "./spaces";
 import { streamApp } from "./stream";
 import { testApp } from "./test";
@@ -27,7 +28,8 @@ const apiApp = new Hono<{ Bindings: Env }>()
 	.route("/integrations", integrationsApp)
 	.route("/github", githubApp)
 	.route("/proxy", proxyApp)
-	.route("/runtime", runtimeApp)
+	.route("/auth", runtimeAuthApp)
+	.route("/environment", environmentApp)
 	.route("/test", testApp)
 	.route("/spaces", spacesApp)
 	.route("/spaces", streamApp);
