@@ -11,7 +11,7 @@ import {
 	type AcpRequestMap,
 	type AcpRequestMethod,
 	createAcpDriver,
-} from "../acp-driver";
+} from "../agent-runtime/acp-driver";
 
 type RequestCall = {
 	method: string;

@@ -14,7 +14,7 @@ const RUNTIME_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
 function buildRuntimeSocketUrl(serverUrl: string, token: string) {
 	const url = new URL(serverUrl);
 	url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-	url.pathname = "/api/runtime/socket";
+	url.pathname = "/api/environment/socket";
 	url.search = new URLSearchParams({ token }).toString();
 	url.hash = "";
 	return url.toString();

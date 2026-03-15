@@ -16,7 +16,10 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["SpaceDurableObject", "EnvironmentDurableObject"],
+      "new_sqlite_classes": [
+        "SpaceDurableObject",
+        "EnvironmentDurableObject"
+      ],
       "new_classes": ["TestStreamConsumerDurableObject"]
     }
   ],

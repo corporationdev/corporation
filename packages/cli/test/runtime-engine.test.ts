@@ -4,7 +4,7 @@ import {
 	type CreateSessionInput,
 	type ResolvedStartTurnInput,
 	RuntimeEngine,
-} from "../index";
+} from "../agent-runtime";
 
 function createDeferred() {
 	let resolve!: () => void;

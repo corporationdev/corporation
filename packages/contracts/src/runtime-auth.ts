@@ -50,6 +50,22 @@ export type RuntimeRefreshTokenRequest = z.infer<
 	typeof runtimeRefreshTokenRequestSchema
 >;
 
+export const runtimeAccessTokenExchangeRequestSchema = z.object({
+	accessToken: z.string().min(1),
+	clientId: z.string().min(1),
+});
+export type RuntimeAccessTokenExchangeRequest = z.infer<
+	typeof runtimeAccessTokenExchangeRequestSchema
+>;
+
+export const runtimeApiKeyExchangeRequestSchema = z.object({
+	apiKey: z.string().min(1),
+	clientId: z.string().min(1),
+});
+export type RuntimeApiKeyExchangeRequest = z.infer<
+	typeof runtimeApiKeyExchangeRequestSchema
+>;
+
 export const runtimeRefreshTokenResponseSchema = z.object({
 	refreshToken: z.string().min(1),
 	expiresAt: z.number().int().positive(),

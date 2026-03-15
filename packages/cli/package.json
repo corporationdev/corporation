@@ -29,6 +29,7 @@
     "effect": "catalog:",
     "hono": "catalog:",
     "jose": "catalog:",
+    "pino": "catalog:",
     "playwright": "^1.54.1",
     "zod": "catalog:"
   },

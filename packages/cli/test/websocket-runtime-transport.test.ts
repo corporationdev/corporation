@@ -3,13 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage } from "@tendril/contracts/environment-runtime";
-import { openRuntimeDatabase } from "../db";
-import { noopDriver, RuntimeEngine } from "../index";
-import { RuntimeMessageStore } from "../runtime-message-store";
+import { openRuntimeDatabase } from "../agent-runtime/db";
+import { noopDriver, RuntimeEngine } from "../agent-runtime";
+import { RuntimeMessageStore } from "../agent-runtime/runtime-message-store";
 import {
 	createWebSocketRuntimeTransport,
 	type WebSocketLike,
-} from "../websocket-runtime-transport";
+} from "../agent-runtime/websocket-runtime-transport";
 
 class FakeSocket implements WebSocketLike {
 	readyState = 1;

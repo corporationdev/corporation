@@ -90,7 +90,7 @@ export function buildRuntimeSocketUrl(input: {
 	accessToken: string;
 	serverUrl: string;
 }): string {
-	const url = new URL("/api/runtime/socket", input.serverUrl);
+	const url = new URL("/api/environment/socket", input.serverUrl);
 	url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 	url.search = new URLSearchParams({
 		token: input.accessToken,
@@ -99,5 +99,5 @@ export function buildRuntimeSocketUrl(input: {
 }
 
 export function buildRuntimeAuthSessionUrl(serverUrl: string): string {
-	return new URL("/api/runtime/auth/session", serverUrl).toString();
+	return new URL("/api/auth/session", serverUrl).toString();
 }

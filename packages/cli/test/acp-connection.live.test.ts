@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AGENT_METHODS } from "@agentclientprotocol/sdk";
-import { createSpawnedAcpConnectionFactory } from "../acp-connection";
+import { createSpawnedAcpConnectionFactory } from "../agent-runtime/acp-connection";
 
 const LIVE_AGENT = process.env.ACP_LIVE_AGENT?.trim();
 

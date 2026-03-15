@@ -1,18 +1,24 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
+import { apiKey } from "@better-auth/api-key";
 import {
 	getStageEmailFrom,
 	getStageWebUrl,
 	resolveRuntimeContext,
 } from "@tendril/config/runtime";
 import { betterAuth } from "better-auth";
-import { getOrgAdapter, organization } from "better-auth/plugins/organization";
+import {
+	bearer,
+	deviceAuthorization,
+	getOrgAdapter,
+	organization,
+} from "better-auth/plugins";
 import { Resend } from "resend";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
-import authSchema from "./betterAuth/schema";
+import authSchema from "./betterAuth/customSchema";
 
 function slugifyOrganizationName(name: string, userId: string) {
 	const base = name
@@ -250,6 +256,20 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
 		plugins: [
 			crossDomain({ siteUrl: webUrl }),
 			organization(organizationOptions),
+			bearer(),
+			deviceAuthorization({
+				verificationUri: `${webUrl}/device`,
+			}),
+			apiKey({
+				defaultPrefix: "tendril_",
+				enableSessionForAPIKeys: true,
+				requireName: true,
+				keyExpiration: {
+					defaultExpiresIn: null,
+					minExpiresIn: 1,
+					maxExpiresIn: 365,
+				},
+			}),
 			convex({
 				authConfig,
 				jwksRotateOnTokenGenerationError: true,
