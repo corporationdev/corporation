@@ -126,20 +126,16 @@ export function SpaceLayout() {
 					</div>
 				</header>
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-					{space === null ? (
-						<SpaceNotFoundPanel />
-					) : activeSessionId ? (
+					{activeSessionId ? (
 						<ConnectedSessionView
 							key={activeSessionId}
 							sessionId={activeSessionId}
 							spaceSlug={spaceSlug}
 						/>
+					) : space === null ? (
+						<SpaceNotFoundPanel />
 					) : (
-						<NewSessionView
-							key={spaceSlug}
-							space={space}
-							spaceSlug={spaceSlug}
-						/>
+						<NewSessionView key={spaceSlug} spaceSlug={spaceSlug} />
 					)}
 				</div>
 			</SidebarInset>

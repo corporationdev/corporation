@@ -1,4 +1,11 @@
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { create } from "zustand";
+import type { SpaceBacking } from "@/components/chat/agent-view";
+
+type PendingSpaceCreation = {
+	projectId: Id<"projects">;
+	backing: SpaceBacking;
+};
 
 type PendingMessage = {
 	text: string;
@@ -6,6 +13,7 @@ type PendingMessage = {
 	modelId: string;
 	modeId: string;
 	reasoningEffort: string | null;
+	spaceCreation?: PendingSpaceCreation;
 };
 
 type PendingMessageStore = {

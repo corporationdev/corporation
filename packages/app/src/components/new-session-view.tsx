@@ -1,114 +1,62 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { api } from "@tendril/backend/convex/_generated/api";
-import type { Id } from "@tendril/backend/convex/_generated/dataModel";
-import { useQuery } from "convex/react";
 import { nanoid } from "nanoid";
-import { type FC, useCallback, useState } from "react";
-import { toast } from "sonner";
-import { createSpaceSession } from "@/lib/api-client";
+import { type FC, useCallback, useMemo } from "react";
+import { useSessionState } from "@/hooks/use-session-state";
 import { usePendingMessageStore } from "@/stores/pending-message-store";
 import { AgentView, type ChatSendMessage } from "./chat/agent-view";
 
 export const NewSessionView: FC<{
 	spaceSlug: string;
-	space: { _id: Id<"spaces">; projectId: Id<"projects"> } | null | undefined;
-}> = ({ spaceSlug, space }) => {
+}> = ({ spaceSlug }) => {
 	const navigate = useNavigate();
-	const queryClient = useQueryClient();
 	const setMessageStore = usePendingMessageStore((s) => s.setMessage);
-	const [isSubmitting, setIsSubmitting] = useState(false);
+	const sessionId = useMemo(() => nanoid(), []);
 
-	const spaceId = space?._id;
-	const backingData = useQuery(
-		api.backings.getForSpace,
-		spaceId ? { spaceId } : "skip"
-	);
-	const connectionId = backingData?.environment?.connectionId ?? null;
-	const environmentId = backingData?.environment?._id;
-
-	const projectId = space?.projectId;
-	const projectEnvironment = useQuery(
-		api.projectEnvironments.getByProjectAndEnvironment,
-		projectId && environmentId ? { projectId, environmentId } : "skip"
-	);
-	const cwd = projectEnvironment?.path ?? null;
+	const sessionState = useSessionState({
+		sessionId,
+		spaceSlug,
+		streamEnabled: false,
+	});
 
 	const handleSend: ChatSendMessage = useCallback(
-		async (input) => {
+		(input) => {
 			const text = input.message.trim();
-			if (!text || isSubmitting) {
-				return;
+			if (!text) {
+				return Promise.resolve();
 			}
 
-			if (!connectionId) {
-				toast.error("Environment is not connected");
-				return;
-			}
-			if (!cwd) {
-				toast.error("No path configured for this project");
-				return;
-			}
+			sessionState.addOptimisticMessage(text);
 
-			setIsSubmitting(true);
-			try {
-				const sessionId = nanoid();
+			setMessageStore({
+				text,
+				agent: input.agentId,
+				modelId: input.modelId,
+				modeId: input.modeId,
+				reasoningEffort: input.reasoningEffort,
+			});
 
-				await createSpaceSession(spaceSlug, {
-					sessionId,
-					clientId: connectionId,
-					spaceName: spaceSlug,
-					title: "New Chat",
-					agent: input.agentId,
-					cwd,
-					model: input.modelId,
-					mode: input.modeId,
-					configOptions: input.reasoningEffort
-						? { reasoning_effort: input.reasoningEffort }
-						: undefined,
-				});
+			navigate({
+				to: "/space/$spaceSlug",
+				params: { spaceSlug },
+				search: { session: sessionId },
+			});
 
-				setMessageStore({
-					text,
-					agent: input.agentId,
-					modelId: input.modelId,
-					modeId: input.modeId,
-					reasoningEffort: input.reasoningEffort,
-				});
-
-				await queryClient.invalidateQueries({
-					queryKey: ["space-sessions", spaceSlug],
-				});
-
-				navigate({
-					to: "/space/$spaceSlug",
-					params: { spaceSlug },
-					search: { session: sessionId },
-				});
-			} catch (error) {
-				toast.error(
-					error instanceof Error ? error.message : "Failed to create session"
-				);
-			} finally {
-				setIsSubmitting(false);
-			}
+			return Promise.resolve();
 		},
 		[
-			connectionId,
-			cwd,
-			isSubmitting,
-			navigate,
-			queryClient,
+			sessionId,
+			sessionState.addOptimisticMessage,
 			setMessageStore,
 			spaceSlug,
+			navigate,
 		]
 	);
 
 	return (
 		<AgentView
-			messages={[]}
+			messages={sessionState.messages}
 			sendMessage={handleSend}
-			status={isSubmitting ? "submitted" : "ready"}
+			status={sessionState.status}
 		/>
 	);
 };
