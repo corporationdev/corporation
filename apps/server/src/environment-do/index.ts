@@ -646,22 +646,55 @@ export class EnvironmentDurableObject extends DurableObject<Env> {
 		}>
 	> {
 		await this.ready;
-		return this.commandRouter.sendCommand({
+		log.info(
+			{
+				commandType: command.type,
+				requestId: command.requestId,
+				hasActiveRuntime: this.activeRuntimeConnectionId !== null,
+				activeConnectionId: this.activeRuntimeConnectionId,
+			},
+			"sendRuntimeCommand"
+		);
+		const result = await this.commandRouter.sendCommand({
 			command,
 			getActiveRuntimeSocket: () => this.getActiveRuntimeSocket(),
 		});
+		log.info(
+			{
+				commandType: command.type,
+				requestId: command.requestId,
+				resultOk: result.ok,
+				resultError: result.ok ? null : result.error.message,
+			},
+			"sendRuntimeCommand result"
+		);
+		return result;
 	}
 
 	async subscribeStream(
 		input: EnvironmentSubscribeStreamInput
 	): Promise<EnvironmentRpcResult<EmptyResult>> {
 		await this.ready;
+		log.info(
+			{
+				stream: input.stream,
+				offset: input.offset,
+				subscriberBinding: input.subscriber.callback.binding,
+				subscriberName: input.subscriber.callback.name,
+				activeRuntimeConnected: this.activeRuntimeConnectionId !== null,
+			},
+			"subscribeStream"
+		);
 		const result = this.streamSubscriptions.subscribe({
 			activeRuntimeConnected: this.activeRuntimeConnectionId !== null,
 			forwardToRuntime: ({ stream, offset }) =>
 				this.sendSubscribeStreamToRuntime({ stream, offset }),
 			subscription: input,
 		});
+		log.info(
+			{ stream: input.stream, resultOk: result.ok },
+			"subscribeStream result"
+		);
 		if (result.ok) {
 			await this.subscriptionStore.upsert({
 				stream: input.stream,

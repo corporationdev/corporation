@@ -41,12 +41,17 @@ export const ConnectedSessionView: FC<{
 	);
 	const connectionId = backingData?.environment?.connectionId ?? null;
 	const environmentId = backingData?.environment?._id;
+	const isSandbox = backingData?.environment?.type === "sandbox";
+	const runtimeReady =
+		backingData?.environment?.status === "connected" && !!connectionId;
 	const projectId = space?.projectId;
 	const projectEnvironment = useQuery(
 		api.projectEnvironments.getByProjectAndEnvironment,
-		projectId && environmentId ? { projectId, environmentId } : "skip"
+		projectId && environmentId && !isSandbox
+			? { projectId, environmentId }
+			: "skip"
 	);
-	const cwd = projectEnvironment?.path ?? null;
+	const cwd = isSandbox ? "/workspace" : (projectEnvironment?.path ?? null);
 
 	// 1) On mount: consume pending message immediately, show optimistic, kick off space creation
 	const hasConsumedRef = useRef(false);
@@ -58,15 +63,12 @@ export const ConnectedSessionView: FC<{
 
 		const pending = consumeMessage();
 		if (!pending) {
-			// No pending = existing session, just enable stream
 			setSessionReady(true);
 			return;
 		}
 
-		// Show optimistic message right away
 		sessionState.addOptimisticMessage(pending.text);
 
-		// Stash for the send effect
 		setPendingSend({
 			text: pending.text,
 			agent: pending.agent,
@@ -75,12 +77,10 @@ export const ConnectedSessionView: FC<{
 			reasoningEffort: pending.reasoningEffort,
 		});
 
-		// Create space if needed
 		if (pending.spaceCreation) {
 			const { projectId: pid, backing } = pending.spaceCreation;
 			createSpace({ slug: spaceSlug, projectId: pid, backing }).catch(
 				(error: unknown) => {
-					console.error("Failed to create space", error);
 					sessionState.clearOptimisticMessages();
 					toast.error(
 						error instanceof Error ? error.message : "Failed to create space"
@@ -98,17 +98,42 @@ export const ConnectedSessionView: FC<{
 
 	// 2) Once backing data is ready + we have a pending send: create session + send message
 	useEffect(() => {
-		if (!(pendingSend && connectionId && cwd)) {
+		if (!pendingSend) {
+			return;
+		}
+
+		// Still loading backing data
+		if (!backingData) {
+			return;
+		}
+
+		// Runtime not connected yet (e.g. sandbox still provisioning)
+		if (!runtimeReady || !connectionId) {
+			return;
+		}
+
+		// For non-sandbox: need cwd from projectEnvironments
+		if (!isSandbox && projectEnvironment === undefined) {
+			// Still loading projectEnvironment query
+			return;
+		}
+		if (!cwd) {
+			sessionState.clearOptimisticMessages();
+			toast.error(
+				"No project path configured for this environment. Please set a path in project settings."
+			);
+			setPendingSend(null);
 			return;
 		}
 
 		const pending = pendingSend;
+		const clientId = connectionId;
 		setPendingSend(null);
 
 		(async () => {
 			await createSpaceSession(spaceSlug, {
 				sessionId,
-				clientId: connectionId,
+				clientId,
 				spaceName: spaceSlug,
 				title: "New Chat",
 				agent: pending.agent,
@@ -140,7 +165,11 @@ export const ConnectedSessionView: FC<{
 		});
 	}, [
 		pendingSend,
+		backingData,
+		runtimeReady,
 		connectionId,
+		isSandbox,
+		projectEnvironment,
 		cwd,
 		queryClient,
 		sessionId,
