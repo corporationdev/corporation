@@ -1,5 +1,6 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { api } from "@tendril/backend/convex/_generated/api";
+import type { Id } from "@tendril/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import {
 	ChevronDownIcon,
@@ -40,12 +41,16 @@ import { useAgentModelPreferences } from "@/hooks/use-agent-model-preferences";
 import { useEnvironmentSelection } from "@/hooks/use-environment-selection";
 import type { TendrilUIMessage } from "@/lib/tendril-ui-message";
 
+export type SpaceBacking =
+	| { type: "sandbox" }
+	| { type: "existing"; environmentId: Id<"environments"> };
+
 export type ChatSendMessageInput = {
 	message: string;
 	agentId: string;
 	modelId: string;
 	modeId: string;
-	environmentId: string | null;
+	backing: SpaceBacking;
 };
 
 export type ChatSendMessage = (message: ChatSendMessageInput) => Promise<void>;
@@ -202,7 +207,10 @@ export const AgentView = ({
 			agentId,
 			modelId,
 			modeId,
-			environmentId: environmentId === "new-sandbox" ? null : environmentId,
+			backing:
+				environmentId === "new-sandbox"
+					? { type: "sandbox" }
+					: { type: "existing", environmentId },
 		};
 		console.log("input", input);
 		sendMessage(input);

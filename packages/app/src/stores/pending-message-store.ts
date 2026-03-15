@@ -4,6 +4,7 @@ type PendingMessage = {
 	text: string;
 	agent: string;
 	modelId: string;
+	modeId: string;
 };
 
 type PendingMessageStore = {
