@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EnvironmentRuntimeOutgoingMessage as RuntimeWebSocketOutgoingMessage } from "@tendril/contracts/environment-runtime";
-import { openRuntimeDatabase } from "../agent-runtime/db";
 import { noopDriver, RuntimeEngine } from "../agent-runtime";
+import { openRuntimeDatabase } from "../agent-runtime/db";
 import { RuntimeMessageStore } from "../agent-runtime/runtime-message-store";
 import {
 	createWebSocketRuntimeTransport,

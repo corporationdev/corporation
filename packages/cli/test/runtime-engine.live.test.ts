@@ -2,13 +2,13 @@ import { describe, expect, test } from "bun:test";
 import crypto from "node:crypto";
 import { AGENT_METHODS, type PromptResponse } from "@agentclientprotocol/sdk";
 import type { SessionEvent } from "@tendril/contracts/session-event";
+import { RuntimeEngine } from "../agent-runtime";
 import { createSpawnedAcpConnectionFactory } from "../agent-runtime/acp-connection";
 import {
 	type AcpConnection,
 	type AcpConnectionFactory,
 	createAcpDriver,
 } from "../agent-runtime/acp-driver";
-import { RuntimeEngine } from "../agent-runtime";
 
 const LIVE_AGENT = process.env.ACP_LIVE_AGENT?.trim();
 const LIVE_MODEL = process.env.ACP_LIVE_MODEL?.trim();

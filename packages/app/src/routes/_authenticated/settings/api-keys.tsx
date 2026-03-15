@@ -218,7 +218,9 @@ function ApiKeyRow({
 	return (
 		<div className="flex items-center gap-3 rounded-lg border px-4 py-3">
 			<div className="min-w-0 flex-1">
-				<div className="font-medium text-sm">{apiKey.name || "Unnamed key"}</div>
+				<div className="font-medium text-sm">
+					{apiKey.name || "Unnamed key"}
+				</div>
 				<div className="mt-1 text-muted-foreground text-xs">
 					{apiKey.start || apiKey.prefix || "Hidden"} • created{" "}
 					{formatDate(apiKey.createdAt)}

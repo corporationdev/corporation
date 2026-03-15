@@ -1,9 +1,9 @@
 /* global WebSocket */
 
+import { RuntimeEngine } from "../agent-runtime";
 import { createSpawnedAcpConnectionFactory } from "../agent-runtime/acp-connection";
 import { createAcpDriver } from "../agent-runtime/acp-driver";
 import { openRuntimeDatabase } from "../agent-runtime/db";
-import { RuntimeEngine } from "../agent-runtime";
 import { RuntimeMessageStore } from "../agent-runtime/runtime-message-store";
 import { createWebSocketRuntimeTransport } from "../agent-runtime/websocket-runtime-transport";
 import { resolveRuntimeWebSocketUrl } from "./auth";

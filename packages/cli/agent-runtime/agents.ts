@@ -36,7 +36,9 @@ function resolveAdapterCommand(agent: AcpAgentManifestEntry): string[] {
 		>;
 		const binary = platforms[platform];
 		if (!binary) {
-			throw new Error(`ACP agent ${agent.id} does not support platform ${platform}`);
+			throw new Error(
+				`ACP agent ${agent.id} does not support platform ${platform}`
+			);
 		}
 		return [path.basename(binary.cmd)];
 	}

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./index.ts",
+    ".": "./agent-runtime/index.ts",
     "./proxy": "./legacy/src/proxy.ts",
     "./schemas": "./legacy/src/schemas.ts"
   },

@@ -2,6 +2,7 @@ import { open, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 import { Command } from "commander";
+import { getDefaultRuntimeDatabasePath } from "../agent-runtime/db";
 import {
 	clearRuntimeCredentials,
 	exchangeRuntimeAccessToken,
@@ -16,7 +17,6 @@ import {
 	saveRuntimeCredentials,
 	startDeviceAuthorization,
 } from "./auth";
-import { getDefaultRuntimeDatabasePath } from "../agent-runtime/db";
 import { runDaemon } from "./daemon";
 import { formatLogLine } from "./logging";
 import {

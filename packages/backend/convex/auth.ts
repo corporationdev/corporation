@@ -1,6 +1,6 @@
+import { apiKey } from "@better-auth/api-key";
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
-import { apiKey } from "@better-auth/api-key";
 import {
 	getStageEmailFrom,
 	getStageWebUrl,

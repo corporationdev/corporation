@@ -27,6 +27,7 @@ function DeviceApprovalPage() {
 	const [submitting, setSubmitting] = useState(false);
 	const [approved, setApproved] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const deviceCodeInputId = "device-code";
 
 	if (isPending) {
 		return (
@@ -81,12 +82,13 @@ function DeviceApprovalPage() {
 							});
 					}}
 				>
-					<label className="block space-y-2">
+					<label className="block space-y-2" htmlFor={deviceCodeInputId}>
 						<span className="font-medium text-sm">Device code</span>
 						<Input
 							autoCapitalize="characters"
 							autoCorrect="off"
 							className="font-mono uppercase"
+							id={deviceCodeInputId}
 							onChange={(event) => {
 								setUserCode(event.target.value.toUpperCase());
 							}}

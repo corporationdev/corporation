@@ -56,6 +56,7 @@ const DEFAULT_CREDENTIALS_PATH = join(
 );
 
 const DEFAULT_STAGE = "prod";
+const LEADING_SLASHES_REGEX = /^\/+/u;
 
 function getDefaultStage(): string {
 	const stage = process.env.STAGE?.trim();
@@ -75,7 +76,9 @@ export function getDefaultServerUrl(): string {
 	);
 }
 
-export function getDefaultAuthUrl(serverUrl: string = getDefaultServerUrl()): string {
+export function getDefaultAuthUrl(
+	serverUrl: string = getDefaultServerUrl()
+): string {
 	const explicitAuthUrl = process.env.TENDRIL_AUTH_URL?.trim();
 	if (explicitAuthUrl) {
 		return explicitAuthUrl;
@@ -112,7 +115,7 @@ function normalizeServerKey(serverUrl: string): string {
 
 function buildUrl(baseUrl: string, pathname: string): string {
 	const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-	const normalizedPath = pathname.replace(/^\/+/u, "");
+	const normalizedPath = pathname.replace(LEADING_SLASHES_REGEX, "");
 	return new URL(normalizedPath, normalizedBase).toString();
 }
 
@@ -206,12 +209,10 @@ export async function startDeviceAuthorization(input: {
 		}),
 	});
 	if (!response.ok) {
-		const body = (await response.json().catch(() => null)) as
-			| {
-					error?: string;
-					error_description?: string;
-			  }
-			| null;
+		const body = (await response.json().catch(() => null)) as {
+			error?: string;
+			error_description?: string;
+		} | null;
 		throw new Error(
 			body?.error_description ||
 				body?.error ||
@@ -263,12 +264,10 @@ export async function pollDeviceAuthorization(input: {
 		};
 	}
 
-	const body = (await response.json().catch(() => null)) as
-		| {
-				error?: DeviceAuthorizationPollResult["status"];
-				error_description?: string;
-		  }
-		| null;
+	const body = (await response.json().catch(() => null)) as {
+		error?: DeviceAuthorizationPollResult["status"];
+		error_description?: string;
+	} | null;
 
 	const errorCode = body?.error;
 	if (
@@ -308,11 +307,9 @@ export async function exchangeRuntimeAccessToken(input: {
 		}
 	);
 	if (!response.ok) {
-		const body = (await response.json().catch(() => null)) as
-			| {
-					error?: string;
-			  }
-			| null;
+		const body = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
 		throw new Error(
 			body?.error || `Runtime token exchange failed (${response.status})`
 		);
@@ -334,12 +331,12 @@ export async function exchangeRuntimeApiKey(input: {
 		}),
 	});
 	if (!response.ok) {
-		const body = (await response.json().catch(() => null)) as
-			| {
-					error?: string;
-			  }
-			| null;
-		throw new Error(body?.error || `API key exchange failed (${response.status})`);
+		const body = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
+		throw new Error(
+			body?.error || `API key exchange failed (${response.status})`
+		);
 	}
 	return (await response.json()) as RuntimeRefreshTokenResponse;
 }
