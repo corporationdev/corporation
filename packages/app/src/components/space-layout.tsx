@@ -4,7 +4,8 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import { useQuery } from "convex/react";
 import { HistoryIcon, PanelRightIcon, PlusIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { SessionView } from "@/components/session-view";
+import { ConnectedSessionView } from "@/components/connected-session-view";
+import { NewSessionView } from "@/components/new-session-view";
 import { SpaceListSidebar } from "@/components/space-list-sidebar";
 import { SpaceNotFoundPanel } from "@/components/space-not-found-panel";
 import { Button } from "@/components/ui/button";
@@ -127,14 +128,15 @@ export function SpaceLayout() {
 				<div className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					{space === null ? (
 						<SpaceNotFoundPanel />
-					) : (
-						<SessionView
-							hasSession={
-								!!activeSessionId &&
-								sessions.some((session) => session.id === activeSessionId)
-							}
-							key={activeSessionId ?? spaceSlug}
+					) : activeSessionId ? (
+						<ConnectedSessionView
+							key={activeSessionId}
 							sessionId={activeSessionId}
+							spaceSlug={spaceSlug}
+						/>
+					) : (
+						<NewSessionView
+							key={spaceSlug}
 							space={space}
 							spaceSlug={spaceSlug}
 						/>

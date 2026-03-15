@@ -2,6 +2,7 @@ import type { JsonBatch, StreamResponse } from "@durable-streams/client";
 import { stream } from "@durable-streams/client";
 import type { SessionStreamFrame } from "@tendril/contracts/browser-do";
 import { env } from "@tendril/env/web";
+import type { ChatStatus } from "ai";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAuthHeaders, getSessionStreamState } from "@/lib/api-client";
@@ -56,9 +57,22 @@ function readStreamBatch(
 	return { events, status, error };
 }
 
+type SessionStreamStatus = "idle" | "running" | "error";
+
+function toChatStatus(status: SessionStreamStatus): ChatStatus {
+	switch (status) {
+		case "running":
+			return "streaming";
+		case "error":
+			return "error";
+		default:
+			return "ready";
+	}
+}
+
 export type SessionState = {
 	messages: TendrilUIMessage[];
-	status: string;
+	status: ChatStatus;
 	error: string | null;
 	agent: string | null;
 	modelId: string | null;
@@ -80,7 +94,8 @@ export function useSessionState({
 	const [optimisticMessages, setOptimisticMessages] = useState<
 		TendrilUIMessage[]
 	>([]);
-	const [sessionStatus, setSessionStatus] = useState<string>("idle");
+	const [sessionStatus, setSessionStatus] =
+		useState<SessionStreamStatus>("idle");
 	const [sessionError, setSessionError] = useState<string | null>(null);
 	const [sessionAgent, setSessionAgent] = useState<string | null>(null);
 	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
@@ -177,7 +192,7 @@ export function useSessionState({
 						addEvents(updates.events);
 					}
 					if (updates.status) {
-						setSessionStatus(updates.status);
+						setSessionStatus(updates.status as SessionStreamStatus);
 					}
 					if (updates.error !== undefined) {
 						setSessionError(updates.error ?? null);
@@ -219,7 +234,7 @@ export function useSessionState({
 
 	return {
 		messages,
-		status: sessionStatus,
+		status: toChatStatus(sessionStatus),
 		error: sessionError,
 		agent: sessionAgent,
 		modelId: sessionModelId,

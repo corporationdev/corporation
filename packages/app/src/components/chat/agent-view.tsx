@@ -158,8 +158,7 @@ const AGENT_CONFIG: Record<string, ConfigItem[]> = {
 					value: "auto",
 				},
 				{
-					description:
-						"Edit files and access the internet without approval",
+					description: "Edit files and access the internet without approval",
 					name: "Full Access",
 					value: "full-access",
 				},
@@ -276,9 +275,7 @@ const MODES_BY_AGENT = Object.fromEntries(
 );
 const REASONING_EFFORTS_BY_AGENT = Object.fromEntries(
 	(Object.entries(AGENT_CONFIG) as [string, ConfigItem[]][])
-		.filter(([, config]) =>
-			config.some((c) => c.id === "reasoning_effort")
-		)
+		.filter(([, config]) => config.some((c) => c.id === "reasoning_effort"))
 		.map(([agentId, config]) => {
 			const effortConfig = config.find((c) => c.id === "reasoning_effort");
 			const efforts = effortConfig?.options ?? [];
@@ -289,12 +286,18 @@ const REASONING_EFFORTS_BY_AGENT = Object.fromEntries(
 		})
 );
 
+export type AgentViewInitialConfig = {
+	agentId?: string | null;
+	modelId?: string | null;
+};
+
 export const AgentView = ({
 	messages,
 	sendMessage,
 	status,
 	error,
 	emptyState,
+	initialConfig,
 }: {
 	messages: TendrilUIMessage[];
 	sendMessage: ChatSendMessage;
@@ -302,22 +305,35 @@ export const AgentView = ({
 	error?: string | null;
 	/** Optional empty state component when there are no messages. Defaults to ConversationEmptyState. */
 	emptyState?: React.ReactNode;
+	/** Server-provided agent/model for existing sessions. Ephemeral override, not persisted. */
+	initialConfig?: AgentViewInitialConfig;
 }) => {
 	const [message, setMessage] = useState("");
-	const {
-		agentId,
-		modelId,
-		modeId,
-		reasoningEffort,
-		setAgentId,
-		setModelId,
-		setModeId,
-		setReasoningEffort,
-	} = useAgentModelPreferences({
+
+	// localStorage preferences — source of truth for new sessions
+	const preferences = useAgentModelPreferences({
 		modelsByAgent: MODELS_BY_AGENT,
 		modesByAgent: MODES_BY_AGENT,
 		reasoningEffortsByAgent: REASONING_EFFORTS_BY_AGENT,
 	});
+
+	// Ephemeral overrides seeded from server state (connected sessions)
+	const [agentOverride, setAgentOverride] = useState<string | null>(
+		initialConfig?.agentId ?? null
+	);
+	const [modelOverride, setModelOverride] = useState<string | null>(
+		initialConfig?.modelId ?? null
+	);
+
+	// Use override if set, otherwise fall back to preferences
+	const agentId = agentOverride ?? preferences.agentId;
+	const modelId = modelOverride ?? preferences.modelId;
+	const { modeId, reasoningEffort, setModeId, setReasoningEffort } =
+		preferences;
+
+	const setAgentId = initialConfig ? setAgentOverride : preferences.setAgentId;
+	const setModelId = initialConfig ? setModelOverride : preferences.setModelId;
+
 	const { environmentId, setEnvironmentId } = useEnvironmentSelection();
 
 	const environments = useQuery(api.environments.listPersistent);
