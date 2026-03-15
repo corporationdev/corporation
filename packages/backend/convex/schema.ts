@@ -91,15 +91,6 @@ export default defineSchema(
 				"status",
 				"startedAt",
 			]),
-		agentConfig: defineTable({
-			userId: v.string(),
-			agentId: v.string(),
-			configOptions: v.array(v.any()),
-			createdAt: v.number(),
-			updatedAt: v.number(),
-		})
-			.index("by_user", ["userId"])
-			.index("by_user_and_agent", ["userId", "agentId"]),
 		agentCredentials: defineTable({
 			userId: v.string(),
 			agentId: v.string(),

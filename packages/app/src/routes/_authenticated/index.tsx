@@ -45,6 +45,7 @@ function AuthenticatedIndex() {
 					agent: input.agentId,
 					modelId: input.modelId,
 					modeId: input.modeId,
+					reasoningEffort: input.reasoningEffort,
 				});
 
 				navigate({

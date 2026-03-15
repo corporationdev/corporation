@@ -1,6 +1,6 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
-import type * as React from "react";
+import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -78,11 +78,22 @@ function DropdownMenuItem({
 	className,
 	inset,
 	variant = "default",
+	asChild = false,
+	children,
+	render,
 	...props
 }: MenuPrimitive.Item.Props & {
 	inset?: boolean;
 	variant?: "default" | "destructive";
+	asChild?: boolean;
 }) {
+	const itemRender =
+		!render && asChild
+			? React.isValidElement(children)
+				? children
+				: React.Children.only(children)
+			: render;
+
 	return (
 		<MenuPrimitive.Item
 			className={cn(
@@ -92,8 +103,11 @@ function DropdownMenuItem({
 			data-inset={inset}
 			data-slot="dropdown-menu-item"
 			data-variant={variant}
+			render={itemRender}
 			{...props}
-		/>
+		>
+			{asChild ? undefined : children}
+		</MenuPrimitive.Item>
 	);
 }
 
