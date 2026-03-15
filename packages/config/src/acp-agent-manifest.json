@@ -2,25 +2,28 @@
   {
     "id": "claude-acp",
     "name": "Claude Agent",
-    "version": "0.21.0",
     "description": "ACP wrapper for Anthropic's Claude",
+    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/claude-acp.svg",
     "repository": "https://github.com/zed-industries/claude-agent-acp",
     "authors": ["Anthropic"],
     "license": "proprietary",
-    "distribution": {
-      "npx": {
-        "package": "@zed-industries/claude-agent-acp@0.21.0"
+    "nativeCli": {
+      "displayName": "Claude Code",
+      "executableNames": ["claude"],
+      "install": {
+        "kind": "npm",
+        "package": "@anthropic-ai/claude-code"
       }
     },
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/claude-acp.svg",
-    "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/share/tendril/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/tendril/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0'",
-    "runtimeCommand": {
-      "command": "$HOME/.local/share/tendril/acp/npm/claude-acp/bin/claude-agent-acp",
-      "args": []
+    "acpAdapter": {
+      "displayName": "Claude Agent ACP Adapter",
+      "version": "0.21.0",
+      "install": {
+        "kind": "npm",
+        "package": "@zed-industries/claude-agent-acp@0.21.0",
+        "executableName": "claude-agent-acp"
+      }
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @anthropic-ai/claude-code\n(mkdir -p \"$HOME/.local/share/tendril/acp/npm/claude-acp\" \"$HOME/.local/bin\"\nnpm install -g --prefix \"$HOME/.local/share/tendril/acp/npm/claude-acp\" '@zed-industries/claude-agent-acp@0.21.0') >/tmp/tendril-acp-claude-acp.log 2>&1 &\nprintf \"Preparing Claude Agent ACP runtime in the background. Logs: /tmp/tendril-acp-claude-acp.log\\n\"",
-    "installSource": "https://docs.anthropic.com/en/docs/claude-code/setup",
     "credentialBundle": {
       "schemaVersion": 1,
       "paths": [
@@ -40,51 +43,52 @@
   {
     "id": "codex-acp",
     "name": "Codex CLI",
-    "version": "0.9.5",
     "description": "ACP adapter for OpenAI's coding assistant",
+    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/codex-acp.svg",
     "repository": "https://github.com/zed-industries/codex-acp",
     "authors": ["OpenAI", "Zed Industries"],
     "license": "Apache-2.0",
-    "distribution": {
-      "binary": {
-        "darwin-aarch64": {
-          "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-aarch64-apple-darwin.tar.gz",
-          "cmd": "./codex-acp"
-        },
-        "darwin-x86_64": {
-          "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-apple-darwin.tar.gz",
-          "cmd": "./codex-acp"
-        },
-        "linux-aarch64": {
-          "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-aarch64-unknown-linux-gnu.tar.gz",
-          "cmd": "./codex-acp"
-        },
-        "linux-x86_64": {
-          "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz",
-          "cmd": "./codex-acp"
-        },
-        "windows-aarch64": {
-          "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-aarch64-pc-windows-msvc.zip",
-          "cmd": "./codex-acp.exe"
-        },
-        "windows-x86_64": {
-          "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-pc-windows-msvc.zip",
-          "cmd": "./codex-acp.exe"
-        }
-      },
-      "npx": {
-        "package": "@zed-industries/codex-acp@0.9.5"
+    "nativeCli": {
+      "displayName": "Codex CLI",
+      "executableNames": ["codex"],
+      "install": {
+        "kind": "npm",
+        "package": "@openai/codex"
       }
     },
-    "icon": "https://cdn.agentclientprotocol.com/registry/v1/latest/codex-acp.svg",
-    "nativeInstallCommand": "npm install -g --prefix \"$HOME/.local\" @openai/codex",
-    "acpInstallCommand": "mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/tendril/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\"",
-    "runtimeCommand": {
-      "command": "$HOME/.local/share/tendril/acp/codex-acp/0.9.5/codex-acp",
-      "args": []
+    "acpAdapter": {
+      "displayName": "Codex CLI ACP Adapter",
+      "version": "0.10.0",
+      "install": {
+        "kind": "binary",
+        "platforms": {
+          "darwin-aarch64": {
+            "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-aarch64-apple-darwin.tar.gz",
+            "cmd": "./codex-acp"
+          },
+          "darwin-x86_64": {
+            "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-x86_64-apple-darwin.tar.gz",
+            "cmd": "./codex-acp"
+          },
+          "linux-aarch64": {
+            "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-aarch64-unknown-linux-gnu.tar.gz",
+            "cmd": "./codex-acp"
+          },
+          "linux-x86_64": {
+            "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-x86_64-unknown-linux-gnu.tar.gz",
+            "cmd": "./codex-acp"
+          },
+          "windows-aarch64": {
+            "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-aarch64-pc-windows-msvc.zip",
+            "cmd": "./codex-acp.exe"
+          },
+          "windows-x86_64": {
+            "archive": "https://github.com/zed-industries/codex-acp/releases/download/v0.10.0/codex-acp-0.10.0-x86_64-pc-windows-msvc.zip",
+            "cmd": "./codex-acp.exe"
+          }
+        }
+      }
     },
-    "installCommand": "export PATH=\"$HOME/.local/bin:$PATH\"\nnpm install -g --prefix \"$HOME/.local\" @openai/codex\n(mkdir -p \"$HOME/.local/bin\"\ntmp_dir=\"$(mktemp -d)\"\ninstall_dir=\"$HOME/.local/share/tendril/acp/codex-acp/0.9.5\"\ncleanup() { rm -rf \"$tmp_dir\"; }\ntrap cleanup EXIT\nrm -rf \"$install_dir\"\nmkdir -p \"$install_dir\" \"$tmp_dir/unpack\"\ncurl -fsSL 'https://github.com/zed-industries/codex-acp/releases/download/v0.9.5/codex-acp-0.9.5-x86_64-unknown-linux-gnu.tar.gz' -o \"$tmp_dir/archive\"\ntar -xzf \"$tmp_dir/archive\" -C \"$tmp_dir/unpack\"\ncp -R \"$tmp_dir/unpack\"/. \"$install_dir\"/\nchmod +x \"$install_dir/codex-acp\") >/tmp/tendril-acp-codex-acp.log 2>&1 &\nprintf \"Preparing Codex CLI ACP runtime in the background. Logs: /tmp/tendril-acp-codex-acp.log\\n\"",
-    "installSource": "https://github.com/openai/codex",
     "credentialBundle": {
       "schemaVersion": 1,
       "paths": [

@@ -8,28 +8,53 @@ export type AgentCredentialBundle = {
 	exclude?: string[];
 };
 
+export type AgentNativeCliInstall =
+	| {
+			kind: "manual";
+			docsUrl: string;
+	  }
+	| {
+			kind: "npm";
+			package: string;
+	  }
+	| {
+			kind: "binary";
+			platforms: Record<
+				string,
+				{
+					archive: string;
+					cmd: string;
+				}
+			>;
+	  };
+
 export type SupportedAcpAgentConfig = {
 	id: string;
-	nativeInstallCommand: string | null;
-	runtimeCommandOverride?: {
-		command: string;
-		args?: string[];
-		env?: Record<string, string>;
-	} | null;
-	acpInstallStrategy: "distribution" | "native";
-	acpExecutableName: string | null;
-	installSource: string;
+	nativeCli: {
+		displayName: string;
+		executableNames: string[];
+		install: AgentNativeCliInstall;
+	};
+	acpAdapter: {
+		executableName?: string | null;
+	};
 	credentialBundle: AgentCredentialBundle;
 };
 
 export const SUPPORTED_ACP_AGENTS = [
 	{
 		id: "claude-acp",
-		nativeInstallCommand:
-			'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code',
-		acpInstallStrategy: "distribution",
-		acpExecutableName: "claude-agent-acp",
-		installSource: "https://docs.anthropic.com/en/docs/claude-code/setup",
+		nativeCli: {
+			displayName: "Claude Code",
+			executableNames: ["claude"],
+			install: {
+				kind: "npm",
+				package: "@anthropic-ai/claude-code",
+			},
+		},
+		acpAdapter: {
+			executableName: "claude-agent-acp",
+		},
 		credentialBundle: {
 			schemaVersion: 1,
 			paths: [
@@ -44,11 +69,15 @@ export const SUPPORTED_ACP_AGENTS = [
 	},
 	{
 		id: "codex-acp",
-		nativeInstallCommand:
-			'npm install -g --prefix "$HOME/.local" @openai/codex',
-		acpInstallStrategy: "distribution",
-		acpExecutableName: null,
-		installSource: "https://github.com/openai/codex",
+		nativeCli: {
+			displayName: "Codex CLI",
+			executableNames: ["codex"],
+			install: {
+				kind: "npm",
+				package: "@openai/codex",
+			},
+		},
+		acpAdapter: {},
 		credentialBundle: {
 			schemaVersion: 1,
 			paths: [{ path: "$HOME/.codex/auth.json", kind: "file", required: true }],

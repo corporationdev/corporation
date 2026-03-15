@@ -318,7 +318,13 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-const streamdownPlugins = { cjk, code, math, mermaid };
+// streamdown and @streamdown/mermaid can resolve slightly different Mermaid types.
+const streamdownPlugins = {
+	cjk,
+	code,
+	math,
+	mermaid,
+} as ComponentProps<typeof Streamdown>["plugins"];
 
 export const MessageResponse = memo(
 	({ className, ...props }: MessageResponseProps) => (

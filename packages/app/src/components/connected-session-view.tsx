@@ -108,7 +108,7 @@ export const ConnectedSessionView: FC<{
 		}
 
 		// Runtime not connected yet (e.g. sandbox still provisioning)
-		if (!runtimeReady || !connectionId) {
+		if (!(runtimeReady && connectionId)) {
 			return;
 		}
 
