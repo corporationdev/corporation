@@ -600,23 +600,11 @@ export class SpaceDurableObject extends DurableObject<Env> {
 		const normalizedLive = live === true;
 		const normalizedTimeoutMs = normalizeTimeoutMs(timeoutMs);
 
-		console.log("[space-do] readSessionStream", {
-			sessionId,
-			afterOffset: normalizedAfterOffset,
-			live: normalizedLive,
-		});
-
 		let result = await this.readSessionFramesChunk(
 			sessionId,
 			normalizedAfterOffset,
 			normalizedLimit
 		);
-		console.log("[space-do] readSessionStream chunk", {
-			sessionId,
-			frameCount: result.frames.length,
-			nextOffset: result.nextOffset,
-			upToDate: result.upToDate,
-		});
 		if (!normalizedLive || result.frames.length > 0) {
 			return result;
 		}
@@ -651,12 +639,6 @@ export class SpaceDurableObject extends DurableObject<Env> {
 	receiveEnvironmentStreamItems(
 		input: EnvironmentStreamDelivery
 	): Promise<EnvironmentRpcResult<EnvironmentStreamDeliveryAck>> {
-		console.log("[space-do] receiveEnvironmentStreamItems", {
-			stream: input.stream,
-			requesterId: input.requesterId,
-			itemCount: input.items.length,
-			nextOffset: input.nextOffset,
-		});
 		return this.ingestEnvironmentStreamItems(input);
 	}
 

@@ -2,11 +2,11 @@ import { chmod, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
-const runtimeSourceDir = resolve(repoRoot, "apps/sandbox-runtime");
+const runtimeSourceDir = resolve(repoRoot, "packages/cli");
 const runtimeSourcePackageJsonPath = resolve(runtimeSourceDir, "package.json");
 const runtimeEntrypointPath = resolve(runtimeSourceDir, "index.ts");
 const stagingDir = resolve(runtimeSourceDir, "dist/npm-package");
-const packageName = "@isaacdyor/sandbox-runtime";
+const packageName = "@tendril/cli";
 
 type BuildSandboxRuntimePackageOptions = {
 	version?: string;
@@ -67,14 +67,14 @@ exec bun "$PACKAGE_DIR/dist/index.js" "$@"
 }
 
 function buildPackageReadme(version: string) {
-	return `# @isaacdyor/sandbox-runtime
+	return `# @tendril/cli
 
 Generated package artifact for Tendril sandbox runtime.
 
 - Package: \`${packageName}\`
 - Version: \`${version}\`
 
-This package is built from \`apps/sandbox-runtime\` in the monorepo and is intended to run inside E2B sandboxes via the \`sandbox-runtime\` CLI bin.
+This package is built from \`packages/cli\` in the monorepo and is intended to run inside E2B sandboxes via the \`sandbox-runtime\` CLI bin.
 `;
 }
 

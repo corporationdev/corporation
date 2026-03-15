@@ -8,7 +8,6 @@
  * @module
  */
 
-import type * as agentConfig from "../agentConfig.js";
 import type * as agentCredentialActions from "../agentCredentialActions.js";
 import type * as agentCredentials from "../agentCredentials.js";
 import type * as auth from "../auth.js";
@@ -46,7 +45,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  agentConfig: typeof agentConfig;
   agentCredentialActions: typeof agentCredentialActions;
   agentCredentials: typeof agentCredentials;
   auth: typeof auth;
@@ -194,6 +192,46 @@ export declare const components: {
                   status: string;
                 };
                 model: "invitation";
+              }
+            | {
+                data: {
+                  clientId?: null | string;
+                  deviceCode: string;
+                  expiresAt: number;
+                  lastPolledAt?: null | number;
+                  pollingInterval?: null | number;
+                  scope?: null | string;
+                  status: string;
+                  userCode: string;
+                  userId?: null | string;
+                };
+                model: "deviceCode";
+              }
+            | {
+                data: {
+                  configId: string;
+                  createdAt: number;
+                  enabled?: null | boolean;
+                  expiresAt?: null | number;
+                  key: string;
+                  lastRefillAt?: null | number;
+                  lastRequest?: null | number;
+                  metadata?: null | string;
+                  name?: null | string;
+                  permissions?: null | string;
+                  prefix?: null | string;
+                  rateLimitEnabled?: null | boolean;
+                  rateLimitMax?: null | number;
+                  rateLimitTimeWindow?: null | number;
+                  referenceId: string;
+                  refillAmount?: null | number;
+                  refillInterval?: null | number;
+                  remaining?: null | number;
+                  requestCount?: null | number;
+                  start?: null | string;
+                  updatedAt: number;
+                };
+                model: "apikey";
               }
             | {
                 data: {
@@ -429,6 +467,90 @@ export declare const components: {
                     | "expiresAt"
                     | "createdAt"
                     | "inviterId"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "deviceCode";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "deviceCode"
+                    | "userCode"
+                    | "userId"
+                    | "expiresAt"
+                    | "status"
+                    | "lastPolledAt"
+                    | "pollingInterval"
+                    | "clientId"
+                    | "scope"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "apikey";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "configId"
+                    | "name"
+                    | "start"
+                    | "referenceId"
+                    | "prefix"
+                    | "key"
+                    | "refillInterval"
+                    | "refillAmount"
+                    | "lastRefillAt"
+                    | "enabled"
+                    | "rateLimitEnabled"
+                    | "rateLimitTimeWindow"
+                    | "rateLimitMax"
+                    | "requestCount"
+                    | "remaining"
+                    | "lastRequest"
+                    | "expiresAt"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "permissions"
+                    | "metadata"
                     | "_id";
                   operator?:
                     | "lt"
@@ -737,6 +859,90 @@ export declare const components: {
                 }>;
               }
             | {
+                model: "deviceCode";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "deviceCode"
+                    | "userCode"
+                    | "userId"
+                    | "expiresAt"
+                    | "status"
+                    | "lastPolledAt"
+                    | "pollingInterval"
+                    | "clientId"
+                    | "scope"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "apikey";
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "configId"
+                    | "name"
+                    | "start"
+                    | "referenceId"
+                    | "prefix"
+                    | "key"
+                    | "refillInterval"
+                    | "refillAmount"
+                    | "lastRefillAt"
+                    | "enabled"
+                    | "rateLimitEnabled"
+                    | "rateLimitTimeWindow"
+                    | "rateLimitMax"
+                    | "requestCount"
+                    | "remaining"
+                    | "lastRequest"
+                    | "expiresAt"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "permissions"
+                    | "metadata"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
                 model: "jwks";
                 where?: Array<{
                   connector?: "AND" | "OR";
@@ -785,6 +991,8 @@ export declare const components: {
             | "organization"
             | "member"
             | "invitation"
+            | "deviceCode"
+            | "apikey"
             | "jwks";
           offset?: number;
           paginationOpts: {
@@ -795,6 +1003,7 @@ export declare const components: {
             maximumRowsRead?: number;
             numItems: number;
           };
+          select?: Array<string>;
           sortBy?: { direction: "asc" | "desc"; field: string };
           where?: Array<{
             connector?: "AND" | "OR";
@@ -835,6 +1044,8 @@ export declare const components: {
             | "organization"
             | "member"
             | "invitation"
+            | "deviceCode"
+            | "apikey"
             | "jwks";
           select?: Array<string>;
           where?: Array<{
@@ -1145,6 +1356,124 @@ export declare const components: {
                     | "expiresAt"
                     | "createdAt"
                     | "inviterId"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "deviceCode";
+                update: {
+                  clientId?: null | string;
+                  deviceCode?: string;
+                  expiresAt?: number;
+                  lastPolledAt?: null | number;
+                  pollingInterval?: null | number;
+                  scope?: null | string;
+                  status?: string;
+                  userCode?: string;
+                  userId?: null | string;
+                };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "deviceCode"
+                    | "userCode"
+                    | "userId"
+                    | "expiresAt"
+                    | "status"
+                    | "lastPolledAt"
+                    | "pollingInterval"
+                    | "clientId"
+                    | "scope"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "apikey";
+                update: {
+                  configId?: string;
+                  createdAt?: number;
+                  enabled?: null | boolean;
+                  expiresAt?: null | number;
+                  key?: string;
+                  lastRefillAt?: null | number;
+                  lastRequest?: null | number;
+                  metadata?: null | string;
+                  name?: null | string;
+                  permissions?: null | string;
+                  prefix?: null | string;
+                  rateLimitEnabled?: null | boolean;
+                  rateLimitMax?: null | number;
+                  rateLimitTimeWindow?: null | number;
+                  referenceId?: string;
+                  refillAmount?: null | number;
+                  refillInterval?: null | number;
+                  remaining?: null | number;
+                  requestCount?: null | number;
+                  start?: null | string;
+                  updatedAt?: number;
+                };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "configId"
+                    | "name"
+                    | "start"
+                    | "referenceId"
+                    | "prefix"
+                    | "key"
+                    | "refillInterval"
+                    | "refillAmount"
+                    | "lastRefillAt"
+                    | "enabled"
+                    | "rateLimitEnabled"
+                    | "rateLimitTimeWindow"
+                    | "rateLimitMax"
+                    | "requestCount"
+                    | "remaining"
+                    | "lastRequest"
+                    | "expiresAt"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "permissions"
+                    | "metadata"
                     | "_id";
                   operator?:
                     | "lt"
@@ -1498,6 +1827,124 @@ export declare const components: {
                     | "expiresAt"
                     | "createdAt"
                     | "inviterId"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "deviceCode";
+                update: {
+                  clientId?: null | string;
+                  deviceCode?: string;
+                  expiresAt?: number;
+                  lastPolledAt?: null | number;
+                  pollingInterval?: null | number;
+                  scope?: null | string;
+                  status?: string;
+                  userCode?: string;
+                  userId?: null | string;
+                };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "deviceCode"
+                    | "userCode"
+                    | "userId"
+                    | "expiresAt"
+                    | "status"
+                    | "lastPolledAt"
+                    | "pollingInterval"
+                    | "clientId"
+                    | "scope"
+                    | "_id";
+                  operator?:
+                    | "lt"
+                    | "lte"
+                    | "gt"
+                    | "gte"
+                    | "eq"
+                    | "in"
+                    | "not_in"
+                    | "ne"
+                    | "contains"
+                    | "starts_with"
+                    | "ends_with";
+                  value:
+                    | string
+                    | number
+                    | boolean
+                    | Array<string>
+                    | Array<number>
+                    | null;
+                }>;
+              }
+            | {
+                model: "apikey";
+                update: {
+                  configId?: string;
+                  createdAt?: number;
+                  enabled?: null | boolean;
+                  expiresAt?: null | number;
+                  key?: string;
+                  lastRefillAt?: null | number;
+                  lastRequest?: null | number;
+                  metadata?: null | string;
+                  name?: null | string;
+                  permissions?: null | string;
+                  prefix?: null | string;
+                  rateLimitEnabled?: null | boolean;
+                  rateLimitMax?: null | number;
+                  rateLimitTimeWindow?: null | number;
+                  referenceId?: string;
+                  refillAmount?: null | number;
+                  refillInterval?: null | number;
+                  remaining?: null | number;
+                  requestCount?: null | number;
+                  start?: null | string;
+                  updatedAt?: number;
+                };
+                where?: Array<{
+                  connector?: "AND" | "OR";
+                  field:
+                    | "configId"
+                    | "name"
+                    | "start"
+                    | "referenceId"
+                    | "prefix"
+                    | "key"
+                    | "refillInterval"
+                    | "refillAmount"
+                    | "lastRefillAt"
+                    | "enabled"
+                    | "rateLimitEnabled"
+                    | "rateLimitTimeWindow"
+                    | "rateLimitMax"
+                    | "requestCount"
+                    | "remaining"
+                    | "lastRequest"
+                    | "expiresAt"
+                    | "createdAt"
+                    | "updatedAt"
+                    | "permissions"
+                    | "metadata"
                     | "_id";
                   operator?:
                     | "lt"
