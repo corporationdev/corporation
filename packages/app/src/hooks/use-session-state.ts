@@ -4,15 +4,16 @@ import type { SessionStreamFrame } from "@tendril/contracts/browser-do";
 import { env } from "@tendril/env/web";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-	MessageTimelineEntry,
-	TimelineEntry,
-} from "@/components/chat/types";
 import { getAuthHeaders, getSessionStreamState } from "@/lib/api-client";
 import {
 	type EnrichedSessionEvent,
-	sessionEventsToEntries,
-} from "@/lib/session-events-to-entries";
+	sessionEventsToMessages,
+} from "@/lib/session-events-to-messages";
+import {
+	createOptimisticUserTextMessage,
+	getTendrilMessageText,
+	type TendrilUIMessage,
+} from "@/lib/tendril-ui-message";
 import { toAbsoluteUrl } from "@/lib/url";
 
 function buildSessionStreamBaseUrl(
@@ -56,7 +57,7 @@ function readStreamBatch(
 }
 
 export type SessionState = {
-	entries: TimelineEntry[];
+	messages: TendrilUIMessage[];
 	status: string;
 	error: string | null;
 	agent: string | null;
@@ -77,7 +78,7 @@ export function useSessionState({
 	const seenEventIdsRef = useRef<Set<string>>(new Set());
 	const [events, setEvents] = useState<EnrichedSessionEvent[]>([]);
 	const [optimisticMessages, setOptimisticMessages] = useState<
-		MessageTimelineEntry[]
+		TendrilUIMessage[]
 	>([]);
 	const [sessionStatus, setSessionStatus] = useState<string>("idle");
 	const [sessionError, setSessionError] = useState<string | null>(null);
@@ -85,16 +86,16 @@ export function useSessionState({
 	const [sessionModelId, setSessionModelId] = useState<string | null>(null);
 
 	const addOptimisticMessage = useCallback((text: string) => {
-		const entry: MessageTimelineEntry = {
-			id: `optimistic-${nanoid()}`,
-			kind: "message",
-			time: new Date().toISOString(),
-			role: "user",
-			text,
-		};
-		setOptimisticMessages((prev) => [...prev, entry]);
+		setOptimisticMessages((prev) => [
+			...prev,
+			createOptimisticUserTextMessage({
+				id: `optimistic-${nanoid()}`,
+				sessionId,
+				text,
+			}),
+		]);
 		setSessionStatus("running");
-	}, []);
+	}, [sessionId]);
 
 	const clearOptimisticMessages = useCallback(() => {
 		setOptimisticMessages([]);
@@ -195,27 +196,26 @@ export function useSessionState({
 		};
 	}, [addEvents, sessionId, spaceSlug, streamEnabled]);
 
-	const entries = useMemo(() => {
-		const serverEntries = sessionEventsToEntries(events);
+	const messages = useMemo(() => {
+		const serverMessages = sessionEventsToMessages(events);
 		if (optimisticMessages.length === 0) {
-			return serverEntries;
+			return serverMessages;
 		}
 		const serverUserTexts = new Set(
-			serverEntries
-				.filter(
-					(e): e is MessageTimelineEntry =>
-						e.kind === "message" && e.role === "user"
-				)
-				.map((e) => e.text)
+			serverMessages
+				.filter((message) => message.role === "user")
+				.map((message) => getTendrilMessageText(message))
 		);
 		const pending = optimisticMessages.filter(
-			(m) => !serverUserTexts.has(m.text)
+			(message) => !serverUserTexts.has(getTendrilMessageText(message))
 		);
-		return pending.length > 0 ? [...serverEntries, ...pending] : serverEntries;
+		return pending.length > 0
+			? [...serverMessages, ...pending]
+			: serverMessages;
 	}, [events, optimisticMessages]);
 
 	return {
-		entries,
+		messages,
 		status: sessionStatus,
 		error: sessionError,
 		agent: sessionAgent,
